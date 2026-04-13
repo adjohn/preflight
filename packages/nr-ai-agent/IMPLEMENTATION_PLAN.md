@@ -21,6 +21,7 @@
 ### 0.1 — TypeScript & Build Infrastructure
 
 **Implementation:**
+
 - Create `tsconfig.base.json` at monorepo root with shared compiler settings (`strict: true`, `target: ES2022`, `module: NodeNext`, `moduleResolution: NodeNext`, `declaration: true`, `declarationMap: true`, `sourceMap: true`, `outDir: dist`)
 - Create per-package `tsconfig.json` files in `packages/shared`, `packages/nr-ai-agent`, `packages/nr-ai-mcp-server`, and `packages/test-app` that extend the base config and set `rootDir`, `outDir`, and project references
 - Configure composite project references so `tsc --build` compiles in dependency order (shared -> nr-ai-agent -> test-app)
@@ -28,6 +29,7 @@
 - Verify `npm run build` from the monorepo root compiles all packages without errors
 
 **Testing:**
+
 - Create a trivial `src/index.ts` in each package that exports a placeholder (e.g., `export const VERSION = '0.1.0'`)
 - Run `npm run build` from root — all packages compile, `dist/` directories are created with `.js`, `.d.ts`, and `.js.map` files
 - Verify project references resolve: `nr-ai-agent` can import from `@nr-ai-observatory/shared`
@@ -38,6 +40,7 @@
 ### 0.2 — Test Infrastructure (Jest + TypeScript)
 
 **Implementation:**
+
 - Install `jest`, `ts-jest`, `@types/jest` as devDependencies at the monorepo root
 - Create `jest.config.base.ts` at the root with shared settings (`preset: ts-jest`, `testEnvironment: node`, `testMatch: ['**/*.test.ts']`, coverage thresholds)
 - Create per-package `jest.config.ts` that extends the base
@@ -47,6 +50,7 @@
 - Add coverage reporting (`--coverage` with `lcov` + `text` reporters)
 
 **Testing:**
+
 - Write a trivial test in `packages/shared/src/index.test.ts` that asserts `VERSION === '0.1.0'`
 - Run `npm test` from root — test passes, coverage report is generated
 - Verify tests can import from the package source (not `dist/`)
@@ -56,6 +60,7 @@
 ### 0.3 — Linting & Formatting
 
 **Implementation:**
+
 - Install `eslint`, `@typescript-eslint/parser`, `@typescript-eslint/eslint-plugin`, `prettier`, `eslint-config-prettier` as root devDependencies
 - Create `.eslintrc.cjs` (or `eslint.config.mjs` for flat config) with TypeScript rules, no-unused-vars as error, no-explicit-any as warn
 - Create `.prettierrc` with project-wide formatting settings (single quotes, trailing commas, 100 char print width — or team preference)
@@ -63,6 +68,7 @@
 - Add `.eslintignore` to exclude `dist/`, `node_modules/`, `coverage/`
 
 **Testing:**
+
 - Run `npm run lint` — passes cleanly on placeholder source files
 - Intentionally introduce a lint error (unused variable) — verify it's caught
 - Run `npm run format` — verify formatting is applied consistently
@@ -72,6 +78,7 @@
 ### 0.4 — Shared Package: Logger Utility
 
 **Implementation:**
+
 - Create `packages/shared/src/logger.ts`
 - Implement a simple structured logger with levels: `debug`, `info`, `warn`, `error`
 - Support configurable log level via `NEW_RELIC_AI_LOG_LEVEL` env var (default: `info`)
@@ -80,6 +87,7 @@
 - Export `createLogger(component: string)` factory function
 
 **Testing:**
+
 - Unit test: `createLogger('test')` produces a logger with all 4 level methods
 - Unit test: log level filtering — setting level to `warn` suppresses `debug` and `info`
 - Unit test: output format is valid JSON with expected fields
@@ -90,6 +98,7 @@
 ### 0.5 — Shared Package: Configuration Loader
 
 **Implementation:**
+
 - Create `packages/shared/src/config.ts`
 - Define a `AgentConfig` TypeScript interface covering all config fields from Section 6 of the ideation doc:
   - `licenseKey` (required), `appName` (required), `enabled`, `recordContent`, `costTrackingEnabled`, `qualityTrackingEnabled`, `conversationTrackingEnabled`, `thinkingTrackingEnabled`, `customPricingFile`, `contentMaxLength`, `highSecurity`, `logLevel`, `collectorHost`
@@ -99,6 +108,7 @@
 - Freeze the returned config object to prevent mutation
 
 **Testing:**
+
 - Unit test: all env vars map correctly to config fields
 - Unit test: missing `NEW_RELIC_LICENSE_KEY` throws with a descriptive message
 - Unit test: `highSecurity=true` forces `recordContent=false` even if explicitly set
@@ -114,6 +124,7 @@
 ### 1.1 — TypeScript SDK Wrapping: Anthropic Claude (`@anthropic-ai/sdk`)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/wrappers/anthropic.ts`
 - Implement a `wrapAnthropicClient(client: Anthropic)` function that uses ES6 Proxy or direct method replacement to intercept:
   - `client.messages.create()` — non-streaming completion calls
@@ -133,6 +144,7 @@
 - The wrapper must not swallow exceptions — all errors from the underlying SDK propagate to the caller unchanged
 
 **Testing:**
+
 - Unit test: wrap a mock Anthropic client; call `messages.create()` with a fake response; verify all fields are captured in the `AiRequestRecord`
 - Unit test: wrap a mock streaming client; yield 5 chunks then a final event with usage; verify TTFT is measured, total tokens are accumulated, and all chunks are re-yielded unmodified
 - Unit test: when `AbortSignal` is triggered mid-stream, the wrapper closes cleanly and the span is finalized
@@ -147,6 +159,7 @@
 ### 1.2 — TypeScript SDK Wrapping: Google Gemini (`@google/genai`)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/wrappers/gemini.ts`
 - Add `@google/genai` as a peerDependency in `packages/nr-ai-agent/package.json` (optional peer — the wrapper only activates if the SDK is installed)
 - Implement `wrapGeminiClient(client: GoogleGenAI)` that intercepts:
@@ -170,6 +183,7 @@
 - Same non-invasive behavior: disabled agent returns client unmodified, errors always propagate
 
 **Testing:**
+
 - Unit test: wrap a mock Gemini client; call `generateContent()` with a fake response; verify all fields captured including `usageMetadata`, `finishReason`, and safety ratings
 - Unit test: streaming wrapper re-yields all chunks, measures TTFT, accumulates usage from final chunk
 - Unit test: `embedContent()` produces an `AiEmbeddingRecord` with correct dimensions and token count
@@ -185,6 +199,7 @@
 ### 1.3 — Basic Event Types: `AiRequest`, `AiResponse`, `AiMessage`
 
 **Implementation:**
+
 - Create `packages/shared/src/events/types.ts`
 - Define TypeScript interfaces for the core event types that both wrappers produce:
   - **`AiRequest`** — one per API call, captures the request side:
@@ -208,6 +223,7 @@
 - All event types must include a `toNrEvent()` method or serializer that converts to the flat key-value format expected by New Relic's Events API (dot-separated attribute names, string/number values only, no nested objects)
 
 **Testing:**
+
 - Unit test: `createAiRequest()` generates a valid UUID, sets timestamp to current time, and includes all required fields
 - Unit test: `createAiResponse()` with all token fields correctly set; `totalTokens` is computed as `inputTokens + outputTokens + thinkingTokens`
 - Unit test: `createAiMessage()` truncates content to `contentMaxLength` and preserves `contentLength` as the original
@@ -221,6 +237,7 @@
 ### 1.4 — Token Tracking (Input, Output, Thinking, Cache)
 
 **Implementation:**
+
 - Create `packages/shared/src/tokens.ts`
 - Implement a `TokenUsage` interface and `extractTokenUsage()` functions per provider:
   - **`extractAnthropicTokens(response)`**: extracts from Anthropic's `response.usage` object:
@@ -242,6 +259,7 @@
 - The `TokenAccumulator` should detect the "final" chunk pattern per provider (Anthropic: `message_stop` event or `type === 'message'` in the final delta; Gemini: last chunk with `usageMetadata`)
 
 **Testing:**
+
 - Unit test: `extractAnthropicTokens()` correctly maps all fields from a real-shaped Anthropic response (with and without cache tokens, with and without thinking)
 - Unit test: `extractGeminiTokens()` correctly maps all fields from a real-shaped Gemini response (with and without thinking tokens)
 - Unit test: missing optional fields (cache tokens, thinking tokens) default to 0, not `undefined` or `NaN`
@@ -255,6 +273,7 @@
 ### 1.5 — Cost Calculation with Built-in Pricing Table
 
 **Implementation:**
+
 - Create `packages/shared/src/pricing.ts`
 - Define a `ModelPricing` interface:
   ```
@@ -278,6 +297,7 @@
 - Create `packages/shared/src/pricing-data.ts` (or `.json`) as the actual pricing data, separate from logic so it's easy to update
 
 **Testing:**
+
 - Unit test: `calculateCost()` for `claude-sonnet-4` with 1000 input, 500 output, 200 thinking tokens — verify exact USD values against known pricing
 - Unit test: `calculateCost()` for `gemini-2.5-flash` with thinking tokens — verify thinking cost uses the correct thinking rate
 - Unit test: cache cost calculation — `cacheReadUsd` uses discounted rate, `cacheCreationUsd` uses premium rate, `savingsFromCacheUsd` is correctly computed
@@ -293,6 +313,7 @@
 ### 1.6 — Latency Metrics (Total Duration, TTFT for Streaming)
 
 **Implementation:**
+
 - Create `packages/shared/src/timing.ts`
 - Implement a `RequestTimer` class that captures all latency dimensions from Section 4.1 of the ideation doc:
   - `start()` — record `performance.now()` (or `process.hrtime.bigint()`) at request initiation
@@ -314,6 +335,7 @@
 - For Gemini streaming: detect thinking from `thoughtsTokenCount` incrementing between chunks (or dedicated thought events if available)
 
 **Testing:**
+
 - Unit test: `RequestTimer` with `start()` then `stop()` produces a valid `durationMs` > 0
 - Unit test: `markFirstToken()` between `start()` and `stop()` produces a valid `timeToFirstTokenMs` between 0 and `durationMs`
 - Unit test: thinking brackets produce valid `thinkingDurationMs`; `generationDurationMs = durationMs - thinkingDurationMs`
@@ -328,6 +350,7 @@
 ### 1.7 — New Relic Collector Transport (Preconnect, Connect, Protocol v17)
 
 **Implementation:**
+
 - Create `packages/shared/src/transport/collector.ts`
 - Implement the New Relic collector handshake sequence following agent protocol v17:
   1. **Preconnect** — `POST` to `https://collector.newrelic.com/agent_listener/invoke_raw_method?method=preconnect` with license key header. Response returns the assigned collector host (e.g., `collector-42.newrelic.com`)
@@ -348,6 +371,7 @@
 - Implement gzip compression for all payloads using `zlib.gzip()`
 
 **Testing:**
+
 - Unit test: `sendEvents()` serializes events to JSON, sends with correct headers (`Api-Key`, `Content-Type`, `Content-Encoding: gzip`)
 - Unit test: mock HTTP — 200 response returns success
 - Unit test: mock HTTP — 429 response triggers retry with exponential backoff (verify delay pattern)
@@ -364,6 +388,7 @@
 ### 1.8 — Event Buffer with Two-Tier Harvest (60s Metrics, 5s Events)
 
 **Implementation:**
+
 - Create `packages/shared/src/harvest/event-buffer.ts`
 - Implement `EventBuffer` class with reservoir sampling (same pattern used by all NR agents):
   - `add(event: NrEvent)` — add an event to the buffer
@@ -386,6 +411,7 @@
 - Register `process.on('beforeExit')` and `process.on('SIGTERM')` to trigger a final flush on shutdown
 
 **Testing:**
+
 - Unit test: `EventBuffer.add()` stores events up to max size
 - Unit test: reservoir sampling — add 2000 events to a buffer of size 1000; verify buffer contains exactly 1000 events and the sampling is roughly uniform (statistical test with tolerance)
 - Unit test: `MetricAggregator.record()` correctly computes count, sum, min, max across multiple data points for the same metric name
@@ -400,6 +426,7 @@
 ### 1.9 — Error Tracking with Retry/Status Code Classification
 
 **Implementation:**
+
 - Create `packages/shared/src/errors.ts`
 - Define an `AiErrorClassification` enum covering all error types from Section 4.6 of the ideation doc:
   - `RATE_LIMIT` (HTTP 429)
@@ -431,6 +458,7 @@
 - Integrate error classification into both wrappers (1.1, 1.2): when a call throws, classify the error and emit an `AiErrorRecord` in addition to the `AiResponse` with the error field set
 
 **Testing:**
+
 - Unit test: `classifyError()` with an Anthropic 429 error -> `RATE_LIMIT`
 - Unit test: `classifyError()` with an Anthropic 529 error -> `OVERLOADED`
 - Unit test: `classifyError()` with an Anthropic `invalid_request_error` about context length -> `CONTEXT_LENGTH_EXCEEDED`
@@ -448,8 +476,10 @@
 ### 1.10 — Agent Entry Point & Initialization API
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/index.ts` — the main entry point exported by the package
 - Implement the public API surface:
+
   ```typescript
   // Primary API — initialize the agent, returns wrapper functions
   export function init(options?: Partial<AgentConfig>): NrAiAgent;
@@ -460,6 +490,7 @@
   // Convenience — wrap a Gemini client
   export function wrapGeminiClient(client: GoogleGenAI): GoogleGenAI;
   ```
+
 - The `init()` function:
   1. Loads configuration (merging env vars + passed options, via config loader from 0.5)
   2. Validates the license key and app name
@@ -476,6 +507,7 @@
 - Register `process.on('beforeExit')` and `SIGTERM`/`SIGINT` handlers to call `shutdown()` automatically
 
 **Testing:**
+
 - Unit test: `init()` with valid config returns an `NrAiAgent` with all expected methods
 - Unit test: `init()` with missing license key throws a clear error
 - Unit test: `init()` with `enabled=false` returns a no-op agent; `wrapAnthropicClient()` returns the original client
@@ -490,6 +522,7 @@
 ### 1.11 — Pre-Built Dashboard: "AI Overview"
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/dashboards/ai-overview.json`
 - Build a New Relic dashboard JSON definition following the [NR Dashboard API format](https://docs.newrelic.com/docs/apis/nerdgraph/examples/nerdgraph-dashboards/) containing:
   - **Top row — Key indicators** (Billboard widgets):
@@ -514,6 +547,7 @@
 - Create a helper script `packages/nr-ai-agent/scripts/deploy-dashboard.ts` that uses the NR NerdGraph API to create/update the dashboard in a specified account
 
 **Testing:**
+
 - Unit test: validate the dashboard JSON structure is valid (parse it, verify it has `pages`, each page has `widgets`, each widget has `nrqlQueries`)
 - Unit test: every NRQL query in the dashboard is syntactically valid (basic regex/parser check for SELECT, FROM, required clauses)
 - Unit test: the deploy script correctly calls the NerdGraph `dashboardCreate` mutation with the expected payload structure
@@ -528,6 +562,7 @@
 ### 2.1 — Extended Thinking Metrics (Thinking Tokens, Depth Index, Budget Utilization)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/metrics/reasoning.ts`
 - Implement `ReasoningMetrics` interface from Section 4.3 and the Reasoning Depth Profiling deep dive (Section 5.1):
   - `thinkingTokens`: number of tokens used for extended thinking
@@ -552,6 +587,7 @@
 - Also emit as standalone aggregated metrics via `MetricAggregator`: `ai.reasoning.depth_index` (gauge), `ai.reasoning.budget_utilization` (gauge) — faceted by model
 
 **Testing:**
+
 - Unit test: `extractReasoningMetrics()` with Anthropic thinking response — 1000 thinking tokens, 500 output tokens, budget of 2000 — verify `budgetUtilization` = 0.5, `thinkingToOutputRatio` = 2.0, `depthIndex` is between 0 and 1
 - Unit test: `depthIndex` normalization — extreme values (very high token ratio, very low) produce sensible 0-1 scores
 - Unit test: `depthIndex` with zero thinking tokens returns null (no thinking used)
@@ -565,6 +601,7 @@
 ### 2.2 — Prompt Cache Economics (Hit Rate, Savings, ROI)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/metrics/cache-economics.ts`
 - Implement `CacheMetrics` interface from Section 5.2:
   - `cacheHit`: boolean — whether any cache-read tokens were used (`cacheReadTokens > 0`)
@@ -587,6 +624,7 @@
 - Only active when `costTrackingEnabled=true` in config; otherwise, track hit/miss counts but skip USD calculations
 
 **Testing:**
+
 - Unit test: `CacheMetrics` computed from a response with 5000 cache-read tokens and 1000 cache-creation tokens for `claude-sonnet-4` — verify `cacheSavingsUsd` and `cacheCreationCostUsd` are correct against known pricing
 - Unit test: `cacheNetSavingsUsd` = savings minus creation cost
 - Unit test: `CacheEconomicsTracker` across 10 requests (7 cache hits, 3 misses) — verify `cacheHitRate` = 0.7
@@ -601,6 +639,7 @@
 ### 2.3 — Conversation Tracking (Per-Conversation Cost, Tokens, Context Pressure)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/metrics/conversation.ts`
 - Implement `ConversationTracker` class that maintains per-conversation state from Sections 4.7 and 5.9:
   - `conversationId`: string identifier (user-provided via `setConversationId()` or auto-generated)
@@ -627,6 +666,7 @@
   - `getConversationStats(id: string)` — return current `ConversationState` for inspection
 
 **Testing:**
+
 - Unit test: `ConversationTracker` across 5 turns — verify `turnCount`, `totalTokens`, `totalCostUsd` accumulate correctly
 - Unit test: `contextPressure` computed correctly for a model with 200k context limit and 50k tokens used = 0.25
 - Unit test: `estimatedTurnsRemaining` with steady growth rate of 5000 tokens/turn, 150k remaining = 30 turns
@@ -642,6 +682,7 @@
 ### 2.4 — Quality Signal Framework (Structural Signals + User Feedback Callback API)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/metrics/quality.ts`
 - Implement the quality tracking system from Section 5.4, starting with structural signals (zero-effort, always available):
   - **Stop reason tracking**: maintain a rolling window (configurable, default 1 hour) of stop reasons; detect shifts in distribution (e.g., sudden increase in `max_tokens` truncations)
@@ -667,6 +708,7 @@
 - When feedback signals are available, incorporate them into the composite quality score with higher weight than structural signals
 
 **Testing:**
+
 - Unit test: `QualityTracker` with 100 normal responses, then 5 with `stopReason: 'max_tokens'` — verify `maxTokensHitRate` increases and `qualityScore` decreases
 - Unit test: rolling window evicts old data correctly — after window size exceeded, oldest data points are dropped
 - Unit test: latency anomaly detection — 100 responses at ~200ms, then 1 at 5000ms — flagged as anomaly
@@ -683,6 +725,7 @@
 ### 2.5 — Multi-Modal Input Tracking (Image/PDF/Audio Token Attribution)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/metrics/multimodal.ts`
 - Implement `MultiModalMetrics` interface from Section 5.10:
   - `inputModalities`: array of modality types present in the request (e.g., `['text', 'image']`)
@@ -699,10 +742,11 @@
   - For Gemini: scan `parts` array for `inlineData` with image MIME types, `fileData` for uploaded files, audio/video MIME types
     - Gemini provides token counts per part in some cases; use those when available
 - Emit modality attributes on the `AiRequest` event: `ai.input.modalities`, `ai.input.image_count`, `ai.input.pdf_count`, etc.
-- Emit cost attribution by modality on the `AiResponse` event: `ai.cost.text_input_usd`, `ai.cost.image_input_usd` (computed from estimated image tokens * model input rate)
+- Emit cost attribution by modality on the `AiResponse` event: `ai.cost.text_input_usd`, `ai.cost.image_input_usd` (computed from estimated image tokens \* model input rate)
 - Also emit as aggregated metrics: `ai.multimodal.image_tokens` (counter), `ai.multimodal.requests_with_images` (counter) — faceted by model and feature tag
 
 **Testing:**
+
 - Unit test: `detectModalities()` with a text-only message — returns `inputModalities: ['text']`, all other counts = 0
 - Unit test: `detectModalities()` with an Anthropic message containing 2 base64 images — returns `imageCount: 2`, correct token estimate based on image dimensions
 - Unit test: `detectModalities()` with an Anthropic message containing a PDF — returns `pdfCount: 1`
@@ -717,6 +761,7 @@
 ### 2.6 — Cost Attribution Tags (Feature, Team, User)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/metrics/cost-attribution.ts`
 - Implement multi-dimensional cost attribution from Section 5.3:
   - Define standard attribution tag keys: `ai.attribution.feature`, `ai.attribution.team`, `ai.attribution.user`, `ai.attribution.environment`
@@ -748,6 +793,7 @@
 - Also support arbitrary custom tags beyond the standard ones (e.g., `{ environment: 'staging', promptVersion: 'v3' }`) — these are passed through as custom event attributes with `ai.custom.*` prefix
 
 **Testing:**
+
 - Unit test: per-request tags are extracted from `metadata.nr.*` and attached to the events
 - Unit test: per-request tags are stripped from the params before forwarding to the SDK (so the SDK doesn't receive unknown fields)
 - Unit test: context-scoped tags via `setAttributionContext()` are inherited by all calls within the async context
@@ -763,6 +809,7 @@
 ### 2.7 — Provider Comparison Metrics
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/metrics/provider-comparison.ts`
 - Implement automated comparison metrics from Section 5.6 that enable cross-provider analysis:
   - The core insight: since both Anthropic and Gemini wrappers emit the same `AiRequest`/`AiResponse` event schema with a `provider` attribute, comparison is primarily a **dashboard/NRQL concern** — but the agent needs to ensure data is consistently structured
@@ -784,6 +831,7 @@
 - Emit a periodic `AiProviderComparison` summary event (every 60s) with side-by-side metrics per provider for each active category, enabling pre-built comparison dashboard widgets
 
 **Testing:**
+
 - Unit test: `ProviderComparisonAggregator` receiving 10 Anthropic and 10 Gemini requests produces correct per-provider averages
 - Unit test: p95 calculation across a set of response durations is correct
 - Unit test: error rate per provider is independently computed (Anthropic 2/10 = 20%, Gemini 0/10 = 0%)
@@ -798,6 +846,7 @@
 ### 2.8 — Pre-Built Dashboards: "AI Cost Explorer" + "AI Reliability"
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/dashboards/ai-cost-explorer.json`
 - Build the "AI Cost Explorer" dashboard from Section 7 of the ideation doc:
   - **Cost treemap**: cost breakdown by model -> feature -> endpoint (`SELECT sum(ai.cost.total_usd) FROM AiResponse FACET model, ai.attribution.feature SINCE 1 week ago`)
@@ -816,6 +865,7 @@
 - Update the deploy script from 1.11 to support deploying all dashboards (pass dashboard name or `--all`)
 
 **Testing:**
+
 - Unit test: validate both dashboard JSON files parse correctly and follow NR dashboard structure
 - Unit test: all NRQL queries in both dashboards are syntactically valid
 - Unit test: deploy script can target a single dashboard or all dashboards
@@ -826,6 +876,7 @@
 ### 2.9 — Python Wrapper (Same Capabilities, Import Hook Pattern)
 
 **Implementation:**
+
 - Create a new top-level directory `python/` (or `packages/nr-ai-agent-python/`) for the Python package
 - Set up Python project structure:
   - `pyproject.toml` with package metadata, dependencies (`wrapt`, `requests`), optional dependencies (`anthropic`, `google-genai`)
@@ -857,6 +908,7 @@
 - Include all Phase 2 metrics: reasoning metrics, cache economics, conversation tracking, quality signals, multi-modal detection, cost attribution
 
 **Testing:**
+
 - Unit test: `wrap_anthropic_client()` intercepts `messages.create()` and captures all expected fields
 - Unit test: streaming wrapper for `messages.stream()` measures TTFT, accumulates tokens, re-yields chunks
 - Unit test: Gemini wrapper captures `generate_content()` and `generate_content_stream()` correctly
@@ -879,6 +931,7 @@
 ### 3.1 — Agentic Workflow Tracer (Trace Tree with Spans)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/agentic/tracer.ts`
 - Implement the agentic workflow tracing system from Section 5.5, treating an agentic workflow as a distributed trace where each step is a span:
 - Define span types:
@@ -905,6 +958,7 @@
   - Emit as attributes on the root `AgentTask` span and as an `AiAgentTaskSummary` custom event
 
 **Testing:**
+
 - Unit test: `startTask()` creates a root span with a unique `traceId` and `spanId`
 - Unit test: `startLlmCall()` creates a child span with the correct `parentSpanId` linking to the task span
 - Unit test: `startToolCall()` creates a child span with tool name, input (if provided), duration on end
@@ -920,6 +974,7 @@
 ### 3.2 — Anti-Pattern Detection (Loops, Overthinking, Underthinking, Spinning)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/agentic/anti-patterns.ts`
 - Implement the anti-pattern detectors from Section 5.5:
   - **Spinning Wheels**: agent calls the same tool >N times (configurable, default 3) with similar inputs
@@ -949,6 +1004,7 @@
   - `ai.agent.spinning_wheels_rate` (percentage of tasks with spinning)
 
 **Testing:**
+
 - Unit test: spinning wheels — task span with 4 identical `readFile("src/auth.ts")` tool calls -> detected
 - Unit test: spinning wheels — task span with 3 different tool calls -> not detected
 - Unit test: spinning wheels — similar but not identical inputs (e.g., `readFile("src/auth.ts")` vs `readFile("src/auth.test.ts")`) -> not detected (different hashes)
@@ -965,6 +1021,7 @@
 ### 3.3 — Task-Level Metrics (Cost per Task, Steps per Task, Completion Rate)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/agentic/task-metrics.ts`
 - Implement task-level aggregation metrics from Section 4.5:
   - **`ai.agent.task_duration_ms`**: total time from `TaskSpan.start()` to `TaskSpan.end()`
@@ -992,6 +1049,7 @@
 - Expose a public API: `agent.getTaskMetrics(): TaskAggregateStats` — returns current rolling aggregates for programmatic access
 
 **Testing:**
+
 - Unit test: task span with 3 LLM calls (100 + 200 + 150 tokens, $0.01 + $0.02 + $0.015 cost) and 4 tool calls -> `totalSteps` = 7, `tokensPerTask` = 450, `costPerTask` = $0.045
 - Unit test: `toolCallChainDepth` for a flat task (all children direct) = 1; for a nested task (tool -> sub-agent -> LLM) = 3
 - Unit test: `taskCompletionRate` across 10 tasks (8 success, 2 failure) = 80%
@@ -1006,6 +1064,7 @@
 ### 3.4 — Framework Integrations: LangChain.js, Vercel AI SDK, CrewAI
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/integrations/` directory with one file per framework
 - **LangChain.js** (`packages/nr-ai-agent/src/integrations/langchain.ts`):
   - Implement a LangChain callback handler (`NrAiCallbackHandler`) that implements the `BaseCallbackHandler` interface
@@ -1035,6 +1094,7 @@
 - Implement a registry pattern: `agent.registerIntegration('langchain', options)` — lazy-loads the integration module
 
 **Testing:**
+
 - Unit test (LangChain): mock LangChain callback lifecycle — `handleChainStart` -> `handleLLMStart` -> `handleToolStart` -> `handleToolEnd` -> `handleLLMEnd` -> `handleChainEnd` — verify correct trace tree is built
 - Unit test (LangChain): `handleRetrieverStart` / `handleRetrieverEnd` produces retrieval tool spans with correct attributes
 - Unit test (LangChain): error in `handleLLMError` produces an error span
@@ -1051,6 +1111,7 @@
 ### 3.5 — Sub-Agent Tracking (Delegation, Spawning, Inter-Agent Communication)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/agentic/sub-agent.ts`
 - Extend the `AgenticTracer` (from 3.1) with explicit sub-agent tracking capabilities:
   - **Delegation tracking**: when an agent delegates work to a sub-agent, the parent `TaskSpan` creates a child `SubAgent` span that encapsulates the sub-agent's entire execution
@@ -1072,6 +1133,7 @@
 - Emit all metrics as attributes on the root `AgentTask` span and in the `AiAgentTaskSummary` event
 
 **Testing:**
+
 - Unit test: `delegate()` creates a child span with `spanType: 'sub_agent'` and correct parent-child linking
 - Unit test: `spawn()` with 3 agents creates 3 concurrent child spans, each tagged with spawn index
 - Unit test: nested delegation (task -> delegate -> delegate) produces correct `delegationDepth` = 2
@@ -1086,6 +1148,7 @@
 ### 3.6 — Context Management Visibility (Summarization Events, Context Resets)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/agentic/context-management.ts`
 - Implement context lifecycle tracking for agentic workflows where context windows fill up and must be managed:
   - **Context reset detection**: when an agent's message history is truncated or summarized, detect the reset and emit an `AiContextReset` event
@@ -1108,6 +1171,7 @@
 - Update `AiConversationSummary` event (from 2.3) to include context management stats
 
 **Testing:**
+
 - Unit test: auto-detection — 5 turns growing from 1000 to 5000 tokens, then turn 6 at 1200 tokens -> context reset detected
 - Unit test: auto-detection — 5 turns growing from 1000 to 5000 tokens, then turn 6 at 4800 tokens -> no reset detected (normal slight variation)
 - Unit test: explicit `recordContextReset()` emits an `AiContextReset` event with all specified attributes
@@ -1122,6 +1186,7 @@
 ### 3.7 — Pre-Built Dashboard: "AI Agent Workflows"
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/dashboards/ai-agent-workflows.json`
 - Build the "AI Agent Workflows" dashboard from Section 7 of the ideation doc:
   - **Row 1 — Key indicators** (Billboard widgets):
@@ -1148,6 +1213,7 @@
 - Update the deploy script to include this dashboard
 
 **Testing:**
+
 - Unit test: validate dashboard JSON structure
 - Unit test: all NRQL queries are syntactically valid
 - Unit test: deploy script handles the new dashboard
@@ -1162,6 +1228,7 @@
 ### 4.1 — Semantic Drift Detection (Embedding-Based Response Monitoring)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/intelligence/semantic-drift.ts`
 - Implement the semantic drift detection system from Section 5.8:
   - **Baseline establishment**: during a configurable baseline period (default: first 24 hours or first 1000 responses), embed a sample of AI responses using a lightweight embedding model
@@ -1184,6 +1251,7 @@
 - Feature-scoped baselines: maintain separate baselines per `ai.attribution.feature` tag (the "code review" feature has a different expected response distribution than the "chatbot" feature)
 
 **Testing:**
+
 - Unit test: `recordBaseline()` with 100 similar embeddings produces a centroid that is close to each individual embedding
 - Unit test: `checkDrift()` with a response similar to baseline returns `similarity > 0.85` and `drifted = false`
 - Unit test: `checkDrift()` with a very different response returns `similarity < 0.85` and `drifted = true`
@@ -1199,6 +1267,7 @@
 ### 4.2 — Quality Degradation Anomaly Detection (Rolling Baseline, Multi-Signal)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/intelligence/anomaly-detection.ts`
 - Extend the quality signal framework (2.4) with statistical anomaly detection from Section 5.4:
   - **Rolling baseline**: maintain a configurable baseline window (default: 7 days or 10,000 requests) of quality signal values
@@ -1225,6 +1294,7 @@
   `SELECT latest(ai.quality.composite_anomaly_score) FROM Metric WHERE ai.quality.composite_anomaly_score > 0.7`
 
 **Testing:**
+
 - Unit test: baseline with 1000 normal data points (mean=100, stddev=10); new value 125 (z=2.5) -> anomalous
 - Unit test: baseline with 1000 normal data points; new value 105 (z=0.5) -> not anomalous
 - Unit test: rolling window evicts data outside the window period — old anomalies don't affect current baseline
@@ -1241,6 +1311,7 @@
 ### 4.3 — Predictive Cost Forecasting (Time-Series Projection)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/intelligence/cost-forecasting.ts`
 - Implement the predictive cost forecasting system from Section 5.7:
   - **Data collection**: maintain hourly cost aggregates (total cost, by model, by feature, by team) in a circular buffer covering the trailing 30 days
@@ -1269,6 +1340,7 @@
 - Budget configuration: `NEW_RELIC_AI_MONTHLY_BUDGET_USD` env var — if set, enables budget-exceed forecasting
 
 **Testing:**
+
 - Unit test: linear regression on 7 daily cost data points with clear upward trend — forecast projects higher costs
 - Unit test: flat cost data (same daily cost) — forecast projects the same cost, growth rate near 0%
 - Unit test: seasonal adjustment — weekday costs 2x weekend costs — forecast for a Monday is higher than for a Saturday
@@ -1285,6 +1357,7 @@
 ### 4.4 — Automated Recommendations ("Switch Model X to Y for This Workload")
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/intelligence/recommendations.ts`
 - Implement an automated recommendation engine from Section 5.6 that generates actionable insights based on observed data:
   - **Model optimization recommendations**: compare cost, latency, and quality across models for the same workload category:
@@ -1311,6 +1384,7 @@
   - NRQL alerting on high-severity recommendations
 
 **Testing:**
+
 - Unit test: model optimization — two models with same workload, one 5x cheaper with 8% quality difference -> recommendation generated
 - Unit test: model optimization — two models with same workload, cheaper one has 25% quality drop -> no recommendation (quality gap too large)
 - Unit test: cache optimization — feature with static system prompt and 0% cache hit rate -> recommendation to enable caching with estimated savings
@@ -1327,6 +1401,7 @@
 ### 4.5 — A/B Experiment Tracking (Compare Prompt Versions, Model Versions)
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/intelligence/experiments.ts`
 - Implement A/B experiment tracking to compare prompt versions, model versions, or configuration changes:
   - **Experiment definition**: users define experiments with a name, variants, and metrics to compare:
@@ -1361,6 +1436,7 @@
 - Store active experiments in memory; persist experiment definitions to config file for restart resilience
 
 **Testing:**
+
 - Unit test: `defineExperiment()` registers an experiment; `tagRequest()` adds variant attributes to events
 - Unit test: `getExperimentResults()` with 100 "control" requests (mean cost $0.05) and 100 "variant-a" requests (mean cost $0.04) -> variant-a is 20% cheaper with correct p-value
 - Unit test: statistical significance test — large effect size with 100+ samples -> significant (p < 0.05); same data with only 5 samples -> not significant
@@ -1376,6 +1452,7 @@
 ### 4.6 — OpenTelemetry Export Compatibility
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/export/otel.ts`
 - Implement OTLP (OpenTelemetry Protocol) export as an optional secondary export target (per design decision #10):
   - **Attribute mapping**: map all agent-specific attributes to OTel GenAI semantic conventions where they exist:
@@ -1407,6 +1484,7 @@
 - Optional: if `@opentelemetry/sdk-node` is installed, register as an OTel SpanExporter/MetricExporter using the official OTel SDK interfaces rather than a custom OTLP client
 
 **Testing:**
+
 - Unit test: attribute mapping — all OTel GenAI convention attributes are correctly mapped (table-driven test comparing input attributes to expected OTel attribute names)
 - Unit test: agent-specific attributes with no OTel equivalent retain their `ai.*` prefix
 - Unit test: `LlmCall` span converts to valid OTel span with `gen_ai.*` attributes
@@ -1422,6 +1500,7 @@
 ### 4.7 — Custom Instrumentation API for User-Defined AI Metrics
 
 **Implementation:**
+
 - Create `packages/nr-ai-agent/src/api/custom-metrics.ts`
 - Implement a public API that allows users to define and emit custom AI metrics beyond what the agent automatically captures:
   - **Custom events**:
@@ -1434,6 +1513,7 @@
       latencyMs: 1200,
     });
     ```
+
     - Validate attribute types (string, number, boolean only — NR custom events don't support nested objects)
     - Validate attribute name length (max 255 chars) and value length (max 4096 chars for strings)
     - Add standard agent attributes automatically (`ai.app_name`, `ai.agent_version`, timestamp)
@@ -1444,6 +1524,7 @@
       model: 'claude-opus-4',
     });
     ```
+
     - Supports gauge, counter, and summary metric types
     - Automatically aggregated by the `MetricAggregator` (from 1.8) and sent at the 60s harvest
   - **Custom spans**:
@@ -1453,6 +1534,7 @@
     span.setAttribute('score', 0.87);
     span.end();
     ```
+
     - Integrates with the agentic tracer (3.1) — custom spans appear in the trace tree
     - If no parent span is active, creates a standalone span
   - **Decorator/wrapper pattern** (convenience):
@@ -1462,6 +1544,7 @@
       return score;
     });
     ```
+
     - Automatically creates a span, measures duration, captures return value as an attribute
 - Validation:
   - Event names must match NR custom event naming rules (alphanumeric, max 255 chars, no `Nr` prefix)
@@ -1470,6 +1553,7 @@
 - All custom data flows through the same event buffer and harvest scheduler as auto-captured data
 
 **Testing:**
+
 - Unit test: `recordCustomEvent()` creates an event with correct attributes and standard agent attributes
 - Unit test: `recordCustomEvent()` validates attribute types — rejects nested objects, arrays
 - Unit test: `recordCustomEvent()` truncates long string values to 4096 chars with a warning
@@ -1483,4 +1567,3 @@
 - Integration test: record a custom event, trigger harvest, verify the event appears in NR NRQL query
 
 ---
-

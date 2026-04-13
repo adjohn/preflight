@@ -21,18 +21,18 @@
 
 ## 1. The Core Insight
 
-The [NEW_AGENT_IDEATION.md](./NEW_AGENT_IDEATION.md) describes an agent that instruments your code's *calls to* AI models. But what about observing the AI assistant itself — the tool it uses, the decisions it makes, the work it does?
+The [NEW_AGENT_IDEATION.md](./NEW_AGENT_IDEATION.md) describes an agent that instruments your code's _calls to_ AI models. But what about observing the AI assistant itself — the tool it uses, the decisions it makes, the work it does?
 
-**You can't install an agent inside Claude Code or Gemini.** You don't control their internals. But you *can* install an MCP server that Claude Code connects to — and MCP servers see everything that flows through them.
+**You can't install an agent inside Claude Code or Gemini.** You don't control their internals. But you _can_ install an MCP server that Claude Code connects to — and MCP servers see everything that flows through them.
 
-**The insight**: An MCP server doesn't just *serve* tools — it can *observe* the AI assistant's behavior. Every tool call, every resource read, every decision the assistant makes flows through the MCP protocol as structured JSON-RPC messages. An observability MCP server can:
+**The insight**: An MCP server doesn't just _serve_ tools — it can _observe_ the AI assistant's behavior. Every tool call, every resource read, every decision the assistant makes flows through the MCP protocol as structured JSON-RPC messages. An observability MCP server can:
 
 1. **Proxy other MCP servers** — sit between the AI assistant and its tools, intercepting all traffic
 2. **Use Claude Code hooks** — capture built-in tool calls (Read, Write, Edit, Bash, Grep, Glob) that don't flow through MCP
 3. **Expose observability tools** — give the AI assistant (or user) real-time access to its own performance metrics
 4. **Report to New Relic** — stream all captured data to New Relic for dashboarding, alerting, and analysis
 
-This is a fundamentally different observability model than traditional APM. Instead of instrumenting application code, you're instrumenting the *AI's workflow* — watching how it thinks, acts, and solves problems.
+This is a fundamentally different observability model than traditional APM. Instead of instrumenting application code, you're instrumenting the _AI's workflow_ — watching how it thinks, acts, and solves problems.
 
 ### Who Would Use This?
 
@@ -49,27 +49,28 @@ This is a fundamentally different observability model than traditional APM. Inst
 
 Every MCP interaction is a JSON-RPC 2.0 message. A proxy MCP server sees:
 
-| Message Type | What It Tells You |
-|-------------|------------------|
-| `tools/list` | Which tools are available, how often the assistant discovers them |
-| `tools/call` (request) | Tool name, arguments (file paths, search queries, bash commands, NRQL queries) |
-| `tools/call` (response) | Tool output, success/failure, content size |
-| `resources/list` | What data sources the assistant queries |
-| `resources/read` | Which resources it accesses, how often |
-| `prompts/get` | Which prompt templates are used |
-| `notifications/progress` | Long-running operation progress |
-| `notifications/cancelled` | Abandoned operations |
+| Message Type              | What It Tells You                                                              |
+| ------------------------- | ------------------------------------------------------------------------------ |
+| `tools/list`              | Which tools are available, how often the assistant discovers them              |
+| `tools/call` (request)    | Tool name, arguments (file paths, search queries, bash commands, NRQL queries) |
+| `tools/call` (response)   | Tool output, success/failure, content size                                     |
+| `resources/list`          | What data sources the assistant queries                                        |
+| `resources/read`          | Which resources it accesses, how often                                         |
+| `prompts/get`             | Which prompt templates are used                                                |
+| `notifications/progress`  | Long-running operation progress                                                |
+| `notifications/cancelled` | Abandoned operations                                                           |
 
 ### 2.2 Claude Code Hooks (Observable via Shell Hooks)
 
 Claude Code supports **hooks** — shell commands that fire on tool call events. These capture built-in tool activity that doesn't flow through MCP:
 
-| Hook Event | Built-in Tools Captured |
-|-----------|------------------------|
-| `PreToolUse` | Fires before any tool executes — captures tool name + full input |
-| `PostToolUse` | Fires after any tool executes — captures tool name + output |
+| Hook Event    | Built-in Tools Captured                                          |
+| ------------- | ---------------------------------------------------------------- |
+| `PreToolUse`  | Fires before any tool executes — captures tool name + full input |
+| `PostToolUse` | Fires after any tool executes — captures tool name + output      |
 
 Built-in tools observable via hooks:
+
 - **Read** — file path, line range, content returned
 - **Write** — file path, content written
 - **Edit** — file path, old_string, new_string, replace_all
@@ -85,33 +86,33 @@ Built-in tools observable via hooks:
 
 Claude Code saves full conversation transcripts as `.jsonl` files in `~/.claude/projects/`. These contain:
 
-| Data | What It Tells You |
-|------|------------------|
-| User messages | Task descriptions, questions, corrections |
-| Assistant responses | Full text output including reasoning |
-| Tool call sequences | Complete ordered workflow |
-| Token usage | Input/output token counts per turn (from API metadata) |
-| Timing | Timestamps for each message and tool call |
-| Model info | Which model was used (Opus, Sonnet, Haiku) |
+| Data                | What It Tells You                                      |
+| ------------------- | ------------------------------------------------------ |
+| User messages       | Task descriptions, questions, corrections              |
+| Assistant responses | Full text output including reasoning                   |
+| Tool call sequences | Complete ordered workflow                              |
+| Token usage         | Input/output token counts per turn (from API metadata) |
+| Timing              | Timestamps for each message and tool call              |
+| Model info          | Which model was used (Opus, Sonnet, Haiku)             |
 
 ### 2.4 File System Changes (Observable via Git/FS Watching)
 
-| Signal | What It Tells You |
-|--------|------------------|
-| Git diffs | Lines added/removed/modified per task |
-| File creation/deletion | New files, removed files |
-| Test results | Pass/fail after AI-generated changes |
-| Build results | Compilation success/failure |
-| Lint results | Code quality of AI output |
+| Signal                 | What It Tells You                     |
+| ---------------------- | ------------------------------------- |
+| Git diffs              | Lines added/removed/modified per task |
+| File creation/deletion | New files, removed files              |
+| Test results           | Pass/fail after AI-generated changes  |
+| Build results          | Compilation success/failure           |
+| Lint results           | Code quality of AI output             |
 
 ### 2.5 What's NOT Observable (Limitations)
 
-| Data | Why Not |
-|------|---------|
-| Internal model reasoning | Thinking blocks may be visible in transcripts if extended thinking is enabled, but the model's internal weights/attention are opaque |
-| Anthropic API costs directly | Claude Code handles billing — but token counts ARE visible, so costs can be computed |
-| Other users' sessions | Each MCP server instance sees only its own session |
-| Gemini web interface internals | No MCP support — this approach works for MCP-compatible assistants only |
+| Data                           | Why Not                                                                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Internal model reasoning       | Thinking blocks may be visible in transcripts if extended thinking is enabled, but the model's internal weights/attention are opaque |
+| Anthropic API costs directly   | Claude Code handles billing — but token counts ARE visible, so costs can be computed                                                 |
+| Other users' sessions          | Each MCP server instance sees only its own session                                                                                   |
+| Gemini web interface internals | No MCP support — this approach works for MCP-compatible assistants only                                                              |
 
 ---
 
@@ -204,6 +205,7 @@ The MCP observability server uses three complementary data collection mechanisms
 A lightweight shell script installed as Claude Code hooks. Captures all built-in tool activity.
 
 **Configuration** (in Claude Code `settings.json`):
+
 ```json
 {
   "hooks": {
@@ -224,6 +226,7 @@ A lightweight shell script installed as Claude Code hooks. Captures all built-in
 ```
 
 The hook script:
+
 - Receives tool name and input via stdin (JSON)
 - `pre-tool`: Records timestamp, tool name, input hash
 - `post-tool`: Records timestamp, output size, success/failure, computes duration
@@ -234,12 +237,14 @@ The hook script:
 An MCP server that presents itself to Claude Code as a replacement for upstream servers. It forwards requests transparently while capturing timing, input/output, and errors.
 
 **How it works:**
+
 1. Configure Claude Code to connect to the proxy instead of the real MCP server
 2. The proxy connects to the real server as a client
 3. Every `tools/call` request is intercepted: timestamp recorded, forwarded to upstream, response timed and captured
 4. The proxy adds zero-latency overhead except for the measurement bookkeeping
 
 **Configuration** (replacing direct server connections):
+
 ```json
 {
   "mcpServers": {
@@ -248,7 +253,7 @@ An MCP server that presents itself to Claude Code as a replacement for upstream 
       "url": "http://localhost:9847/proxy/nr-mcp-server"
     },
     "atlassian-confluence": {
-      "type": "http",  
+      "type": "http",
       "url": "http://localhost:9847/proxy/atlassian-confluence"
     }
   }
@@ -264,6 +269,7 @@ The core server that aggregates data from hooks and proxy, computes metrics, and
 **A. To Claude Code** (via MCP tools and resources):
 
 The AI assistant can query its own metrics:
+
 - `get_session_metrics` — "How many tool calls have I made? What's my cost so far?"
 - `get_cost_summary` — "How much has this conversation cost?"
 - `get_workflow_trace` — "Show me the trace of my last task"
@@ -272,6 +278,7 @@ The AI assistant can query its own metrics:
 **B. To New Relic** (via HTTPS API):
 
 Background harvest loop sends:
+
 - Custom events per tool call
 - Aggregated metrics per session
 - Workflow traces as distributed traces
@@ -291,91 +298,91 @@ Conversation data   →  Transcript parser  →  MCP Server  →  New Relic
 
 ### 4.1 Tool Usage Metrics
 
-| Metric | Description | Source |
-|--------|-------------|--------|
-| `ai.tool.call_count` | Total tool calls in session | Hook + Proxy |
-| `ai.tool.call_count_by_tool` | Calls per tool type (Read, Write, Bash, etc.) | Hook + Proxy |
-| `ai.tool.duration_ms` | Time per tool call | Hook timing |
-| `ai.tool.success_rate` | % of tool calls that succeeded | Hook + Proxy |
-| `ai.tool.error_count` | Failed tool calls | Hook + Proxy |
-| `ai.tool.error_types` | Error classification (permission denied, not found, timeout, etc.) | Hook + Proxy |
-| `ai.tool.output_size_bytes` | Response payload size | Hook + Proxy |
-| `ai.tool.input_size_bytes` | Request payload size | Hook + Proxy |
-| `ai.tool.retry_count` | Tool calls that were retried | Sequence detection |
-| `ai.tool.unique_files_read` | Distinct files accessed via Read | Hook |
-| `ai.tool.unique_files_written` | Distinct files modified via Write/Edit | Hook |
-| `ai.tool.bash_commands_run` | Number of Bash tool invocations | Hook |
-| `ai.tool.bash_exit_codes` | Distribution of exit codes from Bash commands | Hook |
-| `ai.tool.search_queries` | Number of Grep/Glob search operations | Hook |
+| Metric                         | Description                                                        | Source             |
+| ------------------------------ | ------------------------------------------------------------------ | ------------------ |
+| `ai.tool.call_count`           | Total tool calls in session                                        | Hook + Proxy       |
+| `ai.tool.call_count_by_tool`   | Calls per tool type (Read, Write, Bash, etc.)                      | Hook + Proxy       |
+| `ai.tool.duration_ms`          | Time per tool call                                                 | Hook timing        |
+| `ai.tool.success_rate`         | % of tool calls that succeeded                                     | Hook + Proxy       |
+| `ai.tool.error_count`          | Failed tool calls                                                  | Hook + Proxy       |
+| `ai.tool.error_types`          | Error classification (permission denied, not found, timeout, etc.) | Hook + Proxy       |
+| `ai.tool.output_size_bytes`    | Response payload size                                              | Hook + Proxy       |
+| `ai.tool.input_size_bytes`     | Request payload size                                               | Hook + Proxy       |
+| `ai.tool.retry_count`          | Tool calls that were retried                                       | Sequence detection |
+| `ai.tool.unique_files_read`    | Distinct files accessed via Read                                   | Hook               |
+| `ai.tool.unique_files_written` | Distinct files modified via Write/Edit                             | Hook               |
+| `ai.tool.bash_commands_run`    | Number of Bash tool invocations                                    | Hook               |
+| `ai.tool.bash_exit_codes`      | Distribution of exit codes from Bash commands                      | Hook               |
+| `ai.tool.search_queries`       | Number of Grep/Glob search operations                              | Hook               |
 
 ### 4.2 Workflow & Task Metrics
 
-| Metric | Description | Source |
-|--------|-------------|--------|
-| `ai.workflow.task_duration_ms` | Time from user message to final response | Transcript timing |
-| `ai.workflow.tool_calls_per_task` | Number of tool calls to complete a task | Hook counting |
-| `ai.workflow.turns_per_task` | Conversation turns per task | Transcript parsing |
-| `ai.workflow.files_touched` | Unique files read or modified | Hook aggregation |
-| `ai.workflow.lines_changed` | Net lines added/removed (from Edit/Write tools) | Hook content analysis |
-| `ai.workflow.agent_spawns` | Sub-agents created during task | Agent tool hook |
-| `ai.workflow.plan_created` | Whether a plan was created (EnterPlanMode) | Hook |
-| `ai.workflow.plan_iterations` | Number of plan revisions | Hook sequence analysis |
-| `ai.workflow.user_interruptions` | Times the user interrupted the assistant mid-work | Transcript parsing |
-| `ai.workflow.user_corrections` | Times the user corrected the assistant's approach | Transcript heuristic |
-| `ai.workflow.ask_user_count` | Times the assistant asked the user a question | AskUserQuestion hook |
+| Metric                            | Description                                       | Source                 |
+| --------------------------------- | ------------------------------------------------- | ---------------------- |
+| `ai.workflow.task_duration_ms`    | Time from user message to final response          | Transcript timing      |
+| `ai.workflow.tool_calls_per_task` | Number of tool calls to complete a task           | Hook counting          |
+| `ai.workflow.turns_per_task`      | Conversation turns per task                       | Transcript parsing     |
+| `ai.workflow.files_touched`       | Unique files read or modified                     | Hook aggregation       |
+| `ai.workflow.lines_changed`       | Net lines added/removed (from Edit/Write tools)   | Hook content analysis  |
+| `ai.workflow.agent_spawns`        | Sub-agents created during task                    | Agent tool hook        |
+| `ai.workflow.plan_created`        | Whether a plan was created (EnterPlanMode)        | Hook                   |
+| `ai.workflow.plan_iterations`     | Number of plan revisions                          | Hook sequence analysis |
+| `ai.workflow.user_interruptions`  | Times the user interrupted the assistant mid-work | Transcript parsing     |
+| `ai.workflow.user_corrections`    | Times the user corrected the assistant's approach | Transcript heuristic   |
+| `ai.workflow.ask_user_count`      | Times the assistant asked the user a question     | AskUserQuestion hook   |
 
 ### 4.3 Code Quality Metrics
 
-| Metric | Description | Source |
-|--------|-------------|--------|
-| `ai.code.test_pass_rate_after_change` | % of test runs that pass after AI edits | Bash hook (test command detection) |
-| `ai.code.build_success_rate` | % of builds that succeed after AI edits | Bash hook (build command detection) |
-| `ai.code.lint_violations_introduced` | New lint errors in AI-modified code | Bash hook (lint command detection) |
-| `ai.code.lines_added` | Lines of code added | Edit/Write hook analysis |
-| `ai.code.lines_removed` | Lines of code removed | Edit hook analysis |
-| `ai.code.files_created` | New files created | Write hook |
-| `ai.code.edit_precision` | Ratio of targeted edits vs full file rewrites | Edit vs Write hook |
-| `ai.code.compile_error_fix_iterations` | Attempts to fix a compilation error | Bash hook sequence analysis |
+| Metric                                 | Description                                   | Source                              |
+| -------------------------------------- | --------------------------------------------- | ----------------------------------- |
+| `ai.code.test_pass_rate_after_change`  | % of test runs that pass after AI edits       | Bash hook (test command detection)  |
+| `ai.code.build_success_rate`           | % of builds that succeed after AI edits       | Bash hook (build command detection) |
+| `ai.code.lint_violations_introduced`   | New lint errors in AI-modified code           | Bash hook (lint command detection)  |
+| `ai.code.lines_added`                  | Lines of code added                           | Edit/Write hook analysis            |
+| `ai.code.lines_removed`                | Lines of code removed                         | Edit hook analysis                  |
+| `ai.code.files_created`                | New files created                             | Write hook                          |
+| `ai.code.edit_precision`               | Ratio of targeted edits vs full file rewrites | Edit vs Write hook                  |
+| `ai.code.compile_error_fix_iterations` | Attempts to fix a compilation error           | Bash hook sequence analysis         |
 
 ### 4.4 Cost & Token Metrics
 
-| Metric | Description | Source |
-|--------|-------------|--------|
-| `ai.cost.session_total_usd` | Total estimated cost of the session | Token count × pricing |
-| `ai.cost.per_task_usd` | Estimated cost per completed task | Task boundary detection |
-| `ai.cost.tokens_input` | Total input tokens consumed | Transcript metadata |
-| `ai.cost.tokens_output` | Total output tokens generated | Transcript metadata |
-| `ai.cost.tokens_thinking` | Extended thinking tokens consumed | Transcript metadata (if available) |
-| `ai.cost.tokens_cache_read` | Tokens served from prompt cache | Transcript metadata (if available) |
-| `ai.cost.model_used` | Which model handled the session | Transcript metadata |
-| `ai.cost.context_window_utilization` | % of context window used | Token tracking |
-| `ai.cost.cost_per_line_of_code` | Estimated cost per line generated | Cost / lines_added |
-| `ai.cost.cost_per_file_modified` | Average cost per file touched | Cost / files_touched |
+| Metric                               | Description                         | Source                             |
+| ------------------------------------ | ----------------------------------- | ---------------------------------- |
+| `ai.cost.session_total_usd`          | Total estimated cost of the session | Token count × pricing              |
+| `ai.cost.per_task_usd`               | Estimated cost per completed task   | Task boundary detection            |
+| `ai.cost.tokens_input`               | Total input tokens consumed         | Transcript metadata                |
+| `ai.cost.tokens_output`              | Total output tokens generated       | Transcript metadata                |
+| `ai.cost.tokens_thinking`            | Extended thinking tokens consumed   | Transcript metadata (if available) |
+| `ai.cost.tokens_cache_read`          | Tokens served from prompt cache     | Transcript metadata (if available) |
+| `ai.cost.model_used`                 | Which model handled the session     | Transcript metadata                |
+| `ai.cost.context_window_utilization` | % of context window used            | Token tracking                     |
+| `ai.cost.cost_per_line_of_code`      | Estimated cost per line generated   | Cost / lines_added                 |
+| `ai.cost.cost_per_file_modified`     | Average cost per file touched       | Cost / files_touched               |
 
 ### 4.5 MCP Server Metrics (Proxy Layer)
 
-| Metric | Description | Source |
-|--------|-------------|--------|
-| `ai.mcp.server_call_count` | Calls to each upstream MCP server | Proxy |
-| `ai.mcp.server_latency_ms` | Response time per upstream server | Proxy timing |
-| `ai.mcp.server_error_rate` | Error rate per upstream server | Proxy |
-| `ai.mcp.tool_popularity` | Most-called MCP tools across servers | Proxy aggregation |
-| `ai.mcp.auth_failures` | Authentication failures to upstream servers | Proxy |
-| `ai.mcp.payload_size_bytes` | Request/response sizes per server | Proxy |
+| Metric                      | Description                                 | Source            |
+| --------------------------- | ------------------------------------------- | ----------------- |
+| `ai.mcp.server_call_count`  | Calls to each upstream MCP server           | Proxy             |
+| `ai.mcp.server_latency_ms`  | Response time per upstream server           | Proxy timing      |
+| `ai.mcp.server_error_rate`  | Error rate per upstream server              | Proxy             |
+| `ai.mcp.tool_popularity`    | Most-called MCP tools across servers        | Proxy aggregation |
+| `ai.mcp.auth_failures`      | Authentication failures to upstream servers | Proxy             |
+| `ai.mcp.payload_size_bytes` | Request/response sizes per server           | Proxy             |
 
 ### 4.6 Session & Developer Experience Metrics
 
-| Metric | Description | Source |
-|--------|-------------|--------|
-| `ai.session.duration_ms` | Total session length | Session lifecycle |
-| `ai.session.active_time_ms` | Time Claude was actively working (vs waiting for user) | Timestamp analysis |
-| `ai.session.idle_time_ms` | Time waiting for user input | Timestamp analysis |
-| `ai.session.user_messages` | Number of user messages | Transcript |
-| `ai.session.assistant_messages` | Number of assistant responses | Transcript |
-| `ai.session.context_compressions` | Times context was compressed/summarized | Transcript heuristic |
-| `ai.session.average_response_time_ms` | Mean time from user message to first assistant output | Transcript timing |
-| `ai.session.permission_prompts` | Times the user was asked for permission | Hook (permission events) |
-| `ai.session.permission_denials` | Times the user denied a tool call | Hook |
+| Metric                                | Description                                            | Source                   |
+| ------------------------------------- | ------------------------------------------------------ | ------------------------ |
+| `ai.session.duration_ms`              | Total session length                                   | Session lifecycle        |
+| `ai.session.active_time_ms`           | Time Claude was actively working (vs waiting for user) | Timestamp analysis       |
+| `ai.session.idle_time_ms`             | Time waiting for user input                            | Timestamp analysis       |
+| `ai.session.user_messages`            | Number of user messages                                | Transcript               |
+| `ai.session.assistant_messages`       | Number of assistant responses                          | Transcript               |
+| `ai.session.context_compressions`     | Times context was compressed/summarized                | Transcript heuristic     |
+| `ai.session.average_response_time_ms` | Mean time from user message to first assistant output  | Transcript timing        |
+| `ai.session.permission_prompts`       | Times the user was asked for permission                | Hook (permission events) |
+| `ai.session.permission_denials`       | Times the user denied a tool call                      | Hook                     |
 
 ---
 
@@ -397,6 +404,7 @@ Coding Efficiency Score = normalize(
 ```
 
 **What you can do with this:**
+
 - Compare efficiency across different types of tasks (bug fixes vs features vs refactors)
 - Track efficiency trends over time (are developers getting better at prompting?)
 - Compare efficiency across models (Opus vs Sonnet for different task types)
@@ -412,6 +420,7 @@ Coding Efficiency Score = normalize(
 **The solution**: Sequence mining on tool call streams to identify patterns, anti-patterns, and optimization opportunities.
 
 **Common healthy patterns:**
+
 ```
 [Read, Read, Read, Edit, Bash(test)]           // Read context → make change → verify
 [Grep, Read, Edit, Edit, Bash(test)]           // Search → understand → fix → verify
@@ -419,6 +428,7 @@ Coding Efficiency Score = normalize(
 ```
 
 **Anti-patterns to detect:**
+
 ```
 [Read, Edit, Bash(test:FAIL), Edit, Bash(test:FAIL), Edit, Bash(test:FAIL), ...]
   → "Thrashing" — repeatedly failing the same test. Alert after 3+ failures.
@@ -437,6 +447,7 @@ Coding Efficiency Score = normalize(
 ```
 
 **Derived metrics:**
+
 - `pattern_health_score` — % of tool sequences matching healthy patterns
 - `thrash_rate` — % of tasks that enter a fail-fix-fail loop
 - `read_efficiency` — unique files read vs total Read calls (lower = more re-reading)
@@ -475,18 +486,21 @@ Coding Efficiency Score = normalize(
 **The solution**: Track context window lifecycle as a first-class observable.
 
 **Observable signals:**
+
 - Context compressions (detectable via transcript structure changes or system messages)
 - File re-reads after compression (the assistant reading files it already read earlier)
 - Decision amnesia (the assistant asking questions it already resolved)
 - Token accumulation rate (how fast is context filling up?)
 
 **Metrics:**
+
 - `context_pressure` — estimated % of context window used
 - `compression_events` — count of context compressions in session
 - `post_compression_reread_rate` — % of Read calls targeting already-read files after compression
 - `effective_context_lifespan` — minutes of productive work before first compression
 
 **Alerts:**
+
 - "Context compressed 5 times in 30 minutes — task may be too large for single session"
 - "Post-compression file re-read rate at 60% — consider breaking task into smaller pieces"
 
@@ -497,6 +511,7 @@ Coding Efficiency Score = normalize(
 **The solution**: Attribute costs to outcomes, not just API calls.
 
 **Outcome categories** (auto-detected from tool patterns):
+
 - **Bug fix**: Sequence includes test failure → code edit → test pass
 - **Feature addition**: New files created, new functions written
 - **Refactoring**: Files modified but no new functionality (detected by test suite remaining green)
@@ -506,6 +521,7 @@ Coding Efficiency Score = normalize(
 - **Failed attempt**: Session ended without successful test pass or user approval
 
 **Derived metrics:**
+
 - `cost_per_bug_fix` — average cost of AI-assisted bug fixes
 - `cost_per_feature` — average cost of AI-assisted feature development
 - `cost_per_failed_attempt` — money spent on tasks that didn't succeed
@@ -519,6 +535,7 @@ Coding Efficiency Score = normalize(
 **The solution**: A comprehensive, tamper-evident audit trail of all AI actions.
 
 **Tracked events:**
+
 - Every file read (path, timestamp, who initiated the session)
 - Every file write/edit (path, diff, timestamp)
 - Every bash command executed (command, exit code, working directory)
@@ -529,12 +546,14 @@ Coding Efficiency Score = normalize(
 - Destructive command detection (`rm -rf`, `git push --force`, `DROP TABLE`, etc.)
 
 **Security-specific alerts:**
+
 - "AI assistant read .env file containing API keys"
 - "AI assistant executed `curl` to external URL during code generation"
 - "AI assistant modified CI/CD pipeline configuration"
 - "AI assistant accessed production database credentials file"
 
 **Compliance features:**
+
 - Immutable audit log (append-only, no deletion)
 - Session recording with full tool call replay capability
 - Configurable sensitive path patterns (regex-based)
@@ -547,6 +566,7 @@ Coding Efficiency Score = normalize(
 **The solution**: Track session-level metrics across sessions to identify trends.
 
 **Longitudinal metrics:**
+
 - Average efficiency score per week (are we getting better at AI-assisted coding?)
 - Cost trend per developer per week (are costs stabilizing or growing?)
 - Task success rate over time (are more tasks completing successfully?)
@@ -554,6 +574,7 @@ Coding Efficiency Score = normalize(
 - Model migration impact (what happened to metrics when we switched from Opus to Sonnet?)
 
 **Session comparison:**
+
 - "This week's average session cost $3.42 with 87% task success rate, vs last week's $4.11 and 79%"
 - "Developer Alice's efficiency score improved 23% after she started providing file paths in prompts"
 - "Bug fix tasks take 40% fewer tool calls than 4 weeks ago — CLAUDE.md improvements may be the cause"
@@ -565,17 +586,20 @@ Coding Efficiency Score = normalize(
 **The solution**: Track how changes to CLAUDE.md and project configuration affect AI performance.
 
 **Observable:**
+
 - Detect CLAUDE.md modifications (via file watch or git hook)
 - Track metrics before and after CLAUDE.md changes
 - A/B comparison: sessions with the old CLAUDE.md vs the new one
 
 **Metrics:**
+
 - `post_change_efficiency_delta` — efficiency score change after CLAUDE.md update
 - `post_change_cost_delta` — cost change after CLAUDE.md update
 - `post_change_correction_rate_delta` — correction rate change
 - `context_tokens_for_claude_md` — how many tokens does CLAUDE.md consume?
 
 **Alerts:**
+
 - "CLAUDE.md update 3 days ago increased average task cost by 18% — review changes"
 - "New CLAUDE.md reduced correction rate by 45% — effective improvement"
 
@@ -621,7 +645,7 @@ tools/call "nr_observe_get_anti_patterns"
 resources/read "nr-observe://session/metrics"
 // Current session metrics as JSON
 
-resources/read "nr-observe://session/audit-log"  
+resources/read "nr-observe://session/audit-log"
 // Full audit trail of all tool calls
 
 resources/read "nr-observe://session/cost"
@@ -667,16 +691,16 @@ The proxy server dynamically registers upstream servers and forwards all traffic
 ```typescript
 // Conceptual proxy architecture
 class MCPProxy {
-  private upstreams: Map<string, MCPClient>;  // server-name → upstream client
+  private upstreams: Map<string, MCPClient>; // server-name → upstream client
   private observer: ObservabilityCollector;
 
   async handleToolCall(serverName: string, toolName: string, args: any) {
     const upstream = this.upstreams.get(serverName);
     const startTime = Date.now();
-    
+
     try {
       const result = await upstream.callTool(toolName, args);
-      
+
       this.observer.recordToolCall({
         server: serverName,
         tool: toolName,
@@ -685,7 +709,7 @@ class MCPProxy {
         success: true,
         output_size: JSON.stringify(result).length,
       });
-      
+
       return result;
     } catch (error) {
       this.observer.recordToolCall({
@@ -706,6 +730,7 @@ class MCPProxy {
 The MCP server sends data to New Relic using three APIs:
 
 **Events API** (per tool call, per task):
+
 ```json
 POST https://insights-collector.newrelic.com/v1/accounts/{account_id}/events
 Content-Type: application/json
@@ -727,6 +752,7 @@ Api-Key: {ingest_key}
 ```
 
 **Metrics API** (aggregated per harvest):
+
 ```json
 POST https://metric-api.newrelic.com/metric/v1
 Content-Type: application/json
@@ -740,7 +766,7 @@ Api-Key: {ingest_key}
     "attributes": { "developer": "alice", "model": "claude-sonnet-4" }
   }, {
     "name": "ai.session.estimated_cost_usd",
-    "type": "gauge", 
+    "type": "gauge",
     "value": 2.31,
     "attributes": { "developer": "alice", "model": "claude-sonnet-4" }
   }]
@@ -748,6 +774,7 @@ Api-Key: {ingest_key}
 ```
 
 **Logs API** (audit trail):
+
 ```json
 POST https://log-api.newrelic.com/log/v1
 Content-Type: application/json
@@ -793,6 +820,7 @@ For cross-session metrics and historical comparison:
 ### Pre-Built Dashboard: "AI Coding Assistant — Overview"
 
 **Top row — Session in progress:**
+
 - Active session duration
 - Tool calls so far (with sparkline)
 - Estimated cost so far
@@ -800,18 +828,21 @@ For cross-session metrics and historical comparison:
 - Efficiency score (gauge)
 
 **Row 2 — Tool Usage:**
+
 - Tool call distribution (pie chart: Read 35%, Edit 20%, Bash 18%, Grep 15%, Write 7%, Other 5%)
 - Tool call timeline (stacked bar chart over session duration)
 - Tool success/failure rate (bar chart per tool type)
 - Average tool latency by type
 
 **Row 3 — Code Changes:**
+
 - Files read vs modified (dual bar)
 - Lines added/removed (delta chart)
 - Test results timeline (green/red markers)
 - Build results timeline
 
 **Row 4 — Cost:**
+
 - Cumulative session cost (line chart)
 - Cost by task (horizontal bar)
 - Token consumption rate (area chart)
@@ -820,6 +851,7 @@ For cross-session metrics and historical comparison:
 ### Pre-Built Dashboard: "AI Coding Assistant — Team View"
 
 **Top row — Team summary (last 7 days):**
+
 - Total team AI spend
 - Average efficiency score
 - Total tasks completed
@@ -827,18 +859,21 @@ For cross-session metrics and historical comparison:
 - Average task success rate
 
 **Row 2 — Developer comparison:**
+
 - Efficiency score by developer (bar chart, sorted)
 - Cost per developer (bar chart)
 - Tasks completed per developer
 - Tool call patterns by developer (small multiples)
 
 **Row 3 — Trends:**
+
 - Weekly efficiency score trend (line per developer)
 - Weekly cost trend
 - Task success rate trend
 - Anti-pattern frequency trend
 
 **Row 4 — Optimization opportunities:**
+
 - Top 10 most expensive tasks this week (with drill-down)
 - Most common anti-patterns
 - CLAUDE.md change impact (before/after)
@@ -856,21 +891,25 @@ For cross-session metrics and historical comparison:
 ### Alert Conditions
 
 **Cost alerts:**
+
 - "Session cost exceeded $10" (runaway session)
 - "Daily team AI spend exceeded $500" (budget guard)
 - "Developer X's cost increased >50% this week" (usage spike)
 
 **Efficiency alerts:**
+
 - "Efficiency score below 0.3 for >10 minutes" (AI may be struggling)
 - "Thrashing detected: 5+ test failures on same file" (stuck loop)
 - "Re-read rate exceeded 50% after context compression" (context loss)
 
 **Security alerts:**
+
 - "AI accessed file matching sensitive pattern: .env, credentials, private key"
 - "AI executed destructive bash command"
 - "AI accessed file outside project directory"
 
 **Reliability alerts:**
+
 - "MCP server X error rate exceeded 10%"
 - "MCP server X latency exceeded 5 seconds"
 - "Hook collector buffer growing (MCP server may be unresponsive)"
@@ -884,6 +923,7 @@ For cross-session metrics and historical comparison:
 **Goal**: Capture all built-in tool calls and report to New Relic.
 
 **Deliverables:**
+
 - Hook collector script (`nr-ai-observe` CLI)
 - Basic MCP server (TypeScript, stdio transport)
 - Tool call event ingestion to New Relic Events API
@@ -896,6 +936,7 @@ For cross-session metrics and historical comparison:
 **Goal**: Add cost estimation and tool pattern analysis.
 
 **Deliverables:**
+
 - Token counting from conversation metadata (if accessible via hooks)
 - Cost calculation with built-in pricing table
 - Task boundary detection (heuristic: user message → tool sequence → user response)
@@ -909,6 +950,7 @@ For cross-session metrics and historical comparison:
 **Goal**: Intercept MCP server traffic and provide security visibility.
 
 **Deliverables:**
+
 - MCP proxy server with transparent forwarding
 - Upstream server latency and error tracking
 - Security audit trail (all file access, bash commands, external requests)
@@ -921,6 +963,7 @@ For cross-session metrics and historical comparison:
 **Goal**: Historical analysis and optimization recommendations.
 
 **Deliverables:**
+
 - Local session persistence and weekly summaries
 - Cross-session trend analysis
 - Developer collaboration profile
@@ -934,6 +977,7 @@ For cross-session metrics and historical comparison:
 **Goal**: Extend beyond Claude Code.
 
 **Deliverables:**
+
 - Cursor IDE integration (if hook/extension mechanism available)
 - Windsurf integration
 - GitHub Copilot integration (via VS Code extension telemetry)
@@ -946,20 +990,20 @@ For cross-session metrics and historical comparison:
 
 These two approaches are **complementary, not competing**. They observe different things:
 
-| Dimension | SDK Agent (NEW_AGENT_IDEATION) | MCP Observability Server (this doc) |
-|-----------|-------------------------------|-------------------------------------|
-| **What it observes** | Your app's calls TO AI models | AI assistant's calls TO your tools |
-| **Perspective** | Application-centric | Assistant-centric |
-| **Who installs it** | Application developer | AI assistant user / DevEx team |
-| **Where it runs** | Inside your application | Alongside the AI assistant (local) |
-| **Token/cost tracking** | Direct from API response | Inferred from conversation metadata |
-| **Thinking depth** | Direct from API response | May be available in transcripts |
-| **Tool call tracking** | Only tool calls your app makes | Every tool the assistant uses |
-| **Code quality metrics** | N/A | Test pass/fail, build success, lint |
-| **Workflow tracing** | Agent workflow if using LangChain etc. | Full AI coding workflow (read → edit → test) |
-| **Multi-model** | Tracks whatever models your code calls | Tracks whatever model the assistant uses |
-| **Security audit** | N/A | Full audit trail of AI file/command access |
-| **Developer productivity** | N/A | Efficiency scores, collaboration profiles |
+| Dimension                  | SDK Agent (NEW_AGENT_IDEATION)         | MCP Observability Server (this doc)          |
+| -------------------------- | -------------------------------------- | -------------------------------------------- |
+| **What it observes**       | Your app's calls TO AI models          | AI assistant's calls TO your tools           |
+| **Perspective**            | Application-centric                    | Assistant-centric                            |
+| **Who installs it**        | Application developer                  | AI assistant user / DevEx team               |
+| **Where it runs**          | Inside your application                | Alongside the AI assistant (local)           |
+| **Token/cost tracking**    | Direct from API response               | Inferred from conversation metadata          |
+| **Thinking depth**         | Direct from API response               | May be available in transcripts              |
+| **Tool call tracking**     | Only tool calls your app makes         | Every tool the assistant uses                |
+| **Code quality metrics**   | N/A                                    | Test pass/fail, build success, lint          |
+| **Workflow tracing**       | Agent workflow if using LangChain etc. | Full AI coding workflow (read → edit → test) |
+| **Multi-model**            | Tracks whatever models your code calls | Tracks whatever model the assistant uses     |
+| **Security audit**         | N/A                                    | Full audit trail of AI file/command access   |
+| **Developer productivity** | N/A                                    | Efficiency scores, collaboration profiles    |
 
 **The ideal setup**: Both. The SDK agent observes your production AI features (chatbots, content generation, code review). The MCP server observes your development AI tools (Claude Code, Cursor, Copilot). Together, they give complete AI observability across the entire software lifecycle.
 
@@ -1044,9 +1088,4 @@ Development Phase                              Production Phase
 
 ---
 
-*This document describes an observability system that watches AI coding assistants from the outside — via the tools they call, the files they access, and the commands they execute. Combined with the [SDK-level AI agent](./NEW_AGENT_IDEATION.md), it provides complete AI observability across both development and production.*
-
-
-
-
-
+_This document describes an observability system that watches AI coding assistants from the outside — via the tools they call, the files they access, and the commands they execute. Combined with the [SDK-level AI agent](./NEW_AGENT_IDEATION.md), it provides complete AI observability across both development and production._

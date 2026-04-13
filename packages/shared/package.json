@@ -1,15 +1,20 @@
 {
   "name": "@nr-ai-observatory/shared",
   "version": "0.1.0",
+  "type": "module",
   "description": "Shared internals: NR collector transport, event buffer, pricing table",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "tsc",
-    "test": "jest",
-    "lint": "eslint src"
+    "test": "jest --passWithNoTests"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.7.0"
   }
 }

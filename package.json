@@ -1,12 +1,27 @@
 {
   "name": "nr-ai-observatory",
   "private": true,
+  "type": "module",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "build": "tsc --build",
+    "build:clean": "tsc --build --clean",
+    "test": "jest",
+    "lint": "eslint packages/*/src/",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.1",
+    "@typescript-eslint/parser": "^8.58.1",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "jest": "^30.3.0",
+    "prettier": "^3.8.2",
+    "ts-jest": "^29.4.9",
+    "typescript": "^5.7.0"
   }
 }

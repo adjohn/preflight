@@ -22,6 +22,7 @@
 ### 0.1 — MCP Server TypeScript Scaffolding
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/tsconfig.json` extending the monorepo base, with project references to `packages/shared`
 - Add the MCP SDK dependency: `@modelcontextprotocol/sdk` (the official TypeScript MCP SDK)
 - Add dependencies: `zod` (for input validation), `commander` (for CLI argument parsing)
@@ -48,6 +49,7 @@
 - Verify `npm run build` compiles the package and the `nr-ai-mcp-server` CLI is executable
 
 **Testing:**
+
 - Unit test: server instantiates without error and registers expected capability handlers
 - Unit test: CLI parses `--port 9847`, `--stdio`, `--config /path/to/config.json` correctly
 - Unit test: server responds to `tools/list` with an empty tool list (no tools registered yet)
@@ -58,6 +60,7 @@
 ### 0.2 — MCP Server Configuration
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/config.ts`
 - Define a `McpServerConfig` interface:
   - `licenseKey` (required) — New Relic ingest license key
@@ -81,6 +84,7 @@
 - Implement `redactSensitive(value: string, patterns: RegExp[]): string` utility — replace matched patterns with `[REDACTED]`
 
 **Testing:**
+
 - Unit test: config merges CLI > env > file correctly (CLI overrides env overrides file)
 - Unit test: missing `licenseKey` throws descriptive error
 - Unit test: `developer` defaults to `$USER` env var when not explicitly set
@@ -93,6 +97,7 @@
 ### 0.3 — Local Storage Directory Setup
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/storage/local-store.ts`
 - Implement `LocalStore` class that manages the `~/.nr-ai-observe/` directory structure from Section 6.5:
   - `initialize()` — create the directory tree if it doesn't exist:
@@ -114,6 +119,7 @@
 - All file I/O should be non-blocking (`fs.promises`) except for the hook buffer append (which should use `fs.appendFileSync` for minimal latency in the hook script path)
 
 **Testing:**
+
 - Unit test: `initialize()` creates the expected directory structure (use a temp dir)
 - Unit test: `appendToBuffer()` + `drainBuffer()` round-trips events correctly
 - Unit test: concurrent appends don't corrupt the buffer file (simulate 100 rapid appends, then drain — all 100 events present)
@@ -131,6 +137,7 @@
 ### 1.1 — Hook Collector Script (`nr-ai-observe` CLI)
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/hooks/collector-script.ts` — the source for the `nr-ai-observe` CLI binary
 - This is a lightweight shell-invocable script that Claude Code hooks call on every `PreToolUse` and `PostToolUse` event (per Section 6.2 architecture)
 - The script must meet the **<5ms execution budget** (design decision #3) — it reads stdin, writes to buffer, and exits
@@ -146,6 +153,7 @@
 - Handle errors silently — if the buffer file is missing or unwritable, the script exits 0 (never block Claude Code)
 
 **Testing:**
+
 - Unit test: pipe a mock `PreToolUse` JSON payload via stdin -> verify a valid JSON line is appended to the buffer file
 - Unit test: pipe a mock `PostToolUse` JSON payload -> verify output size, success flag, timestamp are captured
 - Unit test: when `recordContent=false`, input/output content is not present in the buffer event
@@ -161,6 +169,7 @@
 ### 1.2 — Hook Event Processing & Tool Call Pairing
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/hooks/event-processor.ts`
 - Implement `HookEventProcessor` class that reads raw hook events from the buffer and produces structured `ToolCallRecord` objects:
   - Poll the buffer file on a short interval (configurable, default 100ms) using `LocalStore.drainBuffer()`
@@ -179,6 +188,7 @@
 - The processor runs as a background loop within the MCP server process
 
 **Testing:**
+
 - Unit test: a paired `pre-tool` + `post-tool` produces a valid `ToolCallRecord` with correct `durationMs`
 - Unit test: ordering — `pre-tool(Read)`, `pre-tool(Grep)`, `post-tool(Grep)`, `post-tool(Read)` — correctly pairs Read-with-Read and Grep-with-Grep
 - Unit test: orphaned `pre-tool` without a `post-tool` within 60s -> recorded as timeout event with `success: false`, `errorType: 'timeout'`
@@ -192,6 +202,7 @@
 ### 1.3 — Tool-Specific Field Parsing (Read, Write, Edit, Bash, Grep, Glob, Agent)
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/hooks/tool-parsers.ts`
 - Implement tool-specific parsers that extract structured fields from each built-in tool's hook data (per Section 2.2):
   - **Read parser**: extract `filePath`, `lineRange` (offset/limit if provided), `contentLength` (bytes returned)
@@ -211,6 +222,7 @@
 - If `recordContent=true`: parsers also include content fields (redacted per config patterns)
 
 **Testing:**
+
 - Unit test: Read parser extracts `filePath`, `lineRange`, `contentLength` from a real-shaped hook payload
 - Unit test: Write parser detects `isNewFile=true` when the file was newly created
 - Unit test: Edit parser computes `oldStringLength`, `newStringLength` correctly; `isDelete` when newString is empty
@@ -228,6 +240,7 @@
 ### 1.4 — Session Metrics Aggregation (Tool Counts, Durations, Success Rates)
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/metrics/session-tracker.ts`
 - Implement `SessionTracker` class that maintains running aggregates for the current session from Sections 4.1 and 4.6:
   - **Tool usage metrics:**
@@ -255,6 +268,7 @@
   - `ai.session.duration_ms` (gauge), `ai.session.unique_files_read` (gauge), `ai.session.unique_files_written` (gauge)
 
 **Testing:**
+
 - Unit test: `recordToolCall()` with 5 Read, 3 Edit, 2 Bash calls -> correct `toolCallCountByTool` values
 - Unit test: duration stats — feed 10 calls with known durations -> verify min, max, sum, count are correct
 - Unit test: success rate — 8 success, 2 failures -> 80% overall, correct per-tool rates
@@ -269,6 +283,7 @@
 ### 1.5 — New Relic Event Ingestion (Tool Call Events + Session Metrics)
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/transport/nr-ingest.ts`
 - Reuse the shared transport layer from `@nr-ai-observatory/shared` (Events API + Metric API from the agent's Phase 1.7 and 1.8)
 - Implement `NrIngestManager` class that bridges the MCP server's data to the NR APIs:
@@ -298,6 +313,7 @@
 - Handle NR API errors gracefully: log warnings, retry with backoff, never crash the MCP server
 
 **Testing:**
+
 - Unit test: `ToolCallRecord` is correctly serialized to the `AiToolCall` event format
 - Unit test: all tool-specific attributes are included (file paths, exit codes, command, etc.)
 - Unit test: session-level attributes (`session_id`, `developer`, `model`) are attached to every event
@@ -311,6 +327,7 @@
 ### 1.6 — MCP Tools: `get_session_stats` and `get_session_timeline`
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/tools/session-stats.ts`
 - Register two MCP tools on the server that Claude Code (or the user via the assistant) can call to inspect session observability data:
 - **`nr_observe_get_session_stats`**:
@@ -338,9 +355,27 @@
     ```json
     {
       "timeline": [
-        { "timestamp": "2026-04-10T14:23:01Z", "tool": "Read", "target": "src/auth.ts", "duration_ms": 32, "success": true },
-        { "timestamp": "2026-04-10T14:23:02Z", "tool": "Edit", "target": "src/auth.ts", "duration_ms": 18, "success": true },
-        { "timestamp": "2026-04-10T14:23:05Z", "tool": "Bash", "target": "npm test", "duration_ms": 4800, "success": false }
+        {
+          "timestamp": "2026-04-10T14:23:01Z",
+          "tool": "Read",
+          "target": "src/auth.ts",
+          "duration_ms": 32,
+          "success": true
+        },
+        {
+          "timestamp": "2026-04-10T14:23:02Z",
+          "tool": "Edit",
+          "target": "src/auth.ts",
+          "duration_ms": 18,
+          "success": true
+        },
+        {
+          "timestamp": "2026-04-10T14:23:05Z",
+          "tool": "Bash",
+          "target": "npm test",
+          "duration_ms": 4800,
+          "success": false
+        }
       ]
     }
     ```
@@ -348,6 +383,7 @@
   - `instructions` field: "This server monitors tool usage for observability purposes. Metrics are sent to New Relic."
 
 **Testing:**
+
 - Unit test: `nr_observe_get_session_stats` returns correct JSON structure after recording 10 tool calls
 - Unit test: all fields match the current `SessionTracker` state
 - Unit test: `nr_observe_get_session_timeline` with `last_n: 5` returns exactly 5 most recent calls in chronological order
@@ -361,6 +397,7 @@
 ### 1.7 — Pre-Built Dashboard: "AI Coding Assistant — Overview"
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/dashboards/ai-coding-assistant-overview.json`
 - Build the dashboard from Section 7 of the ideation doc:
   - **Row 1 — Session at a glance** (Billboard widgets):
@@ -380,6 +417,7 @@
 - Create a deploy script `packages/nr-ai-mcp-server/scripts/deploy-dashboard.ts` using the NerdGraph `dashboardCreate` mutation
 
 **Testing:**
+
 - Unit test: dashboard JSON parses correctly and follows NR dashboard API structure
 - Unit test: all NRQL queries are syntactically valid
 - Unit test: deploy script builds the correct NerdGraph mutation payload
@@ -390,6 +428,7 @@
 ### 1.8 — Installation Instructions & Hook Configuration Generator
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/tools/install-helper.ts`
 - Implement an `nr-ai-observe install` CLI subcommand that auto-configures Claude Code hooks and MCP server registration:
   - Detect the Claude Code settings file location (`~/.claude/settings.json` or project-level `.claude/settings.json`)
@@ -397,14 +436,18 @@
     ```json
     {
       "hooks": {
-        "PreToolUse": [{
-          "matcher": ".*",
-          "command": "nr-ai-observe pre-tool"
-        }],
-        "PostToolUse": [{
-          "matcher": ".*",
-          "command": "nr-ai-observe post-tool"
-        }]
+        "PreToolUse": [
+          {
+            "matcher": ".*",
+            "command": "nr-ai-observe pre-tool"
+          }
+        ],
+        "PostToolUse": [
+          {
+            "matcher": ".*",
+            "command": "nr-ai-observe post-tool"
+          }
+        ]
       }
     }
     ```
@@ -429,6 +472,7 @@
   4. Verify with: ask Claude Code to call `nr_observe_get_session_stats`
 
 **Testing:**
+
 - Unit test: `install` generates correct hook JSON for an empty settings file
 - Unit test: `install` merges hooks into existing settings without overwriting other hooks
 - Unit test: `install` adds MCP server registration without overwriting other MCP servers
@@ -445,6 +489,7 @@
 ### 2.1 — Token Counting from Hook Data & Self-Reporting Tool
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/metrics/cost-tracker.ts`
 - Implement token and cost tracking from Section 4.4, using a dual-source approach (per design decision #2):
   - **Primary: self-reporting tool** — expose an MCP tool that Claude Code calls to report its own token usage:
@@ -470,6 +515,7 @@
 - Emit metrics: `ai.cost.session_total_usd`, `ai.cost.model_used`, `ai.cost.tokens_input`, `ai.cost.tokens_output`
 
 **Testing:**
+
 - Unit test: `nr_observe_report_tokens` tool processes token data and updates `CostTracker`
 - Unit test: cost calculation for 10,000 input + 2,000 output tokens on `claude-sonnet-4` matches expected USD
 - Unit test: estimation fallback — 4000 characters -> approximately 1000 tokens
@@ -483,6 +529,7 @@
 ### 2.2 — Task Boundary Detection (User Message -> Tool Sequence -> Response)
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/metrics/task-detector.ts`
 - Implement heuristic task boundary detection from Section 4.2:
   - A "task" is defined as the work Claude Code does between user messages: the user gives an instruction, Claude executes a series of tool calls, and eventually responds
@@ -509,6 +556,7 @@
   - Emit `AiCodingTask` events to the event buffer when tasks complete
 
 **Testing:**
+
 - Unit test: 5 tool calls within 10 seconds, then 45 seconds idle -> 1 task detected with 5 tool calls
 - Unit test: 3 tool calls, then `AskUserQuestion`, then 3 more tool calls -> 2 tasks detected
 - Unit test: a single tool call followed by idle timeout -> 1 task with 1 tool call
@@ -524,6 +572,7 @@
 ### 2.3 — Anti-Pattern Detection (Thrashing, Re-Reading, Stuck Loops, Blind Editing)
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/metrics/anti-patterns.ts`
 - Implement the tool call pattern detectors from Section 5.2:
   - **Thrashing**: `Edit(file) -> Bash(test:FAIL) -> Edit(file) -> Bash(test:FAIL)` repeated >N times (configurable, default 3)
@@ -550,6 +599,7 @@
 - Emit `AiAntiPattern` events and aggregate metrics: `ai.anti_pattern.count` (counter, by type), `ai.anti_pattern.thrash_rate` (gauge)
 
 **Testing:**
+
 - Unit test: thrashing — `Edit(a.ts), Bash(test:FAIL), Edit(a.ts), Bash(test:FAIL), Edit(a.ts), Bash(test:FAIL)` -> detected with `iterations: 3`
 - Unit test: thrashing — `Edit(a.ts), Bash(test:PASS)` -> not detected
 - Unit test: re-reading — `Read(a.ts), Read(b.ts), Read(a.ts), Read(c.ts), Read(a.ts), Read(a.ts)` -> detected on `a.ts` with `readCount: 4`
@@ -566,6 +616,7 @@
 ### 2.4 — AI Coding Efficiency Score
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/metrics/efficiency-score.ts`
 - Implement the composite efficiency score from Section 5.1:
   ```
@@ -592,6 +643,7 @@
 - Emit `AiEfficiencyScore` custom event per task
 
 **Testing:**
+
 - Unit test: perfect task (fast, all tests pass, no user questions, no thrashing) -> score near 1.0
 - Unit test: poor task (slow, all tests fail, many user corrections, thrashing) -> score near 0.0
 - Unit test: task with no tests run -> correctness defaults to 0.5
@@ -607,6 +659,7 @@
 ### 2.5 — Cost & Workflow MCP Tools
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/tools/cost-tools.ts` and `packages/nr-ai-mcp-server/src/tools/workflow-tools.ts`
 - Register additional MCP tools from Section 6.1:
 - **`nr_observe_get_cost_breakdown`**:
@@ -617,8 +670,18 @@
       "total_usd": 2.31,
       "by_model": { "claude-sonnet-4": 2.31 },
       "by_task": [
-        { "task_id": "task-1", "description": "Fix auth test", "cost_usd": 1.87, "tokens_used": 24500 },
-        { "task_id": "task-2", "description": "Update README", "cost_usd": 0.44, "tokens_used": 5800 }
+        {
+          "task_id": "task-1",
+          "description": "Fix auth test",
+          "cost_usd": 1.87,
+          "tokens_used": 24500
+        },
+        {
+          "task_id": "task-2",
+          "description": "Update README",
+          "cost_usd": 0.44,
+          "tokens_used": 5800
+        }
       ],
       "cost_per_line_of_code": 0.023,
       "cost_per_file_modified": 0.77,
@@ -635,10 +698,23 @@
       "duration_ms": 12400,
       "estimated_cost_usd": 1.87,
       "tool_calls": [
-        { "seq": 1, "tool": "Read", "target": "src/auth.test.ts", "duration_ms": 32, "success": true },
+        {
+          "seq": 1,
+          "tool": "Read",
+          "target": "src/auth.test.ts",
+          "duration_ms": 32,
+          "success": true
+        },
         { "seq": 2, "tool": "Read", "target": "src/auth.ts", "duration_ms": 28, "success": true },
         { "seq": 3, "tool": "Edit", "target": "src/auth.ts", "duration_ms": 18, "success": true },
-        { "seq": 4, "tool": "Bash", "target": "npm test", "duration_ms": 4800, "success": true, "exit_code": 0 }
+        {
+          "seq": 4,
+          "tool": "Bash",
+          "target": "npm test",
+          "duration_ms": 4800,
+          "success": true,
+          "exit_code": 0
+        }
       ],
       "anti_patterns": [],
       "efficiency_score": 0.82
@@ -649,8 +725,18 @@
   - Output: list of detected anti-patterns in the current session or most recent task:
     ```json
     [
-      { "type": "thrashing", "file": "auth.test.ts", "iterations": 4, "suggestion": "Consider reading the test output more carefully" },
-      { "type": "re_reading", "file": "config.ts", "read_count": 5, "suggestion": "Context may have been compressed" }
+      {
+        "type": "thrashing",
+        "file": "auth.test.ts",
+        "iterations": 4,
+        "suggestion": "Consider reading the test output more carefully"
+      },
+      {
+        "type": "re_reading",
+        "file": "config.ts",
+        "read_count": 5,
+        "suggestion": "Context may have been compressed"
+      }
     ]
     ```
 - **`nr_observe_report_feedback`**:
@@ -659,6 +745,7 @@
   - Emit `AiQualityFeedback` event to NR with the feedback and task context
 
 **Testing:**
+
 - Unit test: `nr_observe_get_cost_breakdown` returns correct structure after 2 tasks with known costs
 - Unit test: `by_task` array matches completed tasks from `TaskDetector`
 - Unit test: `nr_observe_get_workflow_trace` returns tool calls in correct sequence for the specified task
@@ -673,6 +760,7 @@
 ### 2.6 — Pre-Built Dashboard: "AI Coding Assistant — Team View"
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/dashboards/ai-coding-assistant-team-view.json`
 - Build the "Team View" dashboard from Section 7:
   - **Row 1 — Team summary (last 7 days)** (Billboard widgets):
@@ -696,6 +784,7 @@
 - Update deploy script to support this dashboard
 
 **Testing:**
+
 - Unit test: dashboard JSON is valid and follows NR structure
 - Unit test: all NRQL queries are syntactically valid
 - Manual test: deploy to test NR account; verify widgets render
@@ -709,6 +798,7 @@
 ### 3.1 — MCP Proxy Server with Transparent Forwarding
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/proxy/proxy-server.ts`
 - Implement an HTTP-based MCP proxy that sits between Claude Code and upstream MCP servers (per Section 3, Layer [2]):
   - The proxy listens on `http://localhost:{port}/proxy/{server-name}` endpoints
@@ -737,6 +827,7 @@
 - Each intercepted tool call produces a `ProxyToolCallRecord` (similar to `ToolCallRecord` but with additional `serverName`, `upstreamLatencyMs` fields)
 
 **Testing:**
+
 - Unit test: proxy registers an upstream and creates a route at `/proxy/{name}`
 - Unit test: `tools/call` request is forwarded to upstream and response is returned unchanged
 - Unit test: tool call timing — proxy records `durationMs` that includes upstream latency
@@ -753,6 +844,7 @@
 ### 3.2 — Upstream MCP Server Metrics (Latency, Errors, Tool Popularity)
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/metrics/proxy-metrics.ts`
 - Implement `ProxyMetricsTracker` that aggregates proxy-layer observability from Section 4.5:
   - **Per-server aggregates:**
@@ -775,6 +867,7 @@
   - `ai.mcp.proxy_overhead_ms` (gauge)
 
 **Testing:**
+
 - Unit test: 10 calls to "nr-mcp-server" and 5 to "confluence" -> correct per-server `callCount`
 - Unit test: latency stats — 10 calls with known durations -> correct min, max, sum, p95
 - Unit test: error rate — 2 failures out of 10 calls -> 20% for that server
@@ -788,6 +881,7 @@
 ### 3.3 — Security Audit Trail (File Access, Bash Commands, External Requests)
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/security/audit-trail.ts`
 - Implement the comprehensive audit trail from Section 5.6:
   - **Tracked events** (every tool call generates an audit entry):
@@ -817,6 +911,7 @@
 - Expose as MCP resource: `nr-observe://session/audit-log` — returns the full audit trail for the session
 
 **Testing:**
+
 - Unit test: `Read("src/auth.ts")` generates a `FileRead` audit entry with correct path and timestamp
 - Unit test: `Read(".env")` generates a `FileRead` entry AND a `SecurityAlert` with `severity: 'high'`
 - Unit test: `Bash("rm -rf /tmp/build")` generates a `SecurityAlert` with `severity: 'critical'`
@@ -833,25 +928,30 @@
 ### 3.4 — Audit Log Ingestion to New Relic Logs API
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/transport/logs-api.ts`
 - Implement NR Logs API integration for the security audit trail:
   - Send audit entries to `https://log-api.newrelic.com/log/v1` (or EU equivalent):
     ```json
-    [{
-      "logs": [{
-        "timestamp": 1712345678000,
-        "message": "Tool call: Bash command='npm test' exit_code=0",
-        "attributes": {
-          "session_id": "abc-123",
-          "tool": "Bash",
-          "developer": "alice",
-          "audit.type": "BashCommand",
-          "audit.command": "npm test",
-          "audit.exit_code": 0,
-          "audit.security_alert": false
-        }
-      }]
-    }]
+    [
+      {
+        "logs": [
+          {
+            "timestamp": 1712345678000,
+            "message": "Tool call: Bash command='npm test' exit_code=0",
+            "attributes": {
+              "session_id": "abc-123",
+              "tool": "Bash",
+              "developer": "alice",
+              "audit.type": "BashCommand",
+              "audit.command": "npm test",
+              "audit.exit_code": 0,
+              "audit.security_alert": false
+            }
+          }
+        ]
+      }
+    ]
     ```
   - Security alerts get additional attributes: `audit.security_alert: true`, `audit.severity`, `audit.alert_type`
   - Batch audit log entries and send every 5 seconds (same cadence as events)
@@ -864,6 +964,7 @@
 - Integrate with `AuditTrailManager` (3.3): after writing locally, also queue for NR Logs API delivery
 
 **Testing:**
+
 - Unit test: audit entries are correctly formatted for the NR Logs API payload structure
 - Unit test: security alert attributes are included on flagged entries
 - Unit test: batch sends — 15 audit entries in 5 seconds -> sent as a single batch
@@ -877,6 +978,7 @@
 ### 3.5 — Pre-Built Dashboard: "AI Coding Assistant — Security Audit"
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/dashboards/ai-coding-assistant-security.json`
 - Build the "Security Audit" dashboard from Section 7:
   - **Row 1 — Security alerts** (Billboard + Table):
@@ -896,6 +998,7 @@
 - Update deploy script to include this dashboard
 
 **Testing:**
+
 - Unit test: dashboard JSON is valid NR dashboard structure
 - Unit test: all NRQL queries are syntactically valid
 - Manual test: deploy to test NR account; verify all widgets render
@@ -909,6 +1012,7 @@
 ### 4.1 — Local Session Persistence and Weekly Summaries
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/storage/session-store.ts`
 - Implement `SessionStore` for persisting session summaries to `~/.nr-ai-observe/sessions/` (per Section 6.5):
   - **Session summary schema** (`SessionSummary` interface):
@@ -960,6 +1064,7 @@
 - Hook into the session lifecycle: when a session ends (detected by inactivity timeout or explicit end signal), call `SessionStore.saveSession()` with the current session's accumulated metrics
 
 **Testing:**
+
 - Unit test: `saveSession` writes a valid JSON file to the expected path
 - Unit test: `loadSession` reads and parses a saved session correctly
 - Unit test: `listSessions` filters by date range — only returns sessions within the range
@@ -975,6 +1080,7 @@
 ### 4.2 — Cross-Session Trend Analysis
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/metrics/trend-analyzer.ts`
 - Implement `TrendAnalyzer` that computes longitudinal metrics from Section 5.7:
   - **Input:** `SessionSummary[]` loaded from `SessionStore` (filtered by date range)
@@ -1002,6 +1108,7 @@
   - `ai.trend.task_success_rate_weekly` (gauge, per developer)
 
 **Testing:**
+
 - Unit test: 4 weeks of mock session data → correct weekly efficiency trend (ascending weeks)
 - Unit test: weekly cost trend aggregates correctly across multiple sessions per week
 - Unit test: `compareWeeks` returns correct deltas and percentage changes (including sign)
@@ -1018,6 +1125,7 @@
 ### 4.3 — Developer Collaboration Profile
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/metrics/collaboration-profile.ts`
 - Implement `CollaborationProfiler` based on Section 5.3:
   - **Input:** `SessionSummary[]` for a given developer (loaded from `SessionStore`)
@@ -1046,6 +1154,7 @@
 - Expose via MCP tool: `get_collaboration_profile` — returns the requesting developer's profile and comparison to team
 
 **Testing:**
+
 - Unit test: developer with high `toolCallCount / userMessages` (20:3) and low corrections → high specificity + high autonomy
 - Unit test: developer with low `toolCallCount / userMessages` (5:4) and high corrections → low specificity + high correction
 - Unit test: task complexity scales with files touched and agent spawns
@@ -1061,6 +1170,7 @@
 ### 4.4 — CLAUDE.md Change Impact Tracking
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/metrics/claudemd-tracker.ts`
 - Implement `ClaudeMdTracker` based on Section 5.8:
   - **Change detection:**
@@ -1088,6 +1198,7 @@
 - Emit alert-eligible metric: `ai.claudemd.post_change_efficiency_delta` and `ai.claudemd.post_change_cost_delta`
 
 **Testing:**
+
 - Unit test: `Write` to `CLAUDE.md` triggers a `ClaudeMdChange` event with correct metadata
 - Unit test: `Edit` to `.claude/settings.json` triggers a change event
 - Unit test: hash comparison detects between-session changes (different hash = change detected)
@@ -1103,6 +1214,7 @@
 ### 4.5 — Prompt Engineering Feedback Loop
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/metrics/prompt-feedback.ts`
 - Implement `PromptFeedbackEngine` that combines CLAUDE.md tracking (4.4), collaboration profiles (4.3), and trend analysis (4.2) into actionable prompt engineering insights:
   - **Correlation analysis:**
@@ -1128,6 +1240,7 @@
 - Emit as custom event: `AiPromptRecommendation` per recommendation per developer per week
 
 **Testing:**
+
 - Unit test: developer who provides file paths in 80% of sessions has higher efficiency than one who provides them in 20% → correlation detected
 - Unit test: CLAUDE.md A/B with large effect size (d > 0.8) → labeled "significant"
 - Unit test: CLAUDE.md A/B with small effect size (d < 0.2) → labeled "noise"
@@ -1144,6 +1257,7 @@
 ### 4.6 — Cost-Per-Outcome Analysis
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/metrics/cost-per-outcome.ts`
 - Implement `CostPerOutcomeAnalyzer` based on Section 5.5:
   - **Outcome classification** (auto-detected from tool call patterns within each task boundary):
@@ -1189,6 +1303,7 @@
 - Expose via MCP tool: `get_cost_per_outcome` — returns cost breakdown by outcome for a given time range
 
 **Testing:**
+
 - Unit test: test failure → edit → test pass sequence → classified as `bug_fix`
 - Unit test: `Write` creating 3 new `.ts` files → classified as `feature`
 - Unit test: edits to existing files with all tests passing → classified as `refactor`
@@ -1207,6 +1322,7 @@
 ### 4.7 — Automated Recommendations and Cross-Session MCP Tools
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/metrics/recommendation-engine.ts`
 - Implement `RecommendationEngine` that synthesizes all Phase 4 analyzers into a unified recommendation system:
   - **Recommendation categories:**
@@ -1253,6 +1369,7 @@
 - Register each tool with Zod input schemas and connect to the corresponding analyzer
 
 **Testing:**
+
 - Unit test: `generateAllRecommendations` combines recommendations from all sub-engines
 - Unit test: recommendations are deduplicated (no near-duplicate messages)
 - Unit test: recommendations are sorted by priority then by estimated impact
@@ -1276,6 +1393,7 @@
 ### 5.1 — Platform Abstraction Layer and Cursor IDE Integration
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/platforms/platform-adapter.ts`
 - Define a `PlatformAdapter` interface that abstracts platform-specific data collection:
   - `platformName: string` — "claude-code", "cursor", "windsurf", "copilot", "generic-mcp"
@@ -1308,6 +1426,7 @@
   - All event processing now goes through `getActive().normalizeToolCall()` before entering the metric pipeline
 
 **Testing:**
+
 - Unit test: `ClaudeCodeAdapter.normalizeToolCall()` converts a Claude Code hook event to `NormalizedToolCall` with correct fields
 - Unit test: `ClaudeCodeAdapter.getSessionMetadata()` returns platform "claude-code" with model info
 - Unit test: `CursorAdapter.normalizeToolCall()` maps Cursor tool names to normalized types
@@ -1322,6 +1441,7 @@
 ### 5.2 — Windsurf Integration
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/platforms/windsurf-adapter.ts`
 - Implement `WindsurfAdapter` for Windsurf (Codeium's AI IDE):
   - **Data collection strategy:**
@@ -1349,6 +1469,7 @@
 - Register `WindsurfAdapter` in `PlatformRegistry` with auto-detection support
 
 **Testing:**
+
 - Unit test: `WindsurfAdapter.normalizeToolCall()` maps Windsurf "Read File" event → `NormalizedToolCall` with type "Read"
 - Unit test: `WindsurfAdapter.normalizeToolCall()` maps Windsurf "Run Command" → type "Bash"
 - Unit test: unknown Windsurf action → type "Unknown" with `platformToolName` preserved
@@ -1363,6 +1484,7 @@
 ### 5.3 — GitHub Copilot Integration (VS Code Extension Telemetry)
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/platforms/copilot-adapter.ts`
 - Implement `CopilotAdapter` for GitHub Copilot (in VS Code and JetBrains):
   - **Data collection strategy:**
@@ -1395,6 +1517,7 @@
 - Note: The VS Code extension itself is NOT part of this deliverable — it will be its own package (`packages/nr-ai-copilot-extension/`) if pursued. This deliverable builds the adapter that consumes events from such an extension.
 
 **Testing:**
+
 - Unit test: `CopilotAdapter.normalizeToolCall()` converts a simulated "file edit" event → `NormalizedToolCall` type "Edit"
 - Unit test: `CopilotAdapter.normalizeToolCall()` converts a simulated "terminal command" event → type "Bash"
 - Unit test: `CopilotAdapter.normalizeToolCall()` converts a simulated "file open" event → type "Read"
@@ -1409,6 +1532,7 @@
 ### 5.4 — Generic MCP Client Support
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/src/platforms/generic-mcp-adapter.ts`
 - Implement `GenericMcpAdapter` — a catch-all adapter for any MCP-compatible AI assistant that isn't Claude Code, Cursor, Windsurf, or Copilot:
   - **Philosophy:** Any AI assistant that speaks MCP can connect to our observability server as an MCP server. The MCP proxy layer (Phase 3) captures tool calls to upstream servers. The missing piece is built-in tool call data (file reads, writes, terminal commands) — for generic clients, we provide a tool-based reporting API.
@@ -1444,6 +1568,7 @@
 - Document the generic integration guide: which tools to call, what data to report, what comes "for free" via the proxy
 
 **Testing:**
+
 - Unit test: `report_tool_call` with a complete input → valid `NormalizedToolCall` enters the metric pipeline
 - Unit test: `report_tool_call` with missing optional fields → defaults applied (duration_ms = 0, timestamp = now)
 - Unit test: `report_tool_call` with invalid input (missing required `tool` field) → error response
@@ -1459,6 +1584,7 @@
 ### 5.5 — Platform Comparison Dashboards
 
 **Implementation:**
+
 - Create `packages/nr-ai-mcp-server/dashboards/ai-coding-assistant-platform-comparison.json`
 - Build the "AI Coding Assistant — Platform Comparison" pre-built dashboard:
   - **Row 1 — Platform overview** (Billboard + Bar):
@@ -1498,6 +1624,7 @@
 - Update deploy script to include the platform comparison dashboard
 
 **Testing:**
+
 - Unit test: dashboard JSON is valid NR dashboard structure
 - Unit test: all NRQL queries are syntactically valid
 - Unit test: all NRQL queries include `FACET platform` for cross-platform comparison

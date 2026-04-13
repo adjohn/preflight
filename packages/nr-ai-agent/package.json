@@ -1,20 +1,25 @@
 {
   "name": "nr-ai-agent",
   "version": "0.1.0",
+  "type": "module",
   "description": "New Relic observability agent for Anthropic Claude and Google Gemini",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "tsc",
-    "test": "jest",
-    "lint": "eslint src"
+    "test": "jest --passWithNoTests"
   },
   "dependencies": {
     "@nr-ai-observatory/shared": "*"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.7.0"
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.20.0"

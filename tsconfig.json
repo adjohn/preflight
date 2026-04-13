@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/shared" },
+    { "path": "packages/nr-ai-agent" },
+    { "path": "packages/nr-ai-mcp-server" },
+    { "path": "packages/test-app" }
+  ]
+}
