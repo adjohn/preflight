@@ -9,7 +9,10 @@ const logger = createLogger('transport');
 export function resolveRegion(
   licenseKey: string,
   collectorHost: string | null,
-): 'us' | 'eu' {
+): 'us' | 'eu' | 'staging' {
+  if (collectorHost && collectorHost.toLowerCase().includes('staging')) {
+    return 'staging';
+  }
   if (collectorHost && collectorHost.toLowerCase().includes('eu')) {
     return 'eu';
   }
@@ -19,23 +22,33 @@ export function resolveRegion(
   return 'us';
 }
 
-export function getEventsApiUrl(accountId: string, region: 'us' | 'eu'): string {
+export function getEventsApiUrl(accountId: string, region: 'us' | 'eu' | 'staging'): string {
   const host =
-    region === 'eu'
-      ? 'insights-collector.eu01.nr-data.net'
-      : 'insights-collector.newrelic.com';
+    region === 'staging'
+      ? 'staging-insights-collector.newrelic.com'
+      : region === 'eu'
+        ? 'insights-collector.eu01.nr-data.net'
+        : 'insights-collector.newrelic.com';
   return `https://${host}/v1/accounts/${accountId}/events`;
 }
 
-export function getMetricApiUrl(region: 'us' | 'eu'): string {
+export function getMetricApiUrl(region: 'us' | 'eu' | 'staging'): string {
   const host =
-    region === 'eu' ? 'metric-api.eu.newrelic.com' : 'metric-api.newrelic.com';
+    region === 'staging'
+      ? 'staging-metric-api.newrelic.com'
+      : region === 'eu'
+        ? 'metric-api.eu.newrelic.com'
+        : 'metric-api.newrelic.com';
   return `https://${host}/metric/v1`;
 }
 
-export function getLogsApiUrl(region: 'us' | 'eu'): string {
+export function getLogsApiUrl(region: 'us' | 'eu' | 'staging'): string {
   const host =
-    region === 'eu' ? 'log-api.eu.newrelic.com' : 'log-api.newrelic.com';
+    region === 'staging'
+      ? 'staging-log-api.newrelic.com'
+      : region === 'eu'
+        ? 'log-api.eu.newrelic.com'
+        : 'log-api.newrelic.com';
   return `https://${host}/log/v1`;
 }
 

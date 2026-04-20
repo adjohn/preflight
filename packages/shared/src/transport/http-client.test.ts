@@ -2,6 +2,9 @@ import { gunzip } from 'node:zlib';
 import { promisify } from 'node:util';
 import {
   resolveRegion,
+  getEventsApiUrl,
+  getMetricApiUrl,
+  getLogsApiUrl,
   compressPayload,
   sendWithRetry,
 } from './http-client.js';
@@ -51,6 +54,47 @@ describe('resolveRegion', () => {
     expect(resolveRegion('us01xxSOMEKEY', 'insights-collector.EU01.nr-data.net')).toBe('eu');
     // collectorHost without eu falls through to license key check
     expect(resolveRegion('us01xxSOMEKEY', 'collector.newrelic.com')).toBe('us');
+  });
+
+  it('returns staging when collectorHost contains staging', () => {
+    expect(resolveRegion('us01xxSOMEKEY', 'staging')).toBe('staging');
+    expect(resolveRegion('us01xxSOMEKEY', 'staging-insights-collector.newrelic.com')).toBe('staging');
+    expect(resolveRegion('eu01xxSOMEKEY', 'staging')).toBe('staging');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// URL builders — staging endpoints
+// ---------------------------------------------------------------------------
+describe('getEventsApiUrl', () => {
+  it('returns staging endpoint for staging region', () => {
+    expect(getEventsApiUrl('908482', 'staging')).toBe(
+      'https://staging-insights-collector.newrelic.com/v1/accounts/908482/events',
+    );
+  });
+
+  it('returns US endpoint for us region', () => {
+    expect(getEventsApiUrl('12345', 'us')).toBe(
+      'https://insights-collector.newrelic.com/v1/accounts/12345/events',
+    );
+  });
+
+  it('returns EU endpoint for eu region', () => {
+    expect(getEventsApiUrl('12345', 'eu')).toBe(
+      'https://insights-collector.eu01.nr-data.net/v1/accounts/12345/events',
+    );
+  });
+});
+
+describe('getMetricApiUrl', () => {
+  it('returns staging endpoint for staging region', () => {
+    expect(getMetricApiUrl('staging')).toBe('https://staging-metric-api.newrelic.com/metric/v1');
+  });
+});
+
+describe('getLogsApiUrl', () => {
+  it('returns staging endpoint for staging region', () => {
+    expect(getLogsApiUrl('staging')).toBe('https://staging-log-api.newrelic.com/log/v1');
   });
 });
 

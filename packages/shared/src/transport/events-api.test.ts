@@ -98,6 +98,16 @@ describe('sendEvents', () => {
     const [url] = fetchSpy.mock.calls[0];
     expect(url).toBe('https://insights-collector.eu01.nr-data.net/v1/accounts/12345/events');
   });
+
+  it('routes to staging endpoint when collectorHost contains staging', async () => {
+    await sendEvents(testEvents, 'us01xxUSKEY', {
+      ...baseOptions,
+      collectorHost: 'staging',
+    });
+
+    const [url] = fetchSpy.mock.calls[0];
+    expect(url).toBe('https://staging-insights-collector.newrelic.com/v1/accounts/12345/events');
+  });
 });
 
 // ---------------------------------------------------------------------------

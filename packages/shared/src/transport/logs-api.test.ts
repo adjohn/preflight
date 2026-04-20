@@ -99,6 +99,16 @@ describe('sendLogs', () => {
     const [url] = fetchSpy.mock.calls[0];
     expect(url).toBe('https://log-api.eu.newrelic.com/log/v1');
   });
+
+  it('routes to staging endpoint when collectorHost contains staging', async () => {
+    await sendLogs(testLogs, 'us01xxUSKEY', {
+      ...baseOptions,
+      collectorHost: 'staging',
+    });
+
+    const [url] = fetchSpy.mock.calls[0];
+    expect(url).toBe('https://staging-log-api.newrelic.com/log/v1');
+  });
 });
 
 // ---------------------------------------------------------------------------
