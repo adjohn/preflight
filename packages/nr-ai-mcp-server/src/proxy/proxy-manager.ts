@@ -315,9 +315,16 @@ function readBody(req: IncomingMessage): Promise<Buffer> {
       return;
     }
     const chunks: Buffer[] = [];
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      fn();
+    };
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
+    req.on('end', () => settle(() => resolve(Buffer.concat(chunks))));
+    req.on('error', (err) => settle(() => reject(err)));
+    req.on('close', () => settle(() => reject(new Error('Request closed before body was fully read'))));
   });
 }
 

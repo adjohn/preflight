@@ -2514,6 +2514,264 @@ If any branch throws (unexpected tracker state, type error, etc.), the exception
 
 ---
 
+## Round 6
+
+**Date:** 2026-04-22
+**Scope:** Final full-source review of `packages/nr-ai-mcp-server/src/` and `packages/shared/src/`
+**Method:** Five parallel Explore agents, each covering a distinct subsystem, with manual verification of all findings.
+
+---
+
+### ✅ 90. `readBody()` missing `close` event handler — proxy request can hang forever
+
+**Severity: HIGH**
+**File:** `packages/nr-ai-mcp-server/src/proxy/proxy-manager.ts:311-322`
+
+```typescript
+function readBody(req: IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    if (req.method === 'GET') {
+      resolve(Buffer.alloc(0));
+      return;
+    }
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+    // no 'close' listener
+  });
+}
+```
+
+Node.js `IncomingMessage` emits `close` when the underlying socket closes. If a client aborts mid-request (network drop, timeout, client disconnect), `close` fires but `end` may never fire. The Promise returned by `readBody()` then never settles. `handleRequest()` awaits it indefinitely, leaking the connection slot permanently for that request.
+
+**Fix:** Add a `close` listener that resolves with whatever chunks arrived:
+```typescript
+let settled = false;
+const settle = (buf: Buffer) => { if (!settled) { settled = true; resolve(buf); } };
+req.on('end',   () => settle(Buffer.concat(chunks)));
+req.on('close', () => settle(Buffer.concat(chunks)));
+req.on('error', (err) => { if (!settled) { settled = true; reject(err); } });
+```
+
+---
+
+### ✅ 91. `local-store.ts` drain recovery concatenates files without newline separator — data loss
+
+**Severity: MEDIUM**
+**File:** `packages/nr-ai-mcp-server/src/storage/local-store.ts:72`
+
+```typescript
+writeFileSync(this.bufferPath, drainData + bufferData);
+```
+
+When recovering from a previous interrupted drain, the `.drain` file content is prepended to the current buffer file content. If `drainData` does not end with `\n` (possible if the preceding write was interrupted mid-line), the last line of the drain file and the first line of the buffer file are concatenated into a single malformed JSON string. The line-by-line parser later silently skips it (`Skipping malformed buffer line`), losing both events.
+
+**Fix:**
+```typescript
+writeFileSync(
+  this.bufferPath,
+  drainData + (drainData.endsWith('\n') ? '' : '\n') + bufferData,
+);
+```
+
+---
+
+### ✅ 92. `countLines('')` returns 1 in `collector-script.ts` — fix #52 not applied here
+
+**Severity: MEDIUM**
+**File:** `packages/nr-ai-mcp-server/src/hooks/collector-script.ts:83-84, 124, 130`
+
+```typescript
+function countLines(text: string): number {
+  return (text.match(/\n/g) || []).length + 1;  // returns 1 for ""
+}
+```
+
+Fix #52 corrected this in `tool-parsers.ts` but the same function in `collector-script.ts` was not updated. Additionally, lines 124 and 130 call `countLines` directly without the `> 0` guard that was added on line 134:
+
+```typescript
+// line 124 — unguarded:
+meta.lineCount = countLines(obj.content);
+// line 130 — unguarded:
+meta.oldLineCount = countLines(obj.old_string);
+// line 134 — has guard:
+meta.newLineCount = obj.new_string.length > 0 ? countLines(obj.new_string) : 0;
+```
+
+Writing an empty file records `lineCount = 1` instead of 0. Deleting all content in an Edit records `oldLineCount = 1`. Both inflate linesChanged metrics and cost-per-line-of-code calculations.
+
+**Fix:** Add the same guard to lines 124 and 130:
+```typescript
+meta.lineCount    = obj.content.length    > 0 ? countLines(obj.content)    : 0;
+meta.oldLineCount = obj.old_string.length > 0 ? countLines(obj.old_string) : 0;
+```
+
+---
+
+### ✅ 93. `lastEditFile` not cleared when Edit/Write lacks `filePath` — thrashing mis-attributed
+
+**Severity: MEDIUM**
+**File:** `packages/nr-ai-mcp-server/src/metrics/anti-patterns.ts:119-123`
+
+```typescript
+if (call.toolName === 'Edit' || call.toolName === 'Write') {
+  const file = call.filePath as string | undefined;
+  if (file) {
+    lastEditFile = file;   // only updated when filePath present
+  }
+  // if file is undefined: lastEditFile retains previous value
+}
+```
+
+If an Edit/Write call arrives without a `filePath` (e.g., a hook parse failure), `lastEditFile` is not updated and retains the previous file's path. When the subsequent test command fails, the thrashing cycle count is incremented for the wrong file — the stale one from the earlier Edit.
+
+**Failure scenario:** Edit fileA → Edit fileB (no filePath) → Bash test FAIL → fileA's cycle count incremented, even though the last edit targeted fileB.
+
+**Fix:** Clear `lastEditFile` when `filePath` is absent:
+```typescript
+if (file) {
+  lastEditFile = file;
+} else {
+  lastEditFile = null;
+}
+```
+
+---
+
+### ✅ 94. Investigation classification boundary off-by-one: `> 0.8` should be `>= 0.8`
+
+**Severity: MEDIUM**
+**File:** `packages/nr-ai-mcp-server/src/metrics/cost-per-outcome.ts:166`
+
+```typescript
+if (readCount / task.toolCallCount > 0.8) {
+  return 'investigation';
+}
+```
+
+A task with exactly 80% read/search tool calls (e.g., 4 Read + 1 Write = 5 total, ratio = 0.8) fails the `> 0.8` test and falls through to `'feature'`. The design intent is "mostly read/search tools", which 80% clearly satisfies. Using `> 0.8` silently misclassifies exact-boundary tasks.
+
+**Fix:** `if (readCount / task.toolCallCount >= 0.8) {`
+
+---
+
+### ✅ 95. `taskSuccess` defaults to `1` when no tests run — reported as 100% success
+
+**Severity: MEDIUM**
+**File:** `packages/nr-ai-mcp-server/src/metrics/trend-analyzer.ts:175`
+
+```typescript
+taskSuccess: totalTestsRun > 0 ? round(totalTestsPassed / totalTestsRun, 3) : 1,
+```
+
+When a week has no test runs, `taskSuccess` is set to `1` (100%). This value propagates into weekly summaries, trend deltas (`aggB.taskSuccess - aggA.taskSuccess`), and the `generateWeekSummary()` report (line 346: `agg.taskSuccess * 100`). A week with no testing is reported as having perfect task success, inflating trend scores and masking gaps.
+
+**Fix:** Return `0` instead of `1` to indicate no test data:
+```typescript
+taskSuccess: totalTestsRun > 0 ? round(totalTestsPassed / totalTestsRun, 3) : 0,
+```
+
+---
+
+### ✅ 96. `shutdown()` handler has no try-catch — cleanup failures prevent `process.exit`
+
+**Severity: HIGH**
+**File:** `packages/nr-ai-mcp-server/src/index.ts:111-120`
+
+```typescript
+const shutdown = async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info('Shutting down...');
+  eventProcessor?.stop();
+  if (nrIngest) await nrIngest.stop();      // ← can throw
+  if (mcpServer) await mcpServer.close();   // ← can throw
+  if (proxyManager) await proxyManager.stop(); // ← can throw
+  process.exit(0);
+};
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+```
+
+The signal handler calls `shutdown()` without awaiting (signal handlers cannot await). If any of the three `await` calls throws (e.g., `nrIngest.stop()` fails to flush final metrics due to a network error), the Promise rejects. Node.js emits an `unhandledRejection` event — and in modern Node.js (≥ 15) this terminates the process with exit code 1, skipping the remaining cleanup steps and `process.exit(0)`.
+
+**Fix:** Wrap cleanup in try-catch and put `process.exit(0)` in a `finally` block:
+```typescript
+const shutdown = async () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info('Shutting down...');
+  try {
+    eventProcessor?.stop();
+    if (nrIngest) await nrIngest.stop();
+    if (mcpServer) await mcpServer.close();
+    if (proxyManager) await proxyManager.stop();
+  } catch (err) {
+    logger.error('Error during shutdown cleanup', { error: String(err) });
+  } finally {
+    process.exit(0);
+  }
+};
+```
+
+---
+
+### ✅ 97. `GenericMcpAdapter` missing `input_size_bytes` — input size metrics silently lost
+
+**Severity: MEDIUM**
+**File:** `packages/nr-ai-mcp-server/src/platforms/generic-mcp-adapter.ts:8-16, 28-47, 101-117`
+
+The `ReportToolCallInput` interface and the `REPORT_TOOL_CALL_TOOL` schema do not include an `input_size_bytes` field. Every other adapter (`ClaudeCodeAdapter`, `CursorAdapter`, `WindsurfAdapter`, `CopilotAdapter`) extracts and propagates `inputSizeBytes` from their native event data. Users of the generic adapter (platforms without a dedicated adapter) have no way to report tool input size, so `inputSizeBytes` is always `undefined` for their tool calls. Cost-per-byte metrics and proxy overhead metrics derived from input size will be incomplete.
+
+**Fix:** Add `readonly input_size_bytes?: number;` to `ReportToolCallInput`, add `input_size_bytes: { type: 'number', description: 'Size of tool input in bytes' }` to the schema `properties`, and extract it in `normalizeToolCall()`:
+```typescript
+...(input.input_size_bytes !== undefined && { inputSizeBytes: input.input_size_bytes }),
+```
+
+---
+
+### ✅ 98. Gemini fallback `totalTokens` omits `cacheCreationTokens` — inconsistent formula
+
+**Severity: LOW**
+**File:** `packages/shared/src/tokens.ts:186-192`
+
+```typescript
+this.latestUsage.totalTokens =
+  meta.totalTokenCount !== undefined
+    ? safeInt(meta.totalTokenCount)
+    : this.latestUsage.inputTokens +
+      this.latestUsage.outputTokens +
+      this.latestUsage.thinkingTokens +
+      this.latestUsage.cacheReadTokens;
+      // missing: + this.latestUsage.cacheCreationTokens
+```
+
+The Anthropic path (line 59) sums all five token types including `cacheCreationTokens`. The Gemini fallback only sums four. Gemini currently does not expose cache creation tokens (the field stays 0), so there is no incorrect value produced today. However, if Gemini adds support for this field in a future API version, the fallback would silently undercount.
+
+**Fix:** Add the missing term: `+ this.latestUsage.cacheCreationTokens`
+
+---
+
+## Round 6 Recommendation
+
+**High (fix before production use):**
+- **#90** (`readBody()` missing close handler) — a single aborted client request leaks a connection slot permanently; under load, this could exhaust server resources.
+- **#96** (shutdown no try-catch) — a flush error during SIGTERM causes `process.exit(0)` to be skipped; MCP session ends uncleanly.
+
+**Medium (fix before wider sharing):**
+- **#92** (countLines in collector-script) — inflates line-count metrics for empty-file writes/edits; fix #52 only applied to tool-parsers.
+- **#91** (drain recovery newline) — rare data loss on interrupted buffer writes; only matters if disk is stressed.
+- **#93** (thrashing mis-attribution) — wrong file blamed in thrashing reports when a hook parse fails to extract filePath.
+- **#94** (investigation boundary) — 80%-read tasks misclassified; off-by-one at the boundary.
+- **#95** (taskSuccess defaults to 1) — weeks with no tests appear 100% successful in trend charts.
+- **#97** (generic adapter input size) — input size metrics unavailable for non-native-platform users.
+
+**Low:**
+- **#98** (Gemini token formula inconsistency) — no wrong value today, but formula diverges from the Anthropic path for future-proofing.
+
+---
+
 ## Cumulative Statistics
 
 | Round | Date | Critical | High | Medium | Low | Total |
@@ -2523,4 +2781,5 @@ If any branch throws (unexpected tracker state, type error, etc.), the exception
 | 3 | 2026-04-21 | 3 | 10 | 19 | 3 | 35 |
 | 4 | 2026-04-21 | 0 | 3 | 4 | 3 | 10 |
 | 5 | 2026-04-22 | 1 | 4 | 4 | 0 | 9 |
-| **Total** | | **4** | **23** | **47** | **12** | **86** |
+| 6 | 2026-04-22 | 0 | 2 | 6 | 1 | 9 |
+| **Total** | | **4** | **25** | **53** | **13** | **95** |

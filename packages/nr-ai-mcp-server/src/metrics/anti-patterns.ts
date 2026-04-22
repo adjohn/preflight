@@ -120,6 +120,8 @@ export class AntiPatternDetector {
         const file = call.filePath as string | undefined;
         if (file) {
           lastEditFile = file;
+        } else {
+          lastEditFile = null;
         }
       } else if (call.toolName === 'Bash' && call.isTestCommand && lastEditFile !== null) {
         if (!call.success) {

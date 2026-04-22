@@ -172,7 +172,7 @@ function aggregateWeek(sessions: FullSessionSummary[]): WeekAggregates {
   return {
     efficiency: efficiencyCount > 0 ? round(efficiencySum / efficiencyCount, 3) : null,
     cost: round(totalCost, 4),
-    taskSuccess: totalTestsRun > 0 ? round(totalTestsPassed / totalTestsRun, 3) : 1,
+    taskSuccess: totalTestsRun > 0 ? round(totalTestsPassed / totalTestsRun, 3) : 0,
     toolCallsPerTask: totalTasks > 0 ? round(totalToolCalls / totalTasks, 1) : 0,
     antiPatterns,
   };

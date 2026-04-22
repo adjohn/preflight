@@ -69,7 +69,7 @@ export class LocalStore {
         if (existsSync(this.bufferPath)) {
           const drainData = readFileSync(tmpPath, 'utf-8');
           const bufferData = readFileSync(this.bufferPath, 'utf-8');
-          writeFileSync(this.bufferPath, drainData + bufferData);
+          writeFileSync(this.bufferPath, drainData + (drainData.endsWith('\n') ? '' : '\n') + bufferData);
           unlinkSync(tmpPath);
         } else {
           renameSync(tmpPath, this.bufferPath);

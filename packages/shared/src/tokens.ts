@@ -189,7 +189,8 @@ export class TokenAccumulator {
           : this.latestUsage.inputTokens +
             this.latestUsage.outputTokens +
             this.latestUsage.thinkingTokens +
-            this.latestUsage.cacheReadTokens;
+            this.latestUsage.cacheReadTokens +
+            this.latestUsage.cacheCreationTokens;
     }
   }
 }

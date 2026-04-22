@@ -8,6 +8,7 @@ import type {
 export interface ReportToolCallInput {
   readonly tool: string;
   readonly input?: Record<string, unknown>;
+  readonly input_size_bytes?: number;
   readonly output_size_bytes?: number;
   readonly success: boolean;
   readonly duration_ms?: number;
@@ -36,6 +37,7 @@ export const REPORT_TOOL_CALL_TOOL = {
     properties: {
       tool: { type: 'string', description: 'Tool name (e.g., "Read", "Edit", "Bash")' },
       input: { type: 'object', description: 'Tool input parameters' },
+      input_size_bytes: { type: 'number', description: 'Size of tool input in bytes' },
       output_size_bytes: { type: 'number', description: 'Size of tool output in bytes' },
       success: { type: 'boolean', description: 'Whether the tool call succeeded' },
       duration_ms: { type: 'number', description: 'Duration of the tool call in milliseconds' },
@@ -109,6 +111,7 @@ export class GenericMcpAdapter implements PlatformAdapter {
       durationMs: input.duration_ms ?? null,
       success: input.success,
       ...(input.error !== undefined && { error: input.error }),
+      ...(input.input_size_bytes !== undefined && { inputSizeBytes: input.input_size_bytes }),
       ...(input.output_size_bytes !== undefined && { outputSizeBytes: input.output_size_bytes }),
       ...(input.input !== undefined && typeof input.input === 'object' && 'file_path' in input.input &&
         typeof input.input.file_path === 'string' && { filePath: input.input.file_path }),

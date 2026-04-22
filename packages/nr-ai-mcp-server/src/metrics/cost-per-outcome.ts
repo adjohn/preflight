@@ -163,7 +163,7 @@ export class CostPerOutcomeAnalyzer {
     // Priority 7: investigation — mostly read/search tools
     if (task.toolCallCount > 0) {
       const readCount = toolCalls.filter((tc) => READ_TOOLS.has(tc.toolName)).length;
-      if (readCount / task.toolCallCount > 0.8) {
+      if (readCount / task.toolCallCount >= 0.8) {
         return 'investigation';
       }
     }

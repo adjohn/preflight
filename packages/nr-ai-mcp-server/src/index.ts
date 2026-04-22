@@ -112,11 +112,16 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info('Shutting down...');
-    eventProcessor?.stop();
-    if (nrIngest) await nrIngest.stop();
-    if (mcpServer) await mcpServer.close();
-    if (proxyManager) await proxyManager.stop();
-    process.exit(0);
+    try {
+      eventProcessor?.stop();
+      if (nrIngest) await nrIngest.stop();
+      if (mcpServer) await mcpServer.close();
+      if (proxyManager) await proxyManager.stop();
+    } catch (err) {
+      logger.error('Error during shutdown cleanup', { error: String(err) });
+    } finally {
+      process.exit(0);
+    }
   };
 
   process.on('SIGINT', shutdown);

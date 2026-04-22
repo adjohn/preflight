@@ -121,13 +121,13 @@ function extractInputMeta(toolName: string, input: unknown): Record<string, unkn
     case 'Write':
       if (typeof obj.content === 'string') {
         meta.contentLength = obj.content.length;
-        meta.lineCount = countLines(obj.content);
+        meta.lineCount = obj.content.length > 0 ? countLines(obj.content) : 0;
       }
       break;
     case 'Edit':
       if (typeof obj.old_string === 'string') {
         meta.oldStringLength = obj.old_string.length;
-        meta.oldLineCount = countLines(obj.old_string);
+        meta.oldLineCount = obj.old_string.length > 0 ? countLines(obj.old_string) : 0;
       }
       if (typeof obj.new_string === 'string') {
         meta.newStringLength = obj.new_string.length;
