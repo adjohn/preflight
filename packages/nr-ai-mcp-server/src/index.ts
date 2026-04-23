@@ -201,6 +201,18 @@ async function main(): Promise<void> {
         taskDetector.recordToolCall(record);
         capturedNrIngest.ingestToolCall(record);
 
+        // Fallback cost estimation from tool payload byte sizes.
+        // Only fires when no exact token report has been received yet for this session,
+        // to avoid double-counting with explicit nr_observe_report_tokens calls.
+        const estimateBytes = (record.inputSizeBytes ?? 0) + (record.outputSizeBytes ?? 0);
+        if (estimateBytes > 0 && costTracker.getMetrics().reportCount === 0) {
+          costTracker.recordEstimatedTokens(
+            record.inputSizeBytes ?? 0,
+            record.outputSizeBytes ?? 0,
+            config.model,
+          );
+        }
+
         // Emit any tasks that completed as a result of this record,
         // and detect anti-patterns across each completed task's tool calls
         for (const task of taskDetector.drainNewlyCompletedTasks()) {

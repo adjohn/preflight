@@ -14,6 +14,7 @@ export interface McpServerConfig {
   readonly accountId: string;
   readonly appName: string;
   readonly developer: string;
+  readonly model: string;
   readonly enabled: boolean;
   readonly highSecurity: boolean;
   readonly recordContent: boolean;
@@ -207,6 +208,10 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
     appName:
       process.env.NEW_RELIC_AI_MCP_APP_NAME ??
       (typeof file.appName === 'string' ? file.appName : 'nr-ai-mcp-server'),
+
+    model:
+      process.env.NEW_RELIC_AI_MODEL ??
+      (typeof file.model === 'string' ? file.model : 'claude-sonnet-4-6'),
 
     developer: sanitizeDeveloper(
       process.env.NEW_RELIC_AI_MCP_DEVELOPER ??

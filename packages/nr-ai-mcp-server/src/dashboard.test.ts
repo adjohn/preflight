@@ -252,8 +252,18 @@ describe('Deploy script', () => {
     expect(scriptSource).toContain('entityResult');
   });
 
-  it('supports CLI argument for dashboard selection', () => {
-    expect(scriptSource).toContain('process.argv[2]');
+  it('does not query permalink (field does not exist on DashboardEntityResult)', () => {
+    expect(scriptSource).not.toContain('permalink');
+  });
+
+  it('supports CLI flags for dashboard selection and print mode', () => {
+    expect(scriptSource).toContain('--print');
+    expect(scriptSource).toContain('--all');
     expect(scriptSource).toContain('ai-coding-assistant-overview.json');
+  });
+
+  it('injects accountId into nrqlQueries before deploying', () => {
+    expect(scriptSource).toContain('injectAccountId');
+    expect(scriptSource).toContain('accountIds = [accountId]');
   });
 });

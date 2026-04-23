@@ -30,6 +30,7 @@ beforeEach(() => {
   delete process.env.NEW_RELIC_HOST;
   delete process.env.NEW_RELIC_AI_MCP_PROXY_UPSTREAMS;
   delete process.env.NEW_RELIC_AI_HIGH_SECURITY;
+  delete process.env.NEW_RELIC_AI_MODEL;
 });
 
 afterEach(() => {
@@ -186,6 +187,7 @@ describe('loadMcpConfig()', () => {
     const config = loadMcpConfig({ config: configPath });
 
     expect(config.appName).toBe('nr-ai-mcp-server');
+    expect(config.model).toBe('claude-sonnet-4-6');
     expect(config.enabled).toBe(true);
     expect(config.recordContent).toBe(false);
     expect(config.port).toBe(9847);
@@ -193,6 +195,23 @@ describe('loadMcpConfig()', () => {
     expect(config.harvestIntervalMs.events).toBe(5000);
     expect(config.harvestIntervalMs.metrics).toBe(60000);
     expect(config.collectorHost).toBeNull();
+  });
+
+  it('model can be overridden via NEW_RELIC_AI_MODEL env var', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NEW_RELIC_AI_MODEL = 'claude-opus-4-7';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.model).toBe('claude-opus-4-7');
+  });
+
+  it('model can be set via config file', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({ model: 'claude-haiku-4-5' });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.model).toBe('claude-haiku-4-5');
   });
 
   it('developer defaults to $USER env var', () => {
