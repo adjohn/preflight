@@ -240,6 +240,10 @@ function processHook(raw: string): void {
       success: true,
     };
 
+    // Store input metadata as fallback for orphaned-post pairing (pre-event may be missing)
+    const postInputMeta = extractInputMeta(toolName, data.tool_input);
+    if (postInputMeta !== undefined) event.toolInput = postInputMeta;
+
     // Store only the metadata fields needed for tool-specific parsing
     const outputMeta = extractOutputMeta(toolName, data.tool_response);
     if (outputMeta !== undefined) event.toolOutput = outputMeta;

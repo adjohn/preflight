@@ -199,11 +199,11 @@ export class HookEventProcessor {
       };
       this.emitRecord(record);
     } else {
-      // Orphaned post — no matching pre
+      // Orphaned post — no matching pre; use post-event's toolInput if present
       logger.debug('Orphaned post event — no matching pre', { tool: event.tool, key });
       const toolFields = parseToolSpecificFields(
         event.tool,
-        undefined,
+        event.toolInput,
         event.toolOutput,
       );
       const record: ToolCallRecord = {
@@ -236,6 +236,7 @@ export class HookEventProcessor {
       const event = this.pending.get(key)!;
       this.pending.delete(key);
 
+      const toolFields = parseToolSpecificFields(event.tool, event.toolInput, undefined);
       const record: ToolCallRecord = {
         id: randomUUID(),
         sessionId: (event.sessionId as string) ?? null,
@@ -247,6 +248,7 @@ export class HookEventProcessor {
         errorType: 'timeout',
         ...(event.inputSize !== undefined && { inputSizeBytes: event.inputSize }),
         ...(event.inputHash !== undefined && { inputHash: event.inputHash }),
+        ...toolFields,
       };
       this.emitRecord(record);
     }
@@ -254,6 +256,7 @@ export class HookEventProcessor {
 
   private flushPending(): void {
     for (const [key, event] of this.pending) {
+      const toolFields = parseToolSpecificFields(event.tool, event.toolInput, undefined);
       const record: ToolCallRecord = {
         id: randomUUID(),
         sessionId: (event.sessionId as string) ?? null,
@@ -265,6 +268,7 @@ export class HookEventProcessor {
         errorType: 'timeout',
         ...(event.inputSize !== undefined && { inputSizeBytes: event.inputSize }),
         ...(event.inputHash !== undefined && { inputHash: event.inputHash }),
+        ...toolFields,
       };
       this.emitRecord(record);
     }

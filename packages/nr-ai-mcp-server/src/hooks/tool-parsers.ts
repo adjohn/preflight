@@ -25,7 +25,7 @@ function countLines(text: string): number {
 // ---------------------------------------------------------------------------
 
 const TEST_COMMAND_RE =
-  /\b(jest|vitest|mocha|pytest|go\s+test|npm\s+test|npx\s+jest|cargo\s+test|bun\s+test)\b/i;
+  /\b(jest|vitest|mocha|pytest|go\s+test|npm\s+test|npm\s+run\s+test|npx\s+jest|npx\s+vitest|cargo\s+test|bun\s+test|bun\s+run\s+test|pnpm\s+test|pnpm\s+run\s+test|yarn\s+test)\b/i;
 
 const BUILD_COMMAND_RE =
   /\b(tsc|npm\s+run\s+build|make\b|cargo\s+build|go\s+build|webpack|vite\s+build)\b/i;

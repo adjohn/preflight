@@ -9,12 +9,15 @@
  *   dashboard-file  Name of the JSON file in the dashboards/ directory.
  *                   Defaults to "ai-coding-assistant-overview.json".
  *   --all           Deploy all dashboard JSON files in the dashboards/ directory.
+ *   --update        Update existing dashboards in-place (matched by name). Errors if not found.
  *   --print         Print the JSON with accountIds filled in (for NR UI import) and exit.
  *
  * Examples:
  *   npx tsx scripts/deploy-dashboard.ts
  *   npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-team-view.json
  *   npx tsx scripts/deploy-dashboard.ts --all
+ *   npx tsx scripts/deploy-dashboard.ts --all --update
+ *   npx tsx scripts/deploy-dashboard.ts --update ai-coding-assistant-overview-session-scoped.json
  *   NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-dashboard.ts --print
  *   NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-dashboard.ts --print ai-coding-assistant-team-view.json
  *
@@ -44,10 +47,46 @@ mutation DashboardCreate($accountId: Int!, $dashboard: DashboardInput!) {
   }
 }`;
 
+const UPDATE_MUTATION = `
+mutation DashboardUpdate($guid: EntityGuid!, $dashboard: DashboardInput!) {
+  dashboardUpdate(guid: $guid, dashboard: $dashboard) {
+    entityResult {
+      guid
+      name
+    }
+    errors {
+      description
+      type
+    }
+  }
+}`;
+
+const FIND_DASHBOARD_QUERY = `
+query FindDashboard($query: String!) {
+  actor {
+    entitySearch(query: $query) {
+      results {
+        entities {
+          guid
+          name
+        }
+      }
+    }
+  }
+}`;
+
+interface DashboardVariable {
+  name: string;
+  type: string;
+  nrqlQuery?: { accountIds: number[]; query: string };
+  [key: string]: unknown;
+}
+
 interface DashboardJson {
   name: string;
   description?: string;
   permissions?: string;
+  variables?: DashboardVariable[];
   pages: Array<{
     name: string;
     description?: string;
@@ -72,36 +111,54 @@ function injectAccountId(dashboard: DashboardJson, accountId: number): Dashboard
       }
     }
   }
+  for (const variable of copy.variables ?? []) {
+    if (variable.nrqlQuery) {
+      variable.nrqlQuery.accountIds = [accountId];
+    }
+  }
   return copy;
 }
 
-async function deployDashboard(apiKey: string, accountId: number, dashboardFile: string): Promise<void> {
-  const dashboardPath = resolve(__dirname, '..', 'dashboards', dashboardFile);
-  const raw = readFileSync(dashboardPath, 'utf-8');
-  const dashboard = injectAccountId(JSON.parse(raw) as DashboardJson, accountId);
-
-  console.log(`Deploying dashboard "${dashboard.name}" to account ${accountId}...`);
-
+async function nerdgraphRequest<T>(apiKey: string, query: string, variables: Record<string, unknown>): Promise<T> {
   const response = await fetch(NERDGRAPH_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'API-Key': apiKey,
-    },
-    body: JSON.stringify({
-      query: CREATE_MUTATION,
-      variables: { accountId, dashboard },
-    }),
+    headers: { 'Content-Type': 'application/json', 'API-Key': apiKey },
+    body: JSON.stringify({ query, variables }),
   });
-
   if (!response.ok) {
-    console.error(`HTTP error: ${response.status} ${response.statusText}`);
     const body = await response.text();
-    console.error(body);
-    process.exit(1);
+    throw new Error(`HTTP ${response.status}: ${body}`);
   }
+  return response.json() as Promise<T>;
+}
 
-  const result = await response.json() as {
+async function findDashboardGuid(apiKey: string, accountId: number, name: string): Promise<string | null> {
+  const result = await nerdgraphRequest<{
+    data?: { actor?: { entitySearch?: { results?: { entities?: Array<{ guid: string; name: string }> } } } };
+  }>(apiKey, FIND_DASHBOARD_QUERY, {
+    query: `type = 'DASHBOARD' AND name = '${name.replace(/'/g, "\\'")}' AND accountId = ${accountId}`,
+  });
+  const entities = result.data?.actor?.entitySearch?.results?.entities ?? [];
+  return entities[0]?.guid ?? null;
+}
+
+function loadDashboard(dashboardFile: string, accountId: number): DashboardJson {
+  const dashboardPath = resolve(__dirname, '..', 'dashboards', dashboardFile);
+  const raw = readFileSync(dashboardPath, 'utf-8');
+  return injectAccountId(JSON.parse(raw) as DashboardJson, accountId);
+}
+
+function printEntity(entity: { guid: string; name: string }): void {
+  console.log(`  ✓ ${entity.name}`);
+  console.log(`    GUID: ${entity.guid}`);
+  console.log(`    URL:  https://one.newrelic.com/dashboards/detail/${entity.guid}`);
+}
+
+async function deployDashboard(apiKey: string, accountId: number, dashboardFile: string): Promise<void> {
+  const dashboard = loadDashboard(dashboardFile, accountId);
+  console.log(`Deploying dashboard "${dashboard.name}" to account ${accountId}...`);
+
+  const result = await nerdgraphRequest<{
     data?: {
       dashboardCreate?: {
         entityResult?: { guid: string; name: string } | null;
@@ -109,7 +166,7 @@ async function deployDashboard(apiKey: string, accountId: number, dashboardFile:
       };
     };
     errors?: Array<{ message: string }>;
-  };
+  }>(apiKey, CREATE_MUTATION, { accountId, dashboard });
 
   if (result.errors?.length) {
     console.error('GraphQL errors:', JSON.stringify(result.errors, null, 2));
@@ -124,9 +181,50 @@ async function deployDashboard(apiKey: string, accountId: number, dashboardFile:
 
   const entity = createResult?.entityResult;
   if (entity) {
-    console.log(`  ✓ ${entity.name}`);
-    console.log(`    GUID: ${entity.guid}`);
-    console.log(`    URL:  https://one.newrelic.com/dashboards/detail/${entity.guid}`);
+    printEntity(entity);
+  } else {
+    console.error('Unexpected response — no entity result returned');
+    console.error(JSON.stringify(result, null, 2));
+    process.exit(1);
+  }
+}
+
+async function updateDashboard(apiKey: string, accountId: number, dashboardFile: string): Promise<void> {
+  const dashboard = loadDashboard(dashboardFile, accountId);
+  console.log(`Looking up "${dashboard.name}" in account ${accountId}...`);
+
+  const guid = await findDashboardGuid(apiKey, accountId, dashboard.name);
+  if (!guid) {
+    console.error(`  ✗ No existing dashboard found with name "${dashboard.name}". Use deploy (without --update) to create it.`);
+    process.exit(1);
+  }
+  console.log(`  Found GUID: ${guid}`);
+  console.log(`  Updating...`);
+
+  const result = await nerdgraphRequest<{
+    data?: {
+      dashboardUpdate?: {
+        entityResult?: { guid: string; name: string } | null;
+        errors?: Array<{ description: string; type: string }>;
+      };
+    };
+    errors?: Array<{ message: string }>;
+  }>(apiKey, UPDATE_MUTATION, { guid, dashboard });
+
+  if (result.errors?.length) {
+    console.error('GraphQL errors:', JSON.stringify(result.errors, null, 2));
+    process.exit(1);
+  }
+
+  const updateResult = result.data?.dashboardUpdate;
+  if (updateResult?.errors?.length) {
+    console.error('Dashboard update errors:', JSON.stringify(updateResult.errors, null, 2));
+    process.exit(1);
+  }
+
+  const entity = updateResult?.entityResult;
+  if (entity) {
+    printEntity(entity);
   } else {
     console.error('Unexpected response — no entity result returned');
     console.error(JSON.stringify(result, null, 2));
@@ -138,6 +236,7 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const printOnly = args.includes('--print');
   const deployAll = args.includes('--all');
+  const updateMode = args.includes('--update');
   const fileArgs = args.filter((a: string) => !a.startsWith('--'));
 
   const accountIdStr = process.env.NEW_RELIC_ACCOUNT_ID;
@@ -182,7 +281,11 @@ async function main(): Promise<void> {
     : [fileArgs[0] ?? 'ai-coding-assistant-overview.json'];
 
   for (const file of files) {
-    await deployDashboard(apiKey, accountId, file);
+    if (updateMode) {
+      await updateDashboard(apiKey, accountId, file);
+    } else {
+      await deployDashboard(apiKey, accountId, file);
+    }
   }
   console.log('\nDone.');
 }
