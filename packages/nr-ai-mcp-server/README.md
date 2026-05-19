@@ -132,8 +132,6 @@ Or via config file at `~/.nr-ai-observe/config.json`:
 }
 ```
 
-For every available option with descriptions, types, defaults, and env variable overrides, see [`example.config.js`](./example.config.js).
-
 ---
 
 ## Platforms Supported
