@@ -2,7 +2,7 @@ import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadMcpConfig, redactSensitive, sanitizeDeveloper } from './config.js';
+import { loadMcpConfig, redactSensitive, sanitizeDeveloper, normalizeDeveloperName } from './config.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let savedEnv: NodeJS.ProcessEnv;
@@ -692,13 +692,13 @@ describe('developer sanitization via loadMcpConfig() (N-07)', () => {
     expect(config.developer).toBe('alice');
   });
 
-  it('truncates a developer name over 128 chars from env var', () => {
+  it('truncates a developer name over 64 chars from env var', () => {
     process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
     process.env.NEW_RELIC_ACCOUNT_ID = '12345';
     process.env.NEW_RELIC_AI_MCP_DEVELOPER = 'a'.repeat(200);
     const configPath = writeConfigFile({});
     const config = loadMcpConfig({ config: configPath });
-    expect(config.developer).toBe('a'.repeat(128));
+    expect(config.developer).toBe('a'.repeat(64));
   });
 
   it('strips control characters from developer in config file', () => {
@@ -791,5 +791,47 @@ describe('developer sanitization via loadMcpConfig() (N-07)', () => {
     const configPath = writeConfigFile({});
     const config = loadMcpConfig({ config: configPath });
     expect(config.nrApiKey).toBeNull();
+  });
+});
+
+describe('normalizeDeveloperName', () => {
+  it('lowercases the input', () => {
+    expect(normalizeDeveloperName('JohnDoe')).toBe('johndoe');
+  });
+
+  it('replaces spaces with underscores', () => {
+    expect(normalizeDeveloperName('John Doe')).toBe('john_doe');
+  });
+
+  it('collapses multiple non-alphanumeric chars to a single underscore', () => {
+    expect(normalizeDeveloperName('john.doe@example.com')).toBe('john_doe_example_com');
+  });
+
+  it('strips leading and trailing underscores', () => {
+    expect(normalizeDeveloperName('  john  ')).toBe('john');
+  });
+
+  it('preserves hyphens', () => {
+    expect(normalizeDeveloperName('john-doe')).toBe('john-doe');
+  });
+
+  it('truncates to 64 characters', () => {
+    const long = 'a'.repeat(100);
+    expect(normalizeDeveloperName(long)).toHaveLength(64);
+  });
+
+  it('returns unknown for empty or whitespace-only input', () => {
+    expect(normalizeDeveloperName('')).toBe('unknown');
+    expect(normalizeDeveloperName('   ')).toBe('unknown');
+  });
+
+  it('strips control characters', () => {
+    expect(normalizeDeveloperName('john\x00doe')).toBe('johndoe');
+    expect(normalizeDeveloperName('john\x1fdoe')).toBe('johndoe');
+  });
+
+  it('handles $USER-style values consistently across machines', () => {
+    expect(normalizeDeveloperName('cdehaan')).toBe('cdehaan');
+    expect(normalizeDeveloperName('CDEHAAN')).toBe('cdehaan');
   });
 });

@@ -25,3 +25,17 @@ export interface AlertPolicyDefinition {
   readonly name: string;
   readonly incidentPreference: 'PER_POLICY' | 'PER_CONDITION' | 'PER_CONDITION_AND_TARGET';
 }
+
+export interface PersonalAlertThresholds {
+  readonly dailyCostUsd: number;
+  readonly sessionCostUsd: number;
+  readonly efficiencyScoreMin: number;
+  readonly stuckLoopCountMax: number;
+}
+
+export const DEFAULT_PERSONAL_THRESHOLDS: PersonalAlertThresholds = {
+  dailyCostUsd: 2,
+  sessionCostUsd: 0.50,
+  efficiencyScoreMin: 40,
+  stuckLoopCountMax: 2,
+};

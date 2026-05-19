@@ -2,7 +2,7 @@ import { createInterface } from 'node:readline/promises';
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { sanitizeDeveloper } from '../config.js';
+import { normalizeDeveloperName } from '../config.js';
 import { runInstallCli } from './cli.js';
 
 const DEFAULT_STORAGE_PATH = resolve(homedir(), '.nr-ai-observe');
@@ -82,10 +82,12 @@ export async function runSetupWizard(): Promise<void> {
   // Step 3: Developer name
   const defaultDeveloper = typeof existing.developer === 'string'
     ? existing.developer
-    : (process.env.USER ?? process.env.USERNAME ?? '');
-  const developer = sanitizeDeveloper(
-    (await rl.question(`Developer name [${defaultDeveloper}]: `)).trim() || defaultDeveloper,
-  );
+    : normalizeDeveloperName(process.env.USER ?? process.env.USERNAME ?? '');
+  const rawInput = (await rl.question(`Developer name [${defaultDeveloper}]: `)).trim() || defaultDeveloper;
+  const developer = normalizeDeveloperName(rawInput);
+  if (developer !== rawInput) {
+    print(`  → Normalized to: ${developer}`);
+  }
 
   // Step 4: Optional fields
   const existingTeamId = typeof existing.teamId === 'string' ? existing.teamId : null;
@@ -130,6 +132,11 @@ export async function runSetupWizard(): Promise<void> {
   // Step 7: Dashboard deploy — show manual command (deploy-dashboard.ts is not a library)
   print('\nTo deploy dashboards, run:');
   print(`  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts --all`);
+  print(`\nFor a personal dashboard pre-filtered to you:`);
+  print(`  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer ${developer}`);
+
+  print(`\nFor personal alerts scoped to you:`);
+  print(`  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-alerts.ts --developer ${developer}`);
 
   rl.close();
 

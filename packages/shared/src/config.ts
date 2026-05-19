@@ -15,6 +15,7 @@ export interface AgentConfig {
   readonly logLevel: LogLevel;
   readonly collectorHost: string | null;
   readonly accountId: string | null;
+  readonly attributionDefaults: Record<string, string> | null;
 }
 
 function envBool(key: string, defaultValue: boolean): boolean {
@@ -38,6 +39,32 @@ function envLogLevel(key: string, defaultValue: LogLevel): LogLevel {
   const val = process.env[key]?.toLowerCase();
   if (val === 'debug' || val === 'info' || val === 'warn' || val === 'error') return val;
   return defaultValue;
+}
+
+function buildAttributionDefaults(
+  overrideDefaults?: Record<string, string> | null,
+): Record<string, string> | null {
+  const result: Record<string, string> = {};
+
+  // Env-var defaults for the four standard attribution fields
+  const envFeature = process.env.NEW_RELIC_AI_ATTRIBUTION_FEATURE;
+  const envTeam = process.env.NEW_RELIC_AI_ATTRIBUTION_TEAM;
+  const envUser = process.env.NEW_RELIC_AI_ATTRIBUTION_USER;
+  const envEnvironment = process.env.NEW_RELIC_AI_ATTRIBUTION_ENVIRONMENT;
+
+  if (envFeature) result.feature = envFeature;
+  if (envTeam) result.team = envTeam;
+  if (envUser) result.user = envUser;
+  if (envEnvironment) result.environment = envEnvironment;
+
+  // Merge override defaults (they win over env vars)
+  if (overrideDefaults) {
+    for (const [k, v] of Object.entries(overrideDefaults)) {
+      result[k] = v;
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 export function loadConfig(overrides?: Partial<AgentConfig>): Readonly<AgentConfig> {
@@ -71,6 +98,9 @@ export function loadConfig(overrides?: Partial<AgentConfig>): Readonly<AgentConf
     ? false
     : (overrides?.recordContent ?? envBool('NEW_RELIC_AI_RECORD_CONTENT', false));
 
+  // Build global attribution defaults from env vars and/or overrides
+  const attributionDefaults = buildAttributionDefaults(overrides?.attributionDefaults);
+
   const config: AgentConfig = {
     licenseKey,
     appName,
@@ -92,6 +122,7 @@ export function loadConfig(overrides?: Partial<AgentConfig>): Readonly<AgentConf
     logLevel: overrides?.logLevel ?? envLogLevel('NEW_RELIC_AI_LOG_LEVEL', 'info'),
     collectorHost: overrides?.collectorHost ?? process.env.NEW_RELIC_HOST ?? null,
     accountId,
+    attributionDefaults,
   };
 
   return Object.freeze(config);

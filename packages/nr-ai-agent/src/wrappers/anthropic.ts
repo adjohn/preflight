@@ -8,12 +8,17 @@ import type {
   RawMessageStreamEvent,
   Message,
   ContentBlock,
+  Usage,
 } from '@anthropic-ai/sdk/resources/messages/messages';
 import type { Stream } from '@anthropic-ai/sdk/streaming';
 import { randomUUID } from 'node:crypto';
 import type { EventEmitter } from 'node:events';
 import { RequestTimer } from '@nr-ai-observatory/shared';
 import type { RequestTimerMetrics } from '@nr-ai-observatory/shared';
+import { extractReasoningMetrics } from '../metrics/reasoning.js';
+import { detectModalities } from '../metrics/multimodal.js';
+import { stripNrMetadata } from '../metrics/cost-attribution.js';
+import { generateConversationIdFromMessages } from '../metrics/conversation.js';
 import type { AiRequestRecord, WrapperConfig, RecordHandler } from '../types.js';
 
 function truncate(text: string, maxLength: number): string {
@@ -90,15 +95,18 @@ function extractThinkingConfig(thinking: MessageCreateParamsBase['thinking'] | u
   return { enabled: true, budgetTokens: thinking.budget_tokens };
 }
 
-function extractThinkingTokens(): number {
-  // The SDK doesn't expose per-block token counts; callers
-  // should prefer the usage-level data when available.
-  return 0;
+function extractThinkingTokens(usage: Usage): number {
+  // thinking_tokens is present in extended-thinking responses but absent from
+  // the SDK's Usage type definition — access it via runtime cast.
+  const extra = usage as unknown as Record<string, unknown>;
+  return typeof extra.thinking_tokens === 'number' ? extra.thinking_tokens : 0;
 }
 
 function buildBaseRecord(
   params: MessageCreateParamsBase,
   config: WrapperConfig,
+  requestMethod: string,
+  streaming: boolean,
 ): Omit<
   AiRequestRecord,
   | 'durationMs'
@@ -126,8 +134,8 @@ function buildBaseRecord(
     provider: 'anthropic',
     model: '',
     requestModel: params.model,
-    requestMethod: '',
-    streaming: false,
+    requestMethod,
+    streaming,
     maxTokens: params.max_tokens ?? null,
     temperature: params.temperature ?? null,
     topP: params.top_p ?? null,
@@ -146,6 +154,9 @@ function buildBaseRecord(
       shouldCapture && rawUserMessage !== null
         ? truncate(rawUserMessage, config.contentMaxLength)
         : null,
+    modalityMetrics: detectModalities(params.messages as unknown[]),
+    requestMetadata: (params.metadata as Record<string, unknown> | undefined) ?? null,
+    conversationId: generateConversationIdFromMessages(params.messages as unknown[]),
   };
 }
 
@@ -161,8 +172,16 @@ function finalizeRecord(
   const outputTokens = usage.output_tokens;
   const cacheRead = usage.cache_read_input_tokens ?? 0;
   const cacheCreation = usage.cache_creation_input_tokens ?? 0;
-  const thinkingTokens = extractThinkingTokens();
+  const thinkingTokens = extractThinkingTokens(usage);
   const rawResponseText = extractResponseText(response.content);
+
+  const reasoningMetrics = extractReasoningMetrics({
+    thinkingTokens,
+    outputTokens,
+    thinkingBudgetTokens: base.thinkingBudgetTokens,
+    thinkingDurationMs: metrics.thinkingDurationMs,
+    totalDurationMs: metrics.durationMs,
+  });
 
   return {
     ...base,
@@ -181,6 +200,7 @@ function finalizeRecord(
       shouldCapture && rawResponseText !== null
         ? truncate(rawResponseText, config.contentMaxLength)
         : null,
+    reasoningMetrics,
     error: null,
   };
 }
@@ -209,6 +229,7 @@ function buildErrorRecord(
     stopReason: null,
     contentBlockTypes: [],
     responseText: null,
+    reasoningMetrics: null,
     error: {
       type: error.error?.type ?? (err instanceof Error ? err.constructor.name : 'Unknown'),
       message: truncate(redact(rawMessage, config.redactionPatterns), 1024),
@@ -227,15 +248,19 @@ function wrapCreate(
     body: MessageCreateParamsNonStreaming | MessageCreateParamsStreaming | MessageCreateParamsBase,
     options?: RequestOptions,
   ): ReturnType<Anthropic['messages']['create']> {
-    if ('stream' in body && body.stream === true) {
+    // Strip metadata.nr before forwarding to SDK (nr fields are for observability only)
+    const strippedMeta = stripNrMetadata(body.metadata);
+    const cleanBody = strippedMeta !== body.metadata
+      ? { ...body, metadata: strippedMeta as typeof body.metadata }
+      : body;
+
+    if ('stream' in cleanBody && cleanBody.stream === true) {
       // Streaming via create() — the SDK returns a Stream<RawMessageStreamEvent>
-      const base = buildBaseRecord(body, config);
-      base.requestMethod = 'messages.create';
-      base.streaming = true;
+      const base = buildBaseRecord(body, config, 'messages.create', true);
       const timer = new RequestTimer();
       timer.start();
 
-      const promise = original.call(this, body as MessageCreateParamsStreaming, options) as Promise<
+      const promise = original.call(this, cleanBody as MessageCreateParamsStreaming, options) as Promise<
         Stream<RawMessageStreamEvent>
       >;
 
@@ -245,15 +270,13 @@ function wrapCreate(
     }
 
     // Non-streaming
-    const base = buildBaseRecord(body, config);
-    base.requestMethod = 'messages.create';
-    base.streaming = false;
+    const base = buildBaseRecord(body, config, 'messages.create', false);
     const timer = new RequestTimer();
     timer.start();
 
     const promise = original.call(
       this,
-      body as MessageCreateParamsNonStreaming,
+      cleanBody as MessageCreateParamsNonStreaming,
       options,
     ) as Promise<Message>;
 
@@ -322,6 +345,12 @@ function wrapRawStream(
         if (event.type === 'message_delta' && finalMessage) {
           finalMessage.stop_reason = event.delta.stop_reason;
           finalMessage.usage.output_tokens = event.usage.output_tokens;
+          // thinking_tokens is only present for extended-thinking responses
+          const deltaUsage = event.usage as unknown as Record<string, unknown>;
+          if (typeof deltaUsage.thinking_tokens === 'number') {
+            (finalMessage.usage as unknown as Record<string, unknown>).thinking_tokens =
+              deltaUsage.thinking_tokens;
+          }
         }
 
         yield event;
@@ -363,13 +392,15 @@ function wrapStream(
     body: MessageCreateParamsBase,
     options?: RequestOptions,
   ): MessageStream {
-    const base = buildBaseRecord(body, config);
-    base.requestMethod = 'messages.stream';
-    base.streaming = true;
+    const base = buildBaseRecord(body, config, 'messages.stream', true);
     const timer = new RequestTimer();
     timer.start();
 
-    const messageStream = original.call(this, body, options);
+    const strippedMeta = stripNrMetadata(body.metadata);
+    const cleanBody = strippedMeta !== body.metadata
+      ? { ...body, metadata: strippedMeta as typeof body.metadata }
+      : body;
+    const messageStream = original.call(this, cleanBody, options);
 
     messageStream.on('text', () => {
       timer.markFirstToken();

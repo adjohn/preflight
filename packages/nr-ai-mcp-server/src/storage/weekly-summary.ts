@@ -171,6 +171,28 @@ export class WeeklySummaryGenerator {
 
     return this.generate(lastWeekId);
   }
+
+  loadRecentWeeks(count: number): WeeklySummary[] {
+    if (!existsSync(this.summariesDir)) return [];
+
+    const files = readdirSync(this.summariesDir)
+      .filter(f => f.endsWith('.json'))
+      .sort()
+      .reverse()  // newest first
+      .slice(0, count);
+
+    const results: WeeklySummary[] = [];
+    for (const file of files) {
+      try {
+        const raw = readFileSync(join(this.summariesDir, file), 'utf-8');
+        results.push(JSON.parse(raw) as WeeklySummary);
+      } catch {
+        logger.warn('Skipping unreadable weekly summary', { file });
+      }
+    }
+
+    return results;
+  }
 }
 
 // ---------------------------------------------------------------------------

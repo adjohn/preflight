@@ -2,7 +2,7 @@
   "name": "AI Low Efficiency Score",
   "description": "Fires when the rolling efficiency score drops below 40 for 30+ minutes.",
   "enabled": true,
-  "nrqlQuery": "SELECT average(numeric(efficiency.score)) FROM Metric WHERE metricName = 'ai.efficiency.score'",
+  "nrqlQuery": "SELECT average(ai.efficiency.score) FROM Metric",
   "aggregationMethod": "EVENT_FLOW",
   "aggregationWindow": 300,
   "aggregationDelay": 120,

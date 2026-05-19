@@ -14,6 +14,9 @@ import type {
 import { randomUUID } from 'node:crypto';
 import { RequestTimer } from '@nr-ai-observatory/shared';
 import type { RequestTimerMetrics } from '@nr-ai-observatory/shared';
+import { extractReasoningMetrics } from '../metrics/reasoning.js';
+import { detectModalities } from '../metrics/multimodal.js';
+import { generateConversationIdFromMessages } from '../metrics/conversation.js';
 import type {
   AiRequestRecord,
   AiEmbeddingRecord,
@@ -180,6 +183,8 @@ function extractContentBlockTypes(response: GenerateContentResponse): string[] {
 function buildBaseRecord(
   params: GenerateContentParameters,
   config: WrapperConfig,
+  requestMethod: string,
+  streaming: boolean,
 ): Omit<
   AiRequestRecord,
   | 'durationMs'
@@ -208,8 +213,8 @@ function buildBaseRecord(
     provider: 'google',
     model: '',
     requestModel: params.model,
-    requestMethod: '',
-    streaming: false,
+    requestMethod,
+    streaming,
     maxTokens: genConfig?.maxOutputTokens ?? null,
     temperature: genConfig?.temperature ?? null,
     topP: genConfig?.topP ?? null,
@@ -228,6 +233,20 @@ function buildBaseRecord(
       shouldCapture && rawUserMessage !== null
         ? truncate(rawUserMessage, config.contentMaxLength)
         : null,
+    modalityMetrics: detectModalities(
+      typeof params.contents === 'string'
+        ? [{ parts: [{ text: params.contents }] }]
+        : Array.isArray(params.contents)
+          ? (params.contents as unknown[])
+          : [params.contents as unknown],
+    ),
+    conversationId: generateConversationIdFromMessages(
+      typeof params.contents === 'string'
+        ? []
+        : Array.isArray(params.contents)
+          ? (params.contents as unknown[])
+          : [params.contents as unknown],
+    ),
   };
 }
 
@@ -244,6 +263,14 @@ function finalizeRecord(
   const thinkingTokens = usage?.thoughtsTokenCount ?? 0;
   const cacheRead = usage?.cachedContentTokenCount ?? 0;
   const rawResponseText = extractResponseText(response);
+
+  const reasoningMetrics = extractReasoningMetrics({
+    thinkingTokens,
+    outputTokens,
+    thinkingBudgetTokens: base.thinkingBudgetTokens,
+    thinkingDurationMs: metrics.thinkingDurationMs,
+    totalDurationMs: metrics.durationMs,
+  });
 
   return {
     ...base,
@@ -262,6 +289,7 @@ function finalizeRecord(
       shouldCapture && rawResponseText !== null
         ? truncate(rawResponseText, wrapperConfig.contentMaxLength)
         : null,
+    reasoningMetrics,
     error: null,
   };
 }
@@ -290,6 +318,7 @@ function buildErrorRecord(
     stopReason: null,
     contentBlockTypes: [],
     responseText: null,
+    reasoningMetrics: null,
     error: {
       type: error.error?.type ?? (err instanceof Error ? err.constructor.name : 'Unknown'),
       message: truncate(redact(rawMessage, config.redactionPatterns), 1024),
@@ -308,9 +337,7 @@ function wrapGenerateContent(
   return async function wrappedGenerateContent(
     params: GenerateContentParameters,
   ): Promise<GenerateContentResponse> {
-    const base = buildBaseRecord(params, config);
-    base.requestMethod = 'models.generateContent';
-    base.streaming = false;
+    const base = buildBaseRecord(params, config, 'models.generateContent', false);
     const timer = new RequestTimer();
     timer.start();
 
@@ -336,9 +363,7 @@ function wrapGenerateContentStream(
   return async function wrappedGenerateContentStream(
     params: GenerateContentParameters,
   ): Promise<AsyncGenerator<GenerateContentResponse>> {
-    const base = buildBaseRecord(params, config);
-    base.requestMethod = 'models.generateContentStream';
-    base.streaming = true;
+    const base = buildBaseRecord(params, config, 'models.generateContentStream', true);
     const timer = new RequestTimer();
     timer.start();
 

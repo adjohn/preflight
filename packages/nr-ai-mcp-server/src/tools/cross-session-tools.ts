@@ -25,6 +25,7 @@ import type { ClaudeMdTracker } from '../metrics/claudemd-tracker.js';
 import type { CostPerOutcomeAnalyzer } from '../metrics/cost-per-outcome.js';
 import type { TaskDetector } from '../metrics/task-detector.js';
 import type { RecommendationEngine } from '../metrics/recommendation-engine.js';
+import { PersonalCoach } from '../metrics/personal-coach.js';
 
 function getNerdgraphUrl(collectorHost: string | null): string {
   if (collectorHost === 'staging') return 'https://staging-api.newrelic.com/graphql';
@@ -224,6 +225,21 @@ export const SEND_DIGEST_TOOL = {
   description: 'Generate the current weekly AI coding summary and POST it to the configured Slack webhook immediately.',
   inputSchema: { type: 'object' as const, properties: {} },
   annotations: { readOnlyHint: false },
+};
+
+export const PERSONAL_INSIGHTS_TOOL = {
+  name: 'nr_observe_get_personal_insights',
+  description:
+    'Returns a narrative coaching report comparing this week\'s personal AI coding metrics against your historical baseline. ' +
+    'Includes highlights, regressions, streaks, and a top recommendation. ' +
+    'Requires at least 2 weeks of session history. ' +
+    'Returns status: "insufficient_data" with a message when history is too sparse.',
+  inputSchema: {
+    type: 'object' as const,
+    properties: {},
+    required: [],
+  },
+  annotations: { readOnlyHint: true },
 };
 
 // ---------------------------------------------------------------------------
@@ -749,4 +765,15 @@ export async function handleSendDigest(
   } catch (err) {
     return { content: [{ type: 'text', text: JSON.stringify({ error: `Failed to send digest: ${err instanceof Error ? err.message : String(err)}` }) }] };
   }
+}
+
+export function handleGetPersonalInsights(
+  summaryGenerator: WeeklySummaryGenerator,
+  developer: string,
+): { content: Array<{ type: 'text'; text: string }> } {
+  const coach = new PersonalCoach(summaryGenerator, developer);
+  const result = coach.generate();
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+  };
 }

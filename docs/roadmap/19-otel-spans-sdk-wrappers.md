@@ -1,6 +1,6 @@
 # Implementation Plan: OTel Spans in SDK Wrappers
 
-**Roadmap item:** [19 — OTel Spans in SDK Wrappers](../../ROADMAP.md#19-otel-spans-in-sdk-wrappers)
+**Roadmap item:** [19 — OTel Spans in SDK Wrappers](../ROADMAP.md#19-otel-spans-in-sdk-wrappers)
 **Effort estimate:** ~2 days
 **Prerequisites:** Read `packages/nr-ai-agent/src/wrappers/anthropic.ts` and all other wrapper files before starting. Item 18 (OTLP Transport) must be complete first — this plan relies on the `OtlpTransport` and the OTel SDK dependencies it introduces.
 
@@ -90,12 +90,17 @@ const METHOD_TO_OPERATION: Record<string, string> = {
   'chatStream': 'chat',
 };
 
-export function buildSpanName(record: AiRequestRecord): string {
+// Narrower input type — both functions only need request-side fields, not the full AiRequestRecord.
+// This allows them to be called with the partial `base` record from buildBaseRecord() before
+// the response is available, as well as with a full AiRequestRecord in tests.
+type RequestSideRecord = Pick<AiRequestRecord, 'provider' | 'requestModel' | 'requestMethod' | 'streaming' | 'maxTokens' | 'temperature' | 'topP'>;
+
+export function buildSpanName(record: RequestSideRecord): string {
   const operation = METHOD_TO_OPERATION[record.requestMethod] ?? 'chat';
   return `${operation} ${record.requestModel}`;
 }
 
-export function buildRequestAttributes(record: AiRequestRecord): Attributes {
+export function buildRequestAttributes(record: RequestSideRecord): Attributes {
   const attrs: Attributes = {
     'gen_ai.system': PROVIDER_TO_SYSTEM[record.provider] ?? record.provider,
     'gen_ai.request.model': record.requestModel,
@@ -128,6 +133,8 @@ export function buildResponseAttributes(record: AiRequestRecord): Attributes {
 }
 ```
 
+Note: `packages/nr-ai-agent/package.json` currently has zero OTel dependencies. Before writing the files in Step 3, add `"@opentelemetry/api": "^1.9.0"` to the `dependencies` block in `packages/nr-ai-agent/package.json` and run `npm install` from the repo root.
+
 ---
 
 ## Step 3 — Add span creation to wrappers
@@ -158,9 +165,9 @@ return promise.then(
 
 // After:
 const tracer = getTracer();
-// Build a partial base record for the span name before we have a response
-const spanName = `chat ${params.model}`;
-const span = tracer.startSpan(spanName, {
+// `base` is the partial pre-response record from buildBaseRecord(). buildSpanName and
+// buildRequestAttributes both accept RequestSideRecord so base passes type-checking here.
+const span = tracer.startSpan(buildSpanName(base), {
   attributes: buildRequestAttributes(base),
 });
 
@@ -206,7 +213,7 @@ Apply the identical span-creation pattern to:
 
 ## Step 4 — Initialize tracer in `agent.ts`
 
-In `NrAiAgent.init()`, after creating the `OtlpTransport` (when `config.transport !== 'nr-events-api'`), call `initTracer()` from `tracing.ts`. This registers the OTel SDK's global tracer provider, making `getTracer()` return an active tracer.
+In the `NrAiAgent` **constructor** (there is no `init()` method on the class — initialization happens entirely in the constructor), after creating the `OtlpTransport` instance (added by roadmap 18, when `config.transport !== 'nr-events-api'`), call `initTracer()` from `tracing.ts`. This registers the OTel SDK's global tracer provider, making `getTracer()` return an active tracer.
 
 When `transport === 'nr-events-api'` (no OTel configured), `initTracer()` is NOT called — spans will use the OTel no-op tracer which is zero-cost.
 
@@ -227,9 +234,49 @@ describe('initTracer', () => {
 });
 ```
 
-Create `packages/nr-ai-agent/src/span-attributes.test.ts`:
+Create `packages/nr-ai-agent/src/span-attributes.test.ts`. Define a `makeRecord()` factory at the top of the file — it does not exist elsewhere in the codebase and must be defined inline here:
 
 ```typescript
+import { buildSpanName, buildRequestAttributes, buildResponseAttributes } from './span-attributes.js';
+import type { AiRequestRecord } from './types.js';
+
+function makeRecord(overrides: Partial<AiRequestRecord> = {}): AiRequestRecord {
+  return {
+    id: 'test-id',
+    timestamp: Date.now(),
+    provider: 'anthropic',
+    model: 'claude-sonnet-4-6',
+    requestModel: 'claude-sonnet-4-6',
+    requestMethod: 'messages.create',
+    streaming: false,
+    maxTokens: null,
+    temperature: null,
+    topP: null,
+    topK: null,
+    messageCount: 1,
+    toolCount: 0,
+    toolNames: [],
+    thinkingEnabled: false,
+    thinkingBudgetTokens: null,
+    systemPromptLength: null,
+    durationMs: 100,
+    timeToFirstTokenMs: null,
+    inputTokens: 10,
+    outputTokens: 10,
+    thinkingTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    totalTokens: 20,
+    stopReason: null,
+    contentBlockTypes: [],
+    systemPrompt: null,
+    lastUserMessage: null,
+    responseText: null,
+    error: null,
+    ...overrides,
+  };
+}
+
 describe('buildRequestAttributes', () => {
   it('maps anthropic provider to gen_ai.system = anthropic', () => {
     const record = makeRecord({ provider: 'anthropic', requestModel: 'claude-sonnet-4-6' });
@@ -326,6 +373,7 @@ packages/nr-ai-agent/src/span-attributes.test.ts
 Files to **modify**:
 
 ```
+packages/nr-ai-agent/package.json                     — add @opentelemetry/api dependency
 packages/nr-ai-agent/src/agent.ts                     — call initTracer() when OTel configured
 packages/nr-ai-agent/src/wrappers/anthropic.ts        — add span lifecycle
 packages/nr-ai-agent/src/wrappers/anthropic.test.ts   — assert span lifecycle

@@ -1,6 +1,6 @@
 # Implementation Plan: OTLP Input in Proxy Mode
 
-**Roadmap item:** [21 — OTLP Input in Proxy Mode](../../ROADMAP.md#21-otlp-input-in-proxy-mode)
+**Roadmap item:** [21 — OTLP Input in Proxy Mode](../ROADMAP.md#21-otlp-input-in-proxy-mode)
 **Effort estimate:** ~2 days
 **Prerequisites:** Read `packages/nr-ai-mcp-server/src/proxy/proxy-manager.ts` and the proxy types before starting. Item 18 (OTLP Transport) must be complete first — this plan depends on the OTel dependencies and the NR OTLP forwarding setup from item 18.
 
@@ -109,7 +109,7 @@ export class OtlpReceiver {
 
     try {
       const body = await this.readBody(req);
-      const enriched = this.enrichPayload(body, path);
+      const enriched = this.enrichPayload(body);
 
       if (this.options.forwardEndpoint) {
         const result = await this.forward(enriched, path);
@@ -135,7 +135,7 @@ export class OtlpReceiver {
     });
   }
 
-  private enrichPayload(body: Buffer, path: string): Buffer {
+  private enrichPayload(body: Buffer): Buffer {
     // For JSON-encoded OTLP (content-type: application/json), parse and inject attributes.
     // For protobuf-encoded OTLP (content-type: application/x-protobuf), pass through unchanged
     // (protobuf decoding requires additional dependencies — handle JSON only in v1).
@@ -173,8 +173,6 @@ export class OtlpReceiver {
     body: Buffer,
     path: string,
   ): Promise<{ statusCode: number; body: string }> {
-    const { fetch } = await import('node:http');
-    // Use node:https/http fetch (Node 18+)
     const url = `${this.options.forwardEndpoint}${path}`;
     const response = await globalThis.fetch(url, {
       method: 'POST',
@@ -194,30 +192,83 @@ export class OtlpReceiver {
 
 ## Step 3 — Wire into `ProxyManager`
 
-In `packages/nr-ai-mcp-server/src/proxy/proxy-manager.ts`, when `config.otlpReceiverEnabled` is `true`, create and start an `OtlpReceiver` instance alongside the existing proxy HTTP server.
+### 3a — Extend `ProxyManagerOptions`
 
-The enrichment attributes come from the current session context:
+`ProxyManager` only receives `ProxyManagerOptions` — it has no reference to `McpServerConfig`. Add these optional fields to the `ProxyManagerOptions` interface in `proxy-manager.ts`:
 
 ```typescript
-if (config.otlpReceiverEnabled) {
-  const receiver = new OtlpReceiver({
-    port: config.otlpReceiverPort,
-    forwardEndpoint: config.otlpForwardEndpoint,
-    forwardHeaders: config.licenseKey ? { 'api-key': config.licenseKey } : {},
-    enrichmentAttributes: {
-      'ai.session.id': sessionTraceId,
-      'ai.developer': config.developer,
-      ...(config.projectId && { 'ai.project_id': config.projectId }),
-      ...(config.teamId && { 'ai.team_id': config.teamId }),
-    },
-  });
-  await receiver.start();
-  // Store reference for shutdown:
-  this.otlpReceiver = receiver;
+readonly otlpReceiverEnabled?: boolean;
+readonly otlpReceiverPort?: number;
+readonly otlpForwardEndpoint?: string | null;
+readonly otlpForwardHeaders?: Record<string, string>;
+readonly otlpEnrichmentAttributes?: Record<string, string>;
+```
+
+### 3b — Add the receiver field to `ProxyManager`
+
+Add this private field to the `ProxyManager` class alongside the existing field declarations:
+
+```typescript
+private otlpReceiver: OtlpReceiver | null = null;
+```
+
+### 3c — Start the receiver in `ProxyManager.start()`
+
+At the end of `ProxyManager.start()`, after the HTTP server is started, add:
+
+```typescript
+if (this.options.otlpReceiverEnabled) {
+  try {
+    const receiver = new OtlpReceiver({
+      port: this.options.otlpReceiverPort ?? 4318,
+      forwardEndpoint: this.options.otlpForwardEndpoint ?? null,
+      forwardHeaders: this.options.otlpForwardHeaders ?? {},
+      enrichmentAttributes: this.options.otlpEnrichmentAttributes ?? {},
+    });
+    await receiver.start();
+    this.otlpReceiver = receiver;
+  } catch (err) {
+    logger.warn('OTLP receiver failed to start — disabled', { error: String(err) });
+  }
 }
 ```
 
-In the `stop()` method, call `await this.otlpReceiver?.stop()`.
+The try/catch handles the SSRF validation error from Step 4: if `OtlpReceiver`'s constructor throws, the warning is logged and the receiver is simply not started (the proxy continues normally).
+
+### 3d — Stop the receiver in `ProxyManager.stop()`
+
+Add before the upstream disconnect loop:
+
+```typescript
+if (this.otlpReceiver) {
+  await this.otlpReceiver.stop();
+  this.otlpReceiver = null;
+}
+```
+
+### 3e — Wire from `index.ts`
+
+In the proxy mode block of `packages/nr-ai-mcp-server/src/index.ts` (the `else` branch of `if (options.stdio)`), add `const sessionTraceId = randomUUID();` before constructing `ProxyManager` (the import is already at the top of the file). Then pass the new options:
+
+```typescript
+const sessionTraceId = randomUUID();
+
+proxyManager = new ProxyManager({
+  port: config.port,
+  onToolCall: ...,
+  onRequest: ...,
+  otlpReceiverEnabled: config.otlpReceiverEnabled,
+  otlpReceiverPort: config.otlpReceiverPort,
+  otlpForwardEndpoint: config.otlpForwardEndpoint,
+  otlpForwardHeaders: config.licenseKey ? { 'api-key': config.licenseKey } : {},
+  otlpEnrichmentAttributes: {
+    'ai.session.id': sessionTraceId,
+    'ai.developer': config.developer,
+    ...(config.projectId && { 'ai.project_id': config.projectId }),
+    ...(config.teamId && { 'ai.team_id': config.teamId }),
+  },
+});
+```
 
 ---
 
@@ -225,7 +276,7 @@ In the `stop()` method, call `await this.otlpReceiver?.stop()`.
 
 Before making outbound forward requests in `OtlpReceiver.forward()`, validate that `otlpForwardEndpoint` is not an RFC-1918 or loopback address. Reuse the SSRF validation logic already present in `packages/nr-ai-mcp-server/src/proxy/upstream-http.ts`. Extract the validation to a shared utility in `packages/nr-ai-mcp-server/src/security/` if not already there.
 
-The receiver must reject any `otlpForwardEndpoint` that resolves to a private IP at startup (not at request time) — fail fast in the constructor with a logged warning and `otlpReceiverEnabled` forced to `false`.
+The receiver must reject any `otlpForwardEndpoint` that resolves to a private IP at construction time (not at request time) — **throw an `Error`** in the constructor if the endpoint fails validation. The caller in `ProxyManager.start()` (Step 3c) catches this error, logs a warning, and skips starting the receiver. Do not try to mutate `otlpReceiverEnabled` — `OtlpReceiver` has no reference to `McpServerConfig`.
 
 ---
 
@@ -285,5 +336,6 @@ Files to **modify**:
 
 ```
 packages/nr-ai-mcp-server/src/config.ts              — add otlpReceiverEnabled, otlpReceiverPort, otlpForwardEndpoint
-packages/nr-ai-mcp-server/src/proxy/proxy-manager.ts — instantiate and wire OtlpReceiver
+packages/nr-ai-mcp-server/src/proxy/proxy-manager.ts — extend ProxyManagerOptions; add otlpReceiver field; instantiate and wire OtlpReceiver in start()/stop()
+packages/nr-ai-mcp-server/src/index.ts               — generate sessionTraceId in proxy mode; pass new otlp* fields to ProxyManagerOptions
 ```

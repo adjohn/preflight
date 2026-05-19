@@ -27,6 +27,7 @@ interface Dashboard {
   name: string;
   description?: string;
   permissions?: string;
+  variables?: Array<Record<string, unknown>>;
   pages: Page[];
 }
 
@@ -262,6 +263,53 @@ describe('Manager View dashboard', () => {
     const queries = getAllQueries(managerView!.dashboard);
     for (const q of queries) {
       expect(q).not.toMatch(/system_prompt|last_user_message|response_text/i);
+    }
+  });
+});
+
+describe('Personal dashboard', () => {
+  const entry = dashboards.find(d => d.file === 'ai-coding-assistant-personal.json');
+  const dashboard = entry?.dashboard;
+
+  it('exists', () => {
+    expect(entry).toBeDefined();
+  });
+
+  it('has exactly 3 pages named My Trends, My Patterns, My Best Sessions', () => {
+    const pageNames = dashboard!.pages.map(p => p.name);
+    expect(pageNames).toEqual(['My Trends', 'My Patterns', 'My Best Sessions']);
+  });
+
+  it('permissions is PRIVATE', () => {
+    expect(dashboard!.permissions).toBe('PRIVATE');
+  });
+
+  it('all NRQL queries reference {{developer}}', () => {
+    const queries = getAllQueries(dashboard!);
+    for (const query of queries) {
+      expect(query).toMatch(/\{\{developer\}\}/);
+    }
+  });
+
+  it('has a developer template variable with replacementStrategy STRING', () => {
+    expect(Array.isArray(dashboard!.variables)).toBe(true);
+    const devVar = dashboard!.variables!.find((v: Record<string, unknown>) => v.name === 'developer');
+    expect(devVar).toBeDefined();
+    expect(devVar?.replacementStrategy).toBe('STRING');
+  });
+
+  it('no two widgets in the same page overlap in layout', () => {
+    for (const page of dashboard!.pages) {
+      const occupied = new Set<string>();
+      for (const widget of page.widgets) {
+        for (let c = widget.layout.column; c < widget.layout.column + widget.layout.width; c++) {
+          for (let r = widget.layout.row; r < widget.layout.row + widget.layout.height; r++) {
+            const cell = `${c},${r}`;
+            expect(occupied.has(cell)).toBe(false);
+            occupied.add(cell);
+          }
+        }
+      }
     }
   });
 });

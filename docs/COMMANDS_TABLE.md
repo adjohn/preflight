@@ -1,0 +1,1095 @@
+# NR AI Observatory — MCP Commands Reference
+
+Every MCP tool exposed by the `nr-ai-mcp-server`, what it returns, how it computes each finding, and which trackers it queries.
+
+Tools are conditionally registered — each tool only appears when its required tracker dependencies are provided to `registerTools()`.
+
+---
+
+## Session Tools
+
+### `nr_observe_get_session_stats`
+
+Current session metrics snapshot.
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "identity": {
+    "developer": "alice",
+    "teamId": "backend-team",
+    "projectId": "my-app"
+  },
+  "session_trace_id": "uuid-string-or-null",
+  "session_id": "string",
+  "session_duration_ms": 0,
+  "tool_calls": 0,
+  "tool_calls_by_type": { "Read": 5, "Edit": 3 },
+  "success_rate": 0.95,
+  "failed_calls": 1,
+  "unique_files_read": 12,
+  "unique_files_modified": 4,
+  "bash_commands_run": 7,
+  "search_queries": 3,
+  "avg_tool_duration_ms": 45
+}
+```
+
+**Data source:** `SessionTracker`
+
+**How each field is determined:**
+- `identity.developer` — resolved developer name from config (normalised by `normalizeDeveloperName()`). Defaults to `"unknown"` when not configured. Use this to confirm at runtime which identity is being attached to NR events.
+- `identity.teamId` / `identity.projectId` — team and project identifiers from config. `null` when not configured. `projectId` is auto-derived from the git remote URL when unset.
+- `session_trace_id` — UUID generated at server startup via `randomUUID()`; threaded through every NR event, metric, and log entry emitted in this session. Use `WHERE session_id = '<value>'` in NRQL to query all telemetry for a single session. `null` if the server was started without trace ID support.
+- `tool_calls` — running count incremented on each `recordToolCall()`
+- `tool_calls_by_type` — per-tool-name counter map
+- `success_rate` — `successCount / totalCount`
+- `failed_calls` — count of records where `success === false`
+- `unique_files_read` — size of Set collecting file paths from Read/Grep/Glob tools
+- `unique_files_modified` — size of Set collecting file paths from Write/Edit tools
+- `bash_commands_run` — count of Bash tool calls
+- `search_queries` — count of Grep/Glob tool calls
+- `avg_tool_duration_ms` — `sum(allDurations) / count(allDurations)` across all tools
+
+**Requires:** `SessionTracker`
+
+Source: `packages/nr-ai-mcp-server/src/tools/session-stats.ts`
+
+---
+
+### `nr_observe_get_session_timeline`
+
+Ordered list of recent tool calls.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `last_n` | number | 20 | Number of most recent tool calls to return |
+
+**Returns:**
+```json
+{
+  "timeline": [
+    { "timestamp": "2026-04-21T10:30:00.000Z", "tool": "Read", "duration_ms": 30, "success": true }
+  ]
+}
+```
+
+**Data source:** `SessionTracker`
+
+**How it works:** Returns the last N entries from `SessionTracker.getMetrics().toolCallTimeline`, converting timestamps to ISO format. The timeline is a FIFO array of all tool calls recorded in the session.
+
+**Requires:** `SessionTracker`
+
+Source: `packages/nr-ai-mcp-server/src/tools/session-stats.ts`
+
+---
+
+## Cost Tools
+
+### `nr_observe_report_tokens`
+
+Self-report token usage for cost tracking. Called by Claude Code to report its own token consumption.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `input_tokens` | number | Yes | Input/prompt token count |
+| `output_tokens` | number | Yes | Output/completion token count |
+| `model` | string | Yes | Model identifier (e.g., `claude-sonnet-4-20250514`) |
+| `thinking_tokens` | number | No | Extended thinking token count |
+| `cache_read_tokens` | number | No | Prompt cache read token count |
+| `cache_creation_tokens` | number | No | Prompt cache creation token count |
+
+**Returns:**
+```json
+{
+  "recorded": true,
+  "cost_this_report_usd": 0.0042,
+  "session_total_cost_usd": 0.15,
+  "model": "claude-sonnet-4-20250514"
+}
+```
+
+**Data source:** `CostTracker`
+
+**How it works:**
+1. Constructs a `TokenUsage` object from the reported counts
+2. Calls `CostTracker.recordTokenUsage(usage, model)` which looks up per-token prices from the pricing table (`packages/shared/src/pricing-data.ts`)
+3. Cost breakdown: `inputCost = inputTokens * inputPricePerToken`, similarly for output, thinking, cache read, and cache creation tokens
+4. Accumulates into session total and per-model totals
+5. Returns both the cost for this specific report and the running session total
+
+**Requires:** `CostTracker`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cost-tools.ts`
+
+---
+
+### `nr_observe_get_cost_breakdown`
+
+Session cost breakdown by task, model, and efficiency.
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "total_usd": 0.52,
+  "by_model": { "claude-sonnet-4-20250514": 0.40, "claude-haiku-4-5-20251001": 0.12 },
+  "by_task": [{ "task_id": "task-001", "cost_usd": 0.25, "tokens_used": 15000 }],
+  "cost_per_line_of_code": 0.003,
+  "cost_per_file_modified": 0.065,
+  "tokens": { "input": 50000, "output": 20000, "thinking": 10000 }
+}
+```
+
+**Data source:** `CostTracker`, `TaskDetector` (optional)
+
+**How each field is determined:**
+- `total_usd` — sum of all token cost reports in the session
+- `by_model` — per-model accumulator updated on each `reportTokens` call
+- `by_task` — maps `TaskDetector.getCompletedTasks()` to their `estimatedCostUsd` and `tokensUsed`
+- `cost_per_line_of_code` — `totalCost / totalLinesChanged` (null if no lines changed)
+- `cost_per_file_modified` — `totalCost / uniqueFilesWritten` (null if no files modified)
+- `tokens` — running totals by token type from all reports
+
+**Requires:** `CostTracker`; `TaskDetector` for per-task breakdown
+
+Source: `packages/nr-ai-mcp-server/src/tools/cost-tools.ts`
+
+---
+
+## Workflow Tools
+
+### `nr_observe_get_workflow_trace`
+
+Complete tool call trace for a task with anti-pattern and efficiency analysis.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `task_id` | string | most recent | ID of the task to trace |
+
+**Returns:**
+```json
+{
+  "task_id": "task-001",
+  "duration_ms": 45000,
+  "estimated_cost_usd": 0.25,
+  "tool_calls": [
+    { "seq": 1, "tool": "Read", "target": "/src/index.ts", "duration_ms": 30, "success": true },
+    { "seq": 2, "tool": "Bash", "target": "npm test", "duration_ms": 5000, "success": true, "exit_code": 0 }
+  ],
+  "anti_patterns": [
+    { "type": "thrashing", "file": "/src/index.ts", "iterations": 4, "suggestion": "..." }
+  ],
+  "efficiency_score": 0.82
+}
+```
+
+**Data source:** `TaskDetector`, `AntiPatternDetector` (optional), `EfficiencyScorer` (optional)
+
+**How it works:**
+1. Finds the task by ID from `TaskDetector.getCompletedTasks()`, or uses the most recent completed task
+2. Maps each tool call in the task to a sequenced trace entry with `filePath` or `command` as the target
+3. If `AntiPatternDetector` is available, analyzes the task's tool call sequence for anti-patterns
+4. If `EfficiencyScorer` is available, computes the task's efficiency score
+
+**Requires:** `TaskDetector`
+
+Source: `packages/nr-ai-mcp-server/src/tools/workflow-tools.ts`
+
+---
+
+### `nr_observe_get_anti_patterns`
+
+Detected anti-patterns for the most recent task.
+
+**Parameters:** None
+
+**Returns:**
+```json
+[
+  { "type": "thrashing", "file": "/src/index.ts", "iterations": 4, "suggestion": "Consider a different approach" },
+  { "type": "re_reading", "file": "/src/config.ts", "read_count": 5, "suggestion": "Cache file contents" }
+]
+```
+
+**Data source:** `TaskDetector`, `AntiPatternDetector`
+
+**Detection algorithms (5 pattern types):**
+
+| Pattern | How Detected | Default Threshold |
+|---------|-------------|-------------------|
+| **Thrashing** | Tracks `Edit/Write → Bash(test:FAIL)` cycles on the same file. Counts consecutive failures. Resets on test pass. | 3 consecutive failures |
+| **Re-reading** | Counts `Read` calls per file path. Flags files read more than the threshold. | 3 reads of same file |
+| **Stuck loop** | Detects repeated `Bash` commands with identical arguments. | 3 identical commands |
+| **Blind editing** | Counts consecutive `Edit/Write` calls without an intervening `Read` or test run. | 3 edits without verification |
+| **Over-delegation** | Counts `Agent` tool spawns in a single task. | 3 agent spawns |
+
+Each detected pattern includes a `suggestion` field with a human-readable recommendation.
+
+**Requires:** `TaskDetector`, `AntiPatternDetector`
+
+Source: `packages/nr-ai-mcp-server/src/tools/workflow-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/anti-patterns.ts`
+
+---
+
+### `nr_observe_get_efficiency_score`
+
+Composite efficiency score for the most recent task and session average.
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "latest": {
+    "score": 0.82,
+    "components": { "speed": 0.7, "correctness": 1.0, "autonomy": 0.9, "firstAttemptQuality": 0.6 },
+    "task_id": "task-001",
+    "timestamp": 1713700000000
+  },
+  "session_average": {
+    "score": 0.78,
+    "components": { "speed": 0.65, "correctness": 0.95, "autonomy": 0.85, "firstAttemptQuality": 0.7 },
+    "tasks_scored": 5
+  }
+}
+```
+
+**Data source:** `EfficiencyScorer`, `TaskDetector` (optional), `AntiPatternDetector` (optional)
+
+**Scoring algorithm (4 equally-weighted components, each 0–1):**
+
+| Component | Formula | Baseline |
+|-----------|---------|----------|
+| **Speed** | `linesChanged / (durationMs / 1000)` normalized against baseline | 1 line/second = 1.0 |
+| **Correctness** | `testsPassed / testsRun` | 0.5 if no tests were run |
+| **Autonomy** | `1 - (askedUserQuestions / toolCallCount)` | 1.0 if no questions asked |
+| **First-attempt quality** | `1 - (thrashIterations / 3)`, floored at 0 | 1.0 if no thrashing detected |
+
+Final score = weighted average of all four components, clamped to [0, 1].
+
+**On-demand scoring:** When called, the handler scores any unscored completed tasks and always rescores the active task (since it grows over time). Session average is the mean score across all scored tasks.
+
+**Requires:** `EfficiencyScorer`
+
+Source: `packages/nr-ai-mcp-server/src/tools/workflow-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/efficiency-score.ts`
+
+---
+
+### `nr_observe_report_feedback`
+
+Record user quality feedback for a task.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `quality` | string | Yes | `"good"`, `"bad"`, or `"neutral"` |
+| `notes` | string | No | Free-text notes about the task quality |
+| `task_id` | string | No | Task ID to attach feedback to (default: most recent) |
+
+**Returns:**
+```json
+{
+  "recorded": true,
+  "quality": "good",
+  "task_id": "task-001",
+  "timestamp": 1713700000000
+}
+```
+
+**Data source:** `FeedbackCollector`
+
+**How it works:** Records the feedback with a timestamp. The `FeedbackCollector` stores all feedback records in memory and can emit `ai.feedback.count` metrics (keyed by quality) via the `MetricAggregator`. Used to correlate efficiency metrics with perceived quality.
+
+**Requires:** `FeedbackCollector`
+
+Source: `packages/nr-ai-mcp-server/src/tools/workflow-tools.ts`
+
+---
+
+## Cross-Session Tools
+
+These tools query persisted session data from disk (`~/.nr-ai-observe/sessions/`). They are only registered when `SessionStore` and related analyzers are available.
+
+### `nr_observe_get_session_history`
+
+Paginated list of past sessions with summary metrics.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `since` | string | — | ISO date to filter from (e.g., `"2026-04-01"`) |
+| `developer` | string | — | Filter by developer name |
+| `limit` | number | 20 | Maximum sessions to return |
+
+**Returns:**
+```json
+{
+  "sessions": [
+    {
+      "session_id": "sess-abc",
+      "developer": "alice",
+      "start_time": "2026-04-21T10:00:00.000Z",
+      "duration_ms": 300000,
+      "tool_calls": 45,
+      "efficiency_score": 0.82,
+      "estimated_cost_usd": 0.35,
+      "task_count": 3,
+      "outcome": "completed",
+      "model": "claude-sonnet-4-20250514"
+    }
+  ],
+  "count": 1
+}
+```
+
+**Data source:** `SessionStore`
+
+**How it works:** Loads all session summary JSON files from `~/.nr-ai-observe/sessions/`, applies optional date and developer filters, returns the last N sessions ordered by start time.
+
+**Requires:** `SessionStore`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+
+---
+
+### `nr_observe_get_weekly_summary`
+
+Weekly aggregate report with per-developer breakdown.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `week` | string | current week | ISO week (e.g., `"2026-W16"`) or `"latest"` |
+
+**Returns:** JSON object with weekly aggregates including per-developer metrics, total cost, average efficiency, test pass rates, tool call counts, and anti-pattern tallies by type.
+
+**Data source:** `WeeklySummaryGenerator`
+
+**How it works:**
+1. Resolves the target week (current ISO week if not specified or `"latest"`)
+2. Loads or generates the weekly summary by aggregating all sessions in that week
+3. Groups metrics by developer
+4. Computes: average efficiency, total cost, test pass rates, tool call counts, anti-pattern counts
+
+**Requires:** `WeeklySummaryGenerator`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+
+---
+
+### `nr_observe_get_trends`
+
+Metric trends over time, aggregated by ISO week.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `metric` | string | `"efficiency"` | `"efficiency"`, `"cost"`, `"task_success"`, or `"tool_calls"` |
+| `developer` | string | — | Filter by developer name |
+| `weeks` | number | 8 | Number of weeks to include |
+
+**Returns:**
+```json
+{
+  "metric": "efficiency",
+  "weeks": 8,
+  "data_points": [
+    { "week": "2026-W14", "value": 0.72 },
+    { "week": "2026-W15", "value": 0.78 }
+  ]
+}
+```
+
+**Data source:** `TrendAnalyzer`
+
+**How each metric is aggregated per week:**
+
+| Metric | Aggregation |
+|--------|-------------|
+| `efficiency` | Mean of `efficiencyScore` across sessions in the week |
+| `cost` | Sum of `estimatedCostUsd` across sessions in the week |
+| `task_success` | Mean of `taskSuccessRate` across sessions in the week |
+| `tool_calls` | Mean of `toolCallCount` across sessions in the week |
+
+**Requires:** `TrendAnalyzer`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+
+---
+
+### `nr_observe_get_collaboration_profile`
+
+Developer collaboration style profile with team comparison.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `developer` | string | `"unknown"` | Developer name |
+
+**Returns:**
+```json
+{
+  "developer": "alice",
+  "classification": "Power User",
+  "dimensions": { "specificity": 0.8, "autonomy": 0.9, "correctionRate": 0.1, "taskComplexity": 0.6 },
+  "session_count": 25,
+  "team_comparison": { "specificity": 0.15, "autonomy": 0.1 }
+}
+```
+
+**Data source:** `CollaborationProfiler`
+
+**Dimension calculations:**
+
+| Dimension | How Computed |
+|-----------|-------------|
+| **Specificity** | Estimated from tool call patterns and file modification specificity |
+| **Autonomy** | `1 - (userCorrections / taskCount)` — how often the developer redirects the AI |
+| **Correction rate** | `corrections / sessionCount` — frequency of course corrections |
+| **Task complexity** | `(toolCallsPerTask * filesModifiedPerTask) / baseline` |
+
+**Classification rules:**
+
+| Classification | Rule |
+|---------------|------|
+| Power User | specificity > 0.7 AND autonomy > 0.7 |
+| Delegator | specificity < 0.3 AND autonomy > 0.7 |
+| Learning | specificity < 0.3 AND correctionRate > 0.5 |
+| Collaborative | All others |
+
+Team comparison shows the delta between this developer's dimensions and the team average.
+
+**Requires:** `CollaborationProfiler`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/collaboration-profile.ts`
+
+---
+
+### `nr_observe_get_claudemd_impact`
+
+Before/after impact analysis of the most recent CLAUDE.md change.
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "change": { "file": "CLAUDE.md", "type": "modified", "timestamp": "2026-04-21T10:00:00.000Z" },
+  "before": { "avgEfficiencyScore": 0.72, "avgCostUsd": 0.45, "sessionCount": 10 },
+  "after": { "avgEfficiencyScore": 0.85, "avgCostUsd": 0.38, "sessionCount": 8 },
+  "deltas": { "efficiencyScore": { "value": 0.13, "percentChange": 18.1 } },
+  "context_tokens": 1250,
+  "verdict": "Positive impact"
+}
+```
+
+**Data source:** `ClaudeMdTracker`
+
+**How it works:**
+1. Detects CLAUDE.md changes by monitoring Write/Edit tool calls targeting `CLAUDE.md` or `.claude/` files
+2. Partitions sessions into before/after windows around the change timestamp
+3. Computes aggregate metrics for each window (average efficiency, cost, correction rate, tool calls per task, task success rate)
+4. Calculates deltas with percent change
+5. Estimates context token cost: `charCount * 0.25` (tokens-per-char heuristic)
+6. Generates verdict: compares the top changed metrics — "Positive impact" if 2+ improved, "Negative impact" if 2+ degraded, "Mixed impact" otherwise
+
+**Requires:** `ClaudeMdTracker`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/claudemd-tracker.ts`
+
+---
+
+### `nr_observe_get_cost_per_outcome`
+
+Cost attribution by outcome type with waste ratio and ROI estimate.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `since` | string | — | ISO date to filter tasks from |
+
+**Returns:**
+```json
+{
+  "outcome_distribution": {
+    "bug_fix": { "count": 3, "totalCost": 0.45, "avgCost": 0.15 },
+    "feature": { "count": 2, "totalCost": 0.80, "avgCost": 0.40 },
+    "failed_attempt": { "count": 1, "totalCost": 0.20, "avgCost": 0.20 }
+  },
+  "waste_ratio": 0.12,
+  "total_cost": 1.65,
+  "total_tasks": 8,
+  "roi_estimate": {
+    "totalAiCost": 1.65,
+    "estimatedHoursSaved": 12.5,
+    "estimatedValueUsd": 937.50,
+    "roi": 56718
+  }
+}
+```
+
+**Data source:** `CostPerOutcomeAnalyzer`, `TaskDetector`
+
+**Outcome classification (priority order — first match wins):**
+
+| Outcome | Detection Rule |
+|---------|---------------|
+| `failed_attempt` | Tests failed and never recovered within the task |
+| `bug_fix` | Sequence: test FAIL → Edit → test PASS |
+| `feature` | New files created (Write tool calls) |
+| `configuration` | Only config files modified (`.json`, `.yaml`, `.yml`, `.toml`, etc.) |
+| `documentation` | Only `.md` files modified |
+| `investigation` | Mostly Read/Grep/Glob calls with few or no modifications |
+| `refactor` | Default — existing files modified, tests pass |
+
+**ROI estimation:**
+- Hours saved per outcome type: bug_fix=2h, feature=4h, refactor=1.5h, investigation=0.5h, configuration=0.5h, documentation=1h, failed_attempt=0h
+- `estimatedValueUsd = hoursSaved * hourlyRate` (default: $75/hr)
+- `roi = (estimatedValueUsd - totalAiCost) / totalAiCost * 100`
+- `wasteRatio = failedAttemptCost / totalCost`
+
+**Requires:** `CostPerOutcomeAnalyzer`, `TaskDetector`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/cost-per-outcome.ts`
+
+---
+
+### `nr_observe_get_recommendations`
+
+Personalized optimization recommendations from multiple analyzers.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `developer` | string | `"unknown"` | Developer name |
+| `topN` | number | — | Maximum recommendations to return |
+
+**Returns:**
+```json
+{
+  "recommendations": [
+    {
+      "id": "abc123",
+      "category": "cost",
+      "priority": "high",
+      "title": "Reduce failed attempts",
+      "detail": "12% of your spend is on tasks that ultimately failed.",
+      "evidence": "3 failed tasks totaling $0.20",
+      "estimatedSavings": "$0.15/week"
+    }
+  ],
+  "count": 5
+}
+```
+
+**Data source:** `RecommendationEngine` (aggregates from multiple sub-analyzers)
+
+**Recommendation categories and sources:**
+
+| Category | Source Analyzer | Example |
+|----------|----------------|---------|
+| Cost optimization | `CostPerOutcomeAnalyzer` | "Reduce failed attempts" |
+| Efficiency | `TrendAnalyzer` | "Speed is declining week-over-week" |
+| Prompt engineering | `PromptFeedbackEngine` | "Multi-step tasks improve efficiency" |
+| CLAUDE.md | `ClaudeMdTracker` | "Update CLAUDE.md with task patterns" |
+| Model selection | `TrendAnalyzer` | "Consider switching to a faster model" |
+
+Recommendations are deduplicated by ID (hash of title + category), sorted by priority (high > medium > low), and optionally limited to `topN`.
+
+**Requires:** `RecommendationEngine`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/recommendation-engine.ts`
+
+---
+
+### `nr_observe_get_personal_insights`
+
+Narrative coaching report comparing this week's personal AI coding metrics against the developer's historical baseline. Generates highlights, regressions, streaks, and a top recommendation as plain English strings — no LLM call is made; narrative is built from template expressions over computed deltas.
+
+**Parameters:** None
+
+**Returns (when ≥ 2 weeks of history exist):**
+```json
+{
+  "status": "ok",
+  "developer": "alice",
+  "generatedAt": 1747526400000,
+  "weeksAnalyzed": 4,
+  "highlights": [
+    "Your efficiency score this week (78) is 8 points above your historical average."
+  ],
+  "regressions": [
+    "Cost per session this week ($0.62) is 35% above your average ($0.46)."
+  ],
+  "streaks": [
+    "Efficiency score has improved for 3 consecutive weeks. Keep it up."
+  ],
+  "topRecommendation": "Review your longest sessions this week and identify which tasks could be broken into smaller, more focused sessions.",
+  "thisWeek": {
+    "weekId": "2026-W20",
+    "totalCostUsd": 6.20,
+    "avgCostPerSession": 0.62,
+    "avgEfficiencyScore": 78,
+    "antiPatternCount": 4,
+    "antiPatternRate": 0.02,
+    "sessionsCount": 10,
+    "avgToolCallsPerSession": 20,
+    "topAntiPattern": "stuck_loop"
+  },
+  "lastWeek": { "weekId": "2026-W19", "...": "same shape as thisWeek" },
+  "baseline": { "weekId": "baseline", "...": "mean across all loaded weeks" }
+}
+```
+
+**Returns (when fewer than 2 weeks exist):**
+```json
+{
+  "status": "insufficient_data",
+  "developer": "alice",
+  "weeksAvailable": 1,
+  "weeksRequired": 2,
+  "message": "Need at least 2 weeks of session history to generate personal insights. Currently have 1. Keep using the AI coding assistant and check back next week."
+}
+```
+
+**Data source:** `WeeklySummaryGenerator.loadRecentWeeks(8)` — pulls up to 8 weeks of `WeeklySummary` from disk, filters to the configured `developer`, and ignores weeks with zero sessions for that developer.
+
+**How each section is determined:**
+
+| Section | Trigger |
+|---------|---------|
+| `highlights` | Efficiency ≥ 5 points above baseline; cost-per-session ≥ 15% below baseline; anti-pattern rate ≥ 20% below last week |
+| `regressions` | Efficiency ≥ 5 points below baseline; cost-per-session ≥ 25% above baseline; anti-pattern rate ≥ 25% above baseline (with the dominant pattern named) |
+| `streaks` | ≥ 2 consecutive weeks of efficiency improvement, or ≥ 2 consecutive weeks of cost-per-session reduction (only when 3+ weeks of data exist) |
+| `topRecommendation` | First non-empty match against: anti-pattern spike → cost spike → efficiency drop → first regression. If no regressions: positive reinforcement when efficiency ≥ 70, otherwise a generic "maintain patterns" message |
+
+`baseline` is the mean of each metric across all loaded weeks (up to 8). `topAntiPattern` in the baseline is the pattern that appears most frequently as the per-week top anti-pattern.
+
+**Requires:** `WeeklySummaryGenerator` and a configured `developer` identity (registered conditionally — the tool is omitted when either is missing).
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/personal-coach.ts`
+
+---
+
+### `nr_observe_get_platform_comparison`
+
+Side-by-side comparison of AI coding platforms on a given metric.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `metric` | string | `"efficiency"` | `"efficiency"`, `"cost"`, `"task_success"`, `"tool_calls"`, or `"error_rate"` |
+| `weeks` | number | 4 | Number of weeks to include |
+
+**Returns:**
+```json
+{
+  "metric": "efficiency",
+  "weeks": 4,
+  "platforms": {
+    "claude-code": { "session_count": 20, "average": 0.78 },
+    "cursor": { "session_count": 5, "average": 0.65 }
+  }
+}
+```
+
+**Data source:** `SessionStore`
+
+**How each metric is computed per platform:**
+
+| Metric | Aggregation |
+|--------|-------------|
+| `efficiency` | Mean of `efficiencyScore` across platform's sessions |
+| `cost` | Mean of `estimatedCostUsd` |
+| `task_success` | Mean of `taskSuccessRate` |
+| `tool_calls` | Mean of `toolCallCount` |
+| `error_rate` | Mean of `(1 - taskSuccessRate)` |
+
+Sessions are grouped by platform (defaults to `"claude-code"` if not set). Only sessions within the lookback window are included.
+
+**Requires:** `SessionStore`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+
+---
+
+## Cost and Budget Tools
+
+### `nr_observe_get_budget_status`
+
+Current spend against configured session/daily/weekly budget caps.
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "session": {
+    "budgetUsd": 5.00,
+    "spentUsd": 2.15,
+    "remainingUsd": 2.85,
+    "pctUsed": 43,
+    "exceeded": false
+  },
+  "daily": {
+    "budgetUsd": 10.00,
+    "spentUsd": 4.32,
+    "remainingUsd": 5.68,
+    "pctUsed": 43,
+    "exceeded": false
+  },
+  "weekly": {
+    "budgetUsd": 50.00,
+    "spentUsd": 18.90,
+    "remainingUsd": 31.10,
+    "pctUsed": 38,
+    "exceeded": false
+  }
+}
+```
+
+**Data source:** `BudgetTracker`
+
+**How it works:**
+- Tracks cumulative spend per period (session, day, week)
+- Compares against thresholds from config: `sessionBudgetUsd`, `dailyBudgetUsd`, `weeklyBudgetUsd`
+- Returns `null` for any budget not configured
+- Returns `exceeded: true` when spend >= budget
+
+**Requires:** `BudgetTracker`
+
+**Config fields:**
+- `NEW_RELIC_AI_SESSION_BUDGET_USD` — session spend limit in USD
+- `NEW_RELIC_AI_DAILY_BUDGET_USD` — daily spend limit in USD
+- `NEW_RELIC_AI_WEEKLY_BUDGET_USD` — weekly spend limit in USD
+
+Source: `packages/nr-ai-mcp-server/src/tools/cost-tools.ts`
+
+---
+
+### `nr_observe_get_cost_forecast`
+
+Projects future spend based on current session burn rate.
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "current_session": {
+    "startTime": "2026-04-21T10:00:00.000Z",
+    "elapsedMs": 3600000,
+    "currentCostUsd": 0.45,
+    "burnRateUsd_per_hour": 0.45
+  },
+  "projections": {
+    "end_of_session": { "estimatedCostUsd": 0.90, "confidence": "medium", "basis": "Assumes 2-hour session" },
+    "end_of_day": { "estimatedCostUsd": 2.70, "confidence": "low", "basis": "Assumes 6 more hours of coding today" },
+    "end_of_week": { "estimatedCostUsd": 15.75, "confidence": "low", "basis": "Assumes 5 more days at current rate" }
+  }
+}
+```
+
+**Data source:** `CostTracker`, `BudgetTracker`, session start time
+
+**How it works:**
+1. Computes `burnRateUsd_per_hour = currentCostUsd / elapsedHours`
+2. **End-of-session** projection: assumes typical 2-hour session, medium confidence
+3. **End-of-day** projection: assumes remaining hours until midnight at current burn rate, low confidence
+4. **End-of-week** projection: extrapolates 5 more days at current rate, low confidence
+5. Confidence decreases with longer horizons due to variability in work patterns
+
+**Requires:** `BudgetTracker`, `CostTracker`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cost-tools.ts`
+
+---
+
+## Analytics Tools
+
+### `nr_observe_get_context_efficiency`
+
+Context window efficiency: unique vs. repeated file reads.
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "uniqueFilesRead": 12,
+  "totalReadOperations": 28,
+  "repeatedReadCount": 16,
+  "repeatedReadRatio": 0.57,
+  "topRepeatedFiles": [
+    { "file": "src/app.ts", "readCount": 5 },
+    { "file": "src/utils.ts", "readCount": 3 }
+  ],
+  "estimatedWasteRatio": 0.57
+}
+```
+
+**Data source:** `ContextWindowTracker`
+
+**How it works:**
+- Tracks every Read tool call and the file path accessed
+- Counts how many times each file was read
+- `repeatedReadCount` = sum of `(readCount - 1)` for files read > 1 time
+- `repeatedReadRatio` = `repeatedReadCount / totalReadOperations`
+- High ratio suggests the model is losing context and re-reading instead of retaining
+
+**Requires:** `ContextWindowTracker`
+
+Source: `packages/nr-ai-mcp-server/src/tools/analytics-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/context-window-tracker.ts`
+
+---
+
+### `nr_observe_get_latency_percentiles`
+
+Tool call latency: p50, p95, p99 per tool type.
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "global": { "p50": 45, "p95": 280, "p99": 1200 },
+  "by_tool": {
+    "Read": { "p50": 25, "p95": 120, "p99": 450, "sample_count": 15 },
+    "Edit": { "p50": 60, "p95": 320, "p99": 2100, "sample_count": 8 },
+    "Bash": { "p50": 150, "p95": 800, "p99": 5000, "sample_count": 3 }
+  }
+}
+```
+
+**Data source:** `LatencyTracker`
+
+**How it works:**
+- Collects `durationMs` from every tool call
+- Computes percentiles globally and per tool type
+- Percentiles indicate typical (p50), slow (p95), and very slow (p99) performance
+- Helps identify bottleneck tools
+
+**Requires:** `LatencyTracker`
+
+Source: `packages/nr-ai-mcp-server/src/tools/analytics-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/latency-tracker.ts`
+
+---
+
+### `nr_observe_get_task_completion_rate`
+
+Task lifecycle tracking: completed vs. in-progress vs. abandoned.
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "detected_tasks": 8,
+  "completed": 6,
+  "in_progress": 1,
+  "abandoned": 1,
+  "completion_rate": 0.75,
+  "avg_duration_ms": 480000,
+  "avg_tool_calls_per_task": 12
+}
+```
+
+**Data source:** `TaskCompletionTracker`
+
+**How it works:**
+- Uses `TaskDetector` output to identify task boundaries
+- Tracks state transitions: new → in-progress → completed (or abandoned if work stops)
+- `completion_rate` = `completed / (completed + abandoned)`
+- Helps identify whether tasks are finishing successfully
+
+**Requires:** `TaskCompletionTracker`, `TaskDetector`
+
+Source: `packages/nr-ai-mcp-server/src/tools/analytics-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/task-completion-tracker.ts`
+
+---
+
+### `nr_observe_get_model_usage`
+
+Which AI model was used per request and cost-efficiency per model.
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "model_distribution": {
+    "claude-sonnet-4-6": { "request_count": 25, "total_cost": 0.42, "avg_cost": 0.017, "efficiency_score": 0.82 },
+    "claude-opus-4-7": { "request_count": 3, "total_cost": 0.18, "avg_cost": 0.060, "efficiency_score": 0.88 }
+  },
+  "total_requests": 28,
+  "total_cost": 0.60,
+  "cost_per_request": 0.021
+}
+```
+
+**Data source:** `ModelUsageTracker`
+
+**How it works:**
+- Tracks `model` field from each request (e.g., "claude-sonnet-4-6")
+- Aggregates cost per model
+- Computes `efficiency_score` for each model: `(completedTasks / failedAttempts) / (costPerRequest / averageCostPerRequest)`
+- Helps identify cost-effectiveness of model choices
+
+**Requires:** `ModelUsageTracker`
+
+Source: `packages/nr-ai-mcp-server/src/tools/analytics-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/model-usage-tracker.ts`
+
+---
+
+## Cross-Session and Team Tools
+
+### `nr_observe_get_team_summary`
+
+Aggregated AI coding cost and efficiency metrics for all developers in the configured team, queried via New Relic NRQL.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `since` | string | `"7 days ago"` | Time window (e.g. `"7 days ago"`, `"1 day ago"`) |
+
+**Returns:**
+```json
+{
+  "teamId": "backend-team",
+  "since": "7 days ago",
+  "developers": [
+    { "developer": "alice", "costUsd": 4.20, "efficiencyScore": 0.78, "antiPatterns": 3 },
+    { "developer": "bob", "costUsd": 2.15, "efficiencyScore": 0.65, "antiPatterns": 7 }
+  ],
+  "totals": {
+    "costUsd": 6.35,
+    "developerCount": 2
+  }
+}
+```
+
+**Data source:** New Relic NerdGraph (NRQL queries against `Metric` and `AiAntiPattern` event types)
+
+**How it works:**
+1. Runs three parallel NRQL queries against NR via NerdGraph: cost sum, avg efficiency score, and anti-pattern count — all faceted by `developer` and filtered by `team_id`
+2. Merges results by developer name
+3. Returns error message (not stack trace) when `teamId` or `nrApiKey` is not configured
+
+**Requires:** `teamId` and `nrApiKey` (`NEW_RELIC_API_KEY`) both configured
+
+**Config fields:**
+- `NEW_RELIC_AI_TEAM_ID` — team identifier for aggregation
+- `NEW_RELIC_API_KEY` — User API key (NRAK-...) for NerdGraph queries
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+
+---
+
+## Digest and Subscription Tools
+
+### `nr_observe_subscribe_digest`
+
+Register a Slack webhook URL to receive weekly AI coding cost and efficiency summaries.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `webhookUrl` | string | Yes | Slack incoming webhook URL (must start with `https://hooks.slack.com/`) |
+
+**Returns:**
+```json
+{
+  "ok": true,
+  "message": "Webhook registered. Digest will be sent on the configured schedule."
+}
+```
+
+**Data source:** Config file (`~/.nr-ai-observe/config.json`)
+
+**How it works:**
+1. Validates the webhook URL starts with `https://hooks.slack.com/`
+2. Reads the existing config file (or starts with an empty object)
+3. Writes `digestWebhookUrl` to the config file with `0o600` permissions
+
+**Config fields:**
+- `NEW_RELIC_AI_DIGEST_WEBHOOK_URL` — Slack incoming webhook endpoint
+- `NEW_RELIC_AI_DIGEST_SCHEDULE` — cron expression for digest delivery (default: `"0 9 * * 1"`)
+
+**Requires:** `configFilePath`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+
+---
+
+### `nr_observe_unsubscribe_digest`
+
+Remove the registered Slack webhook for weekly digests.
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "ok": true,
+  "message": "Webhook removed."
+}
+```
+
+**Data source:** Config file (`~/.nr-ai-observe/config.json`)
+
+**How it works:**
+- Reads the existing config file
+- Deletes `digestWebhookUrl` from the config and writes it back
+
+**Requires:** `configFilePath`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+
+---
+
+### `nr_observe_send_digest`
+
+Generate the current weekly AI coding summary and POST it to the configured Slack webhook immediately.
+
+**Parameters:** None
+
+**Returns:**
+```json
+{
+  "ok": true,
+  "week": "2026-W20",
+  "message": "Digest sent successfully."
+}
+```
+
+**Data source:** `WeeklySummaryGenerator` + config file webhook URL
+
+**How it works:**
+1. Reads `digestWebhookUrl` from the config file at call time
+2. Generates the current week's summary via `WeeklySummaryGenerator`
+3. Formats a Slack Block Kit payload via `formatSlackDigest()`
+4. POSTs the payload to the webhook URL
+
+**Requires:** `configFilePath` + `WeeklySummaryGenerator`
+
+Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`

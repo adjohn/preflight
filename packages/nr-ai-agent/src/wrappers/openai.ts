@@ -10,6 +10,10 @@ import type { Stream } from 'openai/streaming';
 import { randomUUID } from 'node:crypto';
 import { RequestTimer } from '@nr-ai-observatory/shared';
 import type { RequestTimerMetrics } from '@nr-ai-observatory/shared';
+import { extractReasoningMetrics } from '../metrics/reasoning.js';
+import { detectModalities } from '../metrics/multimodal.js';
+import { stripNrMetadata } from '../metrics/cost-attribution.js';
+import { generateConversationIdFromMessages } from '../metrics/conversation.js';
 import type { AiRequestRecord, WrapperConfig, RecordHandler } from '../types.js';
 
 type CreateFn = OpenAI['chat']['completions']['create'];
@@ -80,6 +84,8 @@ function extractContentBlockTypes(
 function buildBaseRecord(
   params: CreateParams,
   config: WrapperConfig,
+  requestMethod: string,
+  streaming: boolean,
 ): Omit<
   AiRequestRecord,
   | 'durationMs'
@@ -107,8 +113,8 @@ function buildBaseRecord(
     provider: 'openai',
     model: '',
     requestModel: params.model,
-    requestMethod: '',
-    streaming: false,
+    requestMethod,
+    streaming,
     maxTokens: params.max_tokens ?? null,
     temperature: params.temperature ?? null,
     topP: params.top_p ?? null,
@@ -127,6 +133,9 @@ function buildBaseRecord(
       shouldCapture && rawUserMessage !== null
         ? truncate(rawUserMessage, config.contentMaxLength)
         : null,
+    modalityMetrics: detectModalities(params.messages as unknown[]),
+    requestMetadata: (params as unknown as Record<string, unknown>).metadata as Record<string, unknown> | undefined ?? null,
+    conversationId: generateConversationIdFromMessages(params.messages as unknown[]),
   };
 }
 
@@ -146,6 +155,14 @@ function finalizeRecord(
   );
   const responseContent = response.choices[0]?.message?.content ?? null;
 
+  const reasoningMetrics = extractReasoningMetrics({
+    thinkingTokens,
+    outputTokens,
+    thinkingBudgetTokens: base.thinkingBudgetTokens,
+    thinkingDurationMs: metrics.thinkingDurationMs,
+    totalDurationMs: metrics.durationMs,
+  });
+
   return {
     ...base,
     model: response.model,
@@ -163,6 +180,7 @@ function finalizeRecord(
       shouldCapture && responseContent !== null
         ? truncate(responseContent, config.contentMaxLength)
         : null,
+    reasoningMetrics,
     error: null,
   };
 }
@@ -191,6 +209,7 @@ function buildErrorRecord(
     stopReason: null,
     contentBlockTypes: [],
     responseText: null,
+    reasoningMetrics: null,
     error: {
       type: error.error?.type ?? (err instanceof Error ? err.constructor.name : 'Unknown'),
       message: truncate(redact(rawMessage, config.redactionPatterns), 1024),
@@ -261,6 +280,14 @@ function wrapChunkStream(
       if (accumulatedText) contentBlockTypes.push('text');
       if (hasToolCalls) contentBlockTypes.push('tool_use');
 
+      const reasoningMetrics = extractReasoningMetrics({
+        thinkingTokens,
+        outputTokens,
+        thinkingBudgetTokens: base.thinkingBudgetTokens,
+        thinkingDurationMs: metrics.thinkingDurationMs,
+        totalDurationMs: metrics.durationMs,
+      });
+
       const record: AiRequestRecord = {
         ...base,
         model,
@@ -278,6 +305,7 @@ function wrapChunkStream(
           shouldCapture && accumulatedText
             ? truncate(accumulatedText, config.contentMaxLength)
             : null,
+        reasoningMetrics,
         error: null,
       };
       onRecord(record);
@@ -310,14 +338,19 @@ function wrapCreate(
     body: CreateParams,
     options?: Parameters<CreateFn>[1],
   ): ReturnType<CreateFn> {
-    if ('stream' in body && body.stream === true) {
-      const base = buildBaseRecord(body, config);
-      base.requestMethod = 'chat.completions.create';
-      base.streaming = true;
+    // Strip metadata.nr before forwarding to SDK (nr fields are for observability only)
+    const rawMeta = (body as unknown as Record<string, unknown>).metadata;
+    const strippedMeta = stripNrMetadata(rawMeta);
+    const cleanBody: CreateParams = rawMeta !== strippedMeta
+      ? { ...body, ...(strippedMeta !== undefined ? { metadata: strippedMeta } : {}) } as CreateParams
+      : body;
+
+    if ('stream' in cleanBody && cleanBody.stream === true) {
+      const base = buildBaseRecord(body, config, 'chat.completions.create', true);
       const timer = new RequestTimer();
       timer.start();
 
-      const streamBody = { ...body, stream_options: { include_usage: true } };
+      const streamBody = { ...cleanBody, stream_options: { include_usage: true } };
       const promise = original.call(
         this,
         streamBody as ChatCompletionCreateParamsStreaming,
@@ -329,15 +362,13 @@ function wrapCreate(
       ) as ReturnType<CreateFn>;
     }
 
-    const base = buildBaseRecord(body, config);
-    base.requestMethod = 'chat.completions.create';
-    base.streaming = false;
+    const base = buildBaseRecord(body, config, 'chat.completions.create', false);
     const timer = new RequestTimer();
     timer.start();
 
     const promise = original.call(
       this,
-      body as ChatCompletionCreateParamsNonStreaming,
+      cleanBody as ChatCompletionCreateParamsNonStreaming,
       options,
     ) as Promise<ChatCompletion>;
 

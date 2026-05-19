@@ -1,4 +1,4 @@
-import type { AiRequest, AiResponse, AiMessage, NrEventData } from './types.js';
+import type { AiRequest, AiResponse, AiMessage, AiAgentTaskSummary, AiAntiPattern, AiAgentMessage, AiContextReset, NrEventData } from './types.js';
 
 export function aiRequestToNrEvent(event: AiRequest): NrEventData {
   const data: NrEventData = {
@@ -90,6 +90,109 @@ export function aiMessageToNrEvent(event: AiMessage): NrEventData {
 
   for (const [key, value] of Object.entries(event.customAttributes)) {
     data[`custom.${key}`] = value;
+  }
+
+  return data;
+}
+
+export function aiAgentTaskSummaryToNrEvent(event: AiAgentTaskSummary): NrEventData {
+  const data: NrEventData = {
+    eventType: 'AiAgentTaskSummary',
+    id: event.id,
+    timestamp: event.timestamp,
+    traceId: event.traceId,
+    spanId: event.spanId,
+    taskName: event.taskName,
+    'ai.agent.task_duration_ms': event.durationMs,
+    'ai.agent.total_steps': event.stepCount,
+    'ai.agent.llm_calls_per_task': event.totalLlmCalls,
+    'ai.agent.tool_calls_per_task': event.totalToolCalls,
+    'ai.agent.tokens_per_task': event.totalTokens,
+    'ai.agent.task_success': event.success,
+    'nr.appName': event['nr.appName'],
+  };
+
+  if (event.totalCostUsd !== null) data['ai.agent.cost_per_task_usd'] = event.totalCostUsd;
+  if (event.delegationCount !== undefined) data['ai.agent.delegation_count'] = event.delegationCount;
+  if (event.spawnCount !== undefined) data['ai.agent.spawn_count'] = event.spawnCount;
+  if (event.delegationDepth !== undefined) data['ai.agent.delegation_depth'] = event.delegationDepth;
+  if (event.interAgentMessages !== undefined) data['ai.agent.inter_agent_messages'] = event.interAgentMessages;
+  if (event.delegationOverheadMs !== undefined) data['ai.agent.delegation_overhead_ms'] = event.delegationOverheadMs;
+
+  for (const [key, value] of Object.entries(event.customAttributes)) {
+    data[key] = value;
+  }
+
+  return data;
+}
+
+export function aiAntiPatternToNrEvent(event: AiAntiPattern): NrEventData {
+  const data: NrEventData = {
+    eventType: 'AiAntiPattern',
+    id: event.id,
+    timestamp: event.timestamp,
+    traceId: event.traceId,
+    type: event.patternType,
+    severity: event.severity,
+    description: event.description,
+    'nr.appName': event['nr.appName'],
+  };
+
+  if (event.toolName !== undefined) data.toolName = event.toolName;
+  if (event.repeatCount !== undefined) data.repeatCount = event.repeatCount;
+  if (event.depthIndex !== undefined) data.depthIndex = event.depthIndex;
+  if (event.taskComplexity !== undefined) data.taskComplexity = event.taskComplexity;
+  if (event.contextPressure !== undefined) data.contextPressure = event.contextPressure;
+  if (event.tokenShare !== undefined) data.tokenShare = event.tokenShare;
+  if (event.attemptCount !== undefined) data.attemptCount = event.attemptCount;
+
+  for (const [key, value] of Object.entries(event.customAttributes)) {
+    data[key] = value;
+  }
+
+  return data;
+}
+
+export function aiAgentMessageToNrEvent(event: AiAgentMessage): NrEventData {
+  const data: NrEventData = {
+    eventType: 'AiAgentMessage',
+    id: event.id,
+    timestamp: event.timestamp,
+    traceId: event.traceId,
+    fromAgent: event.fromAgent,
+    toAgent: event.toAgent,
+    messageType: event.messageType,
+    'nr.appName': event['nr.appName'],
+  };
+
+  if (event.tokenCount !== undefined) data.tokenCount = event.tokenCount;
+
+  for (const [key, value] of Object.entries(event.customAttributes)) {
+    data[key] = value;
+  }
+
+  return data;
+}
+
+export function aiContextResetToNrEvent(event: AiContextReset): NrEventData {
+  const data: NrEventData = {
+    eventType: 'AiContextReset',
+    id: event.id,
+    timestamp: event.timestamp,
+    traceId: event.traceId,
+    conversationId: event.conversationId,
+    tokensBefore: event.tokensBefore,
+    tokensAfter: event.tokensAfter,
+    tokensRemoved: event.tokensRemoved,
+    compressionRatio: event.compressionRatio,
+    reason: event.reason,
+    'nr.appName': event['nr.appName'],
+  };
+
+  if (event.turnsRemoved !== undefined) data.turnsRemoved = event.turnsRemoved;
+
+  for (const [key, value] of Object.entries(event.customAttributes)) {
+    data[key] = value;
   }
 
   return data;

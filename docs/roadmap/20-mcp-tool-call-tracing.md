@@ -1,6 +1,6 @@
 # Implementation Plan: MCP Tool Call Tracing
 
-**Roadmap item:** [20 — MCP Tool Call Tracing](../../ROADMAP.md#20-mcp-tool-call-tracing)
+**Roadmap item:** [20 — MCP Tool Call Tracing](../ROADMAP.md#20-mcp-tool-call-tracing)
 **Effort estimate:** ~3 days
 **Prerequisites:** Read `packages/nr-ai-mcp-server/src/hooks/event-processor.ts`, `packages/nr-ai-mcp-server/src/server.ts`, and `packages/nr-ai-mcp-server/src/storage/types.ts` before starting. Items 17 and 18 must be complete first — this plan depends on the OTel SDK dependencies from item 18.
 
@@ -23,6 +23,12 @@ Before starting, read these files end-to-end:
 - `packages/nr-ai-mcp-server/src/storage/types.ts` — `ToolCallRecord` and `HookEvent` interfaces
 - `packages/nr-ai-mcp-server/src/metrics/task-detector.ts` — task boundary detection to use for task spans
 - `packages/shared/src/transport/otlp-transport.ts` (from item 18) — provides the tracer
+
+---
+
+## Step 0 — Add OTel dependency to `packages/nr-ai-mcp-server`
+
+`packages/nr-ai-mcp-server/package.json` currently has no `@opentelemetry` entries. Before writing any tracing files, add `"@opentelemetry/api": "^1.9.0"` to the `dependencies` block in `packages/nr-ai-mcp-server/package.json` and run `npm install` from the repo root. (`@opentelemetry/sdk-trace-node` and the exporters live in `packages/shared` — `nr-ai-mcp-server` only needs the API package for span types and `trace.getTracer()`.)
 
 ---
 
@@ -229,11 +235,13 @@ export class TaskSpanTracker {
 
 ---
 
-## Step 3 — Wire tracing into `NrMcpServer`
+## Step 3 — Wire tracing into `index.ts`
 
-In `packages/nr-ai-mcp-server/src/server.ts`:
+All modifications in this step go into `packages/nr-ai-mcp-server/src/index.ts`. Do **not** modify `server.ts` — `NrMcpServer` is a thin shell that holds no tracker references, no sessionTraceId, and has no `start()`/`stop()` methods. All tracker instances and the `onRecord` callback live inside the `main()` function's `if (options.stdio)` block.
 
 ### 3a — Import and create session/task span infrastructure
+
+Add the imports near the top of `index.ts`:
 
 ```typescript
 import { initMcpTracer } from './tracing/mcp-tracer.js';
@@ -242,49 +250,82 @@ import { TaskSpanTracker } from './tracing/task-span-tracker.js';
 import { emitToolCallSpan } from './tracing/tool-call-span.js';
 ```
 
-In the constructor or `start()` method:
+Inside the `if (options.stdio)` block, after the line `const sessionTraceId = randomUUID();`, add:
 
 ```typescript
 if (config.transport !== 'nr-events-api') {
   initMcpTracer();
 }
-const sessionSpan = new SessionSpan(this.sessionTraceId, config.developer);
+const sessionSpan = new SessionSpan(sessionTraceId, config.developer);
 const taskSpanTracker = new TaskSpanTracker();
 if (config.transport !== 'nr-events-api') {
   sessionSpan.start();
 }
 ```
 
+Note: `sessionTraceId` and `config.developer` are local variables already available at this point in `main()`.
+
 ### 3b — Emit tool call spans in the `onRecord` callback
 
-In the existing `onRecord` callback that feeds `ToolCallRecord` objects to the metric trackers, add:
+Inside the existing `onRecord` callback (the function passed to `new HookEventProcessor({ ..., onRecord: (record) => { ... } })`), add the following **before** the `taskDetector.recordToolCall(record)` call so the active task ID is captured before any boundary event fires:
+
+```typescript
+// Capture active task ID before recordToolCall may close the current task
+const taskIdBeforeRecord = config.transport !== 'nr-events-api'
+  ? taskDetector.getActiveTaskId()
+  : null;
+```
+
+Then immediately after `taskDetector.recordToolCall(record)`, add the span emission and new-task detection:
 
 ```typescript
 if (config.transport !== 'nr-events-api') {
-  // Determine active task for this record
-  const activeTaskId = this.taskDetector.getActiveTaskId(record);
+  // Emit tool call span — parent is the active task span (or session span if no task)
+  const activeTaskId = taskDetector.getActiveTaskId();
   const parentCtx = activeTaskId
     ? taskSpanTracker.getContext(activeTaskId, sessionSpan.getContext())
     : sessionSpan.getContext();
-
   emitToolCallSpan(record, parentCtx, activeTaskId ?? undefined);
+
+  // Open a task span if a new task was started by this record
+  if (activeTaskId !== null && activeTaskId !== taskIdBeforeRecord) {
+    taskSpanTracker.openTask(activeTaskId, record.toolName, sessionSpan.getContext());
+  }
 }
 ```
 
-### 3c — Open/close task spans on task boundary events
+### 3c — Close task spans when tasks complete
 
-`TaskDetector` currently just exposes `getMetrics()`. Extend it (or add a listener pattern) so that when a task boundary is detected, `NrMcpServer` can open and close task spans via `TaskSpanTracker`. The simplest approach: after `taskDetector.recordToolCall(record)`, check if the current task ID changed and open/close spans accordingly.
+Inside the existing `for (const task of taskDetector.drainNewlyCompletedTasks())` loop (already present in `onRecord` around line 278), add the task span closure alongside the existing `capturedNrIngest.ingestCodingTask(task)` call:
+
+```typescript
+for (const task of taskDetector.drainNewlyCompletedTasks()) {
+  capturedNrIngest.ingestCodingTask(task);
+  taskCompletionTracker.recordTask(task);
+  // Close the task span — this handles both signal-driven and idle-timer-driven closures
+  if (config.transport !== 'nr-events-api') {
+    taskSpanTracker.closeTask(task.taskId, task.toolCallCount);
+  }
+  // ... existing antiPatternDetector.analyze() code unchanged ...
+}
+```
+
+This is the correct hook for task closures: `drainNewlyCompletedTasks()` fires for all close triggers including idle-timer-based ones, which happen asynchronously and cannot be caught by comparing before/after `getActiveTaskId()`.
 
 ### 3d — End session span on shutdown
 
-In the `stop()` / shutdown logic:
+In the `shutdown` async function in `main()`, add before `eventProcessor?.stop()`:
 
 ```typescript
-taskSpanTracker.closeAll();
-const stats = sessionTracker.getMetrics();
-const taskMetrics = taskDetector.getMetrics();
-sessionSpan.end(stats.totalToolCalls, taskMetrics.detectedTaskCount);
+if (config.transport !== 'nr-events-api') {
+  taskSpanTracker.closeAll();
+  const stats = sessionTracker.getMetrics();
+  const taskMetrics = taskDetector.getMetrics();
+  sessionSpan.end(stats.totalToolCalls, taskMetrics.totalTasksCompleted);
+}
 ```
+
+Note: the correct field is `taskMetrics.totalTasksCompleted` (from `TaskMetrics` interface), not `taskMetrics.detectedTaskCount`.
 
 ---
 
@@ -351,6 +392,7 @@ packages/nr-ai-mcp-server/src/tracing/task-span-tracker.test.ts
 Files to **modify**:
 
 ```
-packages/nr-ai-mcp-server/src/server.ts               — wire session/task/tool-call spans
+packages/nr-ai-mcp-server/package.json                 — add @opentelemetry/api dependency
+packages/nr-ai-mcp-server/src/index.ts                 — wire session/task/tool-call spans
 packages/nr-ai-mcp-server/src/metrics/task-detector.ts — add getActiveTaskId()
 ```

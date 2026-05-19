@@ -6,6 +6,8 @@ import { createLogger } from '@nr-ai-observatory/shared';
 import type { LogLevel } from '@nr-ai-observatory/shared';
 import type { CliOptions } from './types.js';
 import type { UpstreamConfig } from './proxy/types.js';
+import type { PersonalAlertThresholds } from './alerts/types.js';
+import { DEFAULT_PERSONAL_THRESHOLDS } from './alerts/types.js';
 
 const logger = createLogger('mcp-config');
 
@@ -36,6 +38,7 @@ export interface McpServerConfig {
   readonly digestWebhookUrl: string | null;
   readonly digestSchedule: string; // cron expression, default: "0 9 * * 1" (Monday 9am)
   readonly retainSessionsDays: number | null;
+  readonly personalAlertThresholds: PersonalAlertThresholds;
 }
 
 const DEFAULT_STORAGE_PATH = resolve(homedir(), '.nr-ai-observe');
@@ -54,6 +57,21 @@ const DEFAULT_REDACTION_PATTERNS: RegExp[] = [
 // N-07: strip control chars and truncate before the value reaches any NR event field or log
 export function sanitizeDeveloper(raw: string): string {
   return raw.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 128) || 'unknown';
+}
+
+/**
+ * Produces a lowercase, NRQL-safe identifier from a raw developer name.
+ * "John Doe" → "john_doe", "my.user@host" → "my_user_host"
+ */
+export function normalizeDeveloperName(raw: string): string {
+  return raw
+    .replace(/[\x00-\x1f\x7f]/g, '')  // strip control chars
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '_')     // collapse non-alphanumeric runs to _
+    .replace(/^_+|_+$/g, '')           // strip leading/trailing underscores
+    .slice(0, 64)
+    || 'unknown';
 }
 
 function sanitizeOrgField(value: string | null | undefined): string | null {
@@ -245,7 +263,7 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       process.env.NEW_RELIC_AI_MODEL ??
       (typeof file.model === 'string' ? file.model : 'claude-sonnet-4-6'),
 
-    developer: sanitizeDeveloper(
+    developer: normalizeDeveloperName(
       process.env.NEW_RELIC_AI_MCP_DEVELOPER ??
       (typeof file.developer === 'string' ? file.developer : inferDeveloper()),
     ),
@@ -361,6 +379,22 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
         if (Number.isFinite(v) && v > 0) return v;
       }
       return typeof file.retainSessionsDays === 'number' ? file.retainSessionsDays : null;
+    })(),
+
+    personalAlertThresholds: (() => {
+      const fileThresholds = typeof file.alerts === 'object' && file.alerts !== null
+        ? (file.alerts as Record<string, unknown>).personal
+        : undefined;
+      if (typeof fileThresholds !== 'object' || fileThresholds === null) {
+        return DEFAULT_PERSONAL_THRESHOLDS;
+      }
+      const t = fileThresholds as Record<string, unknown>;
+      return {
+        dailyCostUsd:        typeof t.dailyCostUsd === 'number'       ? t.dailyCostUsd       : DEFAULT_PERSONAL_THRESHOLDS.dailyCostUsd,
+        sessionCostUsd:      typeof t.sessionCostUsd === 'number'     ? t.sessionCostUsd     : DEFAULT_PERSONAL_THRESHOLDS.sessionCostUsd,
+        efficiencyScoreMin:  typeof t.efficiencyScoreMin === 'number' ? t.efficiencyScoreMin : DEFAULT_PERSONAL_THRESHOLDS.efficiencyScoreMin,
+        stuckLoopCountMax:   typeof t.stuckLoopCountMax === 'number'  ? t.stuckLoopCountMax  : DEFAULT_PERSONAL_THRESHOLDS.stuckLoopCountMax,
+      };
     })(),
   };
 

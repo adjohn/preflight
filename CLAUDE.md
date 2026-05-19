@@ -1,6 +1,6 @@
 # NR AI Observatory
 
-An npm workspaces monorepo providing observability for AI coding assistants. Four packages: `@nr-ai-observatory/shared` (transport, events, pricing), `nr-ai-agent` (SDK client wrappers for Anthropic/Gemini/OpenAI), `nr-ai-mcp-server` (MCP server + metrics engine + HTTP proxy), and `nr-ai-cicd` (CI/CD PR cost reporting). All telemetry flows to New Relic.
+An npm workspaces monorepo providing observability for AI coding assistants. Five packages: `@nr-ai-observatory/shared` (transport, events, pricing), `nr-ai-agent` (SDK client wrappers for Anthropic/Gemini/OpenAI), `nr-ai-mcp-server` (MCP server + metrics engine + HTTP proxy), `nr-ai-cicd` (CI/CD PR cost reporting), and `nr-ai-github-app` (GitHub App webhook server that posts the same PR cost reports without requiring GitHub Actions). All telemetry flows to New Relic.
 
 ## Development Commands
 
@@ -47,10 +47,23 @@ nr-ai-observatory/
     nr-ai-agent/                        # nr-ai-agent
       src/
         agent.ts                        # NrAiAgent class + singleton init()
-        wrappers/
+        wrappers/                       # 6 SDK wrappers
           anthropic.ts                  # Wraps Anthropic client (messages.create/stream)
           gemini.ts                     # Wraps Google Gemini client (generateContent)
           openai.ts                     # Wraps OpenAI client (chat.completions.create/stream)
+          bedrock.ts                    # Wraps AWS Bedrock client (InvokeModel/InvokeModelWithResponseStream)
+          mistral.ts                    # Wraps Mistral client (chat.complete/chat.stream)
+          cohere.ts                     # Wraps Cohere client (chat/chatStream)
+        intelligence/                   # Phase 4 intelligence modules
+          semantic-drift.ts             # SemanticDriftDetector — embedding-based drift detection
+          anomaly-detection.ts          # AnomalyDetector — z-score signal monitoring (3 categories)
+          cost-forecasting.ts           # CostForecaster — linear regression cost projection
+          recommendations.ts            # RecommendationEngine — cache/model/context recommendations
+          experiments.ts                # ExperimentTracker — A/B experiment tracking with t-tests
+        export/                         # Phase 4 export modules
+          otel.ts                       # OTelExporter — OpenTelemetry OTLP/HTTP export (opt-in)
+        api/                            # Phase 4 custom instrumentation
+          custom-metrics.ts             # CustomMetricsManager — user-defined metrics/events/spans
 
     nr-ai-mcp-server/                   # nr-ai-mcp-server
       src/
@@ -61,7 +74,7 @@ nr-ai-observatory/
           collector-script.ts           # nr-ai-observe binary (hook event collector)
           event-processor.ts            # Pairs pre/post hook events into ToolCallRecords
           tool-parsers.ts               # INPUT_PARSERS / OUTPUT_PARSERS for tool fields
-        metrics/                        # 12 analyzer classes
+        metrics/                        # 18 analyzer classes
           session-tracker.ts            # Per-session tool call tracking
           cost-tracker.ts               # Token cost calculation (per-model)
           task-detector.ts              # Task boundary detection
@@ -74,12 +87,20 @@ nr-ai-observatory/
           prompt-feedback.ts            # Feedback collection engine
           recommendation-engine.ts      # Personalized optimization recommendations
           proxy-metrics.ts              # Proxy mode server latency and tool popularity tracking
-        platforms/                      # Platform adapters
-          claude-code-adapter.ts        # Claude Code
+          budget-tracker.ts             # Session/daily/weekly budget monitoring
+          context-window-tracker.ts     # Context waste detection (repeated file reads)
+          latency-tracker.ts            # Tool call latency percentiles (p50/p95/p99)
+          task-completion-tracker.ts    # Task lifecycle tracking (completed/abandoned)
+          model-usage-tracker.ts        # Cost-efficiency per AI model
+          personal-coach.ts             # Narrative coaching report comparing weekly metrics to personal baseline
+        platforms/                      # 7 platform adapters
+          claude-code-adapter.ts        # Claude Code (default)
           cursor-adapter.ts             # Cursor IDE
           windsurf-adapter.ts           # Windsurf IDE
           copilot-adapter.ts            # GitHub Copilot
-          generic-mcp-adapter.ts        # Generic MCP
+          zed-adapter.ts                # Zed IDE
+          continue-adapter.ts           # Continue.dev
+          amazon-q-adapter.ts           # Amazon Q Developer
           platform-registry.ts          # Registry + factory
         proxy/                          # HTTP proxy layer
           proxy-manager.ts              # HTTP server, routing, interception
@@ -89,6 +110,10 @@ nr-ai-observatory/
           local-store.ts                # JSONL buffer file + atomic drain
           session-store.ts              # Session history (YYYY-MM-DD_sessionId.json)
           weekly-summary.ts             # Cross-session weekly aggregation
+          retention.ts                  # purgeOldSessions() — delete sessions older than N days
+        digest/                         # Weekly digest formatting and delivery
+          digest-formatter.ts           # formatSlackDigest() — Slack Block Kit payload builder
+          digest-sender.ts              # sendSlackDigest() — HTTP POST to Slack webhook
         security/
           audit-trail.ts                # Security audit trail (sensitive files, destructive commands)
         tools/                          # MCP tool handlers
@@ -101,10 +126,34 @@ nr-ai-observatory/
           log-ingest.ts                 # Log ingestion with buffering
         install/                        # Claude Code hook installation CLI
           cli.ts                        # nr-ai-observe install/uninstall commands
-        dashboards/                     # Pre-built NR dashboard JSON files
-        alerts/                         # Alert policy and condition definitions
-          policy.json                   # Policy metadata (name, incident preference)
-          conditions/                   # NRQL alert condition JSON files
+          setup-wizard.ts               # nr-ai-observe setup interactive wizard
+        alerts/                         # Alert TypeScript types + validation tests
+          types.ts                      # AlertConditionDefinition, AlertPolicyDefinition interfaces
+          alerts.test.ts                # JSON structure validation (reads from ../alerts/)
+      alerts/                           # Alert policy and condition JSON definitions (data, not source)
+        policy.json                     # Policy metadata (name, incident preference)
+        conditions/                     # NRQL alert condition JSON files
+      dashboards/                       # Pre-built NR dashboard JSON files (data, not source)
+      scripts/                          # Deploy scripts (deploy-dashboard.ts, deploy-alerts.ts)
+
+    nr-ai-cicd/                         # nr-ai-cicd
+      src/
+        nrql-client.ts                  # runNrql() — NerdGraph NRQL executor
+        metrics-fetcher.ts              # fetchCurrentMetrics(), fetchBaselineMetrics()
+        report-formatter.ts             # formatReport() — markdown/JSON report generator
+        report-cli.ts                   # nr-ai-report CLI entry point
+        index.ts                        # Public API exports
+      actions/
+        ai-report/
+          action.yml                    # GitHub Actions composite action
+      .gitlab-ci-template.yml           # GitLab CI template
+
+    nr-ai-github-app/                   # nr-ai-github-app
+      src/
+        config.ts                       # AppConfig loader (env-only; fail-fast on missing vars)
+        pr-handler.ts                   # handlePullRequest() — fetches metrics + posts PR comment + optional commit status
+        server.ts                       # createWebhookServer() — @octokit/app + node:http
+        index.ts                        # CLI entry point (nr-ai-github-app binary)
 
     test-app/                           # E2E integration test for nr-ai-agent
       src/index.ts                      # Exercises full agent pipeline
@@ -158,6 +207,8 @@ Application code
 - `shared` has zero runtime dependencies (pure TypeScript)
 - `nr-ai-agent` depends on `shared`; peer-depends on `@anthropic-ai/sdk` and `@google/genai`
 - `nr-ai-mcp-server` depends on `shared`, `@modelcontextprotocol/sdk`, `zod`, `commander`
+- `nr-ai-cicd` depends on `shared`; peer-depends on `commander`
+- `nr-ai-github-app` depends on `nr-ai-cicd` and `@octokit/app`; reuses `fetchCurrentMetrics`, `fetchBaselineMetrics`, and `formatReport` from `nr-ai-cicd` unchanged
 
 ## TypeScript Conventions
 
@@ -224,6 +275,46 @@ Tools are registered in `src/tools/session-stats.ts` via `registerTools()`, whic
 
 Tools are conditionally registered based on available dependencies (e.g., cross-session tools only register when `SessionStore` + `WeeklySummaryGenerator` are available).
 
+### MCP Tools (16 total)
+
+**Session Tools:**
+- `nr_observe_get_session_stats` — current session metrics
+- `nr_observe_get_session_timeline` — recent tool calls with timestamps
+- `nr_observe_get_efficiency_score` — composite efficiency scoring
+
+**Cost and Budget Tools:**
+- `nr_observe_get_cost_breakdown` — cost by tool type and model
+- `nr_observe_get_cost_forecast` — project future spend
+- `nr_observe_get_budget_status` — current spend vs. budget caps
+
+**Workflow and Anti-Pattern Tools:**
+- `nr_observe_get_anti_patterns` — detected thrashing, re-reads, blind edits, stuck loops
+- `nr_observe_get_workflow_trace` — ordered sequence of recent tool calls
+
+**Analytics Tools:**
+- `nr_observe_get_context_efficiency` — context window waste (repeated reads)
+- `nr_observe_get_latency_percentiles` — p50/p95/p99 per tool type
+- `nr_observe_get_task_completion_rate` — task lifecycle (completed vs. abandoned)
+- `nr_observe_get_model_usage` — cost-efficiency per AI model
+
+**Cross-Session Tools (require SessionStore + WeeklySummaryGenerator):**
+- `nr_observe_get_weekly_summary` — aggregated metrics across the week
+- `nr_observe_get_trends` — weekly metric trends (efficiency, cost, task success)
+- `nr_observe_get_team_summary` — team-level aggregations
+- `nr_observe_get_collaboration_profile` — developer working style classification
+- `nr_observe_get_claudemd_impact` — CLAUDE.md change impact analysis
+- `nr_observe_get_cost_per_outcome` — cost breakdown by task outcome type
+- `nr_observe_get_recommendations` — personalized optimization recommendations
+- `nr_observe_get_personal_insights` — narrative coaching report vs. personal weekly baseline
+- `nr_observe_get_platform_comparison` — side-by-side platform metrics
+
+**Digest and Subscription Tools:**
+- `nr_observe_subscribe_digest` — register webhook for weekly summaries
+- `nr_observe_unsubscribe_digest` — disable digest delivery
+- `nr_observe_send_digest` — generate and POST the current week's digest immediately
+
+See [COMMANDS_TABLE.md](./docs/COMMANDS_TABLE.md) for complete tool specifications.
+
 ## Configuration
 
 Config loading priority: **CLI > environment variables > config file > defaults**.
@@ -233,6 +324,57 @@ The config file path defaults to `~/.nr-ai-observe/config.json` or can be passed
 Key config interfaces:
 - `McpServerConfig` in `nr-ai-mcp-server/src/config.ts`
 - `AgentConfig` in `shared/src/config.ts`
+
+### New Configuration Fields (Phases 6–10)
+
+| Field | Env Var | Type | Purpose |
+|-------|---------|------|---------|
+| `developer` | `NEW_RELIC_AI_MCP_DEVELOPER` | string | Developer identifier on all NR events. Normalised to lowercase with underscores via `normalizeDeveloperName()`. Falls back to `$USER` → `$USERNAME` → `git config user.name` → `'unknown'` when unset. |
+| `sessionBudgetUsd` | `NEW_RELIC_AI_SESSION_BUDGET_USD` | number | Session spend limit (USD) |
+| `dailyBudgetUsd` | `NEW_RELIC_AI_DAILY_BUDGET_USD` | number | Daily spend limit (USD) |
+| `weeklyBudgetUsd` | `NEW_RELIC_AI_WEEKLY_BUDGET_USD` | number | Weekly spend limit (USD) |
+| `teamId` | `NEW_RELIC_AI_TEAM_ID` | string | Team identifier for aggregation |
+| `projectId` | `NEW_RELIC_AI_PROJECT_ID` | string | Project identifier (auto-derived from git) |
+| `orgId` | `NEW_RELIC_AI_ORG_ID` | string | Organization identifier |
+| `nrApiKey` | `NEW_RELIC_API_KEY` | string | User API key (NRAK-...) for team summary NerdGraph queries |
+| `digestWebhookUrl` | `NEW_RELIC_AI_DIGEST_WEBHOOK_URL` | string | Slack/HTTP webhook for weekly digest |
+| `digestSchedule` | `NEW_RELIC_AI_DIGEST_SCHEDULE` | string | Cron expression for digest delivery |
+| `retainSessionsDays` | `NEW_RELIC_AI_RETAIN_SESSIONS_DAYS` | number | Auto-purge sessions older than N days |
+
+### New Event Types
+
+| Event Type | Emitted By | Use Case |
+|-----------|-----------|----------|
+| `AiBudgetWarning` | `BudgetTracker` | Budget threshold crossed (50%, 80%, 100%) |
+
+### Enhanced Events
+
+All MCP server events (`AiToolCall`, `AiCodingTask`, `AiAntiPattern`, `AiMcpToolCall`, `AiProxyRequest`, `AiAuditEvent`) now include team attribution fields:
+- `team_id` — team identifier (from config)
+- `project_id` — project identifier (auto-derived or configured)
+- `org_id` — organization identifier (from config)
+
+### Phase 4 SDK Agent Events
+
+Emitted by `nr-ai-agent` from the intelligence modules (Phases 4.1–4.7):
+
+| Event Type | Emitted By | Cadence | Use Case |
+|-----------|-----------|---------|----------|
+| `AiCostGrowthAlert` | `CostForecaster` | On threshold | Monthly cost growth rate exceeded configured threshold |
+| `AiCostForecastAlert` | `CostForecaster` | On threshold | Projected monthly cost exceeds configured budget |
+| `AiExperimentSummary` | `ExperimentTracker` | Every 6 hours | Per-experiment results snapshot with per-variant stats |
+| `AiExperimentConclusion` | `ExperimentTracker` | On conclusion | Winner declared or end date reached — fires once per experiment |
+| `AiRecommendation` | `RecommendationEngine` | Every 5 minutes | Automated optimization recommendations (cache, model, context) |
+
+### Provider Support
+
+SDK agent wrappers now support 6 AI providers:
+- `anthropic` — Anthropic Claude models
+- `google` — Google Gemini models
+- `openai` — OpenAI GPT/o1/o3 models
+- `bedrock` — AWS Bedrock models
+- `mistral` — Mistral AI models
+- `cohere` — Cohere models
 
 ## Storage
 
@@ -258,7 +400,7 @@ All local persistence lives under `~/.nr-ai-observe/` by default:
 
 ## Security
 
-See [SECURITY.md](./SECURITY.md) for the full guidelines, invariants, and code review checklist. Key points:
+See [SECURITY.md](./docs/SECURITY.md) for the full guidelines, invariants, and code review checklist. Key points:
 
 - **Redaction** — `DEFAULT_REDACTION_PATTERNS` in `nr-ai-mcp-server/src/config.ts` covers API keys, Bearer tokens, AWS/Google/npm/Slack secrets, JWTs, and PEM blocks. Apply `redact()` / `redactSensitive()` before any string reaches a log or NR event field.
 - **Input validation** — `accountId` is validated as `/^\d{1,12}$/` at config load. `envInt` callers supply `{ min, max }` bounds. Tool names are truncated to 256 chars with control chars stripped.
@@ -289,7 +431,7 @@ Run `npm run lint` before committing to verify the lint target is still met.
 - Factory helpers (`makeRecord`, `makeSummary`, etc.) use optional `Partial<T>` overrides
 - Fake timers (`jest.useFakeTimers()`) for harvest scheduler and poll interval tests
 - Temp directories via `os.tmpdir()` + cleanup in `afterEach` for storage tests
-- See [TEST_PATTERNS.md](./TEST_PATTERNS.md) for full conventions
+- See [TEST_PATTERNS.md](./docs/TEST_PATTERNS.md) for full conventions
 
 ## Git Commit Conventions
 

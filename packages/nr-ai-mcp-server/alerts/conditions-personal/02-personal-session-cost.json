@@ -1,0 +1,16 @@
+{
+  "name": "AI Personal Session Cost — {{developer}}",
+  "description": "Fires when a single session by {{developer}} exceeds the personal session cost threshold.",
+  "enabled": true,
+  "nrqlQuery": "SELECT max(ai.cost.session_total_usd) FROM Metric WHERE developer = '{{developer}}' FACET session_id",
+  "aggregationMethod": "EVENT_FLOW",
+  "aggregationWindow": 300,
+  "aggregationDelay": 120,
+  "thresholdOperator": "ABOVE",
+  "thresholdCritical": {
+    "value": "__sessionCostUsd__",
+    "duration": 300,
+    "occurrences": "AT_LEAST_ONCE"
+  },
+  "violationTimeLimitSeconds": 86400
+}

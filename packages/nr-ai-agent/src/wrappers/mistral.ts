@@ -2,6 +2,9 @@ import type { Mistral } from '@mistralai/mistralai';
 import { randomUUID } from 'node:crypto';
 import { RequestTimer } from '@nr-ai-observatory/shared';
 import type { RequestTimerMetrics } from '@nr-ai-observatory/shared';
+import { extractReasoningMetrics } from '../metrics/reasoning.js';
+import { generateConversationIdFromMessages } from '../metrics/conversation.js';
+import { detectModalities } from '../metrics/multimodal.js';
 import type { AiRequestRecord, WrapperConfig, RecordHandler } from '../types.js';
 
 function truncate(text: string, maxLength: number): string {
@@ -51,6 +54,8 @@ function mapStopReason(finishReason: string | null | undefined): string | null {
 function buildBaseRecord(
   params: Record<string, unknown>,
   config: WrapperConfig,
+  requestMethod: string,
+  streaming: boolean,
 ): Omit<
   AiRequestRecord,
   | 'durationMs'
@@ -77,8 +82,8 @@ function buildBaseRecord(
     provider: 'mistral',
     model: '',
     requestModel: String(params.model ?? ''),
-    requestMethod: '',
-    streaming: false,
+    requestMethod,
+    streaming,
     maxTokens: params.max_tokens ? Number(params.max_tokens) : null,
     temperature: params.temperature ? Number(params.temperature) : null,
     topP: params.top_p ? Number(params.top_p) : null,
@@ -97,6 +102,8 @@ function buildBaseRecord(
       shouldCapture && rawUserMessage
         ? truncate(rawUserMessage, config.contentMaxLength)
         : null,
+    conversationId: generateConversationIdFromMessages(messages),
+    modalityMetrics: detectModalities(messages),
   };
 }
 
@@ -117,6 +124,14 @@ function finalizeRecord(
   const content = message?.content;
   const responseText = extractResponseText(typeof content === 'string' ? content : null);
 
+  const reasoningMetrics = extractReasoningMetrics({
+    thinkingTokens: 0,
+    outputTokens,
+    thinkingBudgetTokens: null,
+    thinkingDurationMs: null,
+    totalDurationMs: metrics.durationMs,
+  });
+
   return {
     ...base,
     model: base.requestModel,
@@ -134,6 +149,7 @@ function finalizeRecord(
       shouldCapture && responseText
         ? truncate(responseText, config.contentMaxLength)
         : null,
+    reasoningMetrics,
     error: null,
   };
 }
@@ -166,6 +182,7 @@ function buildErrorRecord(
     stopReason: null,
     contentBlockTypes: [],
     responseText: null,
+    reasoningMetrics: null,
     error: {
       type: err instanceof Error ? err.constructor.name : 'Unknown',
       message: truncate(redact(rawMessage, config.redactionPatterns), 1024),
@@ -183,9 +200,7 @@ function wrapComplete(
     this: unknown,
     params: Record<string, unknown>,
   ): Promise<unknown> {
-    const base = buildBaseRecord(params, config);
-    base.requestMethod = 'chat.complete';
-    base.streaming = false;
+    const base = buildBaseRecord(params, config, 'chat.complete', false);
     const timer = new RequestTimer();
     timer.start();
 
@@ -212,9 +227,7 @@ function wrapStream(
     this: unknown,
     params: Record<string, unknown>,
   ): unknown {
-    const base = buildBaseRecord(params, config);
-    base.requestMethod = 'chat.stream';
-    base.streaming = true;
+    const base = buildBaseRecord(params, config, 'chat.stream', true);
     const timer = new RequestTimer();
     timer.start();
 
@@ -259,11 +272,19 @@ function wrapStream(
         }
 
         timer.stop();
+        const streamMetrics = timer.getMetrics();
+        const reasoningMetrics = extractReasoningMetrics({
+          thinkingTokens: 0,
+          outputTokens,
+          thinkingBudgetTokens: null,
+          thinkingDurationMs: null,
+          totalDurationMs: streamMetrics.durationMs,
+        });
         const record: AiRequestRecord = {
           ...base,
           model: base.requestModel,
-          durationMs: timer.getMetrics().durationMs,
-          timeToFirstTokenMs: timer.getMetrics().timeToFirstTokenMs,
+          durationMs: streamMetrics.durationMs,
+          timeToFirstTokenMs: streamMetrics.timeToFirstTokenMs,
           inputTokens,
           outputTokens,
           thinkingTokens: 0,
@@ -276,6 +297,7 @@ function wrapStream(
             shouldCapture && accumulatedText
               ? truncate(accumulatedText, config.contentMaxLength)
               : null,
+          reasoningMetrics,
           error: null,
         };
         onRecord(record);

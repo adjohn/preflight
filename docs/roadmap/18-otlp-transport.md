@@ -1,6 +1,6 @@
 # Implementation Plan: OTLP Transport Option
 
-**Roadmap item:** [18 — OTLP Transport Option](../../ROADMAP.md#18-otlp-transport-option)
+**Roadmap item:** [18 — OTLP Transport Option](../ROADMAP.md#18-otlp-transport-option)
 **Effort estimate:** ~2 days
 **Prerequisites:** Read `packages/shared/src/transport/`, `packages/shared/src/harvest/harvest-scheduler.ts`, and `packages/shared/src/config.ts` before starting. Item 17 (GenAI semantic convention mapping) should be complete first so OTLP spans carry standardized attribute names.
 
@@ -52,7 +52,7 @@ Defaults in `loadConfig()`:
 
 ### 1b — `McpServerConfig` (`packages/nr-ai-mcp-server/src/config.ts`)
 
-Add the same three fields to `McpServerConfig` with the same defaults. Wire them from env vars and config file in `loadMcpServerConfig()`.
+Add the same three fields to `McpServerConfig` with the same defaults. Wire them from env vars and config file in `loadMcpConfig()`.
 
 ---
 
@@ -65,7 +65,8 @@ In `packages/shared/package.json`, add to `dependencies`:
 "@opentelemetry/sdk-trace-node": "^1.25.0",
 "@opentelemetry/exporter-trace-otlp-http": "^0.52.0",
 "@opentelemetry/exporter-metrics-otlp-http": "^0.52.0",
-"@opentelemetry/sdk-metrics": "^1.25.0"
+"@opentelemetry/sdk-metrics": "^1.25.0",
+"@opentelemetry/resources": "^1.25.0"
 ```
 
 Run `npm install` from the repo root after editing.
@@ -100,10 +101,15 @@ export class OtlpTransport {
   private readonly metricExporter: OTLPMetricExporter;
   private readonly tracerProvider: BasicTracerProvider;
   private readonly meterProvider: MeterProvider;
+  private readonly endpoint: string;
+  private readonly headers: Record<string, string>;
   private started = false;
 
   constructor(options: OtlpTransportOptions) {
     const resource = new Resource({ 'service.name': options.appName });
+
+    this.endpoint = options.endpoint;
+    this.headers = options.headers ?? {};
 
     this.traceExporter = new OTLPTraceExporter({
       url: `${options.endpoint}/v1/traces`,
@@ -149,6 +155,43 @@ export class OtlpTransport {
 
   getMeter(name: string) {
     return this.meterProvider.getMeter(name);
+  }
+
+  async exportMetrics(metrics: NrMetric[]): Promise<void> {
+    if (metrics.length === 0) return;
+    const payload = {
+      resourceMetrics: [{
+        resource: { attributes: [{ key: 'service.name', value: { stringValue: this.endpoint } }] },
+        scopeMetrics: [{
+          scope: { name: 'nr-ai-observatory' },
+          metrics: metrics.map(m => ({
+            name: m.name,
+            gauge: {
+              dataPoints: [{
+                timeUnixNano: Date.now() * 1_000_000,
+                asDouble: m.value,
+                attributes: Object.entries(m.attributes ?? {}).map(([key, value]) => ({
+                  key,
+                  value: typeof value === 'number' ? { doubleValue: value } : { stringValue: String(value) },
+                })),
+              }],
+            },
+          })),
+        }],
+      }],
+    };
+    try {
+      const response = await fetch(`${this.endpoint}/v1/metrics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.headers },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        logger.warn('OTLP metric export failed', { status: response.status });
+      }
+    } catch (err) {
+      logger.warn('OTLP metric export error', { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 }
 ```
@@ -213,7 +256,7 @@ export class OtlpEventBridge {
 }
 ```
 
-Add `@opentelemetry/exporter-logs-otlp-http` and `@opentelemetry/sdk-logs` to the dependencies in `packages/shared/package.json`.
+Add `"@opentelemetry/exporter-logs-otlp-http": "^0.52.0"` and `"@opentelemetry/sdk-logs": "^1.25.0"` to the dependencies in `packages/shared/package.json`.
 
 ---
 
@@ -236,7 +279,7 @@ export interface HarvestSchedulerOptions {
 In the flush methods, route based on the `transport` config:
 
 - `'nr-events-api'` (default): existing behavior unchanged
-- `'otlp'`: skip NR Events/Metric API calls; use `otlpEventBridge.sendEvents()` instead
+- `'otlp'`: skip NR Events/Metric API calls; call `otlpEventBridge.sendEvents(batch)` for events and `await otlpTransport.exportMetrics(batch)` for metrics
 - `'both'`: call both paths concurrently (`Promise.all`)
 
 ---
@@ -244,6 +287,8 @@ In the flush methods, route based on the `transport` config:
 ## Step 6 — Wire up in `NrAiAgent` (`packages/nr-ai-agent/src/agent.ts`)
 
 When `config.otlpEndpoint` is set, create an `OtlpTransport` and `OtlpEventBridge` and pass them to `HarvestScheduler`. Add `otlpTransport.start()` after creation and `await otlpTransport.shutdown()` in the agent teardown.
+
+Note: `agent.ts` already has `private readonly otelExporter: OTelExporter` (from `./export/otel.ts`) initialized at construction and returned via `getOTelExporter()`. This is a separate, unrelated exporter used for custom span/metric export by consumers of the agent. Leave it unchanged — the new `OtlpTransport` wires into the scheduler for automatic telemetry routing.
 
 ---
 

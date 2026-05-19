@@ -841,4 +841,63 @@ describe('wrapAnthropicClient', () => {
       expect(records[0].totalTokens).toBe(110); // 80 + 30
     });
   });
+
+  describe('per-request attribution via metadata.nr', () => {
+    it('extracts metadata.nr into requestMetadata on the record', async () => {
+      const message = makeMessage();
+      const client = makeMockClient();
+      client.messages.create.mockResolvedValue(message);
+
+      const config = makeConfig();
+      const { records, handler } = makeRecorder();
+      wrapAnthropicClient(client as unknown as Anthropic, config, handler);
+
+      await client.messages.create(makeCreateParams({
+        metadata: { user_id: 'user-1', nr: { feature: 'code-review', team: 'backend' } },
+      }));
+
+      expect(records[0].requestMetadata).toEqual({
+        user_id: 'user-1',
+        nr: { feature: 'code-review', team: 'backend' },
+      });
+    });
+
+    it('strips metadata.nr from params before forwarding to the SDK', async () => {
+      const message = makeMessage();
+      const client = makeMockClient();
+      const originalCreate = client.messages.create; // save ref before wrapping replaces it
+      originalCreate.mockResolvedValue(message);
+
+      const config = makeConfig();
+      const { handler } = makeRecorder();
+      wrapAnthropicClient(client as unknown as Anthropic, config, handler);
+
+      await client.messages.create(makeCreateParams({
+        metadata: { user_id: 'user-1', nr: { feature: 'code-review' } },
+      }));
+
+      const sdkCallArg = originalCreate.mock.calls[0][0] as Record<string, unknown>;
+      const sdkMetadata = sdkCallArg.metadata as Record<string, unknown>;
+      expect(sdkMetadata.user_id).toBe('user-1');
+      expect(sdkMetadata.nr).toBeUndefined();
+    });
+
+    it('does not modify params when no metadata.nr is present', async () => {
+      const message = makeMessage();
+      const client = makeMockClient();
+      const originalCreate = client.messages.create; // save ref before wrapping replaces it
+      originalCreate.mockResolvedValue(message);
+
+      const config = makeConfig();
+      const { records, handler } = makeRecorder();
+      wrapAnthropicClient(client as unknown as Anthropic, config, handler);
+
+      const params = makeCreateParams({ metadata: { user_id: 'user-2' } });
+      await client.messages.create(params);
+
+      const sdkCallArg = originalCreate.mock.calls[0][0] as Record<string, unknown>;
+      expect(sdkCallArg).toBe(params); // same object reference — no copy made
+      expect(records[0].requestMetadata).toEqual({ user_id: 'user-2' });
+    });
+  });
 });

@@ -66,6 +66,9 @@ export class NrMcpServer {
         claudeMdTracker: options.claudeMdTracker,
         costPerOutcomeAnalyzer: options.costPerOutcomeAnalyzer,
         recommendationEngine: options.recommendationEngine,
+        developer: options.developer,
+        teamId: options.teamId,
+        projectId: options.projectId,
       });
     } else {
       this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -129,6 +132,9 @@ export function createServer(options?: Partial<ServerOptions>): NrMcpServer {
   const resolved: ServerOptions = {
     name: options?.name ?? 'nr-ai-observability',
     version: options?.version ?? VERSION,
+    developer: options?.developer,
+    teamId: options?.teamId,
+    projectId: options?.projectId,
     sessionTracker: options?.sessionTracker,
     costTracker: options?.costTracker,
     taskDetector: options?.taskDetector,

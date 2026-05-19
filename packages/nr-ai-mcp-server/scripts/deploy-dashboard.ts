@@ -11,6 +11,7 @@
  *   --all           Deploy all dashboard JSON files in the dashboards/ directory.
  *   --update        Update existing dashboards in-place (matched by name). Errors if not found.
  *   --print         Print the JSON with accountIds filled in (for NR UI import) and exit.
+ *   --staging       Target the New Relic staging API (staging-api.newrelic.com).
  *
  * Examples:
  *   npx tsx scripts/deploy-dashboard.ts
@@ -29,9 +30,11 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { normalizeDeveloperName } from '../src/config.js';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const NERDGRAPH_URL = 'https://api.newrelic.com/graphql';
+let NERDGRAPH_URL = 'https://api.newrelic.com/graphql';
 
 export const CREATE_MUTATION = `
 mutation DashboardCreate($accountId: Int!, $dashboard: DashboardInput!) {
@@ -148,14 +151,34 @@ function loadDashboard(dashboardFile: string, accountId: number): DashboardJson 
   return injectAccountId(JSON.parse(raw) as DashboardJson, accountId);
 }
 
+function injectDeveloperDefault(dashboard: DashboardJson, developer: string): void {
+  if (!dashboard.variables) return;
+  for (const variable of dashboard.variables) {
+    if (variable.name === 'developer') {
+      variable.defaultValues = [{ value: { string: developer } }];
+      return;
+    }
+  }
+}
+
 function printEntity(entity: { guid: string; name: string }): void {
   console.log(`  ✓ ${entity.name}`);
   console.log(`    GUID: ${entity.guid}`);
   console.log(`    URL:  https://one.newrelic.com/dashboards/detail/${entity.guid}`);
 }
 
-async function deployDashboard(apiKey: string, accountId: number, dashboardFile: string): Promise<void> {
+async function deployDashboard(
+  apiKey: string,
+  accountId: number,
+  dashboardFile: string,
+  developerOverride: string | null,
+): Promise<void> {
   const dashboard = loadDashboard(dashboardFile, accountId);
+  if (developerOverride) {
+    const normalised = normalizeDeveloperName(developerOverride);
+    injectDeveloperDefault(dashboard, normalised);
+    console.log(`  Developer default set to: ${normalised}`);
+  }
   console.log(`Deploying dashboard "${dashboard.name}" to account ${accountId}...`);
 
   const result = await nerdgraphRequest<{
@@ -189,8 +212,18 @@ async function deployDashboard(apiKey: string, accountId: number, dashboardFile:
   }
 }
 
-async function updateDashboard(apiKey: string, accountId: number, dashboardFile: string): Promise<void> {
+async function updateDashboard(
+  apiKey: string,
+  accountId: number,
+  dashboardFile: string,
+  developerOverride: string | null,
+): Promise<void> {
   const dashboard = loadDashboard(dashboardFile, accountId);
+  if (developerOverride) {
+    const normalised = normalizeDeveloperName(developerOverride);
+    injectDeveloperDefault(dashboard, normalised);
+    console.log(`  Developer default set to: ${normalised}`);
+  }
   console.log(`Looking up "${dashboard.name}" in account ${accountId}...`);
 
   const guid = await findDashboardGuid(apiKey, accountId, dashboard.name);
@@ -237,7 +270,27 @@ async function main(): Promise<void> {
   const printOnly = args.includes('--print');
   const deployAll = args.includes('--all');
   const updateMode = args.includes('--update');
-  const fileArgs = args.filter((a: string) => !a.startsWith('--'));
+  const staging = args.includes('--staging');
+
+  if (staging) {
+    NERDGRAPH_URL = 'https://staging-api.newrelic.com/graphql';
+    process.stdout.write('Targeting staging API: https://staging-api.newrelic.com/graphql\n');
+  }
+
+  // Parse --developer <name>
+  const developerFlagIndex = args.indexOf('--developer');
+  const developerOverride: string | null = developerFlagIndex !== -1
+    ? (args[developerFlagIndex + 1] ?? null)
+    : null;
+
+  // Drop flags and the value that follows --developer. Guard with
+  // developerFlagIndex !== -1 so that when the flag is absent we don't drop
+  // args[0] (developerFlagIndex + 1 would be 0, the positional filename).
+  const fileArgs = args.filter(
+    (_a: string, i: number) =>
+      !args[i].startsWith('--') &&
+      (developerFlagIndex === -1 || i !== developerFlagIndex + 1),
+  );
 
   const accountIdStr = process.env.NEW_RELIC_ACCOUNT_ID;
   if (!accountIdStr) {
@@ -261,6 +314,9 @@ async function main(): Promise<void> {
     for (const file of files) {
       const raw = readFileSync(resolve(dashboardsDir, file), 'utf-8');
       const dashboard = injectAccountId(JSON.parse(raw) as DashboardJson, accountId);
+      if (developerOverride) {
+        injectDeveloperDefault(dashboard, normalizeDeveloperName(developerOverride));
+      }
       if (files.length > 1) {
         console.log(`\n// ─── ${file} ───`);
       }
@@ -282,9 +338,9 @@ async function main(): Promise<void> {
 
   for (const file of files) {
     if (updateMode) {
-      await updateDashboard(apiKey, accountId, file);
+      await updateDashboard(apiKey, accountId, file, developerOverride);
     } else {
-      await deployDashboard(apiKey, accountId, file);
+      await deployDashboard(apiKey, accountId, file, developerOverride);
     }
   }
   console.log('\nDone.');

@@ -7,7 +7,7 @@ import { createServer } from './server.js';
 import { loadMcpConfig } from './config.js';
 import { ProxyManager } from './proxy/index.js';
 import { LocalStore } from './storage/index.js';
-import { SessionStore } from './storage/session-store.js';
+import { SessionStore, buildSessionSummary } from './storage/session-store.js';
 import { WeeklySummaryGenerator } from './storage/weekly-summary.js';
 import { HookEventProcessor } from './hooks/index.js';
 import { SessionTracker } from './metrics/session-tracker.js';
@@ -116,6 +116,9 @@ async function main(): Promise<void> {
   let eventProcessor: HookEventProcessor | undefined;
   let nrIngest: NrIngestManager | undefined;
   let proxyManager: ProxyManager | undefined;
+  let sessionStore: SessionStore | undefined;
+  let weeklySummaryGenerator: WeeklySummaryGenerator | undefined;
+  let persistSession: (() => void) | undefined;
 
   let shuttingDown = false;
   const shutdown = async () => {
@@ -123,6 +126,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     logger.info('Shutting down...');
     try {
+      persistSession?.();
       eventProcessor?.stop();
       if (nrIngest) await nrIngest.stop();
       if (mcpServer) await mcpServer.close();
@@ -177,10 +181,10 @@ async function main(): Promise<void> {
     const taskCompletionTracker = new TaskCompletionTracker();
     const modelUsageTracker = new ModelUsageTracker();
 
-    const sessionStore = new SessionStore({ storagePath: config.storagePath });
+    sessionStore = new SessionStore({ storagePath: config.storagePath });
     const currentSessionId = sessionTracker.getMetrics().sessionId;
     const { priorDailyCostUsd, priorWeeklyCostUsd } = computeHistoricalCosts(sessionStore, currentSessionId);
-    const weeklySummaryGenerator = new WeeklySummaryGenerator({
+    weeklySummaryGenerator = new WeeklySummaryGenerator({
       storagePath: config.storagePath,
       sessionStore,
     });
@@ -320,10 +324,31 @@ async function main(): Promise<void> {
       sessionStartMs,
       accountId: config.accountId,
       teamId: config.teamId,
+      projectId: config.projectId,
+      developer: config.developer,
       nrApiKey: config.nrApiKey,
       collectorHost: config.collectorHost,
       configFilePath: resolve(config.storagePath, 'config.json'),
     });
+
+    persistSession = () => {
+      if (!sessionStore) return;
+      try {
+        const summary = buildSessionSummary({
+          sessionTracker,
+          costTracker,
+          taskDetector,
+          antiPatternDetector,
+          efficiencyScorer,
+          developer: config.developer ?? 'unknown',
+        });
+        sessionStore.saveSession(summary);
+        weeklySummaryGenerator?.checkAndGenerateLastWeek();
+        logger.info('Session saved', { sessionId: summary.sessionId });
+      } catch (err) {
+        logger.warn('Failed to save session on shutdown', { error: String(err) });
+      }
+    };
 
     eventProcessor.start();
     nrIngest.start();

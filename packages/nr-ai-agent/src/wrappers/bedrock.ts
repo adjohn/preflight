@@ -14,6 +14,9 @@ import type {
 import { randomUUID } from 'node:crypto';
 import { RequestTimer } from '@nr-ai-observatory/shared';
 import type { RequestTimerMetrics } from '@nr-ai-observatory/shared';
+import { extractReasoningMetrics } from '../metrics/reasoning.js';
+import { generateConversationIdFromMessages } from '../metrics/conversation.js';
+import { detectModalities } from '../metrics/multimodal.js';
 import type { AiRequestRecord, WrapperConfig, RecordHandler } from '../types.js';
 
 function truncate(text: string, maxLength: number): string {
@@ -67,6 +70,7 @@ function buildBaseRecord(
   input: ConverseCommandInput,
   config: WrapperConfig,
   requestMethod: string,
+  streaming: boolean,
 ): Omit<
   AiRequestRecord,
   | 'durationMs'
@@ -100,7 +104,7 @@ function buildBaseRecord(
     model: '',
     requestModel: input.modelId ?? '',
     requestMethod,
-    streaming: false,
+    streaming,
     maxTokens,
     temperature,
     topP,
@@ -119,6 +123,8 @@ function buildBaseRecord(
       shouldCapture && rawUserMessage !== null
         ? truncate(rawUserMessage, config.contentMaxLength)
         : null,
+    conversationId: generateConversationIdFromMessages((input.messages ?? []) as unknown[]),
+    modalityMetrics: detectModalities((input.messages ?? []) as unknown[]),
   };
 }
 
@@ -135,6 +141,14 @@ function finalizeRecord(
 
   const responseText = extractResponseText(response.output?.message?.content);
 
+  const reasoningMetrics = extractReasoningMetrics({
+    thinkingTokens: 0,
+    outputTokens,
+    thinkingBudgetTokens: null,
+    thinkingDurationMs: null,
+    totalDurationMs: metrics.durationMs,
+  });
+
   return {
     ...base,
     model: base.requestModel,
@@ -150,6 +164,7 @@ function finalizeRecord(
     contentBlockTypes: extractContentBlockTypes(response.output?.message?.content),
     responseText:
       shouldCapture && responseText ? truncate(responseText, config.contentMaxLength) : null,
+    reasoningMetrics,
     error: null,
   };
 }
@@ -178,6 +193,7 @@ function buildErrorRecord(
     stopReason: null,
     contentBlockTypes: [],
     responseText: null,
+    reasoningMetrics: null,
     error: {
       type: err instanceof Error ? err.constructor.name : 'Unknown',
       message: truncate(redact(rawMessage, config.redactionPatterns), 1024),
@@ -196,7 +212,7 @@ async function interceptConverse(
   extraArgs: unknown[],
 ): Promise<ConverseCommandOutput> {
   const input = command.input;
-  const base = buildBaseRecord(input, config, 'converse');
+  const base = buildBaseRecord(input, config, 'converse', false);
   const timer = new RequestTimer();
   timer.start();
 
@@ -221,8 +237,7 @@ async function interceptConverseStream(
   extraArgs: unknown[],
 ): Promise<unknown> {
   const input = command.input as ConverseStreamCommandInput;
-  const base = buildBaseRecord(input, config, 'converse-stream');
-  base.streaming = true;
+  const base = buildBaseRecord(input, config, 'converse-stream', true);
   const timer = new RequestTimer();
   timer.start();
 
@@ -256,11 +271,19 @@ async function interceptConverseStream(
       }
 
       timer.stop();
+      const streamMetrics = timer.getMetrics();
+      const reasoningMetrics = extractReasoningMetrics({
+        thinkingTokens: 0,
+        outputTokens,
+        thinkingBudgetTokens: null,
+        thinkingDurationMs: null,
+        totalDurationMs: streamMetrics.durationMs,
+      });
       const record: AiRequestRecord = {
         ...base,
         model: base.requestModel,
-        durationMs: timer.getMetrics().durationMs,
-        timeToFirstTokenMs: timer.getMetrics().timeToFirstTokenMs,
+        durationMs: streamMetrics.durationMs,
+        timeToFirstTokenMs: streamMetrics.timeToFirstTokenMs,
         inputTokens,
         outputTokens,
         thinkingTokens: 0,
@@ -273,6 +296,7 @@ async function interceptConverseStream(
           shouldCapture && accumulatedText
             ? truncate(accumulatedText, config.contentMaxLength)
             : null,
+        reasoningMetrics,
         error: null,
       };
       onRecord(record);

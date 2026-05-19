@@ -322,9 +322,9 @@ const _isDirectExecution = _resolvedScript != null && /collector-script\.[jt]s$/
 
 if (_isDirectExecution) {
   const _subcommand = process.argv[2];
-  if (_subcommand === 'install' || _subcommand === 'uninstall') {
+  if (_subcommand === 'install' || _subcommand === 'uninstall' || _subcommand === 'setup') {
     // Dynamic import keeps the hook path lightweight — commander and friends
-    // are only loaded when the user explicitly runs install/uninstall.
+    // are only loaded when the user explicitly runs install/uninstall/setup.
     import('../install/cli.js')
       .then((mod) => mod.runInstallCli(process.argv.slice(2)))
       .catch((err: unknown) => {

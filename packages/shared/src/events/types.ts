@@ -85,3 +85,91 @@ export interface AiMessage {
 }
 
 export type NrEventData = Record<string, string | number | boolean>;
+
+export type SpanType = 'agent_task' | 'llm_call' | 'tool_call' | 'sub_agent' | 'planning';
+
+export interface SpanAttributes {
+  readonly traceId: string;
+  readonly spanId: string;
+  readonly parentSpanId: string | null;
+  readonly spanType: SpanType;
+  readonly name: string;
+  readonly startTime: number;
+  readonly endTime: number | null;
+  readonly durationMs: number | null;
+  readonly success: boolean | null;
+  readonly output?: string;
+  readonly model?: string;
+  readonly toolName?: string;
+  readonly input?: string;
+  readonly customAttributes: Record<string, string | number>;
+}
+
+export interface AiAgentTaskSummary {
+  readonly id: string;
+  readonly timestamp: number;
+  readonly traceId: string;
+  readonly spanId: string;
+  readonly taskName: string;
+  readonly durationMs: number;
+  readonly totalLlmCalls: number;
+  readonly totalToolCalls: number;
+  readonly totalTokens: number;
+  readonly totalCostUsd: number | null;
+  readonly stepCount: number;
+  readonly success: boolean;
+  readonly delegationCount?: number;
+  readonly spawnCount?: number;
+  readonly delegationDepth?: number;
+  readonly interAgentMessages?: number;
+  readonly delegationOverheadMs?: number;
+  readonly 'nr.appName': string;
+  readonly customAttributes: Record<string, string | number>;
+}
+
+export type AntiPatternType = 'spinning_wheels' | 'overthinking' | 'underthinking' | 'context_stuffing' | 'token_explosion' | 'bail_out';
+
+export interface AiAntiPattern {
+  readonly id: string;
+  readonly timestamp: number;
+  readonly traceId: string;
+  readonly patternType: AntiPatternType;
+  readonly severity: 'low' | 'medium' | 'high';
+  readonly description: string;
+  readonly toolName?: string;
+  readonly repeatCount?: number;
+  readonly depthIndex?: number;
+  readonly taskComplexity?: 'simple' | 'moderate' | 'complex';
+  readonly contextPressure?: number;
+  readonly tokenShare?: number;
+  readonly attemptCount?: number;
+  readonly 'nr.appName': string;
+  readonly customAttributes: Record<string, string | number>;
+}
+
+export interface AiAgentMessage {
+  readonly id: string;
+  readonly timestamp: number;
+  readonly traceId: string;
+  readonly fromAgent: string;
+  readonly toAgent: string;
+  readonly messageType: string;
+  readonly tokenCount?: number;
+  readonly 'nr.appName': string;
+  readonly customAttributes: Record<string, string | number>;
+}
+
+export interface AiContextReset {
+  readonly id: string;
+  readonly timestamp: number;
+  readonly traceId: string;
+  readonly conversationId: string;
+  readonly tokensBefore: number;
+  readonly tokensAfter: number;
+  readonly tokensRemoved: number;
+  readonly compressionRatio: number;
+  readonly reason: 'summarization' | 'truncation' | 'sliding_window' | 'manual';
+  readonly turnsRemoved?: number;
+  readonly 'nr.appName': string;
+  readonly customAttributes: Record<string, string | number>;
+}

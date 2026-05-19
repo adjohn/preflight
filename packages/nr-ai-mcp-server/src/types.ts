@@ -24,6 +24,9 @@ export interface CliOptions {
 export interface ServerOptions {
   readonly name: string;
   readonly version: string;
+  readonly developer?: string;
+  readonly teamId?: string | null;
+  readonly projectId?: string | null;
   readonly sessionTracker?: SessionTracker;
   readonly costTracker?: CostTracker;
   readonly taskDetector?: TaskDetector;

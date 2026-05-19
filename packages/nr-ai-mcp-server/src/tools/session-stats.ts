@@ -65,6 +65,7 @@ import {
   SUBSCRIBE_DIGEST_TOOL,
   UNSUBSCRIBE_DIGEST_TOOL,
   SEND_DIGEST_TOOL,
+  PERSONAL_INSIGHTS_TOOL,
   handleGetSessionHistory,
   handleGetWeeklySummary,
   handleGetTrends,
@@ -77,6 +78,7 @@ import {
   handleSubscribeDigest,
   handleUnsubscribeDigest,
   handleSendDigest,
+  handleGetPersonalInsights,
 } from './cross-session-tools.js';
 import type { ContextWindowTracker } from '../metrics/context-window-tracker.js';
 import type { LatencyTracker } from '../metrics/latency-tracker.js';
@@ -208,6 +210,8 @@ export interface ToolRegistrationOptions {
   sessionStartMs?: number;
   accountId?: string;
   teamId?: string | null;
+  projectId?: string | null;
+  developer?: string;
   nrApiKey?: string | null;
   collectorHost?: string | null;
   configFilePath?: string;
@@ -312,6 +316,9 @@ export function registerTools(
   if (options.configFilePath && weeklySummaryGenerator) {
     tools.push(SEND_DIGEST_TOOL);
   }
+  if (weeklySummaryGenerator && options.developer) {
+    tools.push(PERSONAL_INSIGHTS_TOOL);
+  }
 
   if (contextWindowTracker) {
     tools.push(CONTEXT_EFFICIENCY_TOOL);
@@ -333,9 +340,24 @@ export function registerTools(
 
     try {
     switch (name) {
-      case 'nr_observe_get_session_stats':
+      case 'nr_observe_get_session_stats': {
         if (!sessionTracker) break;
-        return handleGetSessionStats(sessionTracker, sessionTraceId);
+        const result = handleGetSessionStats(sessionTracker, sessionTraceId);
+        const stats = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              identity: {
+                developer: options.developer ?? 'unknown',
+                teamId: options.teamId ?? null,
+                projectId: options.projectId ?? null,
+              },
+              ...stats,
+            }, null, 2),
+          }],
+        };
+      }
 
       case 'nr_observe_get_session_timeline': {
         if (!sessionTracker) break;
@@ -483,6 +505,10 @@ export function registerTools(
         if (!options.configFilePath || !weeklySummaryGenerator) break;
         return handleSendDigest(weeklySummaryGenerator, options.configFilePath);
       }
+
+      case 'nr_observe_get_personal_insights':
+        if (!weeklySummaryGenerator || !options.developer) break;
+        return handleGetPersonalInsights(weeklySummaryGenerator, options.developer);
 
       case 'nr_observe_get_context_efficiency':
         if (!contextWindowTracker) break;

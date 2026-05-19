@@ -6,8 +6,14 @@
  *   NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-alerts.ts [options]
  *
  * Options:
- *   --dry-run   Print the policy + conditions that would be created and exit.
- *   --teardown  Delete the alert policy and all its conditions.
+ *   --dry-run             Print the policy + conditions that would be created and exit.
+ *   --teardown            Delete the alert policy and all its conditions.
+ *   --developer <name>    Deploy a personal alert policy scoped to <name> instead of
+ *                         the team policy. Personal thresholds are read from
+ *                         ~/.nr-ai-observe/config.json under "alerts.personal", falling
+ *                         back to DEFAULT_PERSONAL_THRESHOLDS. Combine with --dry-run or
+ *                         --teardown to preview or remove the personal policy.
+ *   --staging             Target the New Relic staging API (staging-api.newrelic.com).
  *
  * Requires a New Relic User API key (NRAK-...), not a license key.
  */
@@ -15,10 +21,13 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AlertConditionDefinition, AlertPolicyDefinition } from '../src/alerts/types.js';
+import { homedir } from 'node:os';
+import type { AlertConditionDefinition, AlertPolicyDefinition, PersonalAlertThresholds } from '../src/alerts/types.js';
+import { DEFAULT_PERSONAL_THRESHOLDS } from '../src/alerts/types.js';
+import { normalizeDeveloperName } from '../src/config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const NERDGRAPH_URL = 'https://api.newrelic.com/graphql';
+let NERDGRAPH_URL = 'https://api.newrelic.com/graphql';
 
 async function nerdgraph<T>(
   apiKey: string,
@@ -131,10 +140,114 @@ function loadDefinitions(): {
   return { policy, conditions };
 }
 
+function loadPersonalDefinitions(
+  developer: string,
+  thresholds: PersonalAlertThresholds,
+): { policy: AlertPolicyDefinition; conditions: AlertConditionDefinition[] } {
+  const conditionsDir = resolve(__dirname, '..', 'alerts', 'conditions-personal');
+
+  const policy: AlertPolicyDefinition = {
+    name: `AI Coding — Personal — ${developer}`,
+    incidentPreference: 'PER_CONDITION',
+  };
+
+  const conditionFiles = readdirSync(conditionsDir)
+    .filter((f) => f.endsWith('.json'))
+    .sort();
+
+  const thresholdMap: Record<string, number> = {
+    __dailyCostUsd__:       thresholds.dailyCostUsd,
+    __sessionCostUsd__:     thresholds.sessionCostUsd,
+    __efficiencyScoreMin__: thresholds.efficiencyScoreMin,
+    __stuckLoopCountMax__:  thresholds.stuckLoopCountMax,
+  };
+
+  const conditions: AlertConditionDefinition[] = conditionFiles.map((f) => {
+    let raw = readFileSync(resolve(conditionsDir, f), 'utf-8');
+
+    // Substitute developer name and threshold placeholders
+    raw = raw.replaceAll('{{developer}}', developer);
+    for (const [placeholder, value] of Object.entries(thresholdMap)) {
+      // The placeholder appears as a quoted string in JSON: "__dailyCostUsd__"
+      // Replace with a bare number so it becomes a valid JSON number after re-parse
+      raw = raw.replace(`"${placeholder}"`, String(value));
+    }
+
+    return JSON.parse(raw) as AlertConditionDefinition;
+  });
+
+  return { policy, conditions };
+}
+
+function loadPersonalThresholds(): PersonalAlertThresholds {
+  const configPath = resolve(homedir(), '.nr-ai-observe', 'config.json');
+  try {
+    const file = JSON.parse(readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
+    const alertsSection = file.alerts;
+    if (typeof alertsSection !== 'object' || alertsSection === null) return DEFAULT_PERSONAL_THRESHOLDS;
+    const personal = (alertsSection as Record<string, unknown>).personal;
+    if (typeof personal !== 'object' || personal === null) return DEFAULT_PERSONAL_THRESHOLDS;
+    const t = personal as Record<string, unknown>;
+    return {
+      dailyCostUsd:        typeof t.dailyCostUsd === 'number'       ? t.dailyCostUsd       : DEFAULT_PERSONAL_THRESHOLDS.dailyCostUsd,
+      sessionCostUsd:      typeof t.sessionCostUsd === 'number'     ? t.sessionCostUsd     : DEFAULT_PERSONAL_THRESHOLDS.sessionCostUsd,
+      efficiencyScoreMin:  typeof t.efficiencyScoreMin === 'number' ? t.efficiencyScoreMin : DEFAULT_PERSONAL_THRESHOLDS.efficiencyScoreMin,
+      stuckLoopCountMax:   typeof t.stuckLoopCountMax === 'number'  ? t.stuckLoopCountMax  : DEFAULT_PERSONAL_THRESHOLDS.stuckLoopCountMax,
+    };
+  } catch {
+    return DEFAULT_PERSONAL_THRESHOLDS;
+  }
+}
+
+function buildConditionInput(cond: AlertConditionDefinition): Record<string, unknown> {
+  return {
+    name: cond.name,
+    description: cond.description,
+    enabled: cond.enabled,
+    nrql: { query: cond.nrqlQuery },
+    signal: {
+      aggregationMethod: cond.aggregationMethod,
+      aggregationWindow: cond.aggregationWindow,
+      ...(cond.aggregationDelay !== undefined ? { aggregationDelay: cond.aggregationDelay } : {}),
+      ...(cond.aggregationTimer !== undefined ? { aggregationTimer: cond.aggregationTimer } : {}),
+    },
+    terms: [
+      {
+        threshold: cond.thresholdCritical.value,
+        thresholdDuration: cond.thresholdCritical.duration,
+        thresholdOccurrences: cond.thresholdCritical.occurrences,
+        operator: cond.thresholdOperator,
+        priority: 'CRITICAL',
+      },
+      ...(cond.thresholdWarning ? [{
+        threshold: cond.thresholdWarning.value,
+        thresholdDuration: cond.thresholdWarning.duration,
+        thresholdOccurrences: cond.thresholdWarning.occurrences,
+        operator: cond.thresholdOperator,
+        priority: 'WARNING',
+      }] : []),
+    ],
+    violationTimeLimitSeconds: cond.violationTimeLimitSeconds,
+  };
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
   const teardown = args.includes('--teardown');
+  const staging = args.includes('--staging');
+
+  if (staging) {
+    NERDGRAPH_URL = 'https://staging-api.newrelic.com/graphql';
+    process.stdout.write('Targeting staging API: https://staging-api.newrelic.com/graphql\n');
+  }
+
+  const developerFlagIndex = args.indexOf('--developer');
+  const developerRaw: string | null = developerFlagIndex !== -1
+    ? (args[developerFlagIndex + 1] ?? null)
+    : null;
+
+  const developer: string | null = developerRaw ? normalizeDeveloperName(developerRaw) : null;
 
   const accountIdStr = process.env.NEW_RELIC_ACCOUNT_ID;
   if (!accountIdStr) {
@@ -147,14 +260,24 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const { policy, conditions } = loadDefinitions();
-
   if (dryRun) {
-    process.stdout.write('--- Dry run: would create policy ---\n');
-    process.stdout.write(`${JSON.stringify(policy, null, 2)}\n`);
-    process.stdout.write(`--- Would create ${conditions.length} conditions ---\n`);
-    for (const c of conditions) {
-      process.stdout.write(`  [${c.enabled ? 'enabled' : 'disabled'}] ${c.name}\n`);
+    if (developer) {
+      const thresholds = loadPersonalThresholds();
+      const { policy, conditions } = loadPersonalDefinitions(developer, thresholds);
+      process.stdout.write(`--- Dry run: personal policy for ${developer} ---\n`);
+      process.stdout.write(`${JSON.stringify(policy, null, 2)}\n`);
+      process.stdout.write(`--- Would create ${conditions.length} personal conditions ---\n`);
+      for (const c of conditions) {
+        process.stdout.write(`  [${c.enabled ? 'enabled' : 'disabled'}] ${c.name}\n`);
+      }
+    } else {
+      const { policy, conditions } = loadDefinitions();
+      process.stdout.write('--- Dry run: would create policy ---\n');
+      process.stdout.write(`${JSON.stringify(policy, null, 2)}\n`);
+      process.stdout.write(`--- Would create ${conditions.length} conditions ---\n`);
+      for (const c of conditions) {
+        process.stdout.write(`  [${c.enabled ? 'enabled' : 'disabled'}] ${c.name}\n`);
+      }
     }
     return;
   }
@@ -166,13 +289,17 @@ async function main(): Promise<void> {
   }
 
   if (teardown) {
+    const policyName = developer
+      ? `AI Coding — Personal — ${developer}`
+      : loadDefinitions().policy.name;
+
     const listResult = await nerdgraph<ListPoliciesResult>(apiKey, LIST_POLICIES_QUERY, {
       accountId,
-      name: policy.name,
+      name: policyName,
     });
     const existing = listResult.actor.account.alerts.policiesSearch.policies;
     if (existing.length === 0) {
-      process.stdout.write(`No policy named "${policy.name}" found. Nothing to delete.\n`);
+      process.stdout.write(`No policy named "${policyName}" found. Nothing to delete.\n`);
       return;
     }
     for (const p of existing) {
@@ -181,6 +308,43 @@ async function main(): Promise<void> {
     }
     return;
   }
+
+  if (developer) {
+    const thresholds = loadPersonalThresholds();
+    const { policy, conditions } = loadPersonalDefinitions(developer, thresholds);
+
+    // Idempotent: skip if already exists
+    const listResult = await nerdgraph<ListPoliciesResult>(apiKey, LIST_POLICIES_QUERY, {
+      accountId,
+      name: policy.name,
+    });
+    if (listResult.actor.account.alerts.policiesSearch.policies.length > 0) {
+      const existing = listResult.actor.account.alerts.policiesSearch.policies[0];
+      process.stdout.write(`Personal policy for "${developer}" already exists (id: ${existing.id}). Use --teardown to reset.\n`);
+      return;
+    }
+
+    const createResult = await nerdgraph<CreatePolicyResult>(apiKey, CREATE_POLICY_MUTATION, {
+      accountId,
+      name: policy.name,
+      incidentPreference: policy.incidentPreference,
+    });
+    const policyId = createResult.alertsPolicyCreate.id;
+    process.stdout.write(`Created personal policy "${policy.name}" (id: ${policyId})\n`);
+
+    for (const cond of conditions) {
+      const result = await nerdgraph<CreateConditionResult>(
+        apiKey, CREATE_NRQL_CONDITION_MUTATION,
+        { accountId, policyId, condition: buildConditionInput(cond) },
+      );
+      const created = result.alertsNrqlConditionStaticCreate;
+      process.stdout.write(`  Created condition "${created.name}" (${created.enabled ? 'enabled' : 'disabled'})\n`);
+    }
+    return;
+  }
+
+  // Team policy deployment
+  const { policy, conditions } = loadDefinitions();
 
   // Idempotent: skip if policy already exists
   const listResult = await nerdgraph<ListPoliciesResult>(apiKey, LIST_POLICIES_QUERY, {
@@ -207,48 +371,10 @@ async function main(): Promise<void> {
 
   // Create each condition
   for (const cond of conditions) {
-    const conditionInput = {
-      name: cond.name,
-      description: cond.description,
-      enabled: cond.enabled,
-      nrql: { query: cond.nrqlQuery },
-      signal: {
-        aggregationMethod: cond.aggregationMethod,
-        aggregationWindow: cond.aggregationWindow,
-        ...(cond.aggregationDelay !== undefined
-          ? { aggregationDelay: String(cond.aggregationDelay) }
-          : {}),
-        ...(cond.aggregationTimer !== undefined
-          ? { aggregationTimer: String(cond.aggregationTimer) }
-          : {}),
-      },
-      terms: [
-        {
-          threshold: cond.thresholdCritical.value,
-          thresholdDuration: cond.thresholdCritical.duration,
-          thresholdOccurrences: cond.thresholdCritical.occurrences,
-          operator: cond.thresholdOperator,
-          priority: 'CRITICAL',
-        },
-        ...(cond.thresholdWarning
-          ? [
-              {
-                threshold: cond.thresholdWarning.value,
-                thresholdDuration: cond.thresholdWarning.duration,
-                thresholdOccurrences: cond.thresholdWarning.occurrences,
-                operator: cond.thresholdOperator,
-                priority: 'WARNING',
-              },
-            ]
-          : []),
-      ],
-      violationTimeLimitSeconds: cond.violationTimeLimitSeconds,
-    };
-
     const result = await nerdgraph<CreateConditionResult>(
       apiKey,
       CREATE_NRQL_CONDITION_MUTATION,
-      { accountId, policyId, condition: conditionInput },
+      { accountId, policyId, condition: buildConditionInput(cond) },
     );
     const created = result.alertsNrqlConditionStaticCreate;
     const status = created.enabled ? 'enabled' : 'disabled';
