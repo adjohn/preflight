@@ -1,23 +1,47 @@
-# **NR AI Observatory — Product Brief**
+# NR AI Observatory — Product Brief
 
----
-
-## **Table of Contents**
+## Table of Contents
 
 [Overview Questions](#overview-questions)
 
-[Appendix A — High Level Public Facing APIs](#appendix-a--high-level-public-facing-apis)
+[Executive Summary](#executive-summary)
 
+[1 — Target Audience & Market](#q1)
+
+[2 — Business Impact](#q2)
+
+[3 — Competitive Landscape](#q3)
+
+[4 — Elevator Pitch & TAM](#q4)
+
+[5 — Monetization & Pricing](#q5)
+
+[6 — User Must-Haves](#q6)
+
+[7 — Mindset Shift & Risks](#q7)
+
+[8 — Discovery & Access](#q8)
+
+[9 — Overlap & Category](#q9)
+
+[10 — Rollout Plan](#q10)
+
+[11 — Milestones & Dependencies](#q11)
+
+[12 — Domain & Support](#q12)
+
+[13 — Additional Flags](#q13)
+
+[Appendix A — Public Facing APIs](#appendix-a)
 ---
 
-# **Overview Questions** {#overview-questions}
+## Overview Questions {#overview-questions}
 
 | Product / Initiative Name | Marketing Name TBD / NR AI Observatory / AI Coding Insights |
 | :---: | :---- |
-| **Product Manager & Engineering Manager** | PM: TBD EM: TBD |
+| Product Manager & Engineering Manager | PM: TBD EM: TBD |
 
-
-**Executive Summary**
+## Executive Summary {#executive-summary}
 
 The software development industry is in the middle of the fastest tooling transition in its history. AI coding assistants — Claude Code, GitHub Copilot, Cursor, Windsurf, and a long tail of emerging entrants — are being adopted by engineering organisations at unprecedented speed, yet are operating almost entirely outside the existing observability stack. Engineering leaders today have no reliable visibility into how much these tools cost per session, per project, or per developer; whether their teams are using them effectively; whether security and compliance controls are being respected; or whether the productivity gains they were promised are actually materialising.
 
@@ -25,7 +49,10 @@ NR AI Observatory represents New Relic's strategic response to this emerging dis
 
 NR AI Observatory fundamentally extends the New Relic value proposition into the build phase of the software lifecycle. Rather than monitoring only what runs in production, New Relic now also illuminates how that production software is being created, by whom, with which AI assistants, at what cost, and with what efficiency. This addresses an urgent customer imperative: bring AI development spending under the same observability discipline already applied to compute, storage, APM, and the rest of the stack. NR AI Observatory establishes a powerful new category — AI development observability — and positions New Relic as the platform of record for the AI-augmented engineering organisation.
 
-**1 — Who is your Target Audience and Market; and what customer or business problems do you seek to solve? What gives you confidence (validation, analysis, metrics, etc) that it needs to be solved? Why is this a problem that needs to be solved right now?**
+
+---
+
+## 1 — Who is your Target Audience and Market; and what customer or business problems do you seek to solve? What gives you confidence (validation, analysis, metrics, etc) that it needs to be solved? Why is this a problem that needs to be solved right now? {#q1}
 
 ### Target Audience and Market
 
@@ -85,7 +112,10 @@ Three forces have converged. First, market scale: AI coding assistant adoption i
 
 The window to define the category, set the schema, and become the platform of record is open now. It will not stay open long.
 
-**2 — What is the business impact to New Relic? What do we stand to gain? What specific business goals, and do we have a mechanism to measure the relevant metrics/data points? Please provide details for accessing metrics/data reports or dashboards.**
+
+---
+
+## 2 — What is the business impact to New Relic? What do we stand to gain? What specific business goals, and do we have a mechanism to measure the relevant metrics/data points? Please provide details for accessing metrics/data reports or dashboards. {#q2}
 
 The NR AI Observatory initiative establishes New Relic as the platform of record for the fastest-growing new category of engineering spend: AI-assisted software development. It opens a new revenue surface tied directly to AI tooling adoption, deepens platform stickiness with our largest customers, and protects New Relic's existing footprint against competitive observability platforms moving to claim the category first.
 
@@ -133,7 +163,10 @@ Standard SaaS revenue measurement applies: ARR contribution, attach rate to exis
 
 Telemetry on activation, WAU, and adoption breadth is collected through standard New Relic product analytics. Spend optimisation outcomes and anti-pattern resolution rates are surfaced through opt-in customer reporting and the product's own dashboards. Dashboard locations and reporting cadence will be defined during launch planning.
 
-**3 — What is the competitive landscape? How do other organizations and their customers approach solving these problems currently? How is the product different from the existing competitive offerings?**
+
+---
+
+## 3 — What is the competitive landscape? How do other organizations and their customers approach solving these problems currently? How is the product different from the existing competitive offerings? {#q3}
 
 AI development observability is an emerging category with several adjacent vendors but no incumbent purpose-built for AI coding assistants at the engineering-organisation level. The landscape is best understood as four overlapping camps, each with a partial answer.
 
@@ -197,7 +230,10 @@ The product captures a structured audit trail of sensitive file access, destruct
 
 *Note: The first iteration focuses on the core observability surface — telemetry capture, dashboards, alerts, anti-pattern detection, and the multi-tool data model. Future iterations will deepen the recommendation engine, expand the platform adapter set, and extend the audit and compliance surface.*
 
-**4 — What is the hypothesis, elevator pitch, value proposition for customers, and market opportunity/TAM statement?**
+
+---
+
+## 4 — What is the hypothesis, elevator pitch, value proposition for customers, and market opportunity/TAM statement? {#q4}
 
 New Relic's NR AI Observatory is the observability platform for AI-assisted software development. It captures every AI coding tool call, model interaction, anti-pattern, and cost event from your developers' AI assistants — across Claude Code, Copilot, Cursor, Windsurf, and every other major coding tool — and turns that data into the dashboards, alerts, and audit trails your engineering, FinOps, and compliance teams need to govern AI spend and prove AI ROI.
 
@@ -205,7 +241,10 @@ NR AI Observatory directly addresses the urgent customer need to bring AI develo
 
 Market opportunity is sized by the global AI coding assistant market (TBD: insert sized estimate from market analysis), of which we estimate 5–10% will flow to associated observability and governance tooling — the same ratio observability historically captures from underlying infrastructure spend.
 
-**5 — How could we monetize this product? How will the product be priced? If we shouldn't, explain.**
+
+---
+
+## 5 — How could we monetize this product? How will the product be priced? If we shouldn't, explain. {#q5}
 
 Our strategy is to monetise the intelligence and governance value that NR AI Observatory adds to AI development telemetry, rather than the raw telemetry itself. AI coding tool call data is, in volume terms, comparable to logs or events; if priced as a commodity ingest, the value proposition collapses into a marginal data line item. Priced as a governance and intelligence product, it captures the actual willingness-to-pay associated with AI spend optimisation and developer-effectiveness reporting.
 
@@ -227,7 +266,10 @@ Billing is processed against the metered usage volume, mapped to the appropriate
 
 Detailed pricing structure (tier definitions, list price, contract minimums) will be defined during launch planning. (Detail TBD.)
 
-**6 — From the perspective of the user(s), describe what the product *must* do and which customer roles might find it useful? Consider discovery & onboarding (e.g. opt-ins, paywalls, trials), specific features (e.g. enterprise customer needs, RBAC, audit logging, etc) and more.**
+
+---
+
+## 6 — From the perspective of the user(s), describe what the product *must* do and which customer roles might find it useful? Consider discovery & onboarding (e.g. opt-ins, paywalls, trials), specific features (e.g. enterprise customer needs, RBAC, audit logging, etc) and more. {#q6}
 
 From the user's perspective, NR AI Observatory must transform AI coding governance from an after-the-fact invoice review exercise into a continuous, opt-in, multi-stakeholder workflow. It must serve four user roles simultaneously — engineering leaders, platform owners, finance and compliance reviewers, and individual senior developers — each of whom needs a distinct surface drawing on the same underlying telemetry.
 
@@ -285,7 +327,10 @@ A weekly digest summarising AI spend, top anti-patterns, and team-level efficien
 
 The product respects existing New Relic RBAC, supports per-team data isolation, retains all data inside the customer's New Relic account, and offers a high-security mode that disables content capture entirely for organisations with maximum data-handling restrictions.
 
-**7 — How will this product offering impact or change the mindset of customers or prospects? What might disappoint the customers?**
+
+---
+
+## 7 — How will this product offering impact or change the mindset of customers or prospects? What might disappoint the customers? {#q7}
 
 ### Mindset Shifts
 
@@ -345,7 +390,10 @@ Because the product is metered on telemetry volume, customers who instrument agg
 
 Customers using a specific AI assistant we have not yet adapted (the AI coding tooling space is fragmenting rapidly) will be disappointed if the product cannot observe their primary tool. We must communicate the supported-tool list clearly upfront and ship a credible adapter cadence to demonstrate ongoing investment in coverage breadth. The generic MCP adapter mitigates this for any MCP-speaking client, but is not a complete substitute for purpose-built adapters.
 
-**8 — How will the customer discover or find our product? How can they start using this product? Will this require a feature flag, SKU, or entitlement for access?**
+
+---
+
+## 8 — How will the customer discover or find our product? How can they start using this product? Will this require a feature flag, SKU, or entitlement for access? {#q8}
 
 Public Preview launch is targeted for the next New Relic launch event. (Specific event and date TBD.) Public-availability cadence will follow the standard New Relic preview-to-GA progression.
 
@@ -377,7 +425,10 @@ Inside an entitled account, individual developers and individual AI tools must b
 
 A time-limited free trial provides full functionality at a capped telemetry volume, allowing prospective customers to onboard a small number of developers and validate the value before committing. Trial duration and volume cap will be defined during launch planning. (Detail TBD.)
 
-**9 — Does this product overlap with an existing capability? If yes, explain what this new product could mean for those that already exist today. Will this fall under an existing product or feature area, or a new category will need to be created?**
+
+---
+
+## 9 — Does this product overlap with an existing capability? If yes, explain what this new product could mean for those that already exist today. Will this fall under an existing product or feature area, or a new category will need to be created? {#q9}
 
 NR AI Observatory establishes a new product category — AI development observability — distinct from any existing New Relic capability. There is meaningful adjacency to several existing surfaces, but no overlap that would create cannibalisation risk.
 
@@ -403,7 +454,10 @@ NR AI Observatory does not replace, deprecate, or shrink the scope of any existi
 
 A new category needs to be established. Internal naming will treat NR AI Observatory as a sibling capability to the GenAI Application Observability product — both fall under the broader AI Observability area — but with explicit positioning as the development-time complement to GenAI Application Observability's runtime focus. (Final category and product-area placement TBD during launch planning.)
 
-**10 — What is the product rollout plan? Provide high level in-scope & out-of-scope summary for each release phase (LP, PP, and GA).**
+
+---
+
+## 10 — What is the product rollout plan? Provide high level in-scope & out-of-scope summary for each release phase (LP, PP, and GA). {#q10}
 
 ### Customer Zero (CZ) — TBD
 
@@ -429,7 +483,10 @@ A new category needs to be established. Internal naming will treat NR AI Observa
 
 **Out-of-Scope:** New AI client adapters beyond the launch set (delivered in subsequent release waves); deeper recommendation engine and machine-learning-based pattern detection (future roadmap); IDE-embedded surfaces (future roadmap).
 
-**11 — What are the key milestones and dependencies in your roadmap:**
+
+---
+
+## 11 — What are the key milestones and dependencies in your roadmap: {#q11}
 
 *Add or delete rows as needed. Grid is helpful way to visualize the milestones you envision*
 
@@ -446,7 +503,10 @@ A new category needs to be established. Internal naming will treat NR AI Observa
 | **9** | Adapter set expansion: at least two additional AI client adapters delivered between PP and GA based on customer demand signal | TBD | TBD | M |
 | **10** | GA launch with production pricing, contracts, support tiers, and SLAs | TBD | TBD | H |
 
-**12 — What support skillset or domain does this align with (e.g. APM, Infra, AI, etc.)? Is this tied to an EOL or replacement of an existing product or experience?**
+
+---
+
+## 12 — What support skillset or domain does this align with (e.g. APM, Infra, AI, etc.)? Is this tied to an EOL or replacement of an existing product or experience? {#q12}
 
 NR AI Observatory aligns with the AI domain and is best understood as the development-time complement to New Relic's existing GenAI Application Observability capability. Where GenAI Application Observability instruments customer-built LLM applications running in production, NR AI Observatory instruments the AI assistants developers use to write code. The two surfaces share an underlying philosophy and a shared OpenTelemetry GenAI semantic convention foundation, but address different audiences and different lifecycle stages.
 
@@ -454,7 +514,10 @@ Support skillset spans AI/observability (the primary specialisation), Developer 
 
 This product is not tied to any EOL or replacement. It opens a new category and does not deprecate any existing capability.
 
-**13 — Anything else that needs to be shared, highlighted, and flagged about this product/feature?**
+
+---
+
+## 13 — Anything else that needs to be shared, highlighted, and flagged about this product/feature? {#q13}
 
 Three points worth flagging upfront.
 
@@ -470,7 +533,10 @@ Technically, the product captures redacted, opt-in telemetry through standard Ne
 
 The MCP server, SDK wrappers, and OpenTelemetry semantic convention mappings can be released as open-source artefacts, with the analytical and intelligence surface — dashboards, alert library, anti-pattern detection, recommendation engine, audit trail, cross-session analytics — retained as the proprietary, monetised product. This split protects the commercial product while building developer-community trust around the open instrumentation layer, accelerating organic adoption.
 
-# **Appendix A — High Level Public Facing APIs** {#appendix-a--high-level-public-facing-apis}
+
+---
+
+## Appendix A — High Level Public Facing APIs {#appendix-a}
 
 * *MCP tool surface — 27 tools currently exposed to AI coding clients; full specification at `docs/COMMANDS_TABLE.md` in the open-source repository.*
 * *NRQL event schema — public event types (`AiToolCall`, `AiCodingTask`, `AiAntiPattern`, `AiMcpToolCall`, `AiProxyRequest`, `AiAuditEvent`, `AiBudgetWarning`, `AiCostGrowthAlert`, `AiCostForecastAlert`, `AiExperimentSummary`, `AiExperimentConclusion`, `AiRecommendation`); see `docs/EVENT_SCHEMA.md`.*
