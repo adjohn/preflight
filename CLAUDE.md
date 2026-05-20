@@ -1,127 +1,135 @@
 # NR AI Observatory
 
-An npm workspaces monorepo providing observability for AI coding assistants. Two active packages: `@nr-ai-observatory/shared` (transport, events, pricing — source committed in `packages/shared/src/`; run `node scripts/sync-shared.js` to pull upstream changes from `nr-ai-typescript-shared`) and `nr-ai-mcp-server` (MCP server + metrics engine + HTTP proxy). All telemetry flows to New Relic. The TypeScript SDK agent lives in the separate `nr-ai-typescript-agent` repo. CI/CD tooling and GitHub App webhook server live in the separate `nr-ai-github-tools` repo.
+Flat single-package repo providing observability for AI coding assistants (MCP server + metrics engine + HTTP proxy). Source lives directly in `src/`. Shared transport/events/pricing code lives in `src/shared/` (synced from `nr-ai-typescript-shared` via `npm run sync:shared`). All telemetry flows to New Relic. The TypeScript SDK agent lives in the separate `nr-ai-typescript-agent` repo. CI/CD tooling and GitHub App webhook server live in the separate `nr-ai-github-tools` repo.
 
 ## Development Commands
 
 ```bash
-npm run build              # TypeScript build (all packages via project references)
+npm run build              # TypeScript build
 npm run build:clean        # Clean build output
 npm test                   # Run all tests (Jest, maxWorkers: 1)
-npm run lint               # ESLint across all packages
+npm run lint               # ESLint across src/
 npm run format             # Prettier (write)
 npm run format:check       # Prettier (check only)
 ```
 
-Build a single package:
+Build directly:
 
 ```bash
-npx tsc -b packages/shared && npx tsc -b packages/nr-ai-mcp-server
+npx tsc -b .
 ```
 
-To pull in upstream changes from `nr-ai-typescript-shared` first: `node scripts/sync-shared.js` (then commit the result).
+To pull in upstream changes from `nr-ai-typescript-shared`: `npm run sync:shared` (then commit the result).
 
 Run tests for a single file:
 
 ```bash
 npx jest -- src/metrics/cost-tracker.test.ts
-npx jest -- packages/shared/src/harvest/harvest-scheduler.test.ts
+npx jest -- src/shared/harvest/harvest-scheduler.test.ts
 ```
+
+## Shared Code (`src/shared/`)
+
+**`src/shared/` is a read-only mirror, not a source of truth.** It is overwritten in full by `npm run sync:shared` from the `nr-ai-typescript-shared` repo.
+
+**Rules:**
+
+1. **Never edit files under `src/shared/` in this repo.** Any change here will be wiped out on the next sync. Make the change in the upstream `nr-ai-typescript-shared` repo, then run `npm run sync:shared` here to pull it in and commit the regenerated tree.
+2. **Only code shared between this MCP server and `nr-ai-typescript-agent` belongs in `nr-ai-typescript-shared`.** If a piece of code is consumed by exactly one of those two repos, it does not belong in shared — keep it local to the consuming repo. Examples of code that *does* belong: transport clients for NR Events / Metrics / Logs APIs, OTLP transport, event schemas and serialization, harvest scheduler, token extraction, pricing tables, logger, error classification.
+3. **If you need to add a new shared module:** add it in `nr-ai-typescript-shared`, verify both this repo and `nr-ai-typescript-agent` will consume it, then sync into both. Don't introduce a shared file here first and "promote" it later.
+
+If you find yourself wanting to edit `src/shared/` directly to fix a bug or add a feature, stop and switch to the upstream repo instead.
 
 ## Project Structure
 
 ```
 nr-ai-observatory/
-  packages/
-    shared/                             # @nr-ai-observatory/shared
-      src/
-        config.ts                       # AgentConfig loader (env > file > defaults)
-        logger.ts                       # createLogger() — stderr JSON logger
-        pricing.ts / pricing-data.ts    # Token pricing tables (Anthropic, Gemini)
-        tokens.ts                       # Token extraction/accumulation
-        timing.ts                       # RequestTimer for latency measurement
-        errors.ts                       # Error classification, retry logic
-        events/                         # NR event creation and serialization
-        harvest/                        # EventBuffer, MetricAggregator, HarvestScheduler
-        transport/                      # HTTP clients for Events, Metric, and Logs APIs; OtlpTransport and OtlpEventBridge for OTLP/HTTP export
-
-    nr-ai-agent/ and test-app/          # *(now in `nr-ai-typescript-agent` repo)*
-
-    nr-ai-mcp-server/                   # nr-ai-mcp-server
-      src/
-        index.ts                        # CLI entry point (parseArgs, stdio vs proxy mode)
-        server.ts                       # NrMcpServer — MCP server over stdio transport
-        config.ts                       # McpServerConfig loader
-        hooks/
-          collector-script.ts           # nr-ai-observe binary (hook event collector)
-          event-processor.ts            # Pairs pre/post hook events into ToolCallRecords
-          tool-parsers.ts               # INPUT_PARSERS / OUTPUT_PARSERS for tool fields
-        metrics/                        # 18 analyzer classes
-          session-tracker.ts            # Per-session tool call tracking
-          cost-tracker.ts               # Token cost calculation (per-model)
-          task-detector.ts              # Task boundary detection
-          anti-patterns.ts              # Thrashing, re-reads, blind edits, stuck loops
-          efficiency-score.ts           # Composite efficiency score
-          trend-analyzer.ts             # Weekly trend analysis
-          collaboration-profile.ts      # Developer collaboration patterns
-          claudemd-tracker.ts           # CLAUDE.md change impact tracking
-          cost-per-outcome.ts           # Cost breakdown by outcome type
-          prompt-feedback.ts            # Feedback collection engine
-          recommendation-engine.ts      # Personalized optimization recommendations
-          proxy-metrics.ts              # Proxy mode server latency and tool popularity tracking
-          budget-tracker.ts             # Session/daily/weekly budget monitoring
-          context-window-tracker.ts     # Context waste detection (repeated file reads)
-          latency-tracker.ts            # Tool call latency percentiles (p50/p95/p99)
-          task-completion-tracker.ts    # Task lifecycle tracking (completed/abandoned)
-          model-usage-tracker.ts        # Cost-efficiency per AI model
-          personal-coach.ts             # Narrative coaching report comparing weekly metrics to personal baseline
-        platforms/                      # 7 platform adapters
-          claude-code-adapter.ts        # Claude Code (default)
-          cursor-adapter.ts             # Cursor IDE
-          windsurf-adapter.ts           # Windsurf IDE
-          copilot-adapter.ts            # GitHub Copilot
-          zed-adapter.ts                # Zed IDE
-          continue-adapter.ts           # Continue.dev
-          amazon-q-adapter.ts           # Amazon Q Developer
-          platform-registry.ts          # Registry + factory
-        proxy/                          # HTTP proxy layer
-          proxy-manager.ts              # HTTP server, routing, interception
-          upstream-http.ts              # HTTP upstream transport
-          upstream-stdio.ts             # Stdio upstream transport (child process)
-        storage/                        # Local file persistence
-          local-store.ts                # JSONL buffer file + atomic drain
-          session-store.ts              # Session history (YYYY-MM-DD_sessionId.json)
-          weekly-summary.ts             # Cross-session weekly aggregation
-          retention.ts                  # purgeOldSessions() — delete sessions older than N days
-        digest/                         # Weekly digest formatting and delivery
-          digest-formatter.ts           # formatSlackDigest() — Slack Block Kit payload builder
-          digest-sender.ts              # sendSlackDigest() — HTTP POST to Slack webhook
-        security/
-          audit-trail.ts                # Security audit trail (sensitive files, destructive commands)
-        tools/                          # MCP tool handlers
-          session-stats.ts              # registerTools() + session stat tools
-          cost-tools.ts                 # Cost analysis tools
-          workflow-tools.ts             # Workflow analysis + feedback tools
-          cross-session-tools.ts        # Cross-session analysis tools
-        tracing/                        # OTel span management for MCP tool call tracing
-          mcp-tracer.ts               # getMcpTracer() / initMcpTracer() — tracer singleton
-          session-span.ts             # SessionSpan — root span lifecycle (start at startup, end at shutdown)
-          tool-call-span.ts           # emitToolCallSpan() — one child span per ToolCallRecord
-          task-span-tracker.ts        # TaskSpanTracker — intermediate task span lifecycle
-        transport/
-          nr-ingest.ts                  # NrIngestManager (events + metrics + logs)
-          log-ingest.ts                 # Log ingestion with buffering
-        install/                        # Claude Code hook installation CLI
-          cli.ts                        # nr-ai-observe install/uninstall commands
-          setup-wizard.ts               # nr-ai-observe setup interactive wizard
-        alerts/                         # Alert TypeScript types + validation tests
-          types.ts                      # AlertConditionDefinition, AlertPolicyDefinition interfaces
-          alerts.test.ts                # JSON structure validation (reads from ../alerts/)
-      alerts/                           # Alert policy and condition JSON definitions (data, not source)
-        policy.json                     # Policy metadata (name, incident preference)
-        conditions/                     # NRQL alert condition JSON files
-      dashboards/                       # Pre-built NR dashboard JSON files (data, not source)
-      scripts/                          # Deploy scripts (deploy-dashboard.ts, deploy-alerts.ts)
+  src/
+    shared/                         # READ-ONLY mirror — synced from nr-ai-typescript-shared via scripts/sync-shared.ts. Never edit here; edit upstream and re-sync.
+      config.ts                     # AgentConfig loader (env > file > defaults)
+      logger.ts                     # createLogger() — stderr JSON logger
+      pricing.ts / pricing-data.ts  # Token pricing tables (Anthropic, Gemini)
+      tokens.ts                     # Token extraction/accumulation
+      timing.ts                     # RequestTimer for latency measurement
+      errors.ts                     # Error classification, retry logic
+      events/                       # NR event creation and serialization
+      harvest/                      # EventBuffer, MetricAggregator, HarvestScheduler
+      transport/                    # HTTP clients for Events, Metric, and Logs APIs; OtlpTransport and OtlpEventBridge for OTLP/HTTP export
+    index.ts                        # CLI entry point (parseArgs, stdio vs proxy mode)
+    server.ts                       # NrMcpServer — MCP server over stdio transport
+    config.ts                       # McpServerConfig loader
+    hooks/
+      collector-script.ts           # nr-ai-observe binary (hook event collector)
+      event-processor.ts            # Pairs pre/post hook events into ToolCallRecords
+      tool-parsers.ts               # INPUT_PARSERS / OUTPUT_PARSERS for tool fields
+    metrics/                        # 19 analyzer classes
+      session-tracker.ts            # Per-session tool call tracking
+      cost-tracker.ts               # Token cost calculation (per-model)
+      cost-forecast.ts              # Burn-rate-based session/day/week cost projections
+      task-detector.ts              # Task boundary detection
+      anti-patterns.ts              # Thrashing, re-reads, blind edits, stuck loops
+      efficiency-score.ts           # Composite efficiency score
+      trend-analyzer.ts             # Weekly trend analysis
+      collaboration-profile.ts      # Developer collaboration patterns
+      claudemd-tracker.ts           # CLAUDE.md change impact tracking
+      cost-per-outcome.ts           # Cost breakdown by outcome type
+      prompt-feedback.ts            # Feedback collection engine
+      recommendation-engine.ts      # Personalized optimization recommendations
+      proxy-metrics.ts              # Proxy mode server latency and tool popularity tracking
+      budget-tracker.ts             # Session/daily/weekly budget monitoring
+      context-window-tracker.ts     # Context waste detection (repeated file reads)
+      latency-tracker.ts            # Tool call latency percentiles (p50/p95/p99)
+      task-completion-tracker.ts    # Task lifecycle tracking (completed/abandoned)
+      model-usage-tracker.ts        # Cost-efficiency per AI model
+      personal-coach.ts             # Narrative coaching report comparing weekly metrics to personal baseline
+    platforms/                      # 8 platform adapters
+      claude-code-adapter.ts        # Claude Code (default)
+      cursor-adapter.ts             # Cursor IDE
+      windsurf-adapter.ts           # Windsurf IDE
+      copilot-adapter.ts            # GitHub Copilot
+      zed-adapter.ts                # Zed IDE
+      continue-adapter.ts           # Continue.dev
+      amazon-q-adapter.ts           # Amazon Q Developer
+      generic-mcp-adapter.ts        # Generic fallback adapter for any MCP-speaking client
+      platform-registry.ts          # Registry + factory
+    proxy/                          # HTTP proxy layer
+      proxy-manager.ts              # HTTP server, routing, interception
+      upstream-http.ts              # HTTP upstream transport
+      upstream-stdio.ts             # Stdio upstream transport (child process)
+    storage/                        # Local file persistence
+      local-store.ts                # JSONL buffer file + atomic drain
+      session-store.ts              # Session history (YYYY-MM-DD_sessionId.json)
+      weekly-summary.ts             # Cross-session weekly aggregation
+      retention.ts                  # purgeOldSessions() — delete sessions older than N days
+    digest/                         # Weekly digest formatting and delivery
+      digest-formatter.ts           # formatSlackDigest() — Slack Block Kit payload builder
+      digest-sender.ts              # sendSlackDigest() — HTTP POST to Slack webhook
+    security/
+      audit-trail.ts                # Security audit trail (sensitive files, destructive commands)
+    tools/                          # MCP tool handlers
+      session-stats.ts              # registerTools() + session stat tools
+      cost-tools.ts                 # Cost analysis tools
+      workflow-tools.ts             # Workflow analysis + feedback tools
+      cross-session-tools.ts        # Cross-session analysis tools
+    tracing/                        # OTel span management for MCP tool call tracing
+      mcp-tracer.ts                 # getMcpTracer() / initMcpTracer() — tracer singleton
+      session-span.ts               # SessionSpan — root span lifecycle (start at startup, end at shutdown)
+      tool-call-span.ts             # emitToolCallSpan() — one child span per ToolCallRecord
+      task-span-tracker.ts          # TaskSpanTracker — intermediate task span lifecycle
+    transport/
+      nr-ingest.ts                  # NrIngestManager (events + metrics + logs)
+      log-ingest.ts                 # Log ingestion with buffering
+    install/                        # Claude Code hook installation CLI
+      cli.ts                        # nr-ai-observe install/uninstall commands
+      setup-wizard.ts               # nr-ai-observe setup interactive wizard
+    alerts/                         # Alert TypeScript types + validation tests
+      types.ts                      # AlertConditionDefinition, AlertPolicyDefinition interfaces
+      alerts.test.ts                # JSON structure validation (reads from ../alerts/)
+  alerts/                           # Alert policy and condition JSON definitions (data, not source)
+    policy.json                     # Policy metadata (name, incident preference)
+    conditions/                     # NRQL alert condition JSON files
+  dashboards/                       # Pre-built NR dashboard JSON files (data, not source)
+  scripts/                          # sync-shared.ts + deploy scripts (deploy-dashboard.ts, deploy-alerts.ts) + backfill-sessions.ts
 ```
 
 ## Architecture
@@ -153,18 +161,18 @@ Claude Code
                  ├─ nr_observe_get_cost_breakdown
                  ├─ nr_observe_get_anti_patterns
                  ├─ nr_observe_get_recommendations
-                 └─ ... (16 tools total)
+                 └─ ... (27 tools total)
 ```
 
 ### Package Dependencies
 
-- `shared` has zero runtime dependencies (pure TypeScript)
-- `nr-ai-mcp-server` depends on `shared`, `@modelcontextprotocol/sdk`, `zod`, `commander`
+- Runtime dependencies: `@modelcontextprotocol/sdk`, `zod`, `commander`, `@opentelemetry/*`
+- Shared code in `src/shared/` has no additional dependencies (pure TypeScript, synced from `nr-ai-typescript-shared`)
 
 ## TypeScript Conventions
 
 ### Module System
-- ESM throughout (`"type": "module"` in all package.json files)
+- ESM throughout (`"type": "module"` in `package.json`)
 - `NodeNext` module resolution
 - All internal imports use `.js` extensions (required for ESM)
 - Strict mode enabled
@@ -187,13 +195,13 @@ Claude Code
 1. Node.js builtins (`node:fs`, `node:path`, `node:crypto`)
 2. External packages (`@modelcontextprotocol/sdk`, `zod`, `commander`)
 3. Blank line
-4. Internal package imports (`@nr-ai-observatory/shared`)
+4. Shared module imports (`./shared/index.js` or `../shared/index.js`)
 5. Local imports (`./types.js`, `../metrics/session-tracker.js`)
 
 ### Logger Pattern
 Every module creates a scoped logger at module level:
 ```typescript
-import { createLogger } from '@nr-ai-observatory/shared';
+import { createLogger } from '../shared/index.js';
 const logger = createLogger('module-name');
 ```
 Logger writes to stderr as JSON. Never write to stdout (reserved for MCP stdio transport).
@@ -226,7 +234,7 @@ Tools are registered in `src/tools/session-stats.ts` via `registerTools()`, whic
 
 Tools are conditionally registered based on available dependencies (e.g., cross-session tools only register when `SessionStore` + `WeeklySummaryGenerator` are available).
 
-### MCP Tools (16 total)
+### MCP Tools (27 total)
 
 **Session Tools:**
 - `nr_observe_get_session_stats` — current session metrics
@@ -234,6 +242,7 @@ Tools are conditionally registered based on available dependencies (e.g., cross-
 - `nr_observe_get_efficiency_score` — composite efficiency scoring
 
 **Cost and Budget Tools:**
+- `nr_observe_report_tokens` — self-reported token usage with per-model cost calculation
 - `nr_observe_get_cost_breakdown` — cost by tool type and model
 - `nr_observe_get_cost_forecast` — project future spend
 - `nr_observe_get_budget_status` — current spend vs. budget caps
@@ -241,6 +250,7 @@ Tools are conditionally registered based on available dependencies (e.g., cross-
 **Workflow and Anti-Pattern Tools:**
 - `nr_observe_get_anti_patterns` — detected thrashing, re-reads, blind edits, stuck loops
 - `nr_observe_get_workflow_trace` — ordered sequence of recent tool calls
+- `nr_observe_report_feedback` — record user quality feedback (`good`/`bad`/`neutral`) for a task
 
 **Analytics Tools:**
 - `nr_observe_get_context_efficiency` — context window waste (repeated reads)
@@ -249,6 +259,7 @@ Tools are conditionally registered based on available dependencies (e.g., cross-
 - `nr_observe_get_model_usage` — cost-efficiency per AI model
 
 **Cross-Session Tools (require SessionStore + WeeklySummaryGenerator):**
+- `nr_observe_get_session_history` — paginated past-session list with summary metrics
 - `nr_observe_get_weekly_summary` — aggregated metrics across the week
 - `nr_observe_get_trends` — weekly metric trends (efficiency, cost, task success)
 - `nr_observe_get_team_summary` — team-level aggregations
@@ -273,8 +284,8 @@ Config loading priority: **CLI > environment variables > config file > defaults*
 The config file path defaults to `~/.nr-ai-observe/config.json` or can be passed via `--config`.
 
 Key config interfaces:
-- `McpServerConfig` in `nr-ai-mcp-server/src/config.ts`
-- `AgentConfig` in `shared/src/config.ts`
+- `McpServerConfig` in `src/config.ts`
+- `AgentConfig` in `src/shared/config.ts`
 
 ### New Configuration Fields (Phases 6–10)
 
@@ -294,6 +305,10 @@ Key config interfaces:
 | `otlpEndpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | string \| null | OTLP/HTTP endpoint URL (e.g. `https://otlp.nr-data.net` for NR US). When set, enables OTLP export. |
 | `otlpHeaders` | `OTEL_EXPORTER_OTLP_HEADERS` | Record\<string, string\> | Auth headers for OTLP endpoint. Env var uses comma-separated `key=value` pairs. |
 | `transport` | `NEW_RELIC_AI_TRANSPORT` | `'nr-events-api' \| 'otlp' \| 'both'` | `nr-events-api` (default): NR APIs only. `otlp`: OTLP only. `both`: concurrent. |
+| `otlpReceiverEnabled` | `NR_AI_OTLP_RECEIVER_ENABLED` | boolean | Enable a local OTLP/HTTP receiver in proxy mode. |
+| `otlpReceiverPort` | `NR_AI_OTLP_RECEIVER_PORT` | number | Port for the local OTLP/HTTP receiver. Default `4318`. |
+| `otlpForwardEndpoint` | `NR_AI_OTLP_FORWARD_ENDPOINT` | string \| null | Where the receiver forwards enriched payloads. Defaults to NR US OTLP when `licenseKey` is set; `null` to receive and enrich only. |
+| `otlpForwardHeaders` | `NR_AI_OTLP_FORWARD_HEADERS` | Record\<string, string\> | HTTP headers added to every forwarded OTLP request. Defaults to `{ 'api-key': licenseKey }`. |
 
 ### New Event Types
 
@@ -348,19 +363,19 @@ All local persistence lives under `~/.nr-ai-observe/` by default:
 
 ## Harvest and Ingestion
 
-`HarvestScheduler` (in `shared`) manages periodic flush of events and metrics to New Relic:
+`HarvestScheduler` (in `src/shared/harvest/`) manages periodic flush of events and metrics to New Relic:
 - Events flush every 5 seconds (configurable)
 - Metrics flush every 60 seconds (configurable)
 - Failed batches are re-queued with bounded retry buffers
 - `stop()` is idempotent — concurrent callers await the same flush promise
 
-`NrIngestManager` (in `nr-ai-mcp-server`) wraps `HarvestScheduler` and adds log ingestion.
+`NrIngestManager` (in `src/transport/`) wraps `HarvestScheduler` and adds log ingestion.
 
 ## Security
 
 See [SECURITY.md](./docs/SECURITY.md) for the full guidelines, invariants, and code review checklist. Key points:
 
-- **Redaction** — `DEFAULT_REDACTION_PATTERNS` in `nr-ai-mcp-server/src/config.ts` covers API keys, Bearer tokens, AWS/Google/npm/Slack secrets, JWTs, and PEM blocks. Apply `redact()` / `redactSensitive()` before any string reaches a log or NR event field.
+- **Redaction** — `DEFAULT_REDACTION_PATTERNS` in `src/config.ts` covers API keys, Bearer tokens, AWS/Google/npm/Slack secrets, JWTs, and PEM blocks. Apply `redact()` / `redactSensitive()` before any string reaches a log or NR event field.
 - **Input validation** — `accountId` is validated as `/^\d{1,12}$/` at config load. `envInt` callers supply `{ min, max }` bounds. Tool names are truncated to 256 chars with control chars stripped.
 - **SSRF protection** — `HttpUpstream` rejects non-`http:`/`https:` schemes and RFC-1918/loopback hosts before connecting.
 - **Process safety** — `StdioUpstream` requires an absolute command path and strips `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`, `NODE_OPTIONS`, and related keys from the child env.

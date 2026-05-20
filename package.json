@@ -1,17 +1,51 @@
 {
-  "name": "nr-ai-observatory",
-  "private": true,
+  "name": "nr-ai-mcp-server",
+  "version": "0.1.0",
   "type": "module",
-  "workspaces": [
-    "packages/*"
-  ],
+  "private": true,
+  "description": "New Relic MCP server for observing AI coding assistants (Claude Code)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "nr-ai-mcp-server": "dist/index.js",
+    "nr-ai-observe": "dist/hooks/collector-script.js"
+  },
   "scripts": {
-    "build": "tsc --build && chmod +x packages/nr-ai-mcp-server/dist/index.js packages/nr-ai-mcp-server/dist/hooks/collector-script.js",
+    "build": "tsc --build && chmod +x dist/index.js dist/hooks/collector-script.js",
     "build:clean": "tsc --build --clean",
     "test": "jest",
-    "lint": "eslint packages/*/src/",
+    "lint": "eslint src/",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "deploy:alerts": "npx tsx scripts/deploy-alerts.ts",
+    "deploy:alerts:update": "npx tsx scripts/deploy-alerts.ts --update",
+    "deploy:alerts:teardown": "npx tsx scripts/deploy-alerts.ts --teardown",
+    "deploy:dashboard": "npx tsx scripts/deploy-dashboard.ts",
+    "deploy:dashboard:all": "npx tsx scripts/deploy-dashboard.ts --all",
+    "deploy:dashboard:update": "npx tsx scripts/deploy-dashboard.ts --all --update",
+    "deploy:dashboard:teardown": "npx tsx scripts/deploy-dashboard.ts --all --teardown",
+    "backfill:sessions": "npx tsx scripts/backfill-sessions.ts",
+    "sync:shared": "npx tsx scripts/sync-shared.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.218.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.218.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
+    "@opentelemetry/resources": "^2.7.0",
+    "@opentelemetry/sdk-logs": "^0.218.0",
+    "@opentelemetry/sdk-metrics": "^2.7.0",
+    "@opentelemetry/sdk-trace-node": "^2.7.0",
+    "commander": "^14.0.0",
+    "dotenv": "17.4.2",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

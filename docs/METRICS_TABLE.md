@@ -28,7 +28,7 @@ The `transport` config field controls where the `HarvestScheduler` sends telemet
 
 OTLP targets any OpenTelemetry-compatible backend. New Relic OTLP: US `https://otlp.nr-data.net`, EU `https://otlp.eu01.nr-data.net`.
 
-Source: `packages/shared/src/harvest/harvest-scheduler.ts`, `packages/nr-ai-mcp-server/src/transport/log-ingest.ts`
+Source: `src/shared/harvest/harvest-scheduler.ts`, `src/transport/log-ingest.ts`
 
 ---
 
@@ -64,7 +64,7 @@ Emitted for every tool call captured by the hook collector.
 | `input_hash` | string | Hash of tool input for deduplication (if available) |
 | `*` | varies | Tool-specific fields from input/output parsers (e.g., `filePath`, `command`, `exitCode`, `isTestCommand`) |
 
-Source: `packages/nr-ai-mcp-server/src/transport/nr-ingest.ts` — `toolCallToNrEvent()`
+Source: `src/transport/nr-ingest.ts` — `toolCallToNrEvent()`
 
 #### `AiMcpToolCall`
 
@@ -90,7 +90,7 @@ Emitted for proxied tool calls (when the server forwards to upstream MCP servers
 | `request_size_bytes` | number | Request payload size (if available) |
 | `response_size_bytes` | number | Response payload size (if available) |
 
-Source: `packages/nr-ai-mcp-server/src/transport/nr-ingest.ts` — `proxyToolCallToNrEvent()`
+Source: `src/transport/nr-ingest.ts` — `proxyToolCallToNrEvent()`
 
 #### `AiProxyRequest`
 
@@ -113,7 +113,7 @@ Emitted for non-tool proxy requests (discovery methods like `tools/list`, `resou
 | `proxy_overhead_ms` | number | Proxy layer overhead (if available) |
 | `response_size_bytes` | number | Response size (if available) |
 
-Source: `packages/nr-ai-mcp-server/src/transport/nr-ingest.ts` — `proxyRequestToNrEvent()`
+Source: `src/transport/nr-ingest.ts` — `proxyRequestToNrEvent()`
 
 #### `AiAuditEvent`
 
@@ -137,7 +137,7 @@ Emitted for every tool call as a security audit record.
 | `audit.severity` | string | Alert severity: `critical`, `high`, or `medium` (if alert) |
 | `audit.alert_type` | string | Alert type: `destructive_command`, `sensitive_file`, or `external_network` (if alert) |
 
-Source: `packages/nr-ai-mcp-server/src/security/audit-trail.ts` — `auditRecordToNrEvent()`
+Source: `src/security/audit-trail.ts` — `auditRecordToNrEvent()`
 
 #### `SecurityAlert`
 
@@ -164,7 +164,7 @@ Security alert triggers:
 - **`sensitive_file`** (high): `.env`, `.pem`, `.key`, `credentials`, `secret`, `.ssh`, `.npmrc`, `.pypirc`, `password`, `token` (path-boundary anchored)
 - **`external_network`** (medium): `curl`, `wget`, `nc`, `ssh` commands
 
-Source: `packages/nr-ai-mcp-server/src/security/audit-trail.ts` — `securityAlertToNrEvent()`
+Source: `src/security/audit-trail.ts` — `securityAlertToNrEvent()`
 
 #### `AiCodingTask`
 
@@ -200,7 +200,7 @@ Emitted when a task boundary is detected (a logical unit of work from task start
 | `asked_user_questions` | number | Number of questions asked to the user |
 | `sub_agents_spawned` | number | Number of sub-agent spawns |
 
-Source: `packages/nr-ai-mcp-server/src/transport/nr-ingest.ts` — `codingTaskToNrEvent()`
+Source: `src/transport/nr-ingest.ts` — `codingTaskToNrEvent()`
 
 #### `AiAntiPattern`
 
@@ -228,7 +228,7 @@ Emitted for each anti-pattern detected within a completed task.
 | `edit_count` | number | Number of unverified edits (blind_editing only) |
 | `agent_count` | number | Number of agent spawns (over_delegation only) |
 
-Source: `packages/nr-ai-mcp-server/src/transport/nr-ingest.ts` — `antiPatternToNrEvent()`
+Source: `src/transport/nr-ingest.ts` — `antiPatternToNrEvent()`
 
 #### `AiBudgetWarning`
 
@@ -254,7 +254,7 @@ Emitted when a configured budget threshold is crossed (50%, 80%, 100%).
 
 Each threshold fires only once per period; subsequent additions to spend do not re-fire.
 
-Source: `packages/nr-ai-mcp-server/src/transport/nr-ingest.ts`, `packages/nr-ai-mcp-server/src/metrics/budget-tracker.ts`
+Source: `src/transport/nr-ingest.ts`, `src/metrics/budget-tracker.ts`
 
 ---
 
@@ -295,7 +295,7 @@ Emitted for every AI model request.
 | `gen_ai.request.top_p` | number | Top-p parameter (omitted when null) |
 | `gen_ai.request.stream` | boolean | Whether streaming is enabled (mirrors `streamingEnabled`) |
 
-Source: `packages/shared/src/events/serialize.ts` — `aiRequestToNrEvent()`
+Source: `src/shared/events/serialize.ts` — `aiRequestToNrEvent()`
 
 #### `AiResponse`
 
@@ -339,7 +339,7 @@ Emitted for every AI model response.
 | `gen_ai.usage.cache_creation.input_tokens` | number | Prompt cache creation tokens (omitted when 0) |
 | `gen_ai.response.finish_reason` | string | Stop reason (e.g., `end_turn`, `max_tokens`; omitted when null) |
 
-Source: `packages/shared/src/events/serialize.ts` — `aiResponseToNrEvent()`
+Source: `src/shared/events/serialize.ts` — `aiResponseToNrEvent()`
 
 #### `AiMessage`
 
@@ -357,7 +357,7 @@ Emitted for message content capture (when `recordContent` is enabled).
 | `nr.appName` | string | Application name |
 | `custom.*` | varies | Custom attributes prefixed with `custom.` |
 
-Source: `packages/shared/src/events/serialize.ts` — `aiMessageToNrEvent()`
+Source: `src/shared/events/serialize.ts` — `aiMessageToNrEvent()`
 
 #### `AiCostGrowthAlert`
 
@@ -371,7 +371,7 @@ Emitted when the 30-day cost growth rate exceeds a configured threshold.
 | `growthRatePercent` | number | Computed month-over-month growth rate (%) |
 | `growthThresholdPercent` | number | Configured threshold that was exceeded (%) |
 
-Source: `packages/nr-ai-agent/src/agent.ts` — `CostForecaster` `onAlert` callback
+Source: `nr-ai-typescript-agent repo: src/agent.ts` — `CostForecaster` `onAlert` callback
 
 #### `AiCostForecastAlert`
 
@@ -385,7 +385,7 @@ Emitted when the projected monthly cost exceeds the configured budget.
 | `projectedMonthlyCostUsd` | number | Projected cost for the current month (USD) |
 | `monthlyBudgetUsd` | number | Configured monthly budget limit (USD) |
 
-Source: `packages/nr-ai-agent/src/agent.ts` — `CostForecaster` `onAlert` callback
+Source: `nr-ai-typescript-agent repo: src/agent.ts` — `CostForecaster` `onAlert` callback
 
 #### `AiExperimentSummary`
 
@@ -405,7 +405,7 @@ Emitted every 6 hours for each active A/B experiment.
 | `variant.<name>.p95` | number | p95 value for variant (per primary metric) |
 | `variant.<name>.sampleCount` | number | Sample count for variant |
 
-Source: `packages/nr-ai-agent/src/agent.ts` — `emitExperimentEvents()`
+Source: `nr-ai-typescript-agent repo: src/agent.ts` — `emitExperimentEvents()`
 
 #### `AiExperimentConclusion`
 
@@ -425,7 +425,7 @@ Emitted once when an experiment concludes (winner declared or end date reached).
 | `winnerSampleCount` | number | Sample count for the winning variant (only if winner declared) |
 | `loserSampleCount` | number | Sample count for the losing variant (only if winner declared) |
 
-Source: `packages/nr-ai-agent/src/agent.ts` — `emitExperimentEvents()`
+Source: `nr-ai-typescript-agent repo: src/agent.ts` — `emitExperimentEvents()`
 
 #### `AiRecommendation`
 
@@ -443,7 +443,7 @@ Emitted every 5 minutes for each active recommendation (requires ≥20 requests 
 | `estimatedImpact` | string | Human-readable impact description |
 | `confidence` | number | Confidence score (0–1) |
 
-Source: `packages/nr-ai-agent/src/agent.ts` — `emitRecommendationEvents()`
+Source: `nr-ai-typescript-agent repo: src/agent.ts` — `emitRecommendationEvents()`
 
 ---
 
@@ -461,7 +461,7 @@ Recorded for each tool call as it happens.
 | `ai.mcp.proxy_request_count` | `1` | `{server, method}` | Incremented per proxy discovery request |
 | `ai.mcp.proxy_request_duration_ms` | duration | `{server}` | From `ProxyRequestRecord.durationMs` |
 
-Source: `packages/nr-ai-mcp-server/src/transport/nr-ingest.ts` — `ingestToolCall()`, `ingestProxyRequest()`
+Source: `src/transport/nr-ingest.ts` — `ingestToolCall()`, `ingestProxyRequest()`
 
 ### MCP Server — Session Gauges
 
@@ -473,7 +473,7 @@ Emitted every 60 seconds (on the metric harvest cadence) with current session st
 | `ai.session.unique_files_read` | count | — | Size of internal Set of file paths from Read calls |
 | `ai.session.unique_files_written` | count | — | Size of internal Set of file paths from Write/Edit calls |
 
-Source: `packages/nr-ai-mcp-server/src/transport/nr-ingest.ts` — `emitSessionGauges()`
+Source: `src/transport/nr-ingest.ts` — `emitSessionGauges()`
 
 ### MCP Server — Proxy Gauges
 
@@ -487,7 +487,7 @@ Emitted every 60 seconds alongside session gauges (only when proxy mode is activ
 | `ai.mcp.proxy_overhead_ms` | average ms | — | `sum(overheadValues) / count` across all servers |
 | `ai.mcp.tool_popularity` | count | `{tool, server}` | Per-tool per-server call count |
 
-Source: `packages/nr-ai-mcp-server/src/transport/nr-ingest.ts` — `emitSessionGauges()`, `packages/nr-ai-mcp-server/src/metrics/proxy-metrics.ts`
+Source: `src/transport/nr-ingest.ts` — `emitSessionGauges()`, `src/metrics/proxy-metrics.ts`
 
 ### SDK Agent — Request Metrics *(nr-ai-agent now in `nr-ai-typescript-agent` repo)*
 
@@ -500,7 +500,7 @@ Recorded by `nr-ai-agent` for each wrapped SDK call.
 | `ai.error` | `1` | `{provider, model, errorType}` | Incremented when request has an error |
 | `ai.embedding.duration` | duration ms | `{provider, model}` | From `AiEmbeddingRecord.durationMs` (embeddings only) |
 
-Source: `packages/nr-ai-agent/src/agent.ts` — `ingestRequestRecord()`, `ingestEmbeddingRecord()`
+Source: `nr-ai-typescript-agent repo: src/agent.ts` — `ingestRequestRecord()`, `ingestEmbeddingRecord()`
 
 ### SDK Agent — Intelligence Metrics (Phase 4)
 
@@ -514,7 +514,7 @@ Recorded by the Phase 4 intelligence modules.
 | `ai.drift.centroid_distance` | distance | `{feature}` | Euclidean distance from centroid |
 | `ai.drift.detected` | `0` or `1` | `{feature}` | `1` when similarity falls below `similarityThreshold` |
 
-Source: `packages/nr-ai-agent/src/intelligence/semantic-drift.ts`, `packages/nr-ai-agent/src/agent.ts`
+Source: `nr-ai-typescript-agent repo: src/intelligence/semantic-drift.ts`, `nr-ai-typescript-agent repo: src/agent.ts`
 
 **Anomaly Detection (Phase 4.2)**
 
@@ -522,7 +522,7 @@ Source: `packages/nr-ai-agent/src/intelligence/semantic-drift.ts`, `packages/nr-
 |-------------|-------|------------|--------------|
 | `ai.quality.anomaly_score` | composite score (0–1) | `{feature}` | Weighted z-score across structural (30%), application (50%), semantic (20%) signals |
 
-Source: `packages/nr-ai-agent/src/intelligence/anomaly-detection.ts`, `packages/nr-ai-agent/src/agent.ts`
+Source: `nr-ai-typescript-agent repo: src/intelligence/anomaly-detection.ts`, `nr-ai-typescript-agent repo: src/agent.ts`
 
 **Cost Forecasting (Phase 4.3)**
 
@@ -535,7 +535,7 @@ Source: `packages/nr-ai-agent/src/intelligence/anomaly-detection.ts`, `packages/
 | `ai.forecast.projected_daily_cost_usd` | USD | — | Projected cost for the next day |
 | `ai.forecast.budget_exceed_date` | epoch ms | — | Estimated date when monthly budget will be exceeded (only if budget configured) |
 
-Source: `packages/nr-ai-agent/src/intelligence/cost-forecasting.ts`, `packages/nr-ai-agent/src/agent.ts`
+Source: `nr-ai-typescript-agent repo: src/intelligence/cost-forecasting.ts`, `nr-ai-typescript-agent repo: src/agent.ts`
 
 **Cache Intelligence (Phase 4.4)**
 
@@ -546,7 +546,7 @@ Source: `packages/nr-ai-agent/src/intelligence/cost-forecasting.ts`, `packages/n
 | `ai.cache.roi` | ratio | `{feature}` | `cumulativeSavings / cacheCreationCost` |
 | `ai.cache.efficiency_score` | score (0–1) | `{feature}` | Composite cache efficiency |
 
-Source: `packages/nr-ai-agent/src/intelligence/recommendations.ts`, `packages/nr-ai-agent/src/agent.ts`
+Source: `nr-ai-typescript-agent repo: src/intelligence/recommendations.ts`, `nr-ai-typescript-agent repo: src/agent.ts`
 
 **Context Management (Phase 4)**
 
@@ -555,7 +555,7 @@ Source: `packages/nr-ai-agent/src/intelligence/recommendations.ts`, `packages/nr
 | `ai.context.compression_ratio` | ratio | `{conversationId}` | Tokens kept / tokens before compression |
 | `ai.context.tokens_removed` | count | `{conversationId}` | Tokens removed by context compression |
 
-Source: `packages/nr-ai-agent/src/agent.ts`
+Source: `nr-ai-typescript-agent repo: src/agent.ts`
 
 **Custom Instrumentation (Phase 4.7)**
 
@@ -563,7 +563,7 @@ Source: `packages/nr-ai-agent/src/agent.ts`
 |-------------|-------|------------|--------------|
 | `ai.custom.span.duration_ms` | duration ms | `{spanName}` | Duration of user-defined custom spans |
 
-Source: `packages/nr-ai-agent/src/api/custom-metrics.ts`
+Source: `nr-ai-typescript-agent repo: src/api/custom-metrics.ts`
 
 ### Metric Aggregation
 
@@ -576,7 +576,7 @@ All metrics pass through the `MetricAggregator` before being sent. For each uniq
 | Min | `{name}.min` | gauge | Minimum value |
 | Max | `{name}.max` | gauge | Maximum value |
 
-Source: `packages/shared/src/harvest/metric-aggregator.ts`
+Source: `src/shared/harvest/metric-aggregator.ts`
 
 ---
 
@@ -601,4 +601,4 @@ Every tool call produces a structured log entry sent to the NR Logs API.
 | `audit.severity` | attributes | string | Alert severity (if alert) |
 | `audit.alert_type` | attributes | string | Alert type (if alert) |
 
-Source: `packages/nr-ai-mcp-server/src/transport/log-ingest.ts` — `auditRecordToLogEntry()`
+Source: `src/transport/log-ingest.ts` — `auditRecordToLogEntry()`

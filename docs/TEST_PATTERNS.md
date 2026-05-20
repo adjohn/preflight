@@ -1,6 +1,6 @@
 # NR AI Observatory — Test Patterns
 
-This document covers the testing conventions, infrastructure, and patterns used across this monorepo. Read this before writing your first test.
+This document covers the testing conventions, infrastructure, and patterns used in this repo. Read this before writing your first test.
 
 ---
 
@@ -8,41 +8,29 @@ This document covers the testing conventions, infrastructure, and patterns used 
 
 ### Jest configuration
 
-The monorepo uses a shared base config (`jest.config.base.ts`) with per-package overrides.
+A single flat `jest.config.ts` at the repo root governs every test. There are no per-package configs and no base config to extend.
 
-```
-jest.config.ts              # Root: lists projects, maxWorkers: 1, forceExit
-jest.config.base.ts         # Base: ts-jest ESM preset, module mapper, test match
-packages/shared/jest.config.ts
-packages/nr-ai-mcp-server/jest.config.ts
-# packages/nr-ai-agent/jest.config.ts — now in nr-ai-typescript-agent repo (same pattern applies)
-```
-
-Key settings from the base config:
+Key settings:
 
 | Setting | Value | Why |
 |---------|-------|-----|
 | `preset` | `ts-jest/presets/default-esm` | ESM modules with TypeScript |
 | `testEnvironment` | `node` | No browser DOM needed |
-| `moduleNameMapper` | `'^(\\.{1,2}/.*)\\.js$': '$1'` | Strips `.js` extensions for ts-jest |
+| `testMatch` | `['<rootDir>/src/**/*.test.ts', '<rootDir>/test/**/*.test.ts']` | Co-located unit tests + dedicated `test/` folder |
+| `moduleNameMapper` | `'^(\\.{1,2}/.*)\\.js$': '$1'` | Strips `.js` extensions in TS imports for ts-jest |
 | `extensionsToTreatAsEsm` | `['.ts']` | Tells Jest to treat `.ts` as ESM |
 | `testTimeout` | `15_000` | 15s default per test |
-| `maxWorkers` | `1` (root and mcp-server) | Prevents deadlocks in stdio integration tests |
+| `maxWorkers` | `1` | Prevents deadlocks in stdio integration tests |
+| `forceExit` | `true` | Ensures Jest terminates after harvest schedulers / proxies are stopped |
+| `tsconfig` (transform) | `tsconfig.test.json` | Loose TS settings for test compilation |
 
-The `nr-ai-mcp-server` package adds a `moduleNameMapper` entry to resolve `@nr-ai-observatory/shared` to the source directory, avoiding the need to rebuild shared before running tests:
-
-```typescript
-moduleNameMapper: {
-  ...baseConfig.moduleNameMapper,
-  '^@nr-ai-observatory/shared$': '<rootDir>/../shared/src/index.ts',
-},
-```
+`src/shared/` is imported relatively (`from '../shared/index.js'`), so no special module resolution is required.
 
 ### Running tests
 
 ```bash
-npm test                                         # All packages
-npx jest -- packages/shared/                     # One package
+npm test                                         # Entire suite
+npx jest -- src/shared/                          # All tests under one directory
 npx jest -- src/metrics/cost-tracker.test.ts     # One file
 npx jest -- --testNamePattern="re-queues"        # Tests matching a name pattern
 ```
@@ -201,7 +189,7 @@ function makeProxyRecord(overrides?: Partial<ProxyToolCallRecord>): ProxyToolCal
 
 ### Metric tracker tests
 
-All 12 metric trackers follow the same test structure: create a tracker, feed it records, read out metrics, assert.
+All 19 metric trackers in `src/metrics/` follow the same test structure: create a tracker, feed it records, read out metrics, assert.
 
 ```typescript
 describe('SessionTracker', () => {
@@ -447,17 +435,17 @@ These files demonstrate the patterns well and serve as templates for new tests:
 
 | File | Demonstrates |
 |------|-------------|
-| `packages/shared/src/harvest/harvest-scheduler.test.ts` | Fake timers, mock send functions, retry/requeue, concurrent stop, atomic snapshot |
-| `packages/nr-ai-mcp-server/src/metrics/session-tracker.test.ts` | Metric tracker pattern: record → getMetrics → assert |
-| `packages/nr-ai-mcp-server/src/metrics/anti-patterns.test.ts` | Sequence-based detection: build record arrays, analyze, filter results |
-| `packages/nr-ai-mcp-server/src/metrics/efficiency-score.test.ts` | Task factory, component scoring, boundary conditions |
-| `packages/nr-ai-mcp-server/src/hooks/event-processor.test.ts` | Pre/post event pairing, temp directory, mock callback |
-| `packages/nr-ai-mcp-server/src/storage/local-store.test.ts` | Filesystem tests with temp directory cleanup, edge cases |
-| `packages/nr-ai-mcp-server/src/tools/session-stats.test.ts` | Tool handler pattern: real trackers → handler → JSON.parse |
-| `packages/nr-ai-mcp-server/src/tools/cross-session-tools.test.ts` | Cross-session tools with SessionStore, temp directory, rich factories |
-| `packages/shared/src/transport/http-client.test.ts` | fetch mocking, gzip verification, region detection, retry behavior |
-| `packages/nr-ai-mcp-server/src/security/audit-trail.test.ts` | Security classification, regex pattern testing, false positive/negative coverage |
-| `packages/nr-ai-mcp-server/src/transport/nr-ingest.test.ts` | Proxy event builders, session trace ID propagation, `makeProxyRecord` factory |
+| `src/shared/harvest/harvest-scheduler.test.ts` | Fake timers, mock send functions, retry/requeue, concurrent stop, atomic snapshot |
+| `src/metrics/session-tracker.test.ts` | Metric tracker pattern: record → getMetrics → assert |
+| `src/metrics/anti-patterns.test.ts` | Sequence-based detection: build record arrays, analyze, filter results |
+| `src/metrics/efficiency-score.test.ts` | Task factory, component scoring, boundary conditions |
+| `src/hooks/event-processor.test.ts` | Pre/post event pairing, temp directory, mock callback |
+| `src/storage/local-store.test.ts` | Filesystem tests with temp directory cleanup, edge cases |
+| `src/tools/session-stats.test.ts` | Tool handler pattern: real trackers → handler → JSON.parse |
+| `src/tools/cross-session-tools.test.ts` | Cross-session tools with SessionStore, temp directory, rich factories |
+| `src/shared/transport/http-client.test.ts` | fetch mocking, gzip verification, region detection, retry behavior |
+| `src/security/audit-trail.test.ts` | Security classification, regex pattern testing, false positive/negative coverage |
+| `src/transport/nr-ingest.test.ts` | Proxy event builders, session trace ID propagation, `makeProxyRecord` factory |
 
 ---
 

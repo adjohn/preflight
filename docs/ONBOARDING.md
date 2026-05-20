@@ -10,11 +10,11 @@ NR AI Observatory provides **observability for AI coding assistants**. When deve
 
 There are two main integration points:
 
-1. **MCP Server** (`nr-ai-mcp-server`) — Hooks into Claude Code via the Model Context Protocol. It captures every tool call, computes metrics like efficiency scores and anti-pattern detection, and exposes MCP tools that Claude Code can query directly (e.g., "show me my session stats").
+1. **MCP Server (this repo)** — Hooks into Claude Code via the Model Context Protocol. It captures every tool call, computes metrics like efficiency scores and anti-pattern detection, and exposes MCP tools that Claude Code can query directly (e.g., "show me my session stats").
 
-2. **SDK Agent** (`nr-ai-agent`) — *(now in the `nr-ai-typescript-agent` repo)* Wraps Anthropic, Google Gemini, OpenAI, AWS Bedrock, Mistral, and Cohere SDK clients. Your application code uses the wrapped client exactly like the original, but every API call is automatically instrumented and sent to New Relic.
+2. **SDK Agent** — Lives in the separate [`nr-ai-typescript-agent`](https://github.com/) repo. Wraps Anthropic, Google Gemini, OpenAI, AWS Bedrock, Mistral, and Cohere SDK clients. Your application code uses the wrapped client exactly like the original, but every API call is automatically instrumented and sent to New Relic.
 
-Both share a common transport layer (`@nr-ai-observatory/shared`) that handles event buffering, metric aggregation, and HTTP delivery to New Relic's APIs.
+Both projects share a common transport layer that handles event buffering, metric aggregation, and HTTP delivery to New Relic's APIs. In this repo it lives at `src/shared/` (synced from `nr-ai-typescript-shared` via `npm run sync:shared`); in the agent repo it lives in the `nr-ai-typescript-shared` package itself.
 
 ---
 
@@ -29,12 +29,13 @@ Both share a common transport layer (`@nr-ai-observatory/shared`) that handles e
 ### First-time setup
 
 ```bash
-nvm install        # Install the right Node version
+nvm install        # Install the right Node version (v24, from .nvmrc)
 nvm use            # Activate it
-# Clone the shared package sibling repo (required by the sync script)
-git clone <nr-ai-typescript-shared-url> ../nr-ai-typescript-shared
-npm install        # Install all workspace dependencies
-npm run build      # Sync shared sources + build all packages
+# Clone the shared sibling repo at ../nr-ai-typescript-shared if you plan to pull updates with `npm run sync:shared`.
+# Day-to-day development does NOT require it — `src/shared/` is checked in.
+npm install        # Install dependencies
+npm run build      # Build TypeScript and chmod +x the CLI binaries
+npm link           # Register nr-ai-observe on PATH (required for Claude Code hooks)
 npm test           # Verify everything works
 ```
 
@@ -42,47 +43,80 @@ npm test           # Verify everything works
 
 | Command | What it does |
 |---------|--------------|
-| `npm run build` | Build all packages (TypeScript) |
-| `npm test` | Run the full test suite |
-| `npm run lint` | Check for code style issues |
-| `npm run format` | Auto-format with Prettier |
-| `npm run format:check` | Check formatting without writing |
+| `npm run build` | Build TypeScript (`tsc --build`) and chmod the CLI binaries |
+| `npm run build:clean` | Remove build output |
+| `npm test` | Run the full Jest suite (`maxWorkers: 1`) |
+| `npm run lint` | ESLint over `src/` |
+| `npm run format` | Prettier write |
+| `npm run format:check` | Prettier check (no writes) |
+| `npm run sync:shared` | Pull latest source from `../nr-ai-typescript-shared` into `src/shared/` (warns on dirty upstream) |
+| `npm run deploy:dashboard` | Deploy the default NR dashboard |
+| `npm run deploy:dashboard:all` | Deploy every pre-built dashboard |
+| `npm run deploy:dashboard:update` | Sync every pre-built dashboard in place (preserves GUID/URL) |
+| `npm run deploy:dashboard:teardown` | Delete every pre-built dashboard (matches by name; missing = skipped) |
+| `npm run deploy:alerts` | Deploy the alert policy + conditions to NR |
+| `npm run deploy:alerts:update` | Sync conditions on the existing alert policy in place |
+| `npm run deploy:alerts:teardown` | Delete the alert policy and all its conditions |
+| `npm run backfill:sessions` | Backfill local session JSON files from NR event history |
 
-To build or test a single package:
+To run a single test file:
 
 ```bash
-node scripts/sync-shared.js && npx tsc -b packages/shared && npx tsc -b packages/nr-ai-mcp-server
 npx jest -- src/metrics/cost-tracker.test.ts
+npx jest -- src/shared/harvest/harvest-scheduler.test.ts
 ```
 
-**Important:** Always run `node scripts/sync-shared.js` before building `packages/shared` — it copies source from `../nr-ai-typescript-shared`. Then build `packages/shared` before any other package. `npm run build` handles both steps automatically.
+To build directly without the chmod step:
+
+```bash
+npx tsc -b .
+```
+
+**Working with shared code:** `src/shared/` is a **read-only mirror** — never edit it directly here. Make the change in the upstream `nr-ai-typescript-shared` repo, then run `npm run sync:shared` to pull it in and commit the regenerated tree. Only code that is consumed by **both** this MCP server and the `nr-ai-typescript-agent` belongs in shared. See [CLAUDE.md](../CLAUDE.md) for the full rules.
 
 ---
 
 ## Project Structure
 
-This is an npm workspaces monorepo with two active packages. The TypeScript SDK agent and E2E test app have been extracted to the `nr-ai-typescript-agent` repo.
+This is a flat single-package repo. Source lives directly under `src/`. There is no `packages/` directory and no npm workspaces. The TypeScript SDK agent (`nr-ai-agent`) lives in the separate `nr-ai-typescript-agent` repo, and CI/CD tooling lives in `nr-ai-github-tools`.
 
 ```
 nr-ai-observatory/
-  packages/
-    shared/              # Transport, events, pricing, harvest scheduler (src/ committed; sync from nr-ai-typescript-shared with scripts/sync-shared.js)
-    nr-ai-mcp-server/    # MCP server + metrics engine + HTTP proxy
+  src/
+    shared/        # Transport, events, pricing, harvest scheduler (synced from nr-ai-typescript-shared)
+    hooks/         # Hook collector + pre/post event pairing
+    metrics/       # 19 analyzer classes (session, cost, anti-patterns, efficiency, …)
+    tools/         # MCP tool handlers
+    proxy/         # HTTP proxy + upstream transports
+    storage/       # JSON session and weekly summary persistence
+    security/      # Audit trail + SSRF helpers
+    tracing/       # OTel span lifecycle
+    transport/     # NR ingest manager + log ingest
+    platforms/     # 8 platform adapters (Claude Code, Cursor, Windsurf, …)
+    digest/        # Slack digest formatter and sender
+    install/       # nr-ai-observe install / setup CLI
+    alerts/        # Alert TS types (JSON files live in alerts/ at repo root)
+  alerts/          # Alert policy + condition JSON definitions
+  dashboards/      # Pre-built NR dashboard JSON files
+  scripts/         # sync-shared.ts, deploy-dashboard.ts, deploy-alerts.ts, backfill-sessions.ts
 ```
 
-### `@nr-ai-observatory/shared`
+For a complete annotated tree, see [CLAUDE.md](../CLAUDE.md).
 
-The foundation layer. Provides:
+### Shared transport layer (`src/shared/`)
+
+The foundation layer is checked in at `src/shared/` and synced from the upstream `nr-ai-typescript-shared` package via `npm run sync:shared`. Internal imports use a relative path: `import { createLogger } from '../shared/index.js'`. Provides:
+
 - **Event creation** — `createAiRequest()`, `createAiResponse()`, serialization to NR format
-- **Transport** — HTTP clients for New Relic's Events, Metric, and Logs APIs
-- **Harvest scheduler** — Periodic flush of buffered events (5s) and metrics (60s) with retry
+- **Transport** — HTTP clients for New Relic's Events, Metric, and Logs APIs, plus an OTLP/HTTP exporter
+- **Harvest scheduler** — Periodic flush of buffered events (5s) and metrics (60s) with bounded retry buffers
 - **Token utilities** — Extract token counts from Anthropic/Gemini API responses
 - **Pricing** — Calculate USD cost from token counts using model-specific pricing tables
 - **Logger** — `createLogger('name')` writes structured JSON to stderr
 
-### `nr-ai-agent` *(now in `nr-ai-typescript-agent` repo)*
+### SDK Agent (separate repo)
 
-A lightweight agent that wraps SDK clients (now maintained in the `nr-ai-typescript-agent` repo):
+The agent that wraps Anthropic, Google Gemini, OpenAI, Bedrock, Mistral, and Cohere SDKs is maintained in the `nr-ai-typescript-agent` repo:
 
 ```typescript
 import { init } from 'nr-ai-agent';
@@ -92,21 +126,23 @@ const client = agent.wrapAnthropicClient(rawAnthropicClient);
 await agent.shutdown();
 ```
 
-### `nr-ai-mcp-server`
+Look there for SDK-instrumentation work; this repo only contains the MCP server.
 
-The largest package. It has several subsystems:
+### MCP server subsystems
+
+The MCP server is composed of these subsystems under `src/`:
 
 - **Hooks** (`src/hooks/`) — Claude Code invokes a hook script on every tool use. The collector writes events to a local JSONL buffer. The event processor drains the buffer, pairs pre/post events, and emits `ToolCallRecord` objects.
 
-- **Metrics** (`src/metrics/`) — 18 analyzer classes that each receive tool call records and maintain running state. Session tracking, cost tracking, task detection, anti-pattern detection, efficiency scoring, trend analysis, collaboration profiling, proxy metrics, personal coaching, and more.
+- **Metrics** (`src/metrics/`) — 19 analyzer classes that each receive tool call records and maintain running state. Session tracking, cost tracking + forecasting, task detection, anti-pattern detection, efficiency scoring, trend analysis, collaboration profiling, proxy metrics, personal coaching, and more.
 
-- **Tools** (`src/tools/`) — MCP tool handlers that query the metric trackers and return results. These are the tools that Claude Code can call (e.g., `nr_observe_get_session_stats`).
+- **Tools** (`src/tools/`) — MCP tool handlers that query the metric trackers and return results. These are the tools that Claude Code can call (e.g., `nr_observe_get_session_stats`). Registered via `registerTools()` in `src/tools/session-stats.ts`.
 
 - **Proxy** (`src/proxy/`) — HTTP proxy layer that forwards requests to upstream MCP servers while recording latency and tool call metrics.
 
-- **Storage** (`src/storage/`) — Local file persistence for session summaries and weekly aggregations.
+- **Storage** (`src/storage/`) — Local file persistence for session summaries and weekly aggregations under `~/.nr-ai-observe/`.
 
-- **Security** (`src/security/`) — Audit trail that classifies tool calls and flags sensitive file access or destructive commands.
+- **Security** (`src/security/`) — Audit trail that classifies tool calls and flags sensitive file access or destructive commands; SSRF validation for outbound URLs.
 
 - **Tracing** (`src/tracing/`) — OTel span management. When `transport !== 'nr-events-api'`, emits a session root span, intermediate task spans from `TaskDetector` boundaries, and a leaf span per `ToolCallRecord`. The resulting waterfall is visible in any OTel-compatible backend.
 
@@ -141,7 +177,7 @@ The server communicates with Claude Code over stdio using JSON-RPC. It registers
 
 ## Configuration Reference
 
-For a complete annotated reference of every config option — including types, defaults, and env variable overrides — see [`packages/nr-ai-mcp-server/example.config.js`](../packages/nr-ai-mcp-server/example.config.js).
+For a complete annotated reference of every config option — including types, defaults, and env variable overrides — see [`example.config.js`](../example.config.js).
 
 ### Budget Thresholds
 
@@ -252,7 +288,7 @@ Point your application's OTel SDK at `http://localhost:4318` and its spans/metri
 
 Every module creates a scoped logger:
 ```typescript
-import { createLogger } from '@nr-ai-observatory/shared';
+import { createLogger } from '../shared/index.js';
 const logger = createLogger('my-module');
 ```
 Logger writes to **stderr** as JSON. Never write to stdout — it's reserved for the MCP stdio transport.
@@ -359,7 +395,7 @@ Each platform normalizes tool calls into the shared `AiToolCall` event schema, s
 ### Deploy dashboards
 
 ```bash
-NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx packages/nr-ai-mcp-server/scripts/deploy-dashboard.ts --all
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-dashboard.ts --all
 ```
 
 Add `--staging` if your account is on the New Relic staging environment. Deploys all seven pre-built dashboards (overview, security, platform comparison, team view, session detail, manager view, personal). Use `--print` to output JSON for manual import via the New Relic UI.
@@ -368,31 +404,53 @@ For a self-reflection dashboard pre-filtered to your identity, deploy the person
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx packages/nr-ai-mcp-server/scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer <your-name>
+  npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer <your-name>
 ```
+
+To replace existing dashboards in place (preserves GUID and URL), add `--update`. The script looks up each dashboard by name and calls `dashboardUpdate`:
+
+```bash
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-dashboard.ts --all --update
+```
+
+To remove all deployed dashboards:
+
+```bash
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-dashboard.ts --all --teardown
+```
+
+`--teardown` matches dashboards by name and calls `dashboardDelete`. Missing dashboards are skipped (no-op), so it's safe to re-run. Pair with a single filename to delete one dashboard, or use `--all` to delete every pre-built one. `--teardown` is mutually exclusive with `--update` and `--print`.
 
 ### Deploy alert conditions
 
 ```bash
-NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx packages/nr-ai-mcp-server/scripts/deploy-alerts.ts
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-alerts.ts
 ```
 
-Add `--staging` if your account is on the New Relic staging environment. Deploys the "AI Coding Assistant Alerts" policy with five NRQL conditions. Use `--dry-run` to preview without hitting the API. Conditions 1–4 are enabled by default; condition 05 (session budget) is disabled and requires adjusting the threshold in `packages/nr-ai-mcp-server/alerts/conditions/05-session-cost-budget.json`.
+Add `--staging` if your account is on the New Relic staging environment. Deploys the "AI Coding Assistant Alerts" policy with five NRQL conditions. Use `--dry-run` to preview without hitting the API. Conditions 1–4 are enabled by default; condition 05 (session budget) is disabled and requires adjusting the threshold in `alerts/conditions/05-session-cost-budget.json`.
+
+To sync conditions on an existing policy in place (preserves the policy's id and condition history; matches conditions by name to update them, creates new ones, and deletes any condition not present locally):
+
+```bash
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-alerts.ts --update
+```
+
+`--update` only syncs conditions inside the policy. Renaming the policy or changing its `incidentPreference` still requires `--teardown` then redeploy. `--update` is mutually exclusive with `--dry-run` and `--teardown`. Combine with `--developer <name>` to update the personal policy.
 
 To remove all deployed alert conditions:
 
 ```bash
-NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx packages/nr-ai-mcp-server/scripts/deploy-alerts.ts --teardown
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-alerts.ts --teardown
 ```
 
 For per-developer alerts scoped to one identity (lower personal thresholds, separate policy from the team one), pass `--developer <name>`:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx packages/nr-ai-mcp-server/scripts/deploy-alerts.ts --developer <your-name>
+  npx tsx scripts/deploy-alerts.ts --developer <your-name>
 ```
 
-This creates a separate policy `AI Coding — Personal — <name>` from the JSON files in `packages/nr-ai-mcp-server/alerts/conditions-personal/`, with `developer = '<name>'` injected into every NRQL query. The flag is additive — running without it deploys only the team policy; running with it deploys only the personal policy. Use `--teardown` alongside `--developer` to remove just the personal policy.
+This creates a separate policy `AI Coding — Personal — <name>` from the JSON files in `alerts/conditions-personal/`, with `developer = '<name>'` injected into every NRQL query. The flag is additive — running without it deploys only the team policy; running with it deploys only the personal policy. Use `--teardown` alongside `--developer` to remove just the personal policy.
 
 Override the personal thresholds in `~/.nr-ai-observe/config.json`:
 
@@ -417,7 +475,7 @@ If you have existing NR telemetry but no local session files (e.g. because you u
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx packages/nr-ai-mcp-server/scripts/backfill-sessions.ts \
+  npx tsx scripts/backfill-sessions.ts \
   --developer <your-name> [--days 90] [--dry-run] [--staging]
 ```
 
@@ -427,9 +485,9 @@ The script queries NR for your past sessions, reconstructs session summaries, wr
 
 ## Where to Go for Help
 
-- **[CLAUDE.md](./CLAUDE.md)** — The full technical reference for this repo. Architecture, conventions, every pattern in detail. This is your cheat sheet once you're up to speed.
+- **[CLAUDE.md](../CLAUDE.md)** — The full technical reference for this repo. Architecture, conventions, every pattern in detail. This is your cheat sheet once you're up to speed.
 - **[SECURITY.md](./SECURITY.md)** — Security practices, invariants, and a code review checklist. Read this before your first PR that touches config loading, network requests, subprocess execution, or telemetry fields.
 - **[TEST_PATTERNS.md](./TEST_PATTERNS.md)** — Testing conventions, factory patterns, mock strategies. Read this before writing your first test.
-- **The code itself** — The best examples of our patterns are in `packages/nr-ai-mcp-server/src/metrics/` (tracker pattern), `packages/shared/src/harvest/` (scheduler/buffer pattern), and the test files alongside them.
+- **The code itself** — The best examples of our patterns are in `src/metrics/` (tracker pattern), `src/shared/harvest/` (scheduler/buffer pattern), and the test files alongside them.
 
 Welcome to the project!

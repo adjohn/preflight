@@ -55,7 +55,7 @@ Current session metrics snapshot.
 
 **Requires:** `SessionTracker`
 
-Source: `packages/nr-ai-mcp-server/src/tools/session-stats.ts`
+Source: `src/tools/session-stats.ts`
 
 ---
 
@@ -84,7 +84,7 @@ Ordered list of recent tool calls.
 
 **Requires:** `SessionTracker`
 
-Source: `packages/nr-ai-mcp-server/src/tools/session-stats.ts`
+Source: `src/tools/session-stats.ts`
 
 ---
 
@@ -119,14 +119,14 @@ Self-report token usage for cost tracking. Called by Claude Code to report its o
 
 **How it works:**
 1. Constructs a `TokenUsage` object from the reported counts
-2. Calls `CostTracker.recordTokenUsage(usage, model)` which looks up per-token prices from the pricing table (`packages/shared/src/pricing-data.ts`)
+2. Calls `CostTracker.recordTokenUsage(usage, model)` which looks up per-token prices from the pricing table (`src/shared/pricing-data.ts`)
 3. Cost breakdown: `inputCost = inputTokens * inputPricePerToken`, similarly for output, thinking, cache read, and cache creation tokens
 4. Accumulates into session total and per-model totals
 5. Returns both the cost for this specific report and the running session total
 
 **Requires:** `CostTracker`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cost-tools.ts`
+Source: `src/tools/cost-tools.ts`
 
 ---
 
@@ -160,7 +160,7 @@ Session cost breakdown by task, model, and efficiency.
 
 **Requires:** `CostTracker`; `TaskDetector` for per-task breakdown
 
-Source: `packages/nr-ai-mcp-server/src/tools/cost-tools.ts`
+Source: `src/tools/cost-tools.ts`
 
 ---
 
@@ -203,7 +203,7 @@ Complete tool call trace for a task with anti-pattern and efficiency analysis.
 
 **Requires:** `TaskDetector`
 
-Source: `packages/nr-ai-mcp-server/src/tools/workflow-tools.ts`
+Source: `src/tools/workflow-tools.ts`
 
 ---
 
@@ -237,7 +237,7 @@ Each detected pattern includes a `suggestion` field with a human-readable recomm
 
 **Requires:** `TaskDetector`, `AntiPatternDetector`
 
-Source: `packages/nr-ai-mcp-server/src/tools/workflow-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/anti-patterns.ts`
+Source: `src/tools/workflow-tools.ts`, `src/metrics/anti-patterns.ts`
 
 ---
 
@@ -281,7 +281,7 @@ Final score = weighted average of all four components, clamped to [0, 1].
 
 **Requires:** `EfficiencyScorer`
 
-Source: `packages/nr-ai-mcp-server/src/tools/workflow-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/efficiency-score.ts`
+Source: `src/tools/workflow-tools.ts`, `src/metrics/efficiency-score.ts`
 
 ---
 
@@ -313,7 +313,7 @@ Record user quality feedback for a task.
 
 **Requires:** `FeedbackCollector`
 
-Source: `packages/nr-ai-mcp-server/src/tools/workflow-tools.ts`
+Source: `src/tools/workflow-tools.ts`
 
 ---
 
@@ -360,7 +360,7 @@ Paginated list of past sessions with summary metrics.
 
 **Requires:** `SessionStore`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+Source: `src/tools/cross-session-tools.ts`
 
 ---
 
@@ -386,7 +386,7 @@ Weekly aggregate report with per-developer breakdown.
 
 **Requires:** `WeeklySummaryGenerator`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+Source: `src/tools/cross-session-tools.ts`
 
 ---
 
@@ -427,7 +427,7 @@ Metric trends over time, aggregated by ISO week.
 
 **Requires:** `TrendAnalyzer`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+Source: `src/tools/cross-session-tools.ts`
 
 ---
 
@@ -476,7 +476,7 @@ Team comparison shows the delta between this developer's dimensions and the team
 
 **Requires:** `CollaborationProfiler`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/collaboration-profile.ts`
+Source: `src/tools/cross-session-tools.ts`, `src/metrics/collaboration-profile.ts`
 
 ---
 
@@ -510,7 +510,7 @@ Before/after impact analysis of the most recent CLAUDE.md change.
 
 **Requires:** `ClaudeMdTracker`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/claudemd-tracker.ts`
+Source: `src/tools/cross-session-tools.ts`, `src/metrics/claudemd-tracker.ts`
 
 ---
 
@@ -566,7 +566,7 @@ Cost attribution by outcome type with waste ratio and ROI estimate.
 
 **Requires:** `CostPerOutcomeAnalyzer`, `TaskDetector`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/cost-per-outcome.ts`
+Source: `src/tools/cross-session-tools.ts`, `src/metrics/cost-per-outcome.ts`
 
 ---
 
@@ -615,7 +615,7 @@ Recommendations are deduplicated by ID (hash of title + category), sorted by pri
 
 **Requires:** `RecommendationEngine`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/recommendation-engine.ts`
+Source: `src/tools/cross-session-tools.ts`, `src/metrics/recommendation-engine.ts`
 
 ---
 
@@ -684,7 +684,7 @@ Narrative coaching report comparing this week's personal AI coding metrics again
 
 **Requires:** `WeeklySummaryGenerator` and a configured `developer` identity (registered conditionally — the tool is omitted when either is missing).
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/personal-coach.ts`
+Source: `src/tools/cross-session-tools.ts`, `src/metrics/personal-coach.ts`
 
 ---
 
@@ -727,7 +727,7 @@ Sessions are grouped by platform (defaults to `"claude-code"` if not set). Only 
 
 **Requires:** `SessionStore`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+Source: `src/tools/cross-session-tools.ts`
 
 ---
 
@@ -781,7 +781,7 @@ Current spend against configured session/daily/weekly budget caps.
 - `NEW_RELIC_AI_DAILY_BUDGET_USD` — daily spend limit in USD
 - `NEW_RELIC_AI_WEEKLY_BUDGET_USD` — weekly spend limit in USD
 
-Source: `packages/nr-ai-mcp-server/src/tools/cost-tools.ts`
+Source: `src/tools/cost-tools.ts`
 
 ---
 
@@ -819,7 +819,7 @@ Projects future spend based on current session burn rate.
 
 **Requires:** `BudgetTracker`, `CostTracker`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cost-tools.ts`
+Source: `src/tools/cost-tools.ts`
 
 ---
 
@@ -857,7 +857,7 @@ Context window efficiency: unique vs. repeated file reads.
 
 **Requires:** `ContextWindowTracker`
 
-Source: `packages/nr-ai-mcp-server/src/tools/analytics-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/context-window-tracker.ts`
+Source: `src/tools/analytics-tools.ts`, `src/metrics/context-window-tracker.ts`
 
 ---
 
@@ -889,7 +889,7 @@ Tool call latency: p50, p95, p99 per tool type.
 
 **Requires:** `LatencyTracker`
 
-Source: `packages/nr-ai-mcp-server/src/tools/analytics-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/latency-tracker.ts`
+Source: `src/tools/analytics-tools.ts`, `src/metrics/latency-tracker.ts`
 
 ---
 
@@ -922,7 +922,7 @@ Task lifecycle tracking: completed vs. in-progress vs. abandoned.
 
 **Requires:** `TaskCompletionTracker`, `TaskDetector`
 
-Source: `packages/nr-ai-mcp-server/src/tools/analytics-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/task-completion-tracker.ts`
+Source: `src/tools/analytics-tools.ts`, `src/metrics/task-completion-tracker.ts`
 
 ---
 
@@ -955,7 +955,7 @@ Which AI model was used per request and cost-efficiency per model.
 
 **Requires:** `ModelUsageTracker`
 
-Source: `packages/nr-ai-mcp-server/src/tools/analytics-tools.ts`, `packages/nr-ai-mcp-server/src/metrics/model-usage-tracker.ts`
+Source: `src/tools/analytics-tools.ts`, `src/metrics/model-usage-tracker.ts`
 
 ---
 
@@ -1000,7 +1000,7 @@ Aggregated AI coding cost and efficiency metrics for all developers in the confi
 - `NEW_RELIC_AI_TEAM_ID` — team identifier for aggregation
 - `NEW_RELIC_API_KEY` — User API key (NRAK-...) for NerdGraph queries
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+Source: `src/tools/cross-session-tools.ts`
 
 ---
 
@@ -1037,7 +1037,7 @@ Register a Slack webhook URL to receive weekly AI coding cost and efficiency sum
 
 **Requires:** `configFilePath`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+Source: `src/tools/cross-session-tools.ts`
 
 ---
 
@@ -1063,7 +1063,7 @@ Remove the registered Slack webhook for weekly digests.
 
 **Requires:** `configFilePath`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+Source: `src/tools/cross-session-tools.ts`
 
 ---
 
@@ -1092,4 +1092,4 @@ Generate the current weekly AI coding summary and POST it to the configured Slac
 
 **Requires:** `configFilePath` + `WeeklySummaryGenerator`
 
-Source: `packages/nr-ai-mcp-server/src/tools/cross-session-tools.ts`
+Source: `src/tools/cross-session-tools.ts`

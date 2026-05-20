@@ -1,0 +1,16 @@
+{
+  "name": "AI Hourly Cost Spike",
+  "description": "Fires when AI coding cost exceeds $10 in any 1-hour window.",
+  "enabled": true,
+  "nrqlQuery": "SELECT sum(ai.cost.session_total_usd) FROM Metric",
+  "aggregationMethod": "EVENT_FLOW",
+  "aggregationWindow": 3600,
+  "aggregationDelay": 120,
+  "thresholdOperator": "ABOVE",
+  "thresholdCritical": {
+    "value": 10,
+    "duration": 3600,
+    "occurrences": "ALL"
+  },
+  "violationTimeLimitSeconds": 86400
+}

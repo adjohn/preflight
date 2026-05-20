@@ -24,7 +24,7 @@ This document captures the security practices and invariants baked into this cod
 
 ## Input Validation
 
-### Account ID — `packages/shared/src/config.ts`, `packages/nr-ai-mcp-server/src/config.ts`
+### Account ID — `src/shared/config.ts`, `src/config.ts`
 
 `accountId` is interpolated into New Relic API URLs. Both config loaders validate it at startup before any use:
 
@@ -50,7 +50,7 @@ envInt('NEW_RELIC_AI_MCP_HARVEST_EVENTS_MS', 5000, { min: 100, max: 3_600_000 })
 envInt('NEW_RELIC_AI_SOME_INTERVAL', 5000)
 ```
 
-### Token counts — `safeInt()` in `packages/shared/src/tokens.ts`
+### Token counts — `safeInt()` in `src/shared/tokens.ts`
 
 SDK responses occasionally contain unexpected values. `safeInt` enforces finite, non-negative, integer semantics:
 
@@ -65,7 +65,7 @@ function safeInt(value: unknown): number {
 
 Use `safeInt` anywhere you extract a numeric count from an untrusted API response.
 
-### Tool names — all six wrappers in `packages/nr-ai-agent/src/wrappers/` *(now in `nr-ai-typescript-agent` repo)*
+### Tool names — all six wrappers in the `nr-ai-typescript-agent` repo (`src/wrappers/`)
 
 Tool names come from caller-supplied arrays and are stored in NR events. They must be sanitized:
 
@@ -81,7 +81,7 @@ Apply the same pattern to any user-supplied string that becomes a NR event field
 
 ## Secret Redaction
 
-### `DEFAULT_REDACTION_PATTERNS` — `packages/nr-ai-mcp-server/src/config.ts`
+### `DEFAULT_REDACTION_PATTERNS` — `src/config.ts`
 
 A set of compiled regular expressions that cover:
 
@@ -99,7 +99,7 @@ A set of compiled regular expressions that cover:
 **Where applied:**
 - `collector-script.ts` — redacts tool input/output before writing to the hook buffer
 - `nr-ai-mcp-server/src/config.ts` — `redactSensitive()` for config-level redaction
-- `nr-ai-agent` wrapper *(now in `nr-ai-typescript-agent` repo)* — error messages from the upstream API are run through `redact()` before being stored in NR events
+- `nr-ai-agent` wrapper (in the separate `nr-ai-typescript-agent` repo) — error messages from the upstream API are run through `redact()` before being stored in NR events
 
 **Rule:** Any string that might contain secrets and is heading to a log or NR event must pass through these patterns first. Use `redact(text, config.redactionPatterns)` (agent) or `redactSensitive(text)` (MCP server).
 
@@ -125,7 +125,7 @@ openSync(path, O_WRONLY | O_CREAT | O_APPEND, 0o600);
 
 Follow this pattern for any new storage paths the MCP server creates.
 
-### Custom pricing file path — `packages/shared/src/pricing.ts`
+### Custom pricing file path — `src/shared/pricing.ts`
 
 `loadCustomPricing` validates that the caller-supplied path ends with `.json` before reading, preventing accidental (or deliberate) reads of arbitrary files via the `NEW_RELIC_AI_CUSTOM_PRICING_FILE` env var or config file. If you add other user-configurable file paths, apply at minimum an extension check and preferably a directory containment check with `path.resolve()`.
 
@@ -133,7 +133,7 @@ Follow this pattern for any new storage paths the MCP server creates.
 
 ## Network Security
 
-### SSRF protection — `packages/nr-ai-mcp-server/src/security/ssrf.ts`
+### SSRF protection — `src/security/ssrf.ts`
 
 `validateSsrfUrl()` validates any user-configured URL against two criteria:
 
@@ -185,7 +185,7 @@ res.end(JSON.stringify({ error: 'not_found', message: `No route for ${url}` }));
 
 ## Process Execution Safety
 
-### `StdioUpstream` — `packages/nr-ai-mcp-server/src/proxy/upstream-stdio.ts`
+### `StdioUpstream` — `src/proxy/upstream-stdio.ts`
 
 When spawning an upstream MCP server as a child process, two invariants must hold:
 
@@ -208,7 +208,7 @@ If you add a new subprocess invocation anywhere in the codebase, apply both chec
 
 ## Telemetry Data Safety
 
-### Metric values — `packages/shared/src/harvest/metric-aggregator.ts`
+### Metric values — `src/shared/harvest/metric-aggregator.ts`
 
 `MetricAggregator.record()` rejects non-finite values before they can corrupt metric buckets:
 
@@ -233,7 +233,7 @@ Both `AgentConfig` and `McpServerConfig` are frozen with `Object.freeze()` immed
 
 ## Audit Trail
 
-`AuditTrailManager` (`packages/nr-ai-mcp-server/src/security/audit-trail.ts`) classifies every tool call and flags:
+`AuditTrailManager` (`src/security/audit-trail.ts`) classifies every tool call and flags:
 
 - **Sensitive file access** — `.env`, `.pem`, `.key`, credential and password files — severity: `high`
 - **Destructive commands** — `rm -rf`, `DROP TABLE`, pipe-to-shell patterns — severity: `critical`
@@ -247,11 +247,11 @@ Classification patterns are configurable via constructor options. The log is que
 
 ## Memory Safety
 
-### Hook event processor — `packages/nr-ai-mcp-server/src/hooks/event-processor.ts`
+### Hook event processor — `src/hooks/event-processor.ts`
 
 The `pending` map (pre-events awaiting their post-event pair) is capped at 2,000 entries. When the cap is reached, the oldest entry is evicted before inserting the new one. This prevents an unbounded heap growth if the buffer file is flooded with unpaired pre-events.
 
-### Stream listener cleanup — `packages/nr-ai-agent/src/wrappers/anthropic.ts` *(now in `nr-ai-typescript-agent` repo)*
+### Stream listener cleanup — `src/wrappers/anthropic.ts` in the `nr-ai-typescript-agent` repo
 
 `wrapStream` uses `once` (not `on`) for the `finalMessage` and `error` events, and calls `removeAllListeners()` after emitting the record. This releases the closure references held by all three event listeners so the stream object can be garbage collected promptly after completion.
 
@@ -261,7 +261,7 @@ Apply the same pattern to any new `EventEmitter`-based stream wrappers: `once` f
 
 ## Logger Safety
 
-The logger (`packages/shared/src/logger.ts`) writes structured JSON to **stderr**. Two invariants:
+The logger (`src/shared/logger.ts`) writes structured JSON to **stderr**. Two invariants:
 
 1. **Circular reference guard** — `JSON.stringify` is wrapped in a try/catch. If serialization fails, the fallback logs only the known-safe scalar fields (`timestamp`, `level`, `component`, `message`) with `data: '[unserializable]'`. This ensures the logger itself cannot throw.
 

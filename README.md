@@ -79,10 +79,10 @@ Replace `NRAK-...` with your user API key and `12345` with your account ID:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx packages/nr-ai-mcp-server/scripts/deploy-dashboard.ts --all
+  npx tsx scripts/deploy-dashboard.ts --all
 ```
 
-This creates 7 dashboards in your NR account. Find them under **Dashboards** → search "AI Coding". Add `--staging` if your account is on the New Relic staging environment.
+This creates 7 dashboards in your NR account. Find them under **Dashboards** → search "AI Coding". Add `--staging` if your account is on the New Relic staging environment, or `--eu` for accounts on the EU region.
 
 **Step 3 — Restart Claude Code and verify**
 
@@ -101,7 +101,8 @@ git clone <repo-url>
 cd nr-ai-observatory
 nvm use          # Switch to the right Node version
 npm install      # Install all dependencies
-npm run build    # Build all packages
+npm run build    # Compile TypeScript
+npm link         # Register nr-ai-observe binary on PATH (required for hooks)
 ```
 
 ---
@@ -136,7 +137,7 @@ After deploying, you'll have seven dashboards in NR One:
 | **Team View** | Aggregated cost and efficiency across multiple developers |
 | **Manager View** | Team-level cost by developer with no tool-call content visible |
 | **Platform Comparison** | Side-by-side metrics across Claude Code, Cursor, Windsurf, etc. |
-| **Security** | Audit trail of sensitive file access and destructive commands |
+| **Security Audit** | Audit trail of sensitive file access and destructive commands |
 
 ### Personal dashboard
 
@@ -144,8 +145,24 @@ Deploy a dashboard pre-filtered to your name (it opens already showing your data
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx packages/nr-ai-mcp-server/scripts/deploy-dashboard.ts \
+  npx tsx scripts/deploy-dashboard.ts \
   ai-coding-assistant-personal.json --developer your-name
+```
+
+### Updating or removing dashboards
+
+To replace existing dashboards in place after pulling new fixes (preserves the dashboard's GUID and URL), add `--update`:
+
+```bash
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
+  npx tsx scripts/deploy-dashboard.ts --all --update
+```
+
+To delete the deployed dashboards, add `--teardown`. Dashboards are matched by name; missing ones are skipped:
+
+```bash
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
+  npx tsx scripts/deploy-dashboard.ts --all --teardown
 ```
 
 ---
@@ -156,16 +173,23 @@ Optional: get notified in NR when something goes wrong.
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx packages/nr-ai-mcp-server/scripts/deploy-alerts.ts
+  npx tsx scripts/deploy-alerts.ts
 ```
 
-Add `--staging` if your account is on the New Relic staging environment. This creates five alert conditions: high error rate, session timeout, efficiency drop, cost spike, and budget warning. To remove them, add `--teardown`.
+Add `--staging` if your account is on the New Relic staging environment, or `--eu` for accounts on the EU region. This creates five alert conditions: daily cost spike, low efficiency score, stuck loop rate, anti-pattern rate, and session cost budget. To remove them, add `--teardown`.
+
+To apply changes to alert JSONs without losing the existing policy, add `--update`. This syncs conditions in place (matched by name): updates existing ones, creates new ones, and deletes any that have been removed locally:
+
+```bash
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
+  npx tsx scripts/deploy-alerts.ts --update
+```
 
 For personal alerts scoped to your developer name:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx packages/nr-ai-mcp-server/scripts/deploy-alerts.ts --developer your-name
+  npx tsx scripts/deploy-alerts.ts --developer your-name
 ```
 
 ---
@@ -198,7 +222,7 @@ The easiest way to configure is through the setup wizard (`nr-ai-observe setup`)
 | `projectId` | Tags all events with a project name (auto-derived from your git remote URL if not set) | Auto-derived |
 | `digestWebhookUrl` | Slack webhook URL for weekly cost and efficiency summaries | Not set |
 
-All settings can also be set via environment variables — see [packages/nr-ai-mcp-server/README.md](./packages/nr-ai-mcp-server/README.md) for the full list.
+All settings can also be set via environment variables — see [example.config.js](./example.config.js) for the full annotated reference.
 
 ### OTLP Transport (Optional)
 
@@ -232,6 +256,13 @@ When running in proxy mode, you can also enable an **inbound OTLP receiver** tha
   "otlpForwardHeaders": { "api-key": "YOUR_LICENSE_KEY" }
 }
 ```
+
+| Setting | What it does | Default |
+|---------|-------------|---------|
+| `otlpReceiverEnabled` | Enable the local OTLP/HTTP receiver | `false` |
+| `otlpReceiverPort` | Port the receiver listens on | `4318` |
+| `otlpForwardEndpoint` | Where enriched payloads are forwarded. Set to `null` to receive and enrich only. | `https://otlp.nr-data.net` (when `licenseKey` is set) |
+| `otlpForwardHeaders` | HTTP headers added to every forwarded request | `{ "api-key": <licenseKey> }` |
 
 ---
 
@@ -291,7 +322,6 @@ Or set it in your config file as `digestWebhookUrl`.
 - **[COMMANDS_TABLE.md](./docs/COMMANDS_TABLE.md)** — All MCP tools with parameters and return values
 - **[METRICS_TABLE.md](./docs/METRICS_TABLE.md)** — Every event and metric sent to New Relic
 - **[SECURITY.md](./docs/SECURITY.md)** — Security practices and audit trail
-- **[ROADMAP.md](./docs/ROADMAP.md)** — What's been built and what's planned
 
 ---
 

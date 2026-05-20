@@ -1,0 +1,16 @@
+{
+  "name": "AI Personal Stuck Loop — {{developer}}",
+  "description": "Fires when {{developer}} triggers more than the personal stuck loop threshold in a 5-minute window.",
+  "enabled": true,
+  "nrqlQuery": "SELECT count(*) FROM AiAntiPattern WHERE developer = '{{developer}}' AND type = 'stuck_loop'",
+  "aggregationMethod": "EVENT_FLOW",
+  "aggregationWindow": 300,
+  "aggregationDelay": 120,
+  "thresholdOperator": "ABOVE",
+  "thresholdCritical": {
+    "value": "__stuckLoopCountMax__",
+    "duration": 300,
+    "occurrences": "AT_LEAST_ONCE"
+  },
+  "violationTimeLimitSeconds": 43200
+}
