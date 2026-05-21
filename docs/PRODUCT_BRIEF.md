@@ -32,6 +32,8 @@
 
 [13 — Additional Flags](#13--additional-flags)
 
+[Open Questions](#open-questions)
+
 [Appendix A — Public Facing APIs](#appendix-a--high-level-public-facing-apis)
 
 ---
@@ -44,11 +46,12 @@
 
 ## Executive Summary
 
-The software development industry is in the middle of the fastest tooling transition in its history. AI coding assistants — Claude Code, GitHub Copilot, Cursor, Windsurf, and a long tail of emerging entrants — are being adopted by engineering organisations at unprecedented speed, yet are operating almost entirely outside the existing observability stack. Engineering leaders today have no reliable visibility into how much these tools cost per session, per project, or per developer; whether their teams are using them effectively; whether security and compliance controls are being respected; or whether the productivity gains they were promised are actually materialising.
+The software development industry is in the middle of the fastest tooling transition in its history. AI coding assistants — Claude Code, GitHub Copilot, Cursor, Windsurf, and a long tail of emerging entrants — are being adopted by engineering organisations at unprecedented speed, yet are operating almost entirely outside the existing observability stack. AI tooling vendors are starting to release usage telemetry, but coverage is uneven and rarely composes across tools. Engineering leaders today have limited visibility into how much these tools cost per session, per project, or per developer; whether their teams are using them effectively; whether security and compliance controls are being respected; or whether the productivity gains they were promised are actually materialising.
 
 NR AI Observatory represents New Relic's strategic response to this emerging discipline. Building on New Relic's foundational strength as the observability platform for production systems, NR AI Observatory extends that same data model and query surface to the AI development workflow itself. The solution captures every tool call, model interaction, anti-pattern, and cost event from a developer's AI assistant; correlates it with the existing telemetry New Relic already collects; and surfaces it through MCP tools, dashboards, alerts, and OpenTelemetry traces.
 
 NR AI Observatory fundamentally extends the New Relic value proposition into the build phase of the software lifecycle. Rather than monitoring only what runs in production, New Relic now also illuminates how that production software is being created, by whom, with which AI assistants, at what cost, and with what efficiency. This addresses an urgent customer imperative: bring AI development spending under the same observability discipline already applied to compute, storage, APM, and the rest of the stack. NR AI Observatory establishes a powerful new category — AI development observability — and positions New Relic as the platform of record for the AI-augmented engineering organisation.
+
 
 
 ---
@@ -57,19 +60,30 @@ NR AI Observatory fundamentally extends the New Relic value proposition into the
 
 ### Target Audience and Market
 
-**Primary Audience** — budget-owners and platform decision-makers responsible for AI tooling rollout, cost governance, and developer productivity within mid-market to enterprise engineering organisations:
+NR AI Observatory has a three-tiered audience because adoption depends on different people for different reasons: champions who deploy and drive rollout, users who must consent to instrumentation, and beneficiaries who consume the reports without directly using the product.
 
-- VPs of Engineering, Heads of Platform, Heads of Developer Productivity
+**Primary — Champions and Adopters**
+
+Engineering managers, platform and devtools team leads, and directors of engineering who deploy this and drive org-wide adoption. They own the "how is my team using AI?" question and consume the team-level views (cost-by-team, anti-pattern trends, weekly digests) most directly. Without their push, you only get scattered individual installs.
+
 - Engineering Managers and Directors of Engineering
-- Platform Engineering and DevTools teams owning the AI assistant deployment
-- FinOps and Procurement teams responsible for AI spend governance
-- Application Security and Compliance teams concerned with what AI assistants read, write, and exfiltrate from internal codebases
+- Platform Engineering and DevTools team leads owning the AI assistant deployment
+- Heads of Platform and Heads of Developer Productivity running developer-experience programs
 
-**Secondary Audience** — practitioners and end-users whose daily workflow generates the telemetry and who benefit from personal-level insights:
+**Primary — Users Generating the Telemetry**
+
+Senior Software Engineers and Staff Engineers who install the hooks, consent to instrumentation, generate the session data, and consume the personal coaching report. They are not the buying audience, but adoption fails without their willingness to instrument.
 
 - Senior Software Engineers and Staff Engineers using Claude Code, Cursor, Copilot, Windsurf, Zed, Continue.dev, or Amazon Q Developer
 - Engineering team leads coaching their teams on effective AI usage
-- Developers building agentic AI applications using the Anthropic, Google, OpenAI, AWS Bedrock, Mistral, or Cohere SDKs
+
+**Beneficiaries — Executive and Governance Stakeholders**
+
+VPs of Engineering, FinOps, Security, and Compliance teams who consume the data through dashboards, alerts, and audit reports but do not directly use the product day-to-day. They are the primary consumers of the executive and compliance narratives the product enables.
+
+- VPs of Engineering consuming cost-per-outcome and ROI reports for executive briefings
+- FinOps and Procurement teams consuming AI spend breakdowns for budget governance
+- Application Security and Compliance teams consuming the audit trail for regulatory reporting
 
 ### Customer Problems to Solve
 
@@ -126,9 +140,9 @@ The NR AI Observatory initiative establishes New Relic as the platform of record
 
 The strategic prize is category definition. Every engineering organisation will need an AI development observability layer within 24 months. By shipping a credible, vendor-neutral, multi-platform solution now, New Relic becomes the default answer when engineering leaders ask "how do we get our arms around our AI coding spend and effectiveness?" Once the schema, dashboards, and alert library are in place inside a customer's account, switching cost is high.
 
-**Open a New Revenue Stream Tied to AI Adoption**
+**Indirect Revenue Through Increased Platform Consumption**
 
-AI coding assistant spend is rising faster than any other engineering tooling line item in 2025–2026. NR AI Observatory captures a portion of that growth as observability spend, monetised through usage-based metering on the volume of AI tool calls, model interactions, and agent requests processed. This revenue is incremental — it is not cannibalising existing APM, Logs, or Infra budget; it is opening a new buying centre that did not exist before.
+NR AI Observatory is published as a free open-source Labs asset, so it does not generate direct licence or SKU revenue (see [Resolved: Free via New Relic Labs](#resolved-free-via-new-relic-labs-was-oq1)). Revenue accrues indirectly: customers running NR AI Observatory emit events, metrics, and logs that are ingested, stored, and queried through the standard New Relic platform — billed at standard ingest and compute rates. As AI coding adoption grows, the volume of that telemetry grows with it, expanding existing accounts' platform consumption.
 
 **Deepen Platform Stickiness**
 
@@ -207,7 +221,7 @@ NR AI Observatory is strategically different because it is the first solution pu
 
 **Multi-Platform, Multi-Provider Coverage Out of the Box**
 
-The product ships with adapters for eight AI coding clients (Claude Code, Cursor, Windsurf, Copilot, Zed, Continue.dev, Amazon Q, generic MCP) and SDK wrappers for six model providers (Anthropic, Google, OpenAI, AWS Bedrock, Mistral, Cohere). Customers do not have to choose a single AI tool to be observable — the data model normalises across all of them and produces a single cross-tool view. No competitor offers this breadth.
+The product ships with adapters for eight AI coding clients (Claude Code, Cursor, Windsurf, Copilot, Zed, Continue.dev, Amazon Q, generic MCP). Customers do not have to choose a single AI tool to be observable — the data model normalises across all of them and produces a single cross-tool view. No competitor offers this breadth.
 
 **Workflow-Aware, Not Just Request-Aware**
 
@@ -229,8 +243,7 @@ Adopting NR AI Observatory does not require choosing or excluding any AI tool ve
 
 The product captures a structured audit trail of sensitive file access, destructive command execution, and external network requests by AI assistants — alongside redaction primitives for sensitive content. As the EU AI Act and analogous regulations come into force, this audit surface is the basis for AI usage compliance reporting that no AI vendor's native dashboard provides.
 
-*Note: The first iteration focuses on the core observability surface — telemetry capture, dashboards, alerts, anti-pattern detection, and the multi-tool data model. Future iterations will deepen the recommendation engine, expand the platform adapter set, and extend the audit and compliance surface.*
-
+*Note: The first iteration focuses on the core observability surface — telemetry capture, dashboards, alerts, anti-pattern detection, and the multi-tool data model. Future iterations will deepen the recommendation engine, expand the platform adapter set, and extend the audit and compliance surface. See [ROADMAP.md](./ROADMAP.md) for the full list of post-launch roadmap themes.*
 
 ---
 
@@ -247,25 +260,23 @@ Market opportunity is sized by the global AI coding assistant market (TBD: inser
 
 ## 5 — Monetization & Pricing
 
-Our strategy is to monetise the intelligence and governance value that NR AI Observatory adds to AI development telemetry, rather than the raw telemetry itself. AI coding tool call data is, in volume terms, comparable to logs or events; if priced as a commodity ingest, the value proposition collapses into a marginal data line item. Priced as a governance and intelligence product, it captures the actual willingness-to-pay associated with AI spend optimisation and developer-effectiveness reporting.
+NR AI Observatory will be released as a free open-source asset through New Relic Labs (see [Resolved: Free via New Relic Labs](#resolved-free-via-new-relic-labs-was-oq1)). The product itself has no SKU, no licence fee, no entitlement, and no paywall.
 
-**Packaging**
+**Distribution and Licensing**
 
-NR AI Observatory will be offered as a premium, standalone add-on to existing New Relic plans. This packaging matches the example set by other intelligence-tier products (Errors Inbox premium tier, Performance Risks Inbox) and signals to the customer that they are buying an analytical layer, not just a data sink. Bundling into the base plan would commoditise the value and forfeit the willingness-to-pay tied to AI governance specifically.
+The asset is published to the `newrelic` or `newrelic-experimental` GitHub organisation as open source. Customers install it themselves and consume it at no licence cost. New Relic does not charge separately for the analytical surface (dashboards, alert library, anti-pattern detectors, recommendation engine, audit trail).
 
-**Metering**
+**Indirect Monetisation Through Platform Consumption**
 
-A usage-based meter sized to the volume of AI development telemetry processed — counting AI tool calls, model interactions, agent requests, and anti-pattern evaluations — provides a direct mapping between cost and value delivered. Customers operating at small AI scale pay a small amount; customers running AI assistants across hundreds of developers pay proportionally more. This model also creates natural account expansion as the customer's AI tooling adoption grows.
+Revenue is generated indirectly through standard New Relic platform consumption: customers running NR AI Observatory emit events, metrics, and logs that flow through the platform's existing billing model (data ingest, query compute, dashboard rendering, alert evaluation). The volume of that consumption scales with the customer's AI-coding adoption.
 
-**Customer Control**
+**Customer Control of Consumption**
 
-Customers retain granular control: they choose which AI tools to instrument, which providers to wrap, which dashboards to deploy, and which alert thresholds to set. The opt-in surface is explicit per AI client, per developer, and per project, allowing engineering leaders to scale instrumentation deliberately rather than incurring runaway cost.
+Customers retain granular control over their consumption: they choose which AI tools to instrument, which developers to onboard, which dashboards to deploy, and which alerts to enable. Aggressive instrumentation increases data volume and therefore platform spend; minimal instrumentation produces minimal incremental cost. The opt-in surface is per AI client and per developer, allowing engineering leaders to scale instrumentation deliberately.
 
-**Billing Mechanism**
+**Support Model**
 
-Billing is processed against the metered usage volume, mapped to the appropriate platform compute unit. The cost per analyser scales with the compute resources required to run the detection logic — anti-pattern detection, cost forecasting, personal coaching reports, and recommendation generation each carry different compute weights. This ties the customer's cost directly to the analytical work being performed on their behalf.
-
-Detailed pricing structure (tier definitions, list price, contract minimums) will be defined during launch planning. (Detail TBD.)
+Labs assets are supported through Labs' own channels — GitHub issues, the `#help-labs-dev` Slack channel, and Labs Work Items — rather than standard New Relic GTS support. Maintenance commitment is determined by the asset's Labs category (Community, Public Catalog, or Experimental); see the resolved decision linked above for details.
 
 
 ---
@@ -276,21 +287,21 @@ From the user's perspective, NR AI Observatory must transform AI coding governan
 
 ### Discovery and Onboarding
 
-**Premium Add-On With a Clear Activation Path**
+**Open Source, Self-Install**
 
-Customers discover NR AI Observatory as a premium, standalone add-on inside the New Relic platform, with an explicit paywall or trial. The core onboarding moment is the customer connecting their first AI assistant to New Relic — a process that must take under ten minutes from signed contract to first telemetry visible in a dashboard.
+Customers discover NR AI Observatory in the New Relic Labs catalog and on GitHub. There is no paywall and no trial — the asset can be installed by any New Relic customer at any time. The core onboarding moment is the customer connecting their first AI assistant to New Relic — a process that must take under ten minutes from initial install to first telemetry visible in a dashboard.
 
 **Per-Tool, Per-Developer Opt-In**
 
-Onboarding is centred on user control. The customer enables the capability at the account level, then chooses which AI clients to instrument (Claude Code, Cursor, Copilot, Windsurf, Zed, Continue.dev, Amazon Q, generic MCP), which SDK providers to wrap for any internal AI-application code (Anthropic, Google, OpenAI, Bedrock, Mistral, Cohere), and which developers to onboard. Adoption can begin with a single team or a single tool and expand from there.
+Onboarding is centred on user control. The customer enables the capability at the account level, then chooses which AI clients to instrument (Claude Code, Cursor, Copilot, Windsurf, Zed, Continue.dev, Amazon Q, generic MCP) and which developers to onboard. Adoption can begin with a single team or a single tool and expand from there.
 
 **Setup Wizard and CLI**
 
-The product includes an interactive setup wizard that walks through account configuration, hook installation, and first dashboard deployment in a single session. A backfill script lets customers seed historical session data from existing New Relic telemetry so that personal coaching reports and trend analyses produce useful output from day one rather than after a multi-week warm-up.
+The product includes an interactive setup wizard that walks through account configuration, hook installation, and first dashboard deployment in a single session. A backfill script (`scripts/backfill-sessions.ts`) is available for state-recovery scenarios — customers who already had NR AI Observatory telemetry in NR but whose local session files are missing can reconstruct that state from the existing events. Net-new customers do not have anything to backfill and will accumulate session data over a roughly two-week warm-up before personal coaching reports return useful output; until then, `nr_observe_get_personal_insights` returns an `insufficient_data` status with a clear message.
 
-**Clear Cost Communication**
+**Clear Consumption Communication**
 
-Because the product is metered on the volume of AI telemetry processed, the activation UI must clearly communicate the projected billing impact at each opt-in step. Customers must be able to see "if I instrument my entire platform team, here is the rough monthly cost" before committing.
+Although NR AI Observatory itself is free, customer cost flows through standard New Relic platform consumption (data ingest, query compute). Documentation and the setup wizard should help a customer estimate the consumption impact of their instrumentation before deploying it — answering "if I instrument my entire platform team, how much additional ingest does that produce, and what does that mean for my New Relic bill?" before committing.
 
 ### Core User Experience
 
@@ -369,7 +380,7 @@ The audit surface is built into the product from day one rather than added later
 
 *Current mindset:* Some of my engineers are very effective with AI; others are not. I have no way to identify what the effective ones are doing differently or to teach the rest.
 
-*New mindset:* Each developer has a personal coaching surface showing their efficiency trends, anti-pattern history, and concrete optimisation recommendations. Team leads can identify high-performing patterns and propagate them. *(This will deepen significantly in future iterations as the recommendation engine matures.)*
+*New mindset:* Each developer has a personal coaching surface showing their efficiency trends, anti-pattern history, and concrete optimisation recommendations. Team leads can identify high-performing patterns and propagate them. *(This will deepen significantly in future iterations — see [Recommendation Engine Maturation in ROADMAP.md](./ROADMAP.md#recommendation-engine-maturation).)*
 
 The personal coaching report is designed to read like advice from a teammate rather than a performance review. Aggregations roll up to patterns, not to individual rankings.
 
@@ -383,9 +394,9 @@ NR AI Observatory promises high-confidence detection of AI coding anti-patterns.
 
 The personal coaching report and per-developer cost breakdowns are powerful, but if they are perceived as a surveillance tool by individual contributors, the product will face cultural pushback that no engineering leader wants to fight. The product must be visibly designed to coach individuals and report patterns to managers — not to identify individual outliers to managers. If we get this dynamic wrong, adoption stalls inside the very teams we are trying to instrument.
 
-**Cost Surprises**
+**Consumption Surprises**
 
-Because the product is metered on telemetry volume, customers who instrument aggressively without first understanding their AI usage scale may receive unexpected bills. The activation UI must communicate projected costs clearly; if customers feel ambushed by their first invoice, they will turn the product off rather than tune it.
+Although NR AI Observatory itself is free, the telemetry it generates flows through standard New Relic ingest and compute billing. Customers who instrument aggressively without first understanding their AI usage scale may see unexpected New Relic bills. Documentation and the setup wizard must communicate the projected ingest volume clearly; if customers feel ambushed by their first invoice, they will turn the product off rather than tune it.
 
 **Coverage Gaps for a Specific Tool**
 
@@ -396,35 +407,31 @@ Customers using a specific AI assistant we have not yet adapted (the AI coding t
 
 ## 8 — Discovery & Access
 
-Public Preview launch is targeted for the next New Relic launch event. (Specific event and date TBD.) Public-availability cadence will follow the standard New Relic preview-to-GA progression.
+Initial launch is targeted for June 9, 2026, immediately preceding Datadog DASH.
 
 ### Product Discovery
 
 **In-Platform Surfaces**
 
-NR AI Observatory will be discoverable from the New Relic primary navigation as a top-level entry, with secondary entry points contextually surfaced wherever AI tooling adoption is relevant: the Service Catalog, the APM summary page, the Home page, and (in future iterations) the IDE via CodeStream. Customers using New Relic for production observability will see clear entry points inviting them to extend that observability into the AI development workflow.
+How the product is discoverable inside New Relic depends on the Labs category determination (see [Resolved: UI surface depends on Labs category](#resolved-ui-surface-depends-on-labs-category-was-oq2)). If published as a **Public Catalog** asset, it will be surfaced under *Integrations & Agents → Apps & Visualizations*. If published as a **Community** or **Experimental** asset, the in-platform surface consists entirely of the deployed dashboards, alerts, and the MCP tool catalog — discovery happens through the GitHub README and Labs catalog rather than navigation entries. IDE-embedded surfaces via CodeStream are a future roadmap item ([ROADMAP.md](./ROADMAP.md#ide-embedded-surfaces)).
 
 **External Channels**
 
-The product will be promoted through the New Relic developer-relations channels (blog, conference talks, demo videos, partner announcements with AI tooling vendors), through an open-source community presence around the MCP server and SDK wrappers, and through targeted outreach to engineering-leadership audiences (CTO summits, FinOps community events, platform engineering conferences).
+The product will be promoted through the New Relic developer-relations channels (blog, conference talks, demo videos, partner announcements with AI tooling vendors), through an open-source community presence around the MCP server, and through targeted outreach to engineering-leadership audiences (CTO summits, FinOps community events, platform engineering conferences).
 
 **Onboarding Path**
 
-Customers begin with the interactive setup wizard, which configures the New Relic account binding, installs the AI client hooks, and deploys the team and personal dashboards in a single guided session. A backfill script seeds historical telemetry where available so personal coaching reports return useful output from day one.
+Customers begin with the interactive setup wizard, which configures the New Relic account binding, installs the AI client hooks, and deploys the team and personal dashboards in a single guided session. Customers migrating from a prior NR AI Observatory installation can run a backfill script to recover missing local session state from existing NR telemetry. Net-new customers accumulate session data over a roughly two-week warm-up before personal coaching reports return useful output (the `nr_observe_get_personal_insights` MCP tool returns an `insufficient_data` status until enough history exists).
 
 ### Access Model
 
-**Account-Level Entitlement**
+**No Entitlement Required**
 
-Customers enable NR AI Observatory at the account level via a standard entitlement, similar to other premium intelligence add-ons in the New Relic platform. The entitlement is tied to the metering and billing model described in question 5.
+Because NR AI Observatory is a free open-source Labs asset (see [Resolved: Free via New Relic Labs](#resolved-free-via-new-relic-labs-was-oq1)), no entitlement, paywall, or trial gate stands between the customer and the product. Any New Relic customer can install it at any time.
 
 **Per-Developer and Per-Tool Activation**
 
-Inside an entitled account, individual developers and individual AI tools must be opted in explicitly. This protects against runaway cost and against unintentional capture of AI tooling that the customer does not want instrumented.
-
-**Free Trial**
-
-A time-limited free trial provides full functionality at a capped telemetry volume, allowing prospective customers to onboard a small number of developers and validate the value before committing. Trial duration and volume cap will be defined during launch planning. (Detail TBD.)
+Within a customer account, individual developers and individual AI tools must be opted in explicitly during setup. This protects against runaway data ingest and against unintentional capture of AI tooling that the customer does not want instrumented.
 
 
 ---
@@ -460,30 +467,31 @@ A new category needs to be established. Internal naming will treat NR AI Observa
 
 ## 10 — Rollout Plan
 
-### Customer Zero (CZ) — TBD
+NR AI Observatory follows the New Relic Labs publication workflow rather than the standard CZ → LP → PP → GA progression (see [Resolved: Labs publication workflow](#resolved-labs-publication-workflow-not-cz--lp--pp--ga-was-oq5)).
 
-**In-Scope:** New Relic engineering organisation deploys NR AI Observatory against its own AI tooling usage. Validates the multi-platform adapter set, the dashboard surface, the alert library, and the personal coaching report against real production engineers. Generates the testimonial data and the cost-optimisation case studies needed for launch.
+### Customer Zero (Internal Validation)
 
-**Out-of-Scope:** External customer onboarding, marketplace listings, paid trial.
+**In-Scope:** New Relic engineering organisation deploys NR AI Observatory against its own AI tooling usage. Validates the multi-platform adapter set, the dashboard surface, the alert library, and the personal coaching report against real production engineers. Generates the testimonial data and cost-optimisation case studies that accompany the public Labs publication.
 
-### Limited Preview (LP) — TBD
+**Out-of-Scope:** External customer onboarding, marketplace listings.
 
-**In-Scope:** A small set of design-partner customers (5–10 accounts) onboarded with hands-on guidance from product and engineering. Customers cover the primary AI assistants (Claude Code, Cursor, Copilot, Windsurf) at minimum. Feedback drives the activation flow, the dashboard surface, the anti-pattern signal quality, and the pricing model validation.
+### Design-Partner Validation
 
-**Out-of-Scope:** Self-service onboarding, full Slack-digest delivery to all subscribers, full-tier feature parity. Personal coaching report restricted to design-partner developers who explicitly opt in.
+**In-Scope:** A small set of design-partner customers (5–10 accounts) onboarded with hands-on guidance from product and engineering ahead of broad publication. Customers cover the primary AI assistants (Claude Code, Cursor, Copilot, Windsurf) at minimum. Feedback drives anti-pattern signal quality, dashboard usability, and onboarding documentation.
 
-### Public Preview (PP) — TBD
+**Out-of-Scope:** Formal SLAs; broad public discoverability.
 
-**In-Scope:** Open self-service activation for all New Relic customers via the standard preview entitlement. Full activation wizard, full dashboard library, full alert library, full audit-trail surface, full anti-pattern detector set, full Slack digest delivery. Free trial with capped telemetry volume. Adapter set covers all eight currently-supported AI clients and all six SDK providers.
+### Initial Labs Publication (June 9, 2026)
 
-**Out-of-Scope:** Final pricing commitments (preview pricing applies); long-term retention guarantees beyond the standard preview window; SLAs.
+**In-Scope:** Asset is published to the `newrelic` or `newrelic-experimental` GitHub organisation in its determined Labs category (see [§11 milestone #4](#11--milestones--dependencies)). Open self-install for any New Relic customer via the GitHub README and the Labs catalog. Full dashboard library, full alert library, full audit-trail surface, full anti-pattern detector set, Slack digest delivery, and the eight launch-set AI client adapters all available. Support via GitHub issues, Labs Work Items, and `#help-labs-dev` Slack.
 
-### General Availability (GA) — TBD
+**Out-of-Scope:** Standard New Relic GTS support (only available to Community+ assets after promotion); IDE-embedded surfaces ([roadmap](./ROADMAP.md#ide-embedded-surfaces)).
 
-**In-Scope:** Production-grade pricing, contract terms, support tiers, and SLAs. RBAC integration with all standard New Relic enterprise controls. Compliance certifications matching New Relic platform standards (SOC 2 Type II, ISO 27001, etc., per existing platform certifications). Documented public APIs and integration points.
+### Post-Publication Promotion (Conditional)
 
-**Out-of-Scope:** New AI client adapters beyond the launch set (delivered in subsequent release waves); deeper recommendation engine and machine-learning-based pattern detection (future roadmap); IDE-embedded surfaces (future roadmap).
+**In-Scope:** Based on adoption signal and customer demand, the asset may be promoted between Labs categories — Experimental → Community, or Community → Community+. Community+ promotion qualifies the asset for standard GTS support (Pathpoint precedent). Adapter set expansion delivers at least two additional AI client adapters in this phase ([roadmap](./ROADMAP.md#platform-adapter-set-expansion)).
 
+**Out-of-Scope:** Production-grade SKU, contracts, and per-product SLAs — these don't apply to Labs assets, regardless of promotion. Customers continue to consume at standard New Relic platform rates.
 
 ---
 
@@ -496,14 +504,13 @@ A new category needs to be established. Internal naming will treat NR AI Observa
 | **1** | Customer Zero deployment against New Relic's own engineering organisation; capture cost-optimisation case study | TBD | TBD | H |
 | **2** | Limited Preview onboarding of 5–10 design-partner accounts covering all four major AI coding assistants | TBD | TBD | H |
 | **3** | Anti-pattern signal-quality validation: minimum 80% precision target on flagged anti-patterns, validated against design-partner feedback | TBD | TBD | H |
-| **4** | Pricing model validation against design-partner willingness-to-pay; final SKU and metering definition | TBD | TBD | H |
-| **5** | Public Preview launch with full self-service activation, Slack digest, and free trial | TBD | TBD | H |
+| **4** | Labs asset category determination (Community, Public Catalog, or Experimental) and publication path | TBD | TBD | H |
+| **5** | Initial Labs publication on June 9, 2026 with full self-service activation and Slack digest | TBD | TBD | H |
 | **6** | OpenTelemetry GenAI semantic convention compliance certification for portability | TBD | TBD | M |
-| **7** | Compliance and audit certification matching the broader New Relic platform standards (SOC 2 Type II, ISO 27001) | TBD | TBD | H |
-| **8** | RBAC integration completed for full enterprise tier support at GA | TBD | TBD | H |
-| **9** | Adapter set expansion: at least two additional AI client adapters delivered between PP and GA based on customer demand signal | TBD | TBD | M |
-| **10** | GA launch with production pricing, contracts, support tiers, and SLAs | TBD | TBD | H |
-
+| **7** | Documentation of inherited New Relic platform compliance certifications (SOC 2 Type II, ISO 27001) as they apply to telemetry routed through the platform | TBD | TBD | M |
+| **8** | RBAC integration to support per-team data isolation for enterprise customers | TBD | TBD | H |
+| **9** | Adapter set expansion: at least two additional AI client adapters post-publication based on customer demand signal | TBD | TBD | M |
+| **10** | Conditional promotion to Community+ status if adoption justifies elevated GTS support (Pathpoint precedent) | TBD | TBD | L |
 
 ---
 
@@ -511,7 +518,7 @@ A new category needs to be established. Internal naming will treat NR AI Observa
 
 NR AI Observatory aligns with the AI domain and is best understood as the development-time complement to New Relic's existing GenAI Application Observability capability. Where GenAI Application Observability instruments customer-built LLM applications running in production, NR AI Observatory instruments the AI assistants developers use to write code. The two surfaces share an underlying philosophy and a shared OpenTelemetry GenAI semantic convention foundation, but address different audiences and different lifecycle stages.
 
-Support skillset spans AI/observability (the primary specialisation), Developer Experience (the audience), and FinOps and Compliance (the secondary stakeholder set). Support staff will need fluency in the AI coding assistant landscape, the MCP protocol, and the open-source SDK wrapper surface in addition to standard New Relic platform support skills.
+Support skillset spans AI/observability (the primary specialisation), Developer Experience (the audience), and FinOps and Compliance (the secondary stakeholder set). Support staff will need fluency in the AI coding assistant landscape and the MCP protocol in addition to standard New Relic platform support skills.
 
 This product is not tied to any EOL or replacement. It opens a new category and does not deprecate any existing capability.
 
@@ -524,7 +531,7 @@ Three points worth flagging upfront.
 
 **AI Tooling Velocity Risk**
 
-The AI coding assistant landscape is moving faster than any prior tooling category. New AI clients ship weekly; existing clients change their data shape unpredictably; new model providers enter the market regularly. The product's adapter and SDK wrapper architecture is built to absorb this velocity, but our roadmap and engineering capacity must be sized to keep pace. A six-month adapter coverage gap against a popular new AI tool would meaningfully damage the product's credibility.
+The AI coding assistant landscape is moving faster than any prior tooling category. New AI clients ship weekly; existing clients change their data shape unpredictably. The product's adapter architecture is built to absorb this velocity, but our roadmap and engineering capacity must be sized to keep pace. A six-month adapter coverage gap against a popular new AI tool would meaningfully damage the product's credibility.
 
 **Privacy and Surveillance Are the Cultural Risks, Not the Technical Risks**
 
@@ -532,7 +539,70 @@ Technically, the product captures redacted, opt-in telemetry through standard Ne
 
 **The Open-Source Foundation Is a Strategic Asset**
 
-The MCP server, SDK wrappers, and OpenTelemetry semantic convention mappings can be released as open-source artefacts, with the analytical and intelligence surface — dashboards, alert library, anti-pattern detection, recommendation engine, audit trail, cross-session analytics — retained as the proprietary, monetised product. This split protects the commercial product while building developer-community trust around the open instrumentation layer, accelerating organic adoption.
+The MCP server and OpenTelemetry semantic convention mappings can be released as open-source artefacts, with the analytical and intelligence surface — dashboards, alert library, anti-pattern detection, recommendation engine, audit trail, cross-session analytics — retained as the proprietary, monetised product. This split protects the commercial product while building developer-community trust around the open instrumentation layer, accelerating organic adoption.
+
+
+---
+
+## Open Questions
+
+All five original open questions have now been resolved — four through researching New Relic Labs (the launch vehicle), and the fifth (OQ4) through auditing `scripts/backfill-sessions.ts`. Resolved items document the decision and link to the affected sections.
+
+### Resolved: Free via New Relic Labs (was OQ1)
+
+NR AI Observatory will be released as a free open-source asset through New Relic Labs. Affected sections of this brief — [§2 — Business Impact](#2--business-impact), [§5 — Monetization & Pricing](#5--monetization--pricing), [§6 — User Must-Haves](#6--user-must-haves), [§7 — Mindset Shift & Risks](#7--mindset-shift--risks), and [§8 — Discovery & Access](#8--discovery--access) — have been updated to reflect this model.
+
+**Concrete implications:**
+
+- **No product-level price.** No SKU, no licence fee, no premium add-on, no paywall, no entitlement, no free trial. The product itself is published to GitHub.
+- **Distribution.** Released to the `newrelic` (Community / Public Catalog) or `newrelic-experimental` GitHub organisation, depending on which Labs category the asset lands in.
+- **Customer cost is indirect.** Customers still pay for the underlying New Relic platform consumption — telemetry ingest, query compute, dashboard / alert compute — at standard NR rates. The product is "free" in the sense that there is no product-level meter or licence, not in the sense that ingesting telemetry is free.
+- **Support model.** Labs assets do not use standard New Relic GTS support. Customers self-serve via GitHub issues, request enhancements via Labs Work Items, or ask in `#help-labs-dev` Slack. Only Community+ assets (Pathpoint is the precedent) qualify for standard GTS support.
+- **Maintenance commitment** depends on the asset category:
+    - **Community** — actively maintained: critical / high security vulnerabilities, platform deprecations, and breaking bugs are patched proactively; feature enhancements accepted into the backlog.
+    - **Public Catalog** — same as Community, plus surfaced inside the New Relic UI under *Integrations & Agents → Apps & Visualizations*.
+    - **Experimental** — passively maintained: best-effort updates, prioritised against the Labs queue.
+
+### Resolved: UI surface depends on Labs category (was OQ2)
+
+Whether NR AI Observatory has a dedicated in-platform UI is determined by which Labs category the asset lands in:
+
+- **Public Catalog** assets are surfaced inside the New Relic UI under *Integrations & Agents → Apps & Visualizations* — these can include custom UIs built on the Programmability platform (Pathpoint is the precedent).
+- **Community** and **Experimental** assets are GitHub-distributed code with no in-platform UI; users consume the analytical surface entirely through pre-built dashboards, alerts, NRQL queries, and the MCP tool surface.
+
+The current product surface is dashboards + alerts + MCP tools + NRQL — no custom UI exists today. Whether to build one before publication reduces to milestone #4 ([§11 — Milestones & Dependencies](#11--milestones--dependencies)) — Labs asset category determination. The brief's §6 and §8 sections have been updated to describe a "data + dashboards + MCP tools" surface rather than assuming a navigable UI.
+
+### Resolved: Config-based activation, no entitlement (was OQ3)
+
+The original brief assumed an account-level entitlement, an activation UI showing projected billing, and per-developer / per-AI-tool opt-in gated by that entitlement. Labs assets work differently:
+
+- **No entitlement** — Labs assets don't use entitlements; any New Relic customer can install the asset from GitHub at any time. (Resolved in §8.)
+- **No activation UI** — Labs assets typically use config files and setup scripts, not in-platform UIs. The product's `~/.nr-ai-observe/config.json` plus the `nr-ai-observe install` / `nr-ai-observe setup` CLIs serve this role. (§6 has been reframed accordingly.)
+- **Per-developer / per-tool activation already exists at the config level** — the `developer` field is normalised per-machine; AI client hooks are installed per-client; opt-in scope is per-tool by virtue of which adapters the customer enables.
+
+Net: the activation gaps in the original brief disappear once you reframe activation as "configure and install" rather than "click through an entitlement UI." The brief's §6 and §8 sections have been updated.
+
+### Resolved: Backfill is state recovery, not new-user onboarding (was OQ4)
+
+After auditing `scripts/backfill-sessions.ts`, the script's actual purpose is state recovery for users with existing NR AI Observatory telemetry, not seeding new users with synthetic data:
+
+- The script queries New Relic for events with `developer = '<name>'` and reconstructs local session summaries from `AiToolCall`, `AiCodingTask`, `AiAntiPattern`, and `Metric` events already present in NR.
+- **For existing users** whose local state is missing (for example, users who were running the MCP server before personal coaching was added): the script recovers their session history correctly.
+- **For truly net-new customers** with no prior NR AI Observatory telemetry: the script exits gracefully with `"No sessions found in New Relic for this developer and time range."` — there is no synthetic seeding because there is nothing to recover.
+
+The brief's original framing — that the backfill provides useful day-one coaching for new customers — was misleading. New customers genuinely need to accumulate roughly two weeks of session data before personal coaching reports return useful output. This is already handled gracefully by `nr_observe_get_personal_insights`, which returns an `insufficient_data` status with a message until enough history exists.
+
+§6 and §8 have been updated to reframe the backfill's purpose (state recovery, not cold-start onboarding) and to acknowledge the warm-up period for net-new customers. The corresponding [Backfill for Net-New Users](./ROADMAP.md#backfill-for-net-new-users) roadmap theme has been reframed to focus on improving the cold-start UX (clearer documentation, partial coaching during warm-up) rather than re-architecting the backfill itself.
+
+### Resolved: Labs publication workflow, not CZ → LP → PP → GA (was OQ5)
+
+New Relic Labs does not use the standard New Relic core-product cadence (Customer Zero → Limited Preview → Public Preview → General Availability). Labs releases work as follows:
+
+- **Internal development.** Labs builds the asset to spec, with optional Customer Zero dogfooding inside the New Relic engineering organisation.
+- **Initial publication.** The asset is published to the `newrelic` or `newrelic-experimental` GitHub organisation. Publication category (Community / Public Catalog / Experimental) is determined at this point and dictates ongoing maintenance commitment.
+- **Promotion path.** Assets can be promoted later — for example, an Experimental asset becoming Community, or a Community asset earning Community+ status (the Pathpoint precedent), which qualifies it for standard GTS support.
+
+The June 9, 2026 launch date corresponds to **initial publication**, not to a Public Preview or GA milestone. §10 has been rewritten to reflect the Labs publication workflow; §11 milestones have been updated to remove launch artefacts (production pricing, contracts, SLAs) that don't apply to Labs assets.
 
 
 ---
@@ -542,5 +612,4 @@ The MCP server, SDK wrappers, and OpenTelemetry semantic convention mappings can
 * *MCP tool surface — 27 tools currently exposed to AI coding clients; full specification at `docs/COMMANDS_TABLE.md` in the open-source repository.*
 * *NRQL event schema — public event types (`AiToolCall`, `AiCodingTask`, `AiAntiPattern`, `AiMcpToolCall`, `AiProxyRequest`, `AiAuditEvent`, `AiBudgetWarning`, `AiCostGrowthAlert`, `AiCostForecastAlert`, `AiExperimentSummary`, `AiExperimentConclusion`, `AiRecommendation`); see `docs/EVENT_SCHEMA.md`.*
 * *OpenTelemetry GenAI semantic convention mapping — span attributes follow OTel GenAI conventions for portability.*
-* *SDK wrapper surface — `wrapAnthropicClient`, `wrapGoogleClient`, `wrapOpenAiClient`, `wrapBedrockClient`, `wrapMistralClient`, `wrapCohereClient`.*
 * *Hook collector binary — `nr-ai-observe` CLI for AI client integration.*
