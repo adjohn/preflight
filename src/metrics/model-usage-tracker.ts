@@ -72,7 +72,11 @@ export class ModelUsageTracker {
         mostUsedModel = model;
       }
 
-      if (costPerOutputToken !== null && costPerOutputToken < lowestCostPerOutputToken) {
+      if (
+        costPerOutputToken !== null &&
+        (costPerOutputToken < lowestCostPerOutputToken ||
+          (costPerOutputToken === lowestCostPerOutputToken && model < (mostEfficientModel ?? '￿')))
+      ) {
         lowestCostPerOutputToken = costPerOutputToken;
         mostEfficientModel = model;
       }

@@ -4,11 +4,20 @@ import { validateSsrfUrl } from '../security/ssrf.js';
 
 const logger = createLogger('otlp-receiver');
 
+const DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MiB
+const DEFAULT_BODY_TIMEOUT_MS = 30_000; // 30 s
+
+class BodyTooLargeError extends Error {}
+class RequestTimeoutError extends Error {}
+
 export interface OtlpReceiverOptions {
   readonly port: number;
+  readonly bindAddress?: string;
   readonly forwardEndpoint: string | null;
   readonly forwardHeaders: Record<string, string>;
   readonly enrichmentAttributes: Record<string, string>;
+  readonly maxBodyBytes?: number;
+  readonly bodyTimeoutMs?: number;
 }
 
 export class OtlpReceiver {
@@ -26,8 +35,9 @@ export class OtlpReceiver {
     return new Promise((resolve, reject) => {
       this.server = createServer((req, res) => void this.handleRequest(req, res));
       this.server.on('error', reject);
-      this.server.listen(this.options.port, () => {
-        logger.info('OTLP receiver listening', { port: this.options.port });
+      const host = this.options.bindAddress ?? '127.0.0.1';
+      this.server.listen(this.options.port, host, () => {
+        logger.info('OTLP receiver listening', { port: this.options.port, host });
         resolve();
       });
     });
@@ -41,6 +51,13 @@ export class OtlpReceiver {
   }
 
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const timeoutMs = this.options.bodyTimeoutMs ?? DEFAULT_BODY_TIMEOUT_MS;
+    req.setTimeout(timeoutMs, () => {
+      res.writeHead(408);
+      res.end();
+      req.destroy(new RequestTimeoutError('Request timed out'));
+    });
+
     const path = req.url ?? '';
     if (req.method !== 'POST' || !path.startsWith('/v1/')) {
       res.writeHead(404);
@@ -62,6 +79,15 @@ export class OtlpReceiver {
         res.end('{}');
       }
     } catch (err) {
+      if (err instanceof BodyTooLargeError) {
+        res.writeHead(413);
+        res.end();
+        return;
+      }
+      if (err instanceof RequestTimeoutError) {
+        // 408 already written by the setTimeout callback; just return.
+        return;
+      }
       logger.error('OTLP receiver error', { err });
       res.writeHead(500);
       res.end();
@@ -69,9 +95,19 @@ export class OtlpReceiver {
   }
 
   private readBody(req: IncomingMessage): Promise<Buffer> {
+    const maxBytes = this.options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
-      req.on('data', (chunk: Buffer) => chunks.push(chunk));
+      let totalBytes = 0;
+      req.on('data', (chunk: Buffer) => {
+        totalBytes += chunk.length;
+        if (totalBytes > maxBytes) {
+          req.destroy();
+          reject(new BodyTooLargeError(`Request body exceeds ${maxBytes} bytes`));
+          return;
+        }
+        chunks.push(chunk);
+      });
       req.on('end', () => resolve(Buffer.concat(chunks)));
       req.on('error', reject);
     });

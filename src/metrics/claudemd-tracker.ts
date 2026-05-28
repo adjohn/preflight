@@ -66,7 +66,7 @@ export interface ClaudeMdImpactReport {
     readonly toolCallsPerTask: MetricDelta;
     readonly taskSuccessRate: MetricDelta;
   };
-  readonly contextTokensForClaudeMd: number;
+  readonly contextTokensForClaudeMd: number | null;
   readonly verdict: string;
 }
 
@@ -200,7 +200,7 @@ export class ClaudeMdTracker {
       (s) => s.startTime >= changeTimestamp - windowMs && s.startTime < changeTimestamp,
     );
     const afterSessions = allSessions.filter(
-      (s) => s.startTime >= changeTimestamp && s.startTime <= changeTimestamp + windowMs,
+      (s) => s.startTime >= changeTimestamp && s.startTime < changeTimestamp + windowMs,
     );
 
     const beforeMetrics = aggregateSessions(beforeSessions);
@@ -235,7 +235,7 @@ export class ClaudeMdTracker {
     };
 
     // Estimate context tokens from the actual file size
-    let contextTokensForClaudeMd = 0;
+    let contextTokensForClaudeMd: number | null = 0;
     const latestChange = [...this.changes]
       .reverse()
       .find((c) => c.changeType !== 'deleted');
@@ -243,8 +243,13 @@ export class ClaudeMdTracker {
       try {
         const cost = ClaudeMdTracker.estimateContextCost(latestChange.filePath);
         contextTokensForClaudeMd = cost.estimatedTokens;
-      } catch {
-        contextTokensForClaudeMd = 0;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          contextTokensForClaudeMd = null;
+        } else {
+          logger.warn('Failed to estimate CLAUDE.md context cost', { error: String(err) });
+          contextTokensForClaudeMd = 0;
+        }
       }
     }
 

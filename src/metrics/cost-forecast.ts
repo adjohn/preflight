@@ -14,7 +14,7 @@ export function buildCostForecast(
   nowMs: number = Date.now(),
 ): CostForecast {
   const elapsedMs = nowMs - sessionStartMs;
-  if (elapsedMs <= 0 || spentUsd <= 0) {
+  if (elapsedMs < 1) {
     return {
       elapsedMs: 0,
       spentUsd: 0,
@@ -26,6 +26,20 @@ export function buildCostForecast(
     };
   }
 
+  // Session is running but nothing has been spent yet — return zero forecasts
+  // rather than null so callers can display $0.00 instead of "—".
+  if (spentUsd === 0) {
+    return {
+      elapsedMs,
+      spentUsd: 0,
+      rateUsdPerMs: 0,
+      forecastEndOfDayUsd: 0,
+      forecastEndOfWeekUsd: 0,
+      forecastSessionEndUsd: 0,
+      confidenceNote: 'Session running — no spend recorded yet.',
+    };
+  }
+
   const rateUsdPerMs = spentUsd / elapsedMs;
 
   const now = new Date(nowMs);
@@ -34,8 +48,11 @@ export function buildCostForecast(
   const msUntilEndOfDay = endOfDay.getTime() - nowMs;
   const forecastEndOfDayUsd = spentUsd + rateUsdPerMs * msUntilEndOfDay;
 
+  // ISO week ends on Sunday. Convert getUTCDay() (0=Sun…6=Sat) to ISO day (1=Mon…7=Sun)
+  // then compute remaining days: Sunday → 0 remaining, Monday → 6, …, Saturday → 1.
   const dayOfWeek = now.getUTCDay();
-  const msUntilEndOfWeek = (6 - dayOfWeek) * 86_400_000 + msUntilEndOfDay;
+  const isoDay = dayOfWeek === 0 ? 7 : dayOfWeek;
+  const msUntilEndOfWeek = ((7 - isoDay) % 7) * 86_400_000 + msUntilEndOfDay;
   const forecastEndOfWeekUsd = spentUsd + rateUsdPerMs * msUntilEndOfWeek;
 
   const SESSION_TARGET_MS = 8 * 60 * 60 * 1000;

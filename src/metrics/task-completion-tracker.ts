@@ -1,4 +1,5 @@
 import type { AiCodingTask } from './task-detector.js';
+import type { ToolCallRecord } from '../storage/types.js';
 
 interface TaskSummary {
   readonly durationMs: number;
@@ -13,6 +14,10 @@ export interface TaskCompletionMetrics {
 
 export class TaskCompletionTracker {
   private completed: TaskSummary[] = [];
+
+  // No-op: this tracker is fed via recordTask() called by TaskDetector.
+  // recordToolCall exists for compatibility with the standard tracker pattern.
+  recordToolCall(_record: ToolCallRecord): void {}
 
   recordTask(task: AiCodingTask): void {
     this.completed.push({ durationMs: task.durationMs, toolCallCount: task.toolCallCount });
@@ -38,7 +43,7 @@ export class TaskCompletionTracker {
     };
   }
 
-  reset(_sessionId: string): void {
+  reset(): void {
     this.completed = [];
   }
 }

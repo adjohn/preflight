@@ -2,11 +2,24 @@ import { describe, it, expect } from '@jest/globals';
 import { buildCostForecast } from './cost-forecast.js';
 
 describe('buildCostForecast', () => {
-  it('returns zero-state for no spend', () => {
-    const f = buildCostForecast(0, Date.now() - 60_000);
+  it('returns null forecasts when elapsed time is < 1 ms', () => {
+    const nowMs = Date.now();
+    const f = buildCostForecast(0, nowMs, nowMs); // elapsedMs === 0
     expect(f.forecastEndOfDayUsd).toBeNull();
     expect(f.forecastEndOfWeekUsd).toBeNull();
     expect(f.forecastSessionEndUsd).toBeNull();
+    expect(f.confidenceNote).toMatch(/Insufficient/i);
+  });
+
+  it('returns zero forecasts when session is running but nothing spent yet', () => {
+    const startMs = Date.now() - 60_000;
+    const f = buildCostForecast(0, startMs);
+    expect(f.forecastEndOfDayUsd).toBe(0);
+    expect(f.forecastEndOfWeekUsd).toBe(0);
+    expect(f.forecastSessionEndUsd).toBe(0);
+    expect(f.rateUsdPerMs).toBe(0);
+    expect(f.elapsedMs).toBeGreaterThan(0);
+    expect(f.confidenceNote).toMatch(/no spend/i);
   });
 
   it('returns a positive end-of-day forecast for ongoing spend', () => {
@@ -52,5 +65,38 @@ describe('buildCostForecast', () => {
     const startMs = Date.now() - elapsedMs;
     const f = buildCostForecast(1.0, startMs);
     expect(f.elapsedMs).toBeCloseTo(elapsedMs, -2);
+  });
+
+  // ISO week (Mon–Sun) end-of-week math — one test per weekday.
+  // Pinned to 2024-01-01 (Mon) through 2024-01-07 (Sun) at 12:00 UTC.
+  // msUntilEndOfWeek = daysRemaining * 86_400_000 + msUntilEndOfDay
+  // where msUntilEndOfDay = 23:59:59.999 - 12:00:00.000 = 43_199_999 ms
+  describe('msUntilEndOfWeek is correct for each ISO weekday', () => {
+    const MS_IN_DAY = 86_400_000;
+    const NOON_OFFSET_MS = 12 * 60 * 60 * 1000; // 12:00 UTC
+    const MS_UNTIL_END_OF_DAY = 23 * 3_600_000 + 59 * 60_000 + 59_000 + 999 - NOON_OFFSET_MS;
+
+    const cases: Array<{ label: string; date: string; daysRemaining: number }> = [
+      { label: 'Monday',    date: '2024-01-01', daysRemaining: 6 },
+      { label: 'Tuesday',   date: '2024-01-02', daysRemaining: 5 },
+      { label: 'Wednesday', date: '2024-01-03', daysRemaining: 4 },
+      { label: 'Thursday',  date: '2024-01-04', daysRemaining: 3 },
+      { label: 'Friday',    date: '2024-01-05', daysRemaining: 2 },
+      { label: 'Saturday',  date: '2024-01-06', daysRemaining: 1 },
+      { label: 'Sunday',    date: '2024-01-07', daysRemaining: 0 },
+    ];
+
+    for (const { label, date, daysRemaining } of cases) {
+      it(`${label} has ${daysRemaining} day(s) remaining in the ISO week`, () => {
+        const nowMs = new Date(`${date}T12:00:00.000Z`).getTime();
+        const startMs = nowMs - 60 * 60_000; // 1 hour elapsed
+        const f = buildCostForecast(1.0, startMs, nowMs);
+        const expected = daysRemaining * MS_IN_DAY + MS_UNTIL_END_OF_DAY;
+        // rate * msUntilEndOfWeek gives the remaining portion; total = spent + remaining
+        const rate = f.rateUsdPerMs!;
+        const remaining = (f.forecastEndOfWeekUsd! - f.spentUsd) / rate;
+        expect(remaining).toBeCloseTo(expected, -1); // within 1 ms
+      });
+    }
   });
 });

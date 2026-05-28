@@ -6,8 +6,8 @@
  */
 
 import { Command } from 'commander';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, unlinkSync, copyFileSync, realpathSync } from 'node:fs';
+import { dirname, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import {
   mergeSettings,
@@ -43,7 +43,25 @@ function writeJsonFile(path: string, data: Record<string, unknown>): void {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-  writeFileSync(path, JSON.stringify(data, null, 2) + '\n', { mode: 0o600 });
+
+  // Symlink guard: verify the resolved parent directory is under HOME or cwd.
+  // Prevents a symlink at ~/.claude/ from redirecting writes to a sensitive location.
+  const resolvedDir = realpathSync(dir);
+  const home = homedir();
+  const cwd = process.cwd();
+  const underHome = resolvedDir === home || resolvedDir.startsWith(home + sep);
+  const underCwd = resolvedDir === cwd || resolvedDir.startsWith(cwd + sep);
+  if (!underHome && !underCwd) {
+    throw new Error(`Refusing to write outside HOME or project root: ${resolvedDir}`);
+  }
+
+  const tmp = path + '.tmp';
+  try {
+    writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n', { mode: 0o600 });
+    renameSync(tmp, path);
+  } finally {
+    if (existsSync(tmp)) unlinkSync(tmp);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -94,10 +112,13 @@ function handleUninstall(options: { project?: boolean }): void {
   // Remove hooks from settings.json
   const settingsPath = detectSettingsPath(scope);
   if (existsSync(settingsPath)) {
+    const settingsBackup = `${settingsPath}.backup-${Date.now()}`;
+    copyFileSync(settingsPath, settingsBackup);
+    print(`\n  Backup saved: ${settingsBackup}`);
     const existingSettings = readJsonFile(settingsPath);
     const cleanedSettings = removeSettings(existingSettings);
     writeJsonFile(settingsPath, cleanedSettings);
-    print(`\n✓ Hooks removed: ${settingsPath}`);
+    print(`✓ Hooks removed: ${settingsPath}`);
   } else {
     print(`\nNo settings file found at ${settingsPath}. Skipping hooks.`);
   }
@@ -105,6 +126,9 @@ function handleUninstall(options: { project?: boolean }): void {
   // Remove MCP server from .mcp.json
   const mcpPath = detectMcpConfigPath(scope);
   if (existsSync(mcpPath)) {
+    const mcpBackup = `${mcpPath}.backup-${Date.now()}`;
+    copyFileSync(mcpPath, mcpBackup);
+    print(`  Backup saved: ${mcpBackup}`);
     const existingMcp = readJsonFile(mcpPath);
     const cleanedMcp = removeMcpConfig(existingMcp);
 

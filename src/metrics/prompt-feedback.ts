@@ -195,6 +195,7 @@ export class PromptFeedbackEngine {
     const labelCounts = { significant: 0, moderate: 0, noise: 0 };
     for (const es of effectSizes) labelCounts[es.label]++;
 
+    // Tiebreaker: significant > moderate > noise (highest "alarm level" wins on ties).
     let overallLabel: EffectSize['label'] = 'noise';
     if (effectSizes.length > 0) {
       if (labelCounts.significant >= labelCounts.moderate && labelCounts.significant >= labelCounts.noise) {
@@ -225,7 +226,8 @@ export class PromptFeedbackEngine {
     const recommendations: PromptRecommendation[] = [];
 
     // Rule 1: High correction rate
-    // correctionRate is inverted (1.0 = no corrections), so low correctionRate = many corrections
+    // correctionRate is stored as a success-fraction: 1.0 = no corrections, 0.0 = all corrections.
+    // (1 - correctionRate) inverts it to the actual correction fraction for display and thresholds.
     const correctionPct = round((1 - profile.dimensions.correctionRate) * 100, 0);
     const teamCorrectionPct = round((1 - baseline.dimensions.correctionRate) * 100, 0);
     if (1 - profile.dimensions.correctionRate > 0.3) {

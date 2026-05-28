@@ -35,6 +35,7 @@ export interface ProxyManagerOptions {
   readonly maxBodyBytes?: number;
   readonly otlpReceiverEnabled?: boolean;
   readonly otlpReceiverPort?: number;
+  readonly otlpReceiverBindAddress?: string;
   readonly otlpForwardEndpoint?: string | null;
   readonly otlpForwardHeaders?: Record<string, string>;
   readonly otlpEnrichmentAttributes?: Record<string, string>;
@@ -169,6 +170,7 @@ export class ProxyManager {
       try {
         const receiver = new OtlpReceiver({
           port: this.options.otlpReceiverPort ?? 4318,
+          bindAddress: this.options.otlpReceiverBindAddress ?? '127.0.0.1',
           forwardEndpoint: this.options.otlpForwardEndpoint ?? null,
           forwardHeaders: this.options.otlpForwardHeaders ?? {},
           enrichmentAttributes: this.options.otlpEnrichmentAttributes ?? {},

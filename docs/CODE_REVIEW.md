@@ -1122,7 +1122,7 @@ With 100 samples, the first picks index 95, the second picks index 94. The two t
 
 ---
 
-### [F-070] Model usage tie-breaking is non-deterministic — Low (CORR) ✅
+### ~~[F-070] Model usage tie-breaking is non-deterministic — Low (CORR) ✅~~
 **Location:** `src/metrics/model-usage-tracker.ts:75`
 **Issue:** "Most efficient model" is found via `<` (strict less-than). Two models with identical `costPerOutputToken` produce a result that depends on Map iteration order.
 **Impact:** Reports are unstable across runs when costs tie exactly.
@@ -1142,7 +1142,7 @@ With 100 samples, the first picks index 95, the second picks index 94. The two t
 
 ---
 
-### [F-072] Weekly summary session window uses `<= end` (inclusive) — Low (CORR) ✅
+### ~~[F-072] Weekly summary session window uses `<= end` (inclusive) — Low (CORR) ✅~~
 **Location:** `src/storage/weekly-summary.ts:125-126`
 **Issue:** Filter is `s.startTime >= start && s.startTime <= end`, where `end` is set to Sunday 23:59:59.999. A session starting at exactly that millisecond would be classified into the previous week even though Monday 00:00 is the start of the next week.
 **Impact:** Edge-case mis-classification on the boundary millisecond.
@@ -1152,7 +1152,7 @@ With 100 samples, the first picks index 95, the second picks index 94. The two t
 
 ---
 
-### [F-073] Retention boundary slightly off by intent — Low (CORR) ✅
+### ~~[F-073] Retention boundary slightly off by intent — Low (CORR) ✅~~
 **Location:** `src/storage/retention.ts:9`
 **Issue:** Cutoff is `Date.now() - retainDays * 24h`. "Older than `retainDays` days" is `> retainDays * 24h`, but using `>` vs `>=` makes ~1 millisecond difference. Documented behaviour is "delete sessions older than N days"; current implementation matches the strict reading.
 **Impact:** Negligible.
@@ -1174,7 +1174,7 @@ With 100 samples, the first picks index 95, the second picks index 94. The two t
 
 ---
 
-### [F-075] Session span end-without-start is silently a no-op — Info (LIFE) ✅
+### ~~[F-075] Session span end-without-start is silently a no-op — Info (LIFE) ✅~~
 **Location:** `src/index.ts:141-146` and `src/tracing/session-span.ts:29-38`
 **Issue:** Shutdown handler calls `sessionSpan.end()` unconditionally, but `sessionSpan.start()` only runs when `transport !== 'nr-events-api'`. The defensive null check at `session-span.ts:30` makes this safe today, but it's an implicit contract.
 **Impact:** None today; future refactor could break the assumption.
@@ -1184,7 +1184,7 @@ With 100 samples, the first picks index 95, the second picks index 94. The two t
 
 ---
 
-### [F-076] Hook event-processor orphan-timeout uses `>=` boundary — Info (CORR) ✅
+### ~~[F-076] Hook event-processor orphan-timeout uses `>=` boundary — Info (CORR) ✅~~
 **Location:** `src/hooks/event-processor.ts:230`
 **Issue:** `now - event.timestamp >= this.orphanTimeoutMs` — fires the moment the timeout has elapsed (correct). The agent flagged this as a possible off-by-one but the comparison is the right one. Listing for completeness.
 **Impact:** None.
@@ -1264,7 +1264,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ## Pass 2: Metric trackers
 
-### [F-077] `trend-analyzer.ts` `compareWeeks` swallows null efficiency comparison — Medium (CORR) ✅
+### ~~[F-077] `trend-analyzer.ts` `compareWeeks` swallows null efficiency comparison — Medium (CORR) ✅~~
 **Location:** `src/metrics/trend-analyzer.ts:247-254`
 **Issue:** When both weeks lack efficiency data, both `aggA.efficiency` and `aggB.efficiency` are `null`, the `?? 0` coerces to 0, and `percentChange(0, 0)` returns 0. Callers can't distinguish "no change" from "no data".
 **Impact:** Trend dashboards show "0% change" when the truthful answer is "insufficient data".
@@ -1274,7 +1274,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-078] `claudemd-tracker.ts` before/after windows have asymmetric inclusivity — Medium (CORR) ✅
+### ~~[F-078] `claudemd-tracker.ts` before/after windows have asymmetric inclusivity — Medium (CORR) ✅~~
 **Location:** `src/metrics/claudemd-tracker.ts:200-203`
 **Issue:** `beforeSessions` filter uses `s.startTime < changeTimestamp` (exclusive end) while `afterSessions` uses `s.startTime <= changeTimestamp + windowMs` (inclusive end). Sessions starting exactly at the after-window boundary are counted; sessions exactly at the before-window boundary are not.
 **Impact:** CLAUDE.md change-impact analysis is off by one boundary millisecond — clusters of activity at the exact change moment skew the comparison.
@@ -1284,7 +1284,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-079] `claudemd-tracker.ts` swallows `ENOENT` on missing CLAUDE.md — Low (CORR) ✅
+### ~~[F-079] `claudemd-tracker.ts` swallows `ENOENT` on missing CLAUDE.md — Low (CORR) ✅~~
 **Location:** `src/metrics/claudemd-tracker.ts:243-248`
 **Issue:** `estimateContextCost(filePath)` is wrapped in try/catch that sets `contextTokensForClaudeMd = 0` on any error, including `ENOENT`. A deleted CLAUDE.md and an empty CLAUDE.md report identically.
 **Impact:** Misleading metric when the file is genuinely missing — operators can't distinguish "no CLAUDE.md exists" from "CLAUDE.md is small."
@@ -1294,7 +1294,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-080] `prompt-feedback.ts` three-way tie tiebreaker is implicit — Low (CORR) ✅
+### ~~[F-080] `prompt-feedback.ts` three-way tie tiebreaker is implicit — Low (CORR) ✅~~
 **Location:** `src/metrics/prompt-feedback.ts:199-204`
 **Issue:** `if (significant >= moderate && significant >= noise)` always returns `'significant'` on a 1-1-1 tie. Tiebreaker is the implementation order, not documented.
 **Impact:** Surprising behaviour; cosmetic but undefendable in a code review.
@@ -1304,7 +1304,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-081] `cost-forecast.ts` end-of-week math wrong on every non-Sunday day — High (CORR) ⚠️
+### ~~[F-081] `cost-forecast.ts` end-of-week math wrong on every non-Sunday day — High (CORR) ⚠️~~
 **Location:** `src/metrics/cost-forecast.ts:38`
 **Issue:** `msUntilEndOfWeek = (6 - dayOfWeek) * 86_400_000 + msUntilEndOfDay`. With `getUTCDay()` returning 0 for Sunday, this gives 6 days for Sunday (correct if the week ends on Saturday) but 5 days for Monday, 4 for Tuesday, etc. The week-end definition is inconsistent with the rest of the codebase, which uses ISO weeks (Monday → Sunday).
 **Impact:** End-of-week cost forecasts are systematically off by one day for 6 out of 7 days. The numbers shown to users on Tuesday-Saturday under-state expected weekly burn.
@@ -1317,7 +1317,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-082] `proxy-metrics.ts` bounded array exceeds cap by 1 sample — Low (LIFE) ✅
+### ~~[F-082] `proxy-metrics.ts` bounded array exceeds cap by 1 sample — Low (LIFE) ✅~~
 **Location:** `src/metrics/proxy-metrics.ts:269-272`
 **Issue:** `appendBounded()` pushes first, then splices when `arr.length > MAX_SAMPLES`. The array transiently holds `MAX_SAMPLES + 1` entries before the splice fires.
 **Impact:** Trivial memory overhead; not a true bounded buffer.
@@ -1327,7 +1327,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-083] `proxy-metrics.ts` destructuring default doesn't apply for missing pipe-separator — Medium (CORR) ✅
+### ~~[F-083] `proxy-metrics.ts` destructuring default doesn't apply for missing pipe-separator — Medium (CORR) ✅~~
 **Location:** `src/metrics/proxy-metrics.ts:202-203`
 **Issue:** `const [tool = 'unknown', server = 'unknown'] = key.split('|')`. JS destructuring defaults only apply for missing array elements, not for `undefined`. If `key` lacks a `|`, `server` stays `undefined` instead of becoming `'unknown'`.
 **Impact:** Tool-popularity NR events emitted with `server: undefined` — pollutes dashboards.
@@ -1337,7 +1337,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-084] `task-completion-tracker.ts` exposes wrong public API surface — High (TYPE) ✅
+### ~~[F-084] `task-completion-tracker.ts` exposes wrong public API surface — High (TYPE) ✅~~
 **Location:** `src/metrics/task-completion-tracker.ts` (no `recordToolCall`)
 **Issue:** Per CLAUDE.md, every tracker exposes `recordToolCall(record: ToolCallRecord)`. This tracker exposes only `recordTask()` and `getMetrics()`. Cannot be wired through the standard event-processor pipeline.
 **Impact:** Architectural drift — manual data-routing required, easy to forget when adding new trackers; consistency across the metric subsystem is broken.
@@ -1347,7 +1347,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-085] `task-completion-tracker.ts` `reset(_sessionId)` ignores parameter while signature suggests session scope — Medium (CORR) ✅
+### ~~[F-085] `task-completion-tracker.ts` `reset(_sessionId)` ignores parameter while signature suggests session scope — Medium (CORR) ✅~~
 **Location:** `src/metrics/task-completion-tracker.ts:41-42`
 **Issue:** Signature accepts `sessionId` (with `_` prefix to suppress lint), but the tracker has no session-scoped state. `reset()` wipes all-time history regardless.
 **Impact:** Per-session reset semantics are silently violated — confusing if a user restarts a session and expects only that session to be cleared.
@@ -1365,7 +1365,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-087] `claudemd-tracker.ts` buffer eviction adjusts emitted-index with floor at zero — Medium (CORR) ✅
+### ~~[F-087] `claudemd-tracker.ts` buffer eviction adjusts emitted-index with floor at zero — Medium (CORR) ✅~~
 **Location:** `src/metrics/claudemd-tracker.ts:270-273`
 **Issue:** Eviction calls `splice(0, dropped)` then `lastEmittedIndex = Math.max(0, lastEmittedIndex - dropped)`. Combined with the post-push check, the math can cause unemitted-since pointers to slide forward incorrectly under pathological eviction patterns.
 **Impact:** Edge-case double-emission or skipped emission of CLAUDE.md change events; harder to detect in practice.
@@ -1375,7 +1375,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-088] `prompt-feedback.ts` correction-rate inversion is fragile — Low (CORR) ✅
+### ~~[F-088] `prompt-feedback.ts` correction-rate inversion is fragile — Low (CORR) ✅~~
 **Location:** `src/metrics/prompt-feedback.ts:228-231`
 **Issue:** Code computes `(1 - correctionRate) * 100` to show "correction percentage" and triggers a recommendation when `1 - correctionRate > 0.3`. The double-inversion (rate stored as success-fraction, then inverted to correction-fraction) is not documented and easy to mis-read.
 **Impact:** Future contributors may misinterpret the variable; recommendations could fire on wrong conditions if anyone "fixes" the inversion.
@@ -1385,7 +1385,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-089] `cost-forecast.ts` `<= 0` guard rejects legitimate near-zero elapsed time — Low (CORR) ✅
+### ~~[F-089] `cost-forecast.ts` `<= 0` guard rejects legitimate near-zero elapsed time — Low (CORR) ✅~~
 **Location:** `src/metrics/cost-forecast.ts:17-27`
 **Issue:** Early-return on `elapsedMs <= 0 || spentUsd <= 0`. A barely-started session with `elapsedMs == 0` or one that spent exactly $0 returns no forecast.
 **Impact:** Cosmetic — forecast UI shows "—" for the first few ms of a session.
@@ -1395,7 +1395,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-090] `trend-analyzer.ts` `getPreviousWeekId` may return a same-week id around DST or year boundaries — Low (CORR) ✅
+### ~~[F-090] `trend-analyzer.ts` `getPreviousWeekId` may return a same-week id around DST or year boundaries — Low (CORR) ✅~~
 **Location:** `src/metrics/trend-analyzer.ts:418-420`
 **Issue:** Subtracts 1 day from week start. If `getWeekDateRange()` returns a Sunday (instead of the ISO Monday), DST forward-jumps could mean "minus 24h" lands inside the same ISO week. Verified: code is correct under standard ISO assumptions, but fragile if assumptions ever change.
 **Impact:** Edge case at year-boundary or DST week — week-over-week comparisons could repeat data.
@@ -1407,7 +1407,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ## Pass 2: install-helper.ts
 
-### [F-091] `install/cli.ts` `writeJsonFile` is non-atomic — High (LIFE) ✅
+### ~~[F-091] `install/cli.ts` `writeJsonFile` is non-atomic — High (LIFE) ✅~~
 **Location:** `src/install/cli.ts:41-46`
 **Issue:** `writeFileSync()` writes directly to the destination path. A crash mid-write leaves a half-written JSON file, which `readJsonFile()` (line 35) then silently parses as `{}`, losing the user's existing settings (hooks, MCP servers).
 **Impact:** Silent data loss on crash during install/uninstall — user's existing Claude Code settings are wiped.
@@ -1417,7 +1417,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-092] Uninstall makes destructive edits without backup — Medium (LIFE) ✅
+### ~~[F-092] Uninstall makes destructive edits without backup — Medium (LIFE) ✅~~
 **Location:** `src/install/cli.ts:95-119` (uninstall handler)
 **Issue:** No backup is created before `removeSettings()` / `removeMcpConfig()` modifies user files in place. A regression in the removal logic or a hand-edited config file could destroy user settings without any recovery path.
 **Impact:** Permanent loss of customer Claude Code configuration on a buggy uninstall.
@@ -1427,7 +1427,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-093] `install-helper.ts` resolves paths without symlink protection — Low (SEC) ✅
+### ~~[F-093] `install-helper.ts` resolves paths without symlink protection — Low (SEC) ✅~~
 **Location:** `src/install/install-helper.ts:75-87`
 **Issue:** `detectSettingsPath` / `detectMcpConfigPath` resolve paths via `resolve()` but never call `realpathSync()`. A symlink at `~/.claude/` pointing to a sensitive directory would cause writes to land in the symlink target.
 **Impact:** Low practical risk because symlink installation requires existing system compromise, but defence-in-depth is missing.
@@ -1437,7 +1437,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-094] `mergeSettings` accepts JSON without schema validation — Low (TYPE) ✅
+### ~~[F-094] `mergeSettings` accepts JSON without schema validation — Low (TYPE) ✅~~
 **Location:** `src/install/install-helper.ts:133-156`
 **Issue:** The merge code only checks `typeof result.hooks === 'object'`. A file where `hooks` is the wrong shape (e.g. an array, or string-valued sub-keys) is silently overwritten.
 **Impact:** Partial corruption of user-customised settings if the existing file has been hand-edited into an unexpected shape.
@@ -1455,7 +1455,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ## Pass 2: OTLP receiver edge cases
 
-### [F-095] OTLP receiver has no max body-size limit — Critical (SEC) ✅
+### ~~[F-095] OTLP receiver has no max body-size limit — Critical (SEC) ✅~~
 **Location:** `src/proxy/otlp-receiver.ts:71-78` (readBody)
 **Issue:** `readBody()` accumulates chunks in an array without any size cap. A malicious or buggy client can stream gigabytes of data, exhausting memory.
 **Impact:** Trivial OOM denial-of-service against the OTLP receiver — single request takes the process down.
@@ -1465,7 +1465,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-096] OTLP receiver binds to `0.0.0.0` by default — Critical (SEC) ✅
+### ~~[F-096] OTLP receiver binds to `0.0.0.0` by default — Critical (SEC) ✅~~
 **Location:** `src/proxy/otlp-receiver.ts` (constructor + `listen()` call)
 **Issue:** `OtlpReceiverOptions` interface has no `bindAddress` field. `this.server.listen(this.options.port, ...)` defaults to `0.0.0.0`, exposing the receiver on every network interface. CLAUDE.md explicitly identifies 0.0.0.0 binding as risky.
 **Impact:** Any client on the network (potentially the public internet, depending on customer firewall) can post arbitrary OTLP payloads. Telemetry poisoning, reflected DDoS, or — combined with F-095 — remote OOM.
@@ -1475,7 +1475,7 @@ A second sweep was performed covering the 6 metric trackers, `install-helper.ts`
 
 ---
 
-### [F-097] OTLP receiver has no slow-loris timeout — High (SEC) ✅
+### ~~[F-097] OTLP receiver has no slow-loris timeout — High (SEC) ✅~~
 **Location:** `src/proxy/otlp-receiver.ts:71-78`
 **Issue:** No request timeout configured. A slow-loris attacker can hold connections open indefinitely by drip-feeding bytes, exhausting connection slots.
 **Impact:** Denial of service via socket exhaustion.

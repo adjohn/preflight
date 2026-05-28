@@ -575,6 +575,52 @@ describe('ClaudeMdTracker', () => {
   // 14. reset clears all state
   // -------------------------------------------------------------------------
 
+  // -------------------------------------------------------------------------
+  // 14. Buffer overflow with partially-emitted changes adjusts emitted index
+  // -------------------------------------------------------------------------
+
+  it('eviction after partial emit adjusts lastEmittedIndex so no duplication or gap', () => {
+    const tracker = new ClaudeMdTracker({ sessionStore: store });
+    const makeWrite = (i: number) =>
+      makeToolCall({ toolName: 'Write', filePath: `/project/CLAUDE.md`, lineCount: 1, timestamp: 1000 + i } as Partial<ToolCallRecord>);
+
+    // Fill to exactly MAX_CHANGES (1000) and emit all
+    for (let i = 0; i < 1000; i++) tracker.detectChange(makeWrite(i));
+    const agg1 = { record: jest.fn() } as unknown as MetricAggregator;
+    tracker.emitMetrics(agg1);
+    const emitted1 = (agg1.record as jest.Mock).mock.calls.filter(([n]) => n === 'ai.claudemd.change').length;
+    expect(emitted1).toBe(1000);
+
+    // Add 1 more change — triggers eviction of 1 entry (the oldest, already-emitted one)
+    tracker.detectChange(makeWrite(1000));
+    const agg2 = { record: jest.fn() } as unknown as MetricAggregator;
+    tracker.emitMetrics(agg2);
+    const emitted2 = (agg2.record as jest.Mock).mock.calls.filter(([n]) => n === 'ai.claudemd.change').length;
+    // Only the 1 new change should be emitted — the 1000 previously-emitted entries are not re-emitted
+    expect(emitted2).toBe(1);
+  });
+
+  it('eviction of unemitted entries floors lastEmittedIndex at 0 without crashing', () => {
+    const tracker = new ClaudeMdTracker({ sessionStore: store });
+    const makeWrite = (i: number) =>
+      makeToolCall({ toolName: 'Write', filePath: `/project/CLAUDE.md`, lineCount: 1, timestamp: 1000 + i } as Partial<ToolCallRecord>);
+
+    // Add 1001 changes without emitting — 1 entry evicted before first harvest
+    for (let i = 0; i < 1001; i++) tracker.detectChange(makeWrite(i));
+
+    const agg = { record: jest.fn() } as unknown as MetricAggregator;
+    tracker.emitMetrics(agg);
+    const emitted = (agg.record as jest.Mock).mock.calls.filter(([n]) => n === 'ai.claudemd.change').length;
+    // The 1 evicted entry is silently lost; the remaining 1000 are emitted once
+    expect(emitted).toBe(1000);
+
+    // Second harvest emits nothing (lastEmittedIndex advanced to end)
+    const agg2 = { record: jest.fn() } as unknown as MetricAggregator;
+    tracker.emitMetrics(agg2);
+    const emitted2 = (agg2.record as jest.Mock).mock.calls.filter(([n]) => n === 'ai.claudemd.change').length;
+    expect(emitted2).toBe(0);
+  });
+
   it('reset clears changes, lastEmittedIndex, and impact cache', () => {
     const tracker = new ClaudeMdTracker({ sessionStore: store });
 

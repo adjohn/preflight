@@ -200,7 +200,9 @@ export class ProxyMetricsTracker {
     // Tool popularity — sorted descending by count
     const toolPopularity: Array<{ tool: string; server: string; count: number }> = [];
     for (const [key, count] of this.toolServerCounts) {
-      const [tool = 'unknown', server = 'unknown'] = key.split('|');
+      const parts = key.split('|');
+      const tool = parts[0] ?? 'unknown';
+      const server = parts[1] ?? 'unknown';
       toolPopularity.push({ tool, server, count });
     }
     toolPopularity.sort((a, b) => b.count - a.count);
@@ -267,6 +269,6 @@ export class ProxyMetricsTracker {
 // ---------------------------------------------------------------------------
 
 function appendBounded(arr: number[], value: number): void {
+  if (arr.length >= MAX_SAMPLES) arr.shift();
   arr.push(value);
-  if (arr.length > MAX_SAMPLES) arr.splice(0, arr.length - MAX_SAMPLES);
 }

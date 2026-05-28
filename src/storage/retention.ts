@@ -6,6 +6,7 @@ const logger = createLogger('retention');
 
 export function purgeOldSessions(storagePath: string, retainDays: number): number {
   const sessionsDir = resolve(storagePath, 'sessions');
+  // Sessions are deleted if mtime < cutoff. Sessions exactly at the cutoff (rare in practice) are retained.
   const cutoffMs = Date.now() - retainDays * 24 * 60 * 60 * 1000;
   let deletedCount = 0;
 

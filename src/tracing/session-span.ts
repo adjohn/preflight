@@ -8,6 +8,7 @@ export class SessionSpan {
   private span: Span | null = null;
   private readonly sessionId: string;
   private readonly developer: string;
+  private started = false;
   private ended = false;
 
   constructor(sessionId: string, developer: string) {
@@ -24,10 +25,12 @@ export class SessionSpan {
         'ai.platform': 'claude-code',
       },
     });
+    this.started = true;
     logger.debug('Session span started', { sessionId: this.sessionId });
   }
 
   end(toolCallCount: number, taskCount: number): void {
+    if (!this.started) return;
     if (this.ended) return;
     this.ended = true;
     if (!this.span) return;

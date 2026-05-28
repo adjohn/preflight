@@ -241,11 +241,13 @@ export class TrendAnalyzer {
     const aggA = this.loadWeekAggregate(weekA);
     const aggB = this.loadWeekAggregate(weekB);
 
+    const effA = aggA.efficiency;
+    const effB = aggB.efficiency;
     return {
       weekA,
       weekB,
-      efficiencyDelta: round((aggB.efficiency ?? 0) - (aggA.efficiency ?? 0), 3),
-      efficiencyPctChange: percentChange(aggA.efficiency ?? 0, aggB.efficiency ?? 0),
+      efficiencyDelta: round((effB ?? 0) - (effA ?? 0), 3),
+      efficiencyPctChange: effA === null && effB === null ? null : percentChange(effA ?? 0, effB ?? 0),
       costDelta: round(aggB.cost - aggA.cost, 4),
       costPctChange: percentChange(aggA.cost, aggB.cost),
       taskSuccessDelta: round(aggB.taskSuccess - aggA.taskSuccess, 3),
@@ -259,7 +261,7 @@ export class TrendAnalyzer {
     const { start, end } = getWeekDateRange(weekId);
     const allSessions = this.sessionStore.loadAllSessions({ since: start });
     const weekSessions = allSessions.filter(
-      (s) => s.startTime >= start.getTime() && s.startTime <= end.getTime(),
+      (s) => s.startTime >= start.getTime() && s.startTime < end.getTime(),
     );
 
     const devSessions = weekSessions.filter((s) => s.developer === developer);
@@ -365,7 +367,7 @@ export class TrendAnalyzer {
     const { start, end } = getWeekDateRange(weekId);
     const allSessions = this.sessionStore.loadAllSessions({ since: start });
     const weekSessions = allSessions.filter(
-      (s) => s.startTime >= start.getTime() && s.startTime <= end.getTime(),
+      (s) => s.startTime >= start.getTime() && s.startTime < end.getTime(),
     );
 
     // Group by developer
@@ -398,7 +400,7 @@ export class TrendAnalyzer {
     const { start, end } = getWeekDateRange(weekId);
     const allSessions = this.sessionStore.loadAllSessions({ since: start });
     const weekSessions = allSessions.filter(
-      (s) => s.startTime >= start.getTime() && s.startTime <= end.getTime(),
+      (s) => s.startTime >= start.getTime() && s.startTime < end.getTime(),
     );
     return aggregateWeek(weekSessions);
   }
@@ -415,6 +417,8 @@ function round(value: number, decimals: number): number {
 
 function getPreviousWeekId(weekId: string): string {
   const { start } = getWeekDateRange(weekId);
-  const prevDate = new Date(start.getTime() - 86_400_000); // go back 1 day into previous week
+  // Subtract 7 days and add 12 h to land at noon UTC, keeping the result inside
+  // the previous ISO week regardless of the local timezone offset.
+  const prevDate = new Date(start.getTime() - 7 * 86_400_000 + 43_200_000);
   return getIsoWeekId(prevDate);
 }

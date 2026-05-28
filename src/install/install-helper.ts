@@ -6,6 +6,7 @@
 
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
+import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -127,10 +128,34 @@ function filterNrObserveEntries(entries: unknown[]): unknown[] {
 }
 
 // ---------------------------------------------------------------------------
+// Zod schemas — validate existing file shapes before merging
+// ---------------------------------------------------------------------------
+
+const HookCommandSchema = z.object({ type: z.string(), command: z.string() }).passthrough();
+const HookEntrySchema = z.object({ matcher: z.string(), hooks: z.array(HookCommandSchema) }).passthrough();
+const HooksFieldSchema = z.object({
+  PreToolUse: z.array(HookEntrySchema).optional(),
+  PostToolUse: z.array(HookEntrySchema).optional(),
+}).passthrough();
+const SettingsSchema = z.object({ hooks: HooksFieldSchema.optional() }).passthrough();
+
+const McpServerEntrySchema = z.object({ command: z.string(), args: z.array(z.string()) }).passthrough();
+const McpConfigSchema = z.object({
+  mcpServers: z.record(McpServerEntrySchema).optional(),
+}).passthrough();
+
+// ---------------------------------------------------------------------------
 // mergeSettings
 // ---------------------------------------------------------------------------
 
 export function mergeSettings(existing: Record<string, unknown>): Record<string, unknown> {
+  const parsed = SettingsSchema.safeParse(existing);
+  if (!parsed.success) {
+    throw new Error(
+      `Existing settings file has unexpected shape — fix manually before running install.\n${parsed.error.message}`,
+    );
+  }
+
   const result = { ...existing };
   const hookEntries = generateHookEntries();
 
@@ -160,6 +185,13 @@ export function mergeSettings(existing: Record<string, unknown>): Record<string,
 // ---------------------------------------------------------------------------
 
 export function mergeMcpConfig(existing: Record<string, unknown>): Record<string, unknown> {
+  const parsed = McpConfigSchema.safeParse(existing);
+  if (!parsed.success) {
+    throw new Error(
+      `Existing MCP config file has unexpected shape — fix manually before running install.\n${parsed.error.message}`,
+    );
+  }
+
   const result = { ...existing };
 
   const mcpServers: Record<string, unknown> =

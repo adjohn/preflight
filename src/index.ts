@@ -450,6 +450,7 @@ async function main(): Promise<void> {
       },
       otlpReceiverEnabled: config.otlpReceiverEnabled,
       otlpReceiverPort: config.otlpReceiverPort,
+      otlpReceiverBindAddress: config.otlpReceiverBindAddress,
       otlpForwardEndpoint: config.otlpForwardEndpoint,
       otlpForwardHeaders: config.otlpForwardHeaders,
       otlpEnrichmentAttributes: {

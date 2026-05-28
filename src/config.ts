@@ -47,6 +47,8 @@ export interface McpServerConfig {
   readonly otlpReceiverEnabled: boolean;
   /** Port for the local OTLP/HTTP receiver. Default: 4318. */
   readonly otlpReceiverPort: number;
+  /** Bind address for the local OTLP/HTTP receiver. Default: '127.0.0.1'. */
+  readonly otlpReceiverBindAddress: string;
   /**
    * OTLP forward endpoint — where to relay received spans.
    * Defaults to New Relic US OTLP endpoint when licenseKey is present.
@@ -106,6 +108,7 @@ const ConfigFileSchema = z.object({
   transport: z.enum(['nr-events-api', 'otlp', 'both']).optional(),
   otlpReceiverEnabled: z.boolean().optional(),
   otlpReceiverPort: z.number().optional(),
+  otlpReceiverBindAddress: z.string().optional(),
   otlpForwardEndpoint: z.string().nullable().optional(),
   otlpForwardHeaders: z.record(z.string()).optional(),
   alerts: z.object({
@@ -504,6 +507,15 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       typeof file.otlpReceiverPort === 'number' ? file.otlpReceiverPort : 4318,
       { min: 1, max: 65535 },
     ),
+
+    otlpReceiverBindAddress: (() => {
+      const envVal = process.env.NR_AI_OTLP_RECEIVER_BIND_ADDRESS;
+      if (envVal !== undefined && envVal !== '') return envVal;
+      if (typeof file.otlpReceiverBindAddress === 'string' && file.otlpReceiverBindAddress !== '') {
+        return file.otlpReceiverBindAddress;
+      }
+      return '127.0.0.1';
+    })(),
 
     otlpForwardEndpoint: (() => {
       const envVal = process.env.NR_AI_OTLP_FORWARD_ENDPOINT;

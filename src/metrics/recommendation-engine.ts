@@ -288,7 +288,7 @@ export class RecommendationEngine {
         ));
       }
 
-      if (impact.contextTokensForClaudeMd > 3000) {
+      if (impact.contextTokensForClaudeMd !== null && impact.contextTokensForClaudeMd > 3000) {
         recs.push(makeRec(
           'claudemd',
           'medium',

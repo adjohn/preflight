@@ -93,12 +93,12 @@ export function getWeekDateRange(weekId: string): { start: Date; end: Date } {
   const targetMonday = new Date(week1Monday.getTime());
   targetMonday.setUTCDate(week1Monday.getUTCDate() + (week - 1) * 7);
 
-  // Sunday 23:59:59.999
-  const targetSunday = new Date(targetMonday.getTime());
-  targetSunday.setUTCDate(targetMonday.getUTCDate() + 6);
-  targetSunday.setUTCHours(23, 59, 59, 999);
+  // Exclusive upper bound: Monday 00:00:00.000 of the following week.
+  // Use half-open interval [start, end) to avoid the 23:59:59.999 boundary edge case.
+  const nextMonday = new Date(targetMonday.getTime());
+  nextMonday.setUTCDate(targetMonday.getUTCDate() + 7);
 
-  return { start: targetMonday, end: targetSunday };
+  return { start: targetMonday, end: nextMonday };
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +123,7 @@ export class WeeklySummaryGenerator {
 
     const allSessions = this.sessionStore.loadAllSessions({ since: start });
     const weekSessions = allSessions.filter(
-      (s) => s.startTime >= start.getTime() && s.startTime <= end.getTime(),
+      (s) => s.startTime >= start.getTime() && s.startTime < end.getTime(),
     );
 
     const summary = aggregateSessions(weekId, weekSessions);
