@@ -716,6 +716,72 @@ describe('Cross-session tool handlers', () => {
     }
   });
 
+  // -------------------------------------------------------------------------
+  // F-134: negative and out-of-range inputs
+  // -------------------------------------------------------------------------
+
+  describe('F-134: negative and out-of-range inputs', () => {
+    it('handleGetTrends with weeks: -1 does not crash and returns data_points array', () => {
+      const analyzer = new TrendAnalyzer({ sessionStore: store });
+      const result = handleGetTrends(analyzer, { weeks: -1 });
+      const parsed = JSON.parse(result.content[0]!.text);
+      expect(parsed.data_points).toBeInstanceOf(Array);
+      expect(parsed.metric).toBe('efficiency');
+      expect(parsed.weeks).toBe(-1);
+    });
+
+    it('handleGetTrends with weeks: 999 does not crash and returns data_points array', () => {
+      const analyzer = new TrendAnalyzer({ sessionStore: store });
+      const result = handleGetTrends(analyzer, { weeks: 999 });
+      const parsed = JSON.parse(result.content[0]!.text);
+      expect(parsed.data_points).toBeInstanceOf(Array);
+    });
+
+    it('handleGetPlatformComparison with weeks: -1 does not crash', () => {
+      const result = handleGetPlatformComparison(store, { weeks: -1 });
+      const parsed = JSON.parse(result.content[0]!.text);
+      expect(parsed.platforms).toBeDefined();
+      expect(parsed.weeks).toBe(-1);
+    });
+
+    it('handleGetPlatformComparison with weeks: 999 does not crash', () => {
+      const result = handleGetPlatformComparison(store, { weeks: 999 });
+      const parsed = JSON.parse(result.content[0]!.text);
+      expect(parsed.platforms).toBeDefined();
+    });
+
+    it('handleGetTeamSummary rejects since: "yesterday" (plain word, not relative format)', async () => {
+      const result = await handleGetTeamSummary({
+        teamId: 'my-team',
+        accountId: '12345',
+        nrApiKey: 'test-key',
+        since: 'yesterday',
+      });
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error).toMatch(/Invalid since/);
+    });
+
+    it('handleGetTeamSummary rejects since: "2026-05-01" (ISO date instead of relative)', async () => {
+      const result = await handleGetTeamSummary({
+        teamId: 'my-team',
+        accountId: '12345',
+        nrApiKey: 'test-key',
+        since: '2026-05-01',
+      });
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error).toMatch(/Invalid since/);
+    });
+
+    it('handleGetSessionHistory with limit: 0 does not crash', () => {
+      store.saveSession(makeSummary({ sessionId: 'lim-zero' }));
+      const result = handleGetSessionHistory(store, { limit: 0 });
+      const parsed = JSON.parse(result.content[0]!.text);
+      expect(parsed.sessions).toBeInstanceOf(Array);
+    });
+  });
+
   describe('toFiniteNumber (F-012)', () => {
     it('converts valid numbers', () => {
       expect(toFiniteNumber(123)).toBe(123);

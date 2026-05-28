@@ -554,3 +554,69 @@ describe('SecurityAlert description redaction (N-04)', () => {
     expect(audit.securityAlert!.description).not.toContain('[REDACTED]');
   });
 });
+
+// ---------------------------------------------------------------------------
+// F-140: Audit-trail case/spacing/false-positive tests
+// ---------------------------------------------------------------------------
+
+describe('F-140: Audit-trail case/spacing/false-positive tests', () => {
+  // Case variations — the rm regex uses \brm\s+ (no /i flag), so uppercase
+  // variants do NOT currently trigger the destructive-command classifier.
+  // These tests document that known limitation.
+  it('RM -rf / (uppercase) does NOT trigger destructive classification', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command: 'RM -rf /' }));
+    expect(audit.securityAlert?.alertType).not.toBe('destructive_command');
+  });
+
+  it('Rm -RF / (mixed case) does NOT trigger destructive classification', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command: 'Rm -RF /' }));
+    expect(audit.securityAlert?.alertType).not.toBe('destructive_command');
+  });
+
+  // Spacing variations — \s+ matches one or more spaces, so double-space DOES trigger.
+  it('rm  -rf  / (double space) still triggers destructive classification', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command: 'rm  -rf  /' }));
+    expect(audit.securityAlert?.alertType).toBe('destructive_command');
+  });
+
+  // Embedded-substring false-positive check — a file path containing "rm-rf" as
+  // a substring (no whitespace after "rm") must NOT trigger the classifier.
+  it('/var/log/rm-rf-backup.tar does NOT trigger destructive classification', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/var/log/rm-rf-backup.tar' }));
+    expect(audit.securityAlert?.alertType).not.toBe('destructive_command');
+  });
+
+  it('find /tmp -name "rm-rf*" does NOT trigger destructive classification', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command: 'find /tmp -name "rm-rf*"' }));
+    expect(audit.securityAlert?.alertType).not.toBe('destructive_command');
+  });
+
+  // Bearer token redaction boundary — the pattern requires 20+ chars after "Bearer ".
+  // A short token (< 20 chars) is left as-is; a long token (>= 20 chars) is redacted.
+  it('Bearer token shorter than 20 chars is NOT redacted in security alert description', () => {
+    const mgr = makeManager();
+    const record = makeRecord({
+      toolName: 'Bash',
+      command: 'curl -H "Authorization: Bearer abc123" https://api.example.com',
+    });
+    const audit = mgr.recordToolCall(record);
+    // 'abc123' is 6 chars — below the 20-char minimum, so it passes through
+    expect(audit.securityAlert?.description).toContain('abc123');
+  });
+
+  it('Bearer token 20+ chars IS redacted in security alert description', () => {
+    const mgr = makeManager();
+    const record = makeRecord({
+      toolName: 'Bash',
+      command: 'curl -H "Authorization: Bearer supersecrettoken12345678901234" https://api.example.com',
+    });
+    const audit = mgr.recordToolCall(record);
+    expect(audit.securityAlert?.description).not.toContain('supersecrettoken12345678901234');
+    expect(audit.securityAlert?.description).toContain('[REDACTED]');
+  });
+});

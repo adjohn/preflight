@@ -577,7 +577,60 @@ describe('HarvestScheduler', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // 15. Default transport mode is 'nr-events-api'
+  // 15. Retry-buffer events are flushed during stop() — not lost on shutdown (F-128)
+  // ---------------------------------------------------------------------------
+  it('flushes retry-buffered events during stop() when no tick fires between failure and shutdown', async () => {
+    const sendEventsFn = jest
+      .fn<Promise<TransportResult>, unknown[]>()
+      .mockResolvedValueOnce(failureResult)
+      .mockResolvedValue(successResult);
+
+    const { scheduler } = makeScheduler({ sendEventsFn });
+
+    scheduler.addEvent({ eventType: 'Test', value: 1 });
+    scheduler.start();
+
+    // First harvest at 5s — fails, event goes to retry buffer
+    await jest.advanceTimersByTimeAsync(5_000);
+    expect(sendEventsFn).toHaveBeenCalledTimes(1);
+
+    // Call stop() immediately — no second tick fires.
+    // The final flush inside doStop() must drain the retry buffer.
+    await scheduler.stop();
+
+    expect(sendEventsFn).toHaveBeenCalledTimes(2);
+    const shutdownBatch = sendEventsFn.mock.calls[1][0] as NrEventData[];
+    expect(shutdownBatch).toHaveLength(1);
+    expect(shutdownBatch[0].value).toBe(1);
+  });
+
+  it('flushes retry-buffered metrics during stop() when no tick fires between failure and shutdown', async () => {
+    const sendMetricsFn = jest
+      .fn<Promise<TransportResult>, unknown[]>()
+      .mockResolvedValueOnce(failureResult)
+      .mockResolvedValue(successResult);
+
+    const { scheduler } = makeScheduler({ sendMetricsFn });
+
+    scheduler.recordMetric('ai.duration', 100);
+    scheduler.start();
+
+    // First metric harvest at 60s — fails, metrics go to retry buffer
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(sendMetricsFn).toHaveBeenCalledTimes(1);
+    const firstBatch = sendMetricsFn.mock.calls[0][0] as NrMetric[];
+
+    // Call stop() immediately — no second tick fires.
+    // The final flush inside doStop() must drain the metric retry buffer.
+    await scheduler.stop();
+
+    expect(sendMetricsFn).toHaveBeenCalledTimes(2);
+    const shutdownBatch = sendMetricsFn.mock.calls[1][0] as NrMetric[];
+    expect(shutdownBatch).toHaveLength(firstBatch.length);
+  });
+
+  // ---------------------------------------------------------------------------
+  // 16. Default transport mode is 'nr-events-api'
   // ---------------------------------------------------------------------------
   it("default transport mode is 'nr-events-api'", async () => {
     const sendEventsFn = jest.fn<Promise<TransportResult>, unknown[]>().mockResolvedValue(successResult);

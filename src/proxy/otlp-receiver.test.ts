@@ -691,3 +691,103 @@ describe('Expect: 100-continue (F-104)', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// F-139: Remaining size-limit / encoding / Content-Type edge cases
+// (F-095–F-104 scenarios are covered in their individual describe blocks
+// above; this block adds the specific examples called out in F-139.)
+// ---------------------------------------------------------------------------
+
+describe('F-139: Content-Type edge cases', () => {
+  let receiver: OtlpReceiver;
+
+  beforeEach(async () => {
+    receiver = makeReceiver();
+    await receiver.start();
+  });
+
+  afterEach(async () => {
+    await receiver.stop();
+  });
+
+  it('returns 415 for text/html Content-Type', async () => {
+    const port = getBoundPort(receiver);
+    const { statusCode } = await httpRequest(port, 'POST', '/v1/traces', '{}', {
+      'content-type': 'text/html',
+    });
+    expect(statusCode).toBe(415);
+  });
+
+  it('returns 415 for application/xml Content-Type', async () => {
+    const port = getBoundPort(receiver);
+    const { statusCode } = await httpRequest(port, 'POST', '/v1/traces', '<root/>', {
+      'content-type': 'application/xml',
+    });
+    expect(statusCode).toBe(415);
+  });
+
+  it('returns 200 for application/octet-stream (binary OTLP, allowed content type)', async () => {
+    const port = getBoundPort(receiver);
+    const { statusCode } = await httpRequest(
+      port, 'POST', '/v1/traces', Buffer.from([0x0a, 0x00]),
+      { 'content-type': 'application/octet-stream' },
+    );
+    expect(statusCode).toBe(200);
+  });
+
+  it('returns 200 for Content-Type absent — defaults to application/json', async () => {
+    const port = getBoundPort(receiver);
+    // httpRequest sends no content-type header when headers arg is omitted
+    const { statusCode } = await httpRequest(port, 'POST', '/v1/traces', '{}');
+    expect(statusCode).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-139: abort mid-stream
+// ---------------------------------------------------------------------------
+
+describe('F-139: abort mid-stream', () => {
+  it('returns 400 when client half-closes with an incomplete body', async () => {
+    const receiver = makeReceiver();
+    await receiver.start();
+    try {
+      const port = getBoundPort(receiver);
+      const statusCode = await new Promise<number>((resolve, reject) => {
+        const socket = createConnection({ host: '127.0.0.1', port }, () => {
+          // Declare Content-Length: 100 but only send 10 bytes, then half-close.
+          // socket.end() sends FIN but keeps the read side open so we can receive
+          // the server's 400 response triggered by the "Incomplete body" check.
+          socket.write(
+            'POST /v1/traces HTTP/1.1\r\n' +
+            'Host: 127.0.0.1\r\n' +
+            'Content-Type: application/json\r\n' +
+            'Content-Length: 100\r\n' +
+            '\r\n' +
+            '{"partial":'
+          );
+          socket.end();
+        });
+
+        let response = '';
+        socket.on('data', (chunk: Buffer) => {
+          response += chunk.toString();
+          const match = /^HTTP\/1\.[01] (\d+)/.exec(response);
+          if (match) {
+            resolve(Number(match[1]));
+            socket.destroy();
+          }
+        });
+        socket.on('error', reject);
+        socket.on('close', () => {
+          const match = /^HTTP\/1\.[01] (\d+)/.exec(response);
+          if (match) resolve(Number(match[1]));
+          else reject(new Error('Connection closed without HTTP response'));
+        });
+      });
+      expect(statusCode).toBe(400);
+    } finally {
+      await receiver.stop();
+    }
+  }, 5000);
+});

@@ -311,6 +311,49 @@ describe('HttpUpstream', () => {
       });
     });
 
+    describe('RFC-1918 range boundaries and multicast (F-130)', () => {
+      const blockedBoundaries: Array<[string, string]> = [
+        // 10.0.0.0/8 range
+        ['10.x first (10.0.0.0)', 'http://10.0.0.0/'],
+        ['10.x last (10.255.255.255)', 'http://10.255.255.255/'],
+        // 172.16.0.0/12 range
+        ['172.16.x.x first', 'http://172.16.0.0/'],
+        ['172.31.x.x last', 'http://172.31.255.255/'],
+        // 192.168.0.0/16 range
+        ['192.168.x.x first', 'http://192.168.0.0/'],
+        ['192.168.x.x last', 'http://192.168.255.255/'],
+        // 169.254.0.0/16 link-local range
+        ['169.254.x.x first (link-local)', 'http://169.254.0.0/'],
+        ['169.254.x.x last (link-local)', 'http://169.254.255.255/'],
+        // 224.0.0.0/4 multicast range
+        ['multicast first (224.0.0.0)', 'http://224.0.0.0/'],
+        ['multicast interior (235.1.1.1)', 'http://235.1.1.1/'],
+        ['multicast last (239.255.255.255)', 'http://239.255.255.255/'],
+      ];
+
+      it.each(blockedBoundaries)('blocks %s', (_label, url) => {
+        expect(
+          () => new HttpUpstream({ name: 'test', url, transportType: 'http' }),
+        ).toThrow();
+      });
+
+      const allowedBoundaries: Array<[string, string]> = [
+        // Just outside 10.0.0.0/8
+        ['11.0.0.0 (just above 10/8)', 'http://11.0.0.0/'],
+        // Just outside 172.16.0.0/12
+        ['172.15.255.255 (just below 172.16/12)', 'http://172.15.255.255/'],
+        ['172.32.0.0 (just above 172.31/12)', 'http://172.32.0.0/'],
+        // Just outside multicast range
+        ['223.255.255.255 (just below 224/4 multicast)', 'http://223.255.255.255/'],
+      ];
+
+      it.each(allowedBoundaries)('allows %s', (_label, url) => {
+        expect(
+          () => new HttpUpstream({ name: 'test', url, transportType: 'http' }),
+        ).not.toThrow();
+      });
+    });
+
     describe('userinfo bypass invariant (F-124)', () => {
       it('validates against url.hostname (not userinfo) when userinfo is present with blocked address', () => {
         // Node's URL parser correctly extracts hostname from `userinfo@hostname` format.

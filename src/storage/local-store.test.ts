@@ -1,5 +1,5 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { existsSync, mkdirSync, rmSync, readFileSync, readdirSync, writeFileSync, utimesSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, readFileSync, readdirSync, writeFileSync, utimesSync, statSync, chmodSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LocalStore } from './local-store.js';
@@ -351,6 +351,63 @@ describe('LocalStore', () => {
 
       expect(existsSync(resolve(tmpDir, 'audit', '2025-06-15.jsonl'))).toBe(true);
       expect(existsSync(resolve(tmpDir, 'audit', '2025-06-16.jsonl'))).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Fault injection (F-127)
+  // ---------------------------------------------------------------------------
+
+  describe('drainBuffer() fault injection (F-127)', () => {
+    it('returns [] and preserves .drain when .drain is unreadable; recovers on next poll', () => {
+      if (process.getuid?.() === 0) {
+        // Root bypasses file permission checks — this test is not meaningful as root
+        return;
+      }
+      const store = new LocalStore(tmpDir);
+      mkdirSync(tmpDir, { recursive: true });
+
+      const bufferPath = resolve(tmpDir, 'buffer.jsonl');
+      const drainPath = bufferPath + '.drain';
+      const event = makeEvent({ tool: 'Bash' });
+
+      // Create the .drain file unreadable — simulates a prior partial drain
+      // where the rename completed but the file was left with bad permissions.
+      // rename() needs directory write access (which we have), not file read access,
+      // so the recovery-block rename and main-drain rename both succeed, but
+      // readFileSync(.drain) throws EACCES.
+      writeFileSync(drainPath, JSON.stringify(event) + '\n');
+      chmodSync(drainPath, 0o000);
+
+      const firstResult = store.drainBuffer();
+      expect(firstResult).toEqual([]);
+      expect(existsSync(drainPath)).toBe(true);
+
+      // Restore readability and verify the next poll recovers the events
+      chmodSync(drainPath, 0o644);
+      const recovered = store.drainBuffer();
+      expect(recovered).toHaveLength(1);
+      expect(recovered[0]?.tool).toBe('Bash');
+    });
+
+    it('correctly drains a buffer exceeding 1 MiB without data loss', () => {
+      const store = new LocalStore(tmpDir);
+      mkdirSync(tmpDir, { recursive: true });
+
+      const bufferPath = resolve(tmpDir, 'buffer.jsonl');
+      const eventCount = 12_000;
+      const lines: string[] = [];
+      for (let i = 0; i < eventCount; i++) {
+        lines.push(JSON.stringify(makeEvent({ tool: `tool-${i}`, timestamp: i })));
+      }
+      writeFileSync(bufferPath, lines.join('\n') + '\n');
+
+      expect(statSync(bufferPath).size).toBeGreaterThan(1024 * 1024);
+
+      const drained = store.drainBuffer();
+      expect(drained).toHaveLength(eventCount);
+      expect(drained[0]?.tool).toBe('tool-0');
+      expect(drained[eventCount - 1]?.tool).toBe(`tool-${eventCount - 1}`);
     });
   });
 

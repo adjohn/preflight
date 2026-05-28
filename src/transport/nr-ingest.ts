@@ -4,7 +4,9 @@
  */
 
 import type { NrEventData, NrMetric, NrLogEntry, TransportOptions, TransportResult } from '../shared/index.js';
-import { HarvestScheduler, MetricAggregator, sendEvents, sendMetrics, OtlpTransport, OtlpEventBridge } from '../shared/index.js';
+import { HarvestScheduler, MetricAggregator, sendEvents, sendMetrics, OtlpTransport, OtlpEventBridge, createLogger } from '../shared/index.js';
+
+const logger = createLogger('nr-ingest');
 import type { ToolCallRecord } from '../storage/types.js';
 import type { ProxyToolCallRecord, ProxyRequestRecord } from '../proxy/types.js';
 import type { AiCodingTask } from '../metrics/task-detector.js';
@@ -309,6 +311,18 @@ export function antiPatternToNrEvent(
 }
 
 // ---------------------------------------------------------------------------
+// Retry classification
+// ---------------------------------------------------------------------------
+
+// 4xx errors that the transport already dropped as permanent failures — re-queuing them
+// would cause an infinite retry loop since the same request will fail again. Exclude 408
+// (Request Timeout, network-level, worth retrying) and 429 (Too Many Requests, rate-limited,
+// worth retrying on the next harvest cycle).
+function isNonRetryable4xx(statusCode: number): boolean {
+  return statusCode >= 400 && statusCode < 500 && statusCode !== 408 && statusCode !== 429;
+}
+
+// ---------------------------------------------------------------------------
 // NrIngestManager
 // ---------------------------------------------------------------------------
 
@@ -367,13 +381,36 @@ export class NrIngestManager {
     }
     this.otlpTransport = otlpTransport;
 
+    // Wrap send functions so non-retryable 4xx failures (400, 403, etc.) are not
+    // re-queued by HarvestScheduler. Returning success=true suppresses the requeue
+    // without masking the original error — we log a warning before returning.
+    const rawSendEventsFn = options.sendEventsFn ?? sendEvents;
+    const classifyingEventsFn: SendEventsFn = async (events, licenseKey, opts) => {
+      const result = await rawSendEventsFn(events, licenseKey, opts);
+      if (!result.success && result.statusCode !== null && isNonRetryable4xx(result.statusCode)) {
+        logger.warn('Dropping non-retryable event batch', { statusCode: result.statusCode, batchSize: events.length });
+        return { ...result, success: true };
+      }
+      return result;
+    };
+
+    const rawSendMetricsFn = options.sendMetricsFn ?? sendMetrics;
+    const classifyingMetricsFn: SendMetricsFn = async (metrics, licenseKey, opts) => {
+      const result = await rawSendMetricsFn(metrics, licenseKey, opts);
+      if (!result.success && result.statusCode !== null && isNonRetryable4xx(result.statusCode)) {
+        logger.warn('Dropping non-retryable metric batch', { statusCode: result.statusCode, batchSize: metrics.length });
+        return { ...result, success: true };
+      }
+      return result;
+    };
+
     this.scheduler = new HarvestScheduler({
       licenseKey: options.licenseKey,
       transportOptions: options.transportOptions,
       eventHarvestIntervalMs: options.eventHarvestIntervalMs,
       metricHarvestIntervalMs: options.metricHarvestIntervalMs,
-      sendEventsFn: options.sendEventsFn ?? sendEvents,
-      sendMetricsFn: options.sendMetricsFn ?? sendMetrics,
+      sendEventsFn: classifyingEventsFn,
+      sendMetricsFn: classifyingMetricsFn,
       otlpEventBridge: otlpEventBridge ?? undefined,
       otlpTransport: otlpTransport ?? undefined,
       transport: options.transport,

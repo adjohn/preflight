@@ -376,6 +376,103 @@ describe('NrIngestManager', () => {
       await manager.stop();
     });
   });
+
+  describe('retry classification by HTTP status code (F-131)', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('HTTP 400 — batch is dropped without re-queuing', async () => {
+      const localSendEvents = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+        .mockResolvedValueOnce({ success: false, statusCode: 400, retryCount: 0 })
+        .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
+
+      const manager = new NrIngestManager(makeIngestOptions({
+        sendEventsFn: localSendEvents,
+        eventHarvestIntervalMs: 5_000,
+        logHarvestIntervalMs: 100_000,
+      }));
+      manager.ingestToolCall(makeRecord());
+      manager.start();
+
+      // Trigger first harvest tick — sendEvents returns 400; classification wrapper
+      // converts to success=true so HarvestScheduler does NOT re-queue the batch.
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(localSendEvents).toHaveBeenCalledTimes(1);
+
+      // stop() triggers final flush; retry buffer is empty so no second call.
+      await manager.stop();
+      expect(localSendEvents).toHaveBeenCalledTimes(1);
+    });
+
+    it('HTTP 403 — batch is dropped without re-queuing', async () => {
+      const localSendEvents = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+        .mockResolvedValueOnce({ success: false, statusCode: 403, retryCount: 0 })
+        .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
+
+      const manager = new NrIngestManager(makeIngestOptions({
+        sendEventsFn: localSendEvents,
+        eventHarvestIntervalMs: 5_000,
+        logHarvestIntervalMs: 100_000,
+      }));
+      manager.ingestToolCall(makeRecord());
+      manager.start();
+
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(localSendEvents).toHaveBeenCalledTimes(1);
+
+      await manager.stop();
+      expect(localSendEvents).toHaveBeenCalledTimes(1);
+    });
+
+    it('HTTP 429 — batch is re-queued and delivered on next harvest', async () => {
+      const localSendEvents = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+        .mockResolvedValueOnce({ success: false, statusCode: 429, retryCount: 3 })
+        .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
+
+      const manager = new NrIngestManager(makeIngestOptions({
+        sendEventsFn: localSendEvents,
+        eventHarvestIntervalMs: 5_000,
+        logHarvestIntervalMs: 100_000,
+      }));
+      manager.ingestToolCall(makeRecord());
+      manager.start();
+
+      // First tick — sendEvents returns 429; HarvestScheduler re-queues the batch.
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(localSendEvents).toHaveBeenCalledTimes(1);
+
+      // stop() final flush picks up the re-queued batch and sends it successfully.
+      await manager.stop();
+      expect(localSendEvents).toHaveBeenCalledTimes(2);
+    });
+
+    it('HTTP 503 — batch is re-queued and delivered on next harvest', async () => {
+      const localSendEvents = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+        .mockResolvedValueOnce({ success: false, statusCode: 503, retryCount: 3 })
+        .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
+
+      const manager = new NrIngestManager(makeIngestOptions({
+        sendEventsFn: localSendEvents,
+        eventHarvestIntervalMs: 5_000,
+        logHarvestIntervalMs: 100_000,
+      }));
+      manager.ingestToolCall(makeRecord());
+      manager.start();
+
+      // First tick — sendEvents returns 503; HarvestScheduler re-queues the batch.
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(localSendEvents).toHaveBeenCalledTimes(1);
+
+      // stop() final flush picks up the re-queued batch and sends it successfully.
+      await manager.stop();
+      expect(localSendEvents).toHaveBeenCalledTimes(2);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -93,6 +93,72 @@ describe('parseArgs()', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// F-137: CLI argument edge cases
+// ---------------------------------------------------------------------------
+
+describe('F-137: CLI argument edge cases', () => {
+  const base = ['node', 'nr-ai-mcp-server'];
+
+  it('--port=0 throws (zero is not a valid port)', () => {
+    expect(() => parseArgs([...base, '--port', '0'])).toThrow(/Invalid port/);
+  });
+
+  it('--port=-1 throws (negative port)', () => {
+    // Use = form so Commander doesn't interpret -1 as a flag token
+    expect(() => parseArgs([...base, '--port=-1'])).toThrow(/Invalid port/);
+  });
+
+  it('--port=65536 throws (one above maximum)', () => {
+    expect(() => parseArgs([...base, '--port', '65536'])).toThrow(/Invalid port/);
+  });
+
+  it('--port=1 is accepted (minimum valid port)', () => {
+    const opts = parseArgs([...base, '--port', '1']);
+    expect(opts.port).toBe(1);
+  });
+
+  it('--port=65535 is accepted (maximum valid port)', () => {
+    const opts = parseArgs([...base, '--port', '65535']);
+    expect(opts.port).toBe(65535);
+  });
+
+  it('--stdio combined with --port is accepted (no conflict in parseArgs)', () => {
+    const opts = parseArgs([...base, '--stdio', '--port', '8080']);
+    expect(opts.stdio).toBe(true);
+    expect(opts.port).toBe(8080);
+  });
+
+  it('--config path with spaces is preserved verbatim', () => {
+    const opts = parseArgs([...base, '--config', '/path/with spaces/config.json']);
+    expect(opts.config).toBe('/path/with spaces/config.json');
+  });
+
+  it('--help causes process.exit(0)', () => {
+    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(
+      (_code?: number): never => { throw new Error(`exit:${_code}`); },
+    );
+    const stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      expect(() => parseArgs([...base, '--help'])).toThrow('exit:0');
+    } finally {
+      stdoutSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
+
+  it('unknown flag causes Commander to exit with code 1', () => {
+    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(
+      (_code?: number): never => { throw new Error(`exit:${_code}`); },
+    );
+    try {
+      expect(() => parseArgs([...base, '--totally-unknown-flag'])).toThrow('exit:1');
+    } finally {
+      exitSpy.mockRestore();
+    }
+  });
+});
+
 describe('stdio integration', () => {
   it('responds to MCP initialize handshake and lists tools', async () => {
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');

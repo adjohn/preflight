@@ -430,6 +430,112 @@ describe('Over-delegation detection', () => {
 });
 
 // ---------------------------------------------------------------------------
+// F-136: threshold boundary tests (threshold-1 / threshold / threshold+1)
+// ---------------------------------------------------------------------------
+
+describe('F-136: threshold boundary tests', () => {
+  // ---- Thrashing ----
+
+  it('thrashing: 2 cycles (threshold-1=2) does NOT fire', () => {
+    const detector = new AntiPatternDetector();
+    const calls: ToolCallRecord[] = [
+      makeRecord({ toolName: 'Edit', filePath: '/a.ts' }),
+      makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
+      makeRecord({ toolName: 'Edit', filePath: '/a.ts' }),
+      makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
+    ];
+    const result = detector.analyze(calls);
+    expect(result.patterns.filter(p => p.type === 'thrashing')).toHaveLength(0);
+  });
+
+  it('thrashing: 4 cycles (threshold+1=4) fires with iterations=4', () => {
+    const detector = new AntiPatternDetector();
+    const calls: ToolCallRecord[] = [
+      makeRecord({ toolName: 'Edit', filePath: '/a.ts' }),
+      makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
+      makeRecord({ toolName: 'Edit', filePath: '/a.ts' }),
+      makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
+      makeRecord({ toolName: 'Edit', filePath: '/a.ts' }),
+      makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
+      makeRecord({ toolName: 'Edit', filePath: '/a.ts' }),
+      makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
+    ];
+    const result = detector.analyze(calls);
+    const thrashing = result.patterns.filter(p => p.type === 'thrashing');
+    expect(thrashing).toHaveLength(1);
+    expect(thrashing[0].iterations).toBe(4);
+  });
+
+  it('thrashing: alternating edits to different files (2 cycles each) does NOT fire for either file', () => {
+    const detector = new AntiPatternDetector();
+    // Each file accumulates only 2 cycles; neither reaches the threshold of 3
+    const calls: ToolCallRecord[] = [
+      makeRecord({ toolName: 'Edit', filePath: '/a.ts' }),
+      makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
+      makeRecord({ toolName: 'Edit', filePath: '/b.ts' }),
+      makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
+      makeRecord({ toolName: 'Edit', filePath: '/a.ts' }),
+      makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
+      makeRecord({ toolName: 'Edit', filePath: '/b.ts' }),
+      makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
+    ];
+    const result = detector.analyze(calls);
+    expect(result.patterns.filter(p => p.type === 'thrashing')).toHaveLength(0);
+  });
+
+  // ---- Stuck loop ----
+
+  it('stuck_loop: exactly 3 consecutive (at threshold) fires with repeatCount=3', () => {
+    const detector = new AntiPatternDetector();
+    const calls: ToolCallRecord[] = [
+      makeRecord({ toolName: 'Bash', command: 'npm test' }),
+      makeRecord({ toolName: 'Bash', command: 'npm test' }),
+      makeRecord({ toolName: 'Bash', command: 'npm test' }),
+    ];
+    const result = detector.analyze(calls);
+    const stuck = result.patterns.filter(p => p.type === 'stuck_loop');
+    expect(stuck).toHaveLength(1);
+    expect(stuck[0].repeatCount).toBe(3);
+  });
+
+  it('stuck_loop: 2 consecutive (threshold-1) does NOT fire', () => {
+    const detector = new AntiPatternDetector();
+    const calls: ToolCallRecord[] = [
+      makeRecord({ toolName: 'Bash', command: 'npm test' }),
+      makeRecord({ toolName: 'Bash', command: 'npm test' }),
+    ];
+    const result = detector.analyze(calls);
+    expect(result.patterns.filter(p => p.type === 'stuck_loop')).toHaveLength(0);
+  });
+
+  // ---- Blind editing ----
+
+  it('blind_editing: 2 edits without verification (threshold-1) does NOT fire', () => {
+    const detector = new AntiPatternDetector();
+    const calls: ToolCallRecord[] = [
+      makeRecord({ toolName: 'Edit', filePath: '/a.ts' }),
+      makeRecord({ toolName: 'Edit', filePath: '/a.ts' }),
+    ];
+    const result = detector.analyze(calls);
+    expect(result.patterns.filter(p => p.type === 'blind_editing')).toHaveLength(0);
+  });
+
+  // ---- Over-delegation ----
+
+  it('over_delegation: 4 agents (first count that fires, since threshold is >3) fires with agentCount=4', () => {
+    const detector = new AntiPatternDetector();
+    const calls: ToolCallRecord[] = [];
+    for (let i = 0; i < 4; i++) {
+      calls.push(makeRecord({ toolName: 'Agent', agentDescription: `task-${i}` }));
+    }
+    const result = detector.analyze(calls);
+    const over = result.patterns.filter(p => p.type === 'over_delegation');
+    expect(over).toHaveLength(1);
+    expect(over[0].agentCount).toBe(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Efficiency metrics
 // ---------------------------------------------------------------------------
 

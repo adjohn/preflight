@@ -1747,7 +1747,7 @@ Tests verify that:
 
 ---
 
-### [F-127] No tests for `LocalStore.drainBuffer` failure modes — High (TEST) ✅
+### ~~[F-127] No tests for `LocalStore.drainBuffer` failure modes — High (TEST)~~ ✅
 **Location:** `src/storage/local-store.test.ts`
 **Issue:** Existing tests cover happy path + orphaned `.drain` recovery + malformed lines. Missing: `readFileSync` throws on the `.drain` file; `unlinkSync` fails after read; concurrent append during rename; very large buffers.
 **Impact:** Real-world drain failures (disk full, permission flips, EROFS) are untested. Could leak `.drain` files indefinitely or repeatedly emit the same events.
@@ -1757,7 +1757,7 @@ Tests verify that:
 
 ---
 
-### [F-128] No test for `HarvestScheduler` retry-buffer flush during shutdown — High (TEST) ✅
+### ~~[F-128] No test for `HarvestScheduler` retry-buffer flush during shutdown — High (TEST)~~ ✅
 **Location:** `src/shared/harvest/harvest-scheduler.test.ts`
 **Issue:** Tests cover idempotent stop and concurrent stop. Missing: scenario where a send fails, events go into the retry buffer, `stop()` is called before the next harvest tick, and the final flush should drain the retry buffer.
 **Impact:** Re-queued events on shutdown could be silently lost without a test catching the regression.
@@ -1767,7 +1767,7 @@ Tests verify that:
 
 ---
 
-### [F-129] No tests for HookEventProcessor pre-event duplication or out-of-order arrivals — High (TEST) ✅
+### ~~[F-129] No tests for HookEventProcessor pre-event duplication or out-of-order arrivals — High (TEST)~~ ✅
 **Location:** `src/hooks/event-processor.test.ts`
 **Issue:** Missing edge cases: duplicate pre-events with the same `toolUseId`; post-event arriving before pre; fallback-counter collisions when two orphan posts arrive at the same `tool:timestamp`.
 **Impact:** Real-world hook event ordering can be unpredictable; regressions in pairing logic would not be caught.
@@ -1777,7 +1777,7 @@ Tests verify that:
 
 ---
 
-### [F-130] No SSRF coverage for IPv6 link-local / multi-range boundary tests — High (TEST) ✅
+### ~~[F-130] No SSRF coverage for IPv6 link-local / multi-range boundary tests — High (TEST)~~ ✅
 **Location:** `src/proxy/upstream-http.test.ts`
 **Issue:** Existing tests spot-check one IP per range. Missing: explicit boundaries (10.0.0.0 / 10.255.255.255 / 11.0.0.0; 172.15.255.255 / 172.16.0.0 / 172.32.0.0; etc.), IPv6 link-local (`[fe80::1]`), multicast (`224.0.0.0`), `allowPrivateHosts=true` opt-out path, and DNS hostnames that resolve to private IPs.
 **Impact:** SSRF regressions could land without firing tests.
@@ -1787,37 +1787,37 @@ Tests verify that:
 
 ---
 
-### [F-131] No tests for NR ingest retry-classification logic — High (TEST) ✅
-**Location:** `src/transport/nr-ingest.test.ts`
-**Issue:** Tests cover the basic re-queue path and shutdown flush, but not error classification: 400 should not retry, 429 / 503 should retry, 500 with body containing a non-retryable code should not retry, max-retry limit enforcement, `Retry-After` header respect.
-**Impact:** Silent infinite retry loops on permanent errors, or premature drops on transient errors.
-**Suggested fix:** Mock specific HTTP error responses and assert the classification + retry budget behaviour for each.
+### ~~[F-131] No tests for NR ingest retry-classification logic — High (TEST) ✅~~
+~~**Location:** `src/transport/nr-ingest.test.ts`~~
+~~**Issue:** Tests cover the basic re-queue path and shutdown flush, but not error classification: 400 should not retry, 429 / 503 should retry, 500 with body containing a non-retryable code should not retry, max-retry limit enforcement, `Retry-After` header respect.~~
+~~**Impact:** Silent infinite retry loops on permanent errors, or premature drops on transient errors.~~
+~~**Suggested fix:** Mock specific HTTP error responses and assert the classification + retry budget behaviour for each.~~
 
-**Implementation steps for Haiku:** In `src/transport/nr-ingest.test.ts`, add tests covering: (1) HTTP 400 → no retry, batch dropped; (2) HTTP 429 → retry up to max-retry-limit; (3) HTTP 503 → retry; (4) `Retry-After: 30` header → schedule next retry 30s later; (5) After max retries (e.g. 3), drop the batch with a warning log. Use `nock` or fetch-mock to simulate responses. `npx jest -- src/transport/nr-ingest.test.ts`.
-
----
-
-### [F-132] No `SessionStore` corruption-recovery tests — Medium (TEST) ✅
-**Location:** `src/storage/session-store.test.ts`
-**Issue:** No tests for malformed JSON in a session file, empty/whitespace-only file, permission errors during save, or concurrent saves to the same session id.
-**Impact:** Crashes or silent data loss on disk corruption could escape testing.
-**Suggested fix:** Add fault-injection tests covering each case and assert graceful fallback + log emission.
-
-**Implementation steps for Haiku:** In `src/storage/session-store.test.ts`, add tests: (1) malformed JSON in session file → `loadSession` returns `null` and logs warning; (2) empty/whitespace-only file → returns `null`; (3) `writeFileSync` throws permission error → `saveSession` logs and continues without crashing; (4) two `saveSession` calls for the same id → last-write-wins, no corruption. `npx jest -- src/storage/session-store.test.ts`.
+~~**Implementation steps for Haiku:** In `src/transport/nr-ingest.test.ts`, add tests covering: (1) HTTP 400 → no retry, batch dropped; (2) HTTP 429 → retry up to max-retry-limit; (3) HTTP 503 → retry; (4) `Retry-After: 30` header → schedule next retry 30s later; (5) After max retries (e.g. 3), drop the batch with a warning log. Use `nock` or fetch-mock to simulate responses. `npx jest -- src/transport/nr-ingest.test.ts`.~~
 
 ---
 
-### [F-133] No `retention.purgeOldSessions` interruption / TOCTOU tests — Medium (TEST) ✅
-**Location:** `src/storage/retention.test.ts`
-**Issue:** Existing tests cover happy path and boundary days. Missing: file mtime modified between stat and unlink; unlink failing on a subset of files (assert remaining files retried next sweep); permission flip mid-purge.
-**Impact:** Subtle TOCTOU bugs land without test coverage.
-**Suggested fix:** Add fs-mock tests injecting timing variations.
+### ~~[F-132] No `SessionStore` corruption-recovery tests — Medium (TEST) ✅~~
+~~**Location:** `src/storage/session-store.test.ts`~~
+~~**Issue:** No tests for malformed JSON in a session file, empty/whitespace-only file, permission errors during save, or concurrent saves to the same session id.~~
+~~**Impact:** Crashes or silent data loss on disk corruption could escape testing.~~
+~~**Suggested fix:** Add fault-injection tests covering each case and assert graceful fallback + log emission.~~
 
-**Implementation steps for Haiku:** In `src/storage/retention.test.ts`, add tests: (1) mock `statSync` to return one mtime, then mock `unlinkSync` to throw on the first file → assert remaining files retried next sweep; (2) mock the directory permission to flip mid-purge; (3) mtime modified between stat and unlink. `npx jest -- src/storage/retention.test.ts`.
+~~**Implementation steps for Haiku:** In `src/storage/session-store.test.ts`, add tests: (1) malformed JSON in session file → `loadSession` returns `null` and logs warning; (2) empty/whitespace-only file → returns `null`; (3) `writeFileSync` throws permission error → `saveSession` logs and continues without crashing; (4) two `saveSession` calls for the same id → last-write-wins, no corruption. `npx jest -- src/storage/session-store.test.ts`.~~
 
 ---
 
-### [F-134] No negative tests for MCP tool input validation — Medium (TEST) ✅
+### ~~[F-133] No `retention.purgeOldSessions` interruption / TOCTOU tests — Medium (TEST) ✅~~
+~~**Location:** `src/storage/retention.test.ts`~~
+~~**Issue:** Existing tests cover happy path and boundary days. Missing: file mtime modified between stat and unlink; unlink failing on a subset of files (assert remaining files retried next sweep); permission flip mid-purge.~~
+~~**Impact:** Subtle TOCTOU bugs land without test coverage.~~
+~~**Suggested fix:** Add fs-mock tests injecting timing variations.~~
+
+~~**Implementation steps for Haiku:** In `src/storage/retention.test.ts`, add tests: (1) mock `statSync` to return one mtime, then mock `unlinkSync` to throw on the first file → assert remaining files retried next sweep; (2) mock the directory permission to flip mid-purge; (3) mtime modified between stat and unlink. `npx jest -- src/storage/retention.test.ts`.~~
+
+---
+
+### ~~[F-134] No negative tests for MCP tool input validation — Medium (TEST) ✅~~
 **Location:** `src/tools/*.test.ts`
 **Issue:** Tool handler tests cover valid inputs but lack negative cases: negative token counts, out-of-range `weeks` (`-1`, `999`), invalid `since` strings, invalid enum values for `quality`, missing required fields.
 **Impact:** Bad input may corrupt metrics silently; the existing "happy path" tests don't catch this class of bug.
@@ -1827,7 +1827,7 @@ Tests verify that:
 
 ---
 
-### [F-135] No tests for cost calculation edge cases — Medium (TEST) ✅
+### ~~[F-135] No tests for cost calculation edge cases — Medium (TEST) ✅~~
 **Location:** `src/metrics/cost-tracker.test.ts`
 **Issue:** Tests cover basic accumulation but miss: unknown model name fallback, cache-read-token cost ratio (typically 10% of input), cache-creation cost (typically same as input), multi-model session aggregation, fallback char-based estimation when self-reported tokens are absent.
 **Impact:** Cost reports can be wrong by orders of magnitude on cache-heavy or multi-model sessions without tests catching it.
@@ -1837,7 +1837,7 @@ Tests verify that:
 
 ---
 
-### [F-136] No threshold-boundary tests for anti-pattern detection — Medium (TEST) ✅
+### ~~[F-136] No threshold-boundary tests for anti-pattern detection — Medium (TEST) ✅~~
 **Location:** `src/metrics/anti-patterns.test.ts`
 **Issue:** Tests cover threshold "n+ events" but not the `n-1` (should-not-fire) and `n+1` (should-fire) boundary tests for each pattern. Also missing: thrashing where edits target different files in alternation; over-delegation at exactly the agent threshold.
 **Impact:** Off-by-one regressions in detection thresholds slip past.
@@ -1847,7 +1847,7 @@ Tests verify that:
 
 ---
 
-### [F-137] No tests for CLI argument-parsing edge cases — Low (TEST) ✅
+### ~~[F-137] No tests for CLI argument-parsing edge cases — Low (TEST) ✅~~
 **Location:** `src/index.test.ts`
 **Issue:** `--help`, unknown flags, conflicting `--stdio` + `--port`, malformed numeric arguments (`--port=abc`, `--port=99999`, `--port=-1`), config file paths with spaces — none have tests.
 **Impact:** CLI footguns slip through to launch.
@@ -1857,7 +1857,7 @@ Tests verify that:
 
 ---
 
-### [F-138] No setup-wizard idempotency or env-detection tests — Medium (TEST) ✅
+### ~~[F-138] No setup-wizard idempotency or env-detection tests — Medium (TEST) ✅~~
 **Location:** `src/install/setup-wizard.test.ts`
 **Issue:** Tests cover `buildConfig` field merging. Missing: re-running wizard with an existing config file preserves user edits; env vars (`NEW_RELIC_LICENSE_KEY`, etc.) auto-populate prompts; cancellation (Ctrl+C / SIGINT) leaves config untouched; existing-but-malformed config file doesn't crash the wizard.
 **Impact:** Re-running the wizard could quietly destroy user customisations.
@@ -1867,7 +1867,7 @@ Tests verify that:
 
 ---
 
-### [F-139] No OTLP receiver size-limit / encoding / timeout tests — Medium (TEST) ✅
+### ~~[F-139] No OTLP receiver size-limit / encoding / timeout tests — Medium (TEST) ✅~~
 **Location:** `src/proxy/otlp-receiver.test.ts`
 **Issue:** Tests cover happy-path enrichment, JSON / protobuf round-trip, and 404 responses. Missing: payloads above the (currently absent — see F-095) max body size; gzip-encoded payloads; mismatched `Content-Type`; slow-loris timeouts; aborted streams.
 **Impact:** All the OTLP findings (F-095 to F-104) lack regression tests; even after fixing them, regressions wouldn't be caught.
@@ -1877,10 +1877,16 @@ Tests verify that:
 
 ---
 
-### [F-140] Audit-trail false-positive / case-variation tests are spot-checked, not exhaustive — Medium (TEST) ✅
+### ~~[F-140] Audit-trail false-positive / case-variation tests are spot-checked, not exhaustive — Medium (TEST) ✅~~
 **Location:** `src/security/audit-trail.test.ts`
 **Issue:** Tests cover the obvious destructive patterns. Missing: case variations (`RM -rf`), spacing variations (`rm -r -f`), file paths that contain destructive substrings (`/var/log/rm-rf-backup.tar`), Bash commands carrying secrets that should be redacted in the audit record.
 **Impact:** Real-world commands miss detection or false-positive on innocent paths.
 **Suggested fix:** Parameterised tests covering case, spacing, embedded-substring scenarios; explicit secret-redaction assertion.
 
 **Implementation steps for Haiku:** In `src/security/audit-trail.test.ts`, add tests: (1) case variations `'RM -rf /'`, `'Rm -RF /'`; (2) spacing variations `'rm -r -f /'`, `'rm  -rf  /'`; (3) embedded-substring `'/var/log/rm-rf-backup.tar'` (should NOT trigger); (4) Bash command `'curl -H "Authorization: Bearer abc123" ...'` — assert audit record's `command` field is redacted. `npx jest -- src/security/audit-trail.test.ts`.
+
+---
+
+## Implementation notes
+
+**F-128 needs upstream port:** The F-128 tests were implemented in `src/shared/harvest/harvest-scheduler.test.ts` in this repo. However, `src/shared/` is a read-only mirror synced from `nr-ai-typescript-shared` — those changes will be overwritten on the next `npm run sync:shared`. The two retry-buffer-flush tests must be ported to `harvest-scheduler.test.ts` in the `nr-ai-typescript-shared` repo *(fix upstream in nr-ai-typescript-shared)*, then synced back here.

@@ -508,6 +508,68 @@ describe('HookEventProcessor', () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // Edge cases: duplication, out-of-order arrivals, fallback collision (F-129)
+  // ---------------------------------------------------------------------------
+
+  describe('duplicate pre-events / out-of-order arrivals (F-129)', () => {
+    it('second pre-event with same toolUseId overwrites the first; post pairs with the second', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ toolUseId: 'toolu_dup', timestamp: 1000, inputSize: 10 }),
+        makePreEvent({ toolUseId: 'toolu_dup', timestamp: 1100, inputSize: 20 }),
+        makePostEvent({ toolUseId: 'toolu_dup', timestamp: 1200 }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.toolUseId).toBe('toolu_dup');
+      // Paired with the second pre (timestamp 1100), not the first
+      expect(record.durationMs).toBe(100);
+      expect(record.inputSizeBytes).toBe(20);
+      expect(record.id).toMatch(/^[0-9a-f-]{36}$/);
+    });
+
+    it('post arriving before its pre is orphaned; subsequent pre is not retroactively paired', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      // Post arrives first — no matching pre in pending
+      processor.processEvents([
+        makePostEvent({ toolUseId: 'toolu_early', timestamp: 1050 }),
+      ]);
+      expect(records).toHaveLength(1);
+      expect(records[0]!.durationMs).toBeNull();
+      expect(records[0]!.toolUseId).toBe('toolu_early');
+      expect(records[0]!.id).toMatch(/^[0-9a-f-]{36}$/);
+
+      // Pre arrives later — queued in pending, NOT retroactively matched to the already-emitted orphan
+      processor.processEvents([
+        makePreEvent({ toolUseId: 'toolu_early', timestamp: 1000 }),
+      ]);
+      expect(records).toHaveLength(1);    // no second record emitted
+      expect(processor.pendingCount).toBe(1);
+    });
+
+    it('two orphan posts with same tool and timestamp but no toolUseId produce two distinct records', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      // No pre events — both posts are orphaned via the UUID fallback key
+      processor.processEvents([
+        { mode: 'post', tool: 'Bash', timestamp: 5000, outputSize: 100, success: true } as HookEvent,
+        { mode: 'post', tool: 'Bash', timestamp: 5000, outputSize: 200, success: true } as HookEvent,
+      ]);
+
+      expect(records).toHaveLength(2);
+      expect(records[0]!.durationMs).toBeNull();
+      expect(records[1]!.durationMs).toBeNull();
+      // Both records must have unique IDs
+      expect(records[0]!.id).not.toBe(records[1]!.id);
+      // Fallback toolUseId (built from UUID) must also be unique
+      expect(records[0]!.toolUseId).not.toBe(records[1]!.toolUseId);
+    });
+  });
+
   describe('Eviction logic — orphans vs non-orphans', () => {
     it('evicts orphans before non-orphans when at capacity', () => {
       const processor = new HookEventProcessor({

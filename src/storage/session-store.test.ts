@@ -1,5 +1,5 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { existsSync, mkdirSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { SessionStore, buildSessionSummary } from './session-store.js';
@@ -478,6 +478,80 @@ describe('buildSessionSummary', () => {
     expect(summary.antiPatterns).toEqual([]);
     expect(summary.filesRead).toEqual([]);
     expect(summary.filesModified).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Corruption-recovery (F-132)
+// ---------------------------------------------------------------------------
+
+describe('SessionStore corruption-recovery (F-132)', () => {
+  it('loadSession returns null and logs warning for malformed JSON', () => {
+    const store = new SessionStore({ storagePath: tmpDir });
+    const sessionsDir = join(tmpDir, 'sessions');
+
+    writeFileSync(join(sessionsDir, '2026-01-01_bad-json.json'), '{ invalid: json !!! }');
+
+    const result = store.loadSession('bad-json');
+    expect(result).toBeNull();
+
+    const logged = stderrSpy.mock.calls.map((call: unknown[]) => String(call[0]));
+    expect(logged.some((l: string) => l.includes('"warn"') && l.includes('deserialize'))).toBe(true);
+  });
+
+  it('loadSession returns null for an empty file', () => {
+    const store = new SessionStore({ storagePath: tmpDir });
+    const sessionsDir = join(tmpDir, 'sessions');
+
+    writeFileSync(join(sessionsDir, '2026-01-01_empty.json'), '');
+
+    const result = store.loadSession('empty');
+    expect(result).toBeNull();
+  });
+
+  it('loadSession returns null for a whitespace-only file', () => {
+    const store = new SessionStore({ storagePath: tmpDir });
+    const sessionsDir = join(tmpDir, 'sessions');
+
+    writeFileSync(join(sessionsDir, '2026-01-01_whitespace.json'), '   \n\t  ');
+
+    const result = store.loadSession('whitespace');
+    expect(result).toBeNull();
+  });
+
+  it('saveSession logs warning and does not throw on write permission error', () => {
+    if (process.getuid?.() === 0) return; // root bypasses permission checks
+
+    const store = new SessionStore({ storagePath: tmpDir });
+    const sessionsDir = join(tmpDir, 'sessions');
+
+    // Revoke write permission on the sessions directory
+    chmodSync(sessionsDir, 0o555);
+
+    try {
+      expect(() => store.saveSession(makeSummary({ sessionId: 'perm-fail' }))).not.toThrow();
+
+      const logged = stderrSpy.mock.calls.map((call: unknown[]) => String(call[0]));
+      expect(logged.some((l: string) => l.includes('"warn"') && l.includes('Failed to save'))).toBe(true);
+    } finally {
+      // Restore permissions so afterEach cleanup can delete the directory
+      chmodSync(sessionsDir, 0o700);
+    }
+  });
+
+  it('two saveSession calls with the same sessionId result in last-write-wins', () => {
+    const store = new SessionStore({ storagePath: tmpDir });
+    const startTime = new Date('2026-03-01T00:00:00Z').getTime();
+
+    store.saveSession(makeSummary({ sessionId: 'dup-id', developer: 'alice', startTime }));
+    store.saveSession(makeSummary({ sessionId: 'dup-id', developer: 'bob', startTime }));
+
+    const files = readdirSync(join(tmpDir, 'sessions'));
+    expect(files).toHaveLength(1);
+
+    const loaded = store.loadSession('dup-id');
+    expect(loaded).not.toBeNull();
+    expect(loaded!.developer).toBe('bob');
   });
 });
 

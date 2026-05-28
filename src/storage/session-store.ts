@@ -107,8 +107,13 @@ export class SessionStore {
       throw new Error(`Session path escaped storage directory: ${filepath}`);
     }
 
-    writeFileSync(filepath, JSON.stringify(summary, null, 2) + '\n', { mode: 0o600 });
-    logger.debug('Session saved', { sessionId: summary.sessionId, filename });
+    try {
+      writeFileSync(filepath, JSON.stringify(summary, null, 2) + '\n', { mode: 0o600 });
+      logger.debug('Session saved', { sessionId: summary.sessionId, filename });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn('Failed to save session file', { sessionId: summary.sessionId, filename, error: message });
+    }
   }
 
   loadSession(sessionId: string): FullSessionSummary | null {
@@ -120,7 +125,12 @@ export class SessionStore {
 
       try {
         const raw = readFileSync(join(this.sessionsDir, file), 'utf-8');
-        return deserializeSession(raw);
+        const session = deserializeSession(raw);
+        if (session === null) {
+          logger.warn('Failed to deserialize session file', { file });
+          return null;
+        }
+        return session;
       } catch {
         logger.warn('Failed to read session file', { file });
       }

@@ -339,6 +339,97 @@ describe('CostTracker', () => {
     });
   });
 
+  // -------------------------------------------------------------------------
+  // F-135: cost calculation edge cases
+  // -------------------------------------------------------------------------
+
+  describe('F-135: cost calculation edge cases', () => {
+    it('unknown model name returns all-zero cost breakdown without crashing', () => {
+      const tracker = new CostTracker();
+      const breakdown = tracker.recordTokenUsage(
+        makeUsage({ inputTokens: 10_000, outputTokens: 2_000, totalTokens: 12_000 }),
+        'fictional-model-9000',
+      );
+      // Unknown model → ZERO_COST fallback; no NaN, no throw
+      expect(breakdown.totalUsd).toBe(0);
+      expect(breakdown.inputUsd).toBe(0);
+      expect(breakdown.outputUsd).toBe(0);
+      expect(Number.isNaN(breakdown.totalUsd)).toBe(false);
+      // reportCount incremented → sessionTotalCostUsd is 0 (not null)
+      const metrics = tracker.getMetrics();
+      expect(metrics.sessionTotalCostUsd).toBe(0);
+      expect(metrics.model).toBe('fictional-model-9000');
+    });
+
+    it('cache-read tokens are charged at 10% of the input rate (claude-sonnet-4)', () => {
+      const tracker = new CostTracker();
+      // 1M input ($3.00/MTok → $3.00) + 1M cache-read ($0.30/MTok → $0.30)
+      const breakdown = tracker.recordTokenUsage(
+        makeUsage({ inputTokens: 1_000_000, cacheReadTokens: 1_000_000, totalTokens: 1_000_000 }),
+        'claude-sonnet-4',
+      );
+      expect(breakdown.inputUsd).toBeCloseTo(3.00, 6);
+      expect(breakdown.cacheReadUsd).toBeCloseTo(0.30, 6);
+      // Ratio: cache-read is exactly 10% of input for the same token count
+      expect(breakdown.cacheReadUsd).toBeCloseTo(breakdown.inputUsd * 0.1, 6);
+    });
+
+    it('cache-creation tokens are charged at 125% of the input rate (claude-sonnet-4: $3.75 vs $3.00/MTok)', () => {
+      const tracker = new CostTracker();
+      // 1M input ($3.00/MTok → $3.00) + 1M cache-creation ($3.75/MTok → $3.75)
+      const breakdown = tracker.recordTokenUsage(
+        makeUsage({ inputTokens: 1_000_000, cacheCreationTokens: 1_000_000, totalTokens: 1_000_000 }),
+        'claude-sonnet-4',
+      );
+      expect(breakdown.inputUsd).toBeCloseTo(3.00, 6);
+      expect(breakdown.cacheCreationUsd).toBeCloseTo(3.75, 6);
+      // Ratio: cache-creation is 1.25× the input rate
+      expect(breakdown.cacheCreationUsd).toBeCloseTo(breakdown.inputUsd * 1.25, 6);
+    });
+
+    it('three-model session produces correct per-model costByModel and session total', () => {
+      const tracker = new CostTracker();
+
+      // claude-sonnet-4: 10k input ($0.03) + 2k output ($0.03) = $0.06
+      tracker.recordTokenUsage(
+        makeUsage({ inputTokens: 10_000, outputTokens: 2_000, totalTokens: 12_000 }),
+        'claude-sonnet-4',
+      );
+      // claude-opus-4: 10k input ($0.15) + 2k output ($0.15) = $0.30
+      tracker.recordTokenUsage(
+        makeUsage({ inputTokens: 10_000, outputTokens: 2_000, totalTokens: 12_000 }),
+        'claude-opus-4',
+      );
+      // claude-haiku-4-5: 10k input ($0.01) + 2k output ($0.01) = $0.02
+      tracker.recordTokenUsage(
+        makeUsage({ inputTokens: 10_000, outputTokens: 2_000, totalTokens: 12_000 }),
+        'claude-haiku-4-5',
+      );
+
+      const metrics = tracker.getMetrics();
+      expect(Object.keys(metrics.costByModel)).toHaveLength(3);
+      expect(metrics.costByModel['claude-sonnet-4']).toBeCloseTo(0.06, 4);
+      expect(metrics.costByModel['claude-opus-4']).toBeCloseTo(0.30, 4);
+      expect(metrics.costByModel['claude-haiku-4-5']).toBeCloseTo(0.02, 4);
+      // Session total equals the sum of per-model costs
+      const modelSum = Object.values(metrics.costByModel).reduce((a, b) => a + b, 0);
+      expect(metrics.sessionTotalCostUsd).toBeCloseTo(modelSum, 6);
+    });
+
+    it('char-based estimation path populates sessionTotalCostUsd when no self-reported tokens exist', () => {
+      const tracker = new CostTracker();
+      // Only estimation, no reportTokenUsage call
+      tracker.recordEstimatedTokens(4_000, 1_000, 'claude-sonnet-4');
+
+      const metrics = tracker.getMetrics();
+      expect(metrics.reportCount).toBe(0);
+      expect(metrics.estimationCount).toBe(1);
+      // Estimation counts as hasData → sessionTotalCostUsd must be non-null
+      expect(metrics.sessionTotalCostUsd).not.toBeNull();
+      expect(metrics.sessionTotalCostUsd).toBeGreaterThan(0);
+    });
+  });
+
   describe('emitMetrics()', () => {
     it('records expected metric names to aggregator', () => {
       const tracker = new CostTracker();
