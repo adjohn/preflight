@@ -21,6 +21,7 @@ import {
   auditRecordToNrEvent,
   securityAlertToNrEvent,
 } from '../security/index.js';
+import type { AuditRecord } from '../security/index.js';
 import type { LocalStore } from '../storage/index.js';
 import { LogIngestManager } from './log-ingest.js';
 
@@ -60,6 +61,12 @@ export interface NrIngestOptions {
   sessionTraceId?: string;
   /** LocalStore for persisting audit entries to disk. */
   localStore?: LocalStore;
+  /**
+   * Optional pre-constructed AuditTrailManager. When provided, NrIngestManager
+   * uses it instead of constructing its own — lets the dashboard share the
+   * same audit log instance in both `local` and `cloud`/`both` modes.
+   */
+  auditTrail?: AuditTrailManager;
   /** Override for testing; defaults to the shared sendEvents transport. */
   sendEventsFn?: SendEventsFn;
   /** Override for testing; defaults to the shared sendMetrics transport. */
@@ -356,11 +363,13 @@ export class NrIngestManager {
     this.proxyMetrics = new ProxyMetricsTracker();
     this.costTracker = options.costTracker;
     this.efficiencyScorer = options.efficiencyScorer;
-    this.auditTrail = new AuditTrailManager({
-      developer: options.developer,
-      sessionId: options.sessionId ?? null,
-      localStore: options.localStore,
-    });
+    this.auditTrail =
+      options.auditTrail ??
+      new AuditTrailManager({
+        developer: options.developer,
+        sessionId: options.sessionId ?? null,
+        localStore: options.localStore,
+      });
     this.metricHarvestIntervalMs = options.metricHarvestIntervalMs ?? 60_000;
 
     let otlpTransport: OtlpTransport | null = null;
@@ -446,7 +455,7 @@ export class NrIngestManager {
     this.proxyMetrics.recordProxyRequest(record);
   }
 
-  ingestToolCall(record: ToolCallRecord): void {
+  ingestToolCall(record: ToolCallRecord, auditRecord?: AuditRecord): void {
     // Buffer event for NR Events API
     const event = toolCallToNrEvent(record, {
       developer: this.developer,
@@ -486,24 +495,28 @@ export class NrIngestManager {
       this.proxyMetrics.recordProxyCall(record);
     }
 
-    // Security audit trail
-    const auditRecord = isProxyToolCall(record)
-      ? this.auditTrail.recordProxyCall(record)
-      : this.auditTrail.recordToolCall(record);
-    this.scheduler.addEvent(auditRecordToNrEvent(auditRecord, {
+    // Security audit trail. The caller may pass a pre-computed auditRecord
+    // (e.g. from the onRecord pipeline so audit recording works in local mode);
+    // fall back to recording here for any callers that don't.
+    const finalAuditRecord =
+      auditRecord ??
+      (isProxyToolCall(record)
+        ? this.auditTrail.recordProxyCall(record)
+        : this.auditTrail.recordToolCall(record));
+    this.scheduler.addEvent(auditRecordToNrEvent(finalAuditRecord, {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
     }));
-    if (auditRecord.securityAlert) {
-      this.scheduler.addEvent(securityAlertToNrEvent(auditRecord, {
+    if (finalAuditRecord.securityAlert) {
+      this.scheduler.addEvent(securityAlertToNrEvent(finalAuditRecord, {
         teamId: this.teamId,
         projectId: this.projectId,
         orgId: this.orgId,
       }));
     }
     // Queue audit log entry for NR Logs API
-    this.logIngest.addAuditRecord(auditRecord);
+    this.logIngest.addAuditRecord(finalAuditRecord);
   }
 
   ingestCodingTask(task: AiCodingTask): void {

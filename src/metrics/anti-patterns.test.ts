@@ -731,4 +731,34 @@ describe('Edge cases', () => {
     expect(types).toContain('blind_editing');
     expect(types).toContain('over_delegation');
   });
+
+  it('getCurrentPatterns returns empty array before analyze is called', () => {
+    const detector = new AntiPatternDetector();
+
+    const patterns = detector.getCurrentPatterns();
+    expect(patterns).toEqual([]);
+  });
+
+  it('getCurrentPatterns returns patterns from most recent analyze call', () => {
+    const detector = new AntiPatternDetector();
+
+    const calls1: ToolCallRecord[] = [
+      makeRecord({ toolName: 'Read', filePath: '/a.ts' }),
+      makeRecord({ toolName: 'Read', filePath: '/a.ts' }),
+      makeRecord({ toolName: 'Read', filePath: '/a.ts' }),
+      makeRecord({ toolName: 'Read', filePath: '/a.ts' }),
+    ];
+
+    const result1 = detector.analyze(calls1);
+    const patterns1 = detector.getCurrentPatterns();
+    expect(patterns1).toEqual(result1.patterns);
+    expect(patterns1.some(p => p.type === 're_reading')).toBe(true);
+
+    const calls2: ToolCallRecord[] = [];
+
+    const result2 = detector.analyze(calls2);
+    const patterns2 = detector.getCurrentPatterns();
+    expect(patterns2).toEqual(result2.patterns);
+    expect(patterns2).toHaveLength(0); // Empty call list produces no patterns
+  });
 });

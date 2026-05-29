@@ -179,6 +179,34 @@ The server communicates with Claude Code over stdio using JSON-RPC. It registers
 
 For a complete annotated reference of every config option — including types, defaults, and env variable overrides — see [`example.config.js`](../example.config.js).
 
+### Choosing a mode
+
+NR AI Observatory supports three modes via the `mode` config field:
+
+1. **`cloud`** (default) — telemetry ships to New Relic. Required for cross-team dashboards.
+2. **`local`** — telemetry stays on your machine; dashboard runs at `http://127.0.0.1:7777`.
+3. **`both`** — both behaviors active. Useful as a transition aid or to verify local data matches cloud.
+
+If you're not sure, start with **`local`** to see what data the tool collects before opting into cloud transport.
+
+#### Verifying local mode
+
+After setting `mode: 'local'`:
+
+```bash
+# Restart Claude Code, then:
+curl -s http://127.0.0.1:7777/api/health
+# Expected: {"ok":true,"uptime":<number>}
+```
+
+You should also see this line in Claude Code's MCP startup logs:
+
+```
+Dashboard ready at http://127.0.0.1:7777
+```
+
+If the URL is unreachable, check whether port 7777 is in use (`lsof -i:7777`) and override with `NR_AI_DASHBOARD_PORT`.
+
 ### Budget Thresholds
 
 Control spending with optional session/daily/weekly budget caps:

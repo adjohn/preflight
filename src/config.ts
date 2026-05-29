@@ -13,8 +13,8 @@ import { DEFAULT_PERSONAL_THRESHOLDS } from './alerts/types.js';
 const logger = createLogger('mcp-config');
 
 export interface McpServerConfig {
-  readonly licenseKey: string;
-  readonly accountId: string;
+  readonly licenseKey?: string;
+  readonly accountId?: string;
   readonly appName: string;
   readonly developer: string;
   readonly teamId: string | null;
@@ -43,6 +43,7 @@ export interface McpServerConfig {
   readonly otlpEndpoint: string | null;
   readonly otlpHeaders: Readonly<Record<string, string>>;
   readonly transport: 'nr-events-api' | 'otlp' | 'both';
+  readonly mode: 'cloud' | 'local' | 'both';
   /** Enable the local OTLP/HTTP receiver. Default: false. */
   readonly otlpReceiverEnabled: boolean;
   /** Port for the local OTLP/HTTP receiver. Default: 4318. */
@@ -61,6 +62,11 @@ export interface McpServerConfig {
    * Configurable via NR_AI_OTLP_FORWARD_HEADERS (comma-separated key=value pairs).
    */
   readonly otlpForwardHeaders: Readonly<Record<string, string>>;
+  readonly dashboard: {
+    readonly port: number;
+    readonly host: string;
+    readonly openOnStart: boolean;
+  };
 }
 
 const DEFAULT_STORAGE_PATH = resolve(homedir(), '.nr-ai-observe');
@@ -114,6 +120,7 @@ const ConfigFileSchema = z.object({
   otlpEndpoint: z.string().nullable().optional(),
   otlpHeaders: z.record(z.string()).optional(),
   transport: z.enum(['nr-events-api', 'otlp', 'both']).optional(),
+  mode: z.enum(['cloud', 'local', 'both']).optional(),
   otlpReceiverEnabled: z.boolean().optional(),
   otlpReceiverPort: z.number().optional(),
   otlpReceiverBindAddress: z.string().optional(),
@@ -127,6 +134,11 @@ const ConfigFileSchema = z.object({
       stuckLoopCountMax: z.number().optional(),
       antiPatternCountMax: z.number().optional(),
     }).optional(),
+  }).optional(),
+  dashboard: z.object({
+    port: z.number().int().min(1).max(65535).optional(),
+    host: z.string().optional(),
+    openOnStart: z.boolean().optional(),
   }).optional(),
 }).strict();
 
@@ -239,11 +251,11 @@ function loadConfigFile(filePath: string): Record<string, unknown> {
 }
 
 function resolveCollectorHost(
-  licenseKey: string,
+  licenseKey: string | undefined,
   explicit: string | null,
 ): string | null {
   if (explicit) return explicit;
-  if (licenseKey.toLowerCase().startsWith('eu01')) {
+  if (licenseKey?.toLowerCase().startsWith('eu01')) {
     return 'eu';
   }
   return null;
@@ -312,37 +324,58 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
   const configFilePath = cliOptions?.config ?? resolve(DEFAULT_STORAGE_PATH, 'config.json');
   const file = loadConfigFile(configFilePath);
 
+  // --- Resolve mode early so we can gate licenseKey/accountId requirements ---
+  // File mode is already validated by the zod schema in loadConfigFile.
+  const VALID_MODES = ['cloud', 'local', 'both'] as const;
+  type Mode = (typeof VALID_MODES)[number];
+  const isValidMode = (v: unknown): v is Mode =>
+    typeof v === 'string' && (VALID_MODES as readonly string[]).includes(v);
+  const envMode = process.env.NR_AI_MODE;
+  if (envMode !== undefined && envMode !== '' && !isValidMode(envMode)) {
+    throw new Error(
+      `Invalid NR_AI_MODE='${envMode}'. Must be one of: ${VALID_MODES.join(', ')}.`,
+    );
+  }
+  const mode: Mode =
+    (isValidMode(envMode) ? envMode : undefined) ??
+    (file.mode as Mode | undefined) ??
+    'cloud';
+
   // --- licenseKey: CLI has no flag for this, so env > file ---
-  const licenseKey =
+  const licenseKeyRaw =
     process.env.NEW_RELIC_LICENSE_KEY ??
     (typeof file.licenseKey === 'string' ? file.licenseKey : undefined);
-  if (!licenseKey) {
+  if (mode !== 'local' && !licenseKeyRaw) {
     throw new Error(
-      'Missing required configuration: licenseKey. ' +
+      `Missing required configuration: licenseKey (mode='${mode}'). ` +
         'Set the NEW_RELIC_LICENSE_KEY environment variable or add "licenseKey" to ' +
         configFilePath +
-        '.',
+        ', or switch to mode=\'local\' to skip cloud transport.',
     );
   }
+  // In local mode, undefined if licenseKey is missing (NR transport won't be used)
+  const licenseKey = licenseKeyRaw;
 
   // --- accountId: env > file ---
-  const accountId =
+  const accountIdRaw =
     process.env.NEW_RELIC_ACCOUNT_ID ??
     (typeof file.accountId === 'string' ? file.accountId : undefined);
-  if (!accountId) {
+  if (mode !== 'local' && !accountIdRaw) {
     throw new Error(
-      'Missing required configuration: accountId. ' +
+      `Missing required configuration: accountId (mode='${mode}'). ` +
         'Set the NEW_RELIC_ACCOUNT_ID environment variable or add "accountId" to ' +
         configFilePath +
-        '.',
+        ', or switch to mode=\'local\' to skip cloud transport.',
     );
   }
-  if (!/^\d{1,12}$/.test(accountId)) {
+  if (accountIdRaw && !/^\d{1,12}$/.test(accountIdRaw)) {
     throw new Error(
       'Invalid configuration: accountId must be 1–12 decimal digits. ' +
-        `Received: "${accountId}"`,
+        `Received: "${accountIdRaw}"`,
     );
   }
+  // In local mode, undefined if accountId is missing (NR transport won't be used)
+  const accountId = accountIdRaw;
 
   // --- Build config with priority: CLI > env > file > defaults ---
   const storagePath =
@@ -505,6 +538,8 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       : 'nr-events-api'
     ),
 
+    mode,
+
     otlpReceiverEnabled: envBool(
       'NR_AI_OTLP_RECEIVER_ENABLED',
       typeof file.otlpReceiverEnabled === 'boolean' ? file.otlpReceiverEnabled : false,
@@ -527,10 +562,13 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
 
     otlpForwardEndpoint: (() => {
       const envVal = process.env.NR_AI_OTLP_FORWARD_ENDPOINT;
+      // Default to the NR OTLP endpoint only when not in local mode. Local users
+      // may still set the value explicitly via env or config file (e.g. to point
+      // at a self-hosted collector); we just don't synthesize a NR default for them.
+      const defaultEndpoint =
+        mode !== 'local' && licenseKey !== undefined ? 'https://otlp.nr-data.net' : null;
       const endpoint = envVal !== undefined ? (envVal || null) : (
-        typeof file.otlpForwardEndpoint === 'string' ? (file.otlpForwardEndpoint || null) : (
-          licenseKey ? 'https://otlp.nr-data.net' : null
-        )
+        typeof file.otlpForwardEndpoint === 'string' ? (file.otlpForwardEndpoint || null) : defaultEndpoint
       );
       if (endpoint === null) return null;
       try {
@@ -554,7 +592,10 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       if (typeof file.otlpForwardHeaders === 'object' && file.otlpForwardHeaders !== null) {
         return file.otlpForwardHeaders as Record<string, string>;
       }
-      return licenseKey ? { 'api-key': licenseKey } : {};
+      // Don't synthesize a NR api-key header default in local mode — the licenseKey
+      // may be present in the env from another tool, and we must not leak it to a
+      // forward target the user didn't explicitly configure.
+      return mode !== 'local' && licenseKey !== undefined ? { 'api-key': licenseKey } : {};
     })(),
 
     personalAlertThresholds: (() => {
@@ -571,6 +612,32 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
         efficiencyScoreMin:   typeof t.efficiencyScoreMin === 'number'  ? t.efficiencyScoreMin  : DEFAULT_PERSONAL_THRESHOLDS.efficiencyScoreMin,
         stuckLoopCountMax:    typeof t.stuckLoopCountMax === 'number'   ? t.stuckLoopCountMax   : DEFAULT_PERSONAL_THRESHOLDS.stuckLoopCountMax,
         antiPatternCountMax:  typeof t.antiPatternCountMax === 'number' ? t.antiPatternCountMax : DEFAULT_PERSONAL_THRESHOLDS.antiPatternCountMax,
+      };
+    })(),
+
+    dashboard: (() => {
+      const dashboardFile = (file.dashboard ?? {}) as { port?: number; host?: string; openOnStart?: boolean };
+      const dashboardPortRaw = process.env.NR_AI_DASHBOARD_PORT
+        ? parseInt(process.env.NR_AI_DASHBOARD_PORT, 10)
+        : dashboardFile.port;
+      const dashboardPort = Number.isFinite(dashboardPortRaw) && dashboardPortRaw! > 0 && dashboardPortRaw! <= 65535
+        ? dashboardPortRaw!
+        : 7777;
+      const requestedHost = process.env.NR_AI_DASHBOARD_HOST ?? dashboardFile.host ?? '127.0.0.1';
+      let dashboardHost = '127.0.0.1';
+      if (requestedHost !== '127.0.0.1' && requestedHost !== 'localhost') {
+        logger.warn(`dashboard.host '${requestedHost}' is non-loopback; v1 only supports loopback. Forcing 127.0.0.1.`);
+      } else {
+        dashboardHost = requestedHost === 'localhost' ? '127.0.0.1' : requestedHost;
+      }
+      const dashboardOpenOnStart = envBool(
+        'NR_AI_DASHBOARD_OPEN',
+        dashboardFile.openOnStart === true,
+      );
+      return {
+        port: dashboardPort,
+        host: dashboardHost,
+        openOnStart: dashboardOpenOnStart,
       };
     })(),
   };

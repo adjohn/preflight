@@ -214,6 +214,31 @@ describe('SessionStore', () => {
     const files = readdirSync(resolve(tmpDir, 'sessions'));
     expect(files[0]).toMatch(/^\d{4}-\d{2}-\d{2}_pattern-test\.json$/);
   });
+
+  it('loadTodaySessions returns only sessions from today UTC', () => {
+    const store = new SessionStore({ storagePath: tmpDir });
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const todayMs = today.getTime();
+
+    store.saveSession(makeSummary({
+      sessionId: 'today-1',
+      startTime: todayMs + 1000,
+    }));
+    store.saveSession(makeSummary({
+      sessionId: 'today-2',
+      startTime: todayMs + 5000,
+    }));
+    store.saveSession(makeSummary({
+      sessionId: 'yesterday',
+      startTime: todayMs - 86_400_000,
+    }));
+
+    const sessions = store.loadTodaySessions();
+    expect(sessions).toHaveLength(2);
+    expect(sessions.map(s => s.sessionId)).toEqual(['today-1', 'today-2']);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -73,6 +73,7 @@ export class AntiPatternDetector {
   private readonly stuckLoopThreshold: number;
   private readonly blindEditThreshold: number;
   private readonly overDelegationThreshold: number;
+  private lastMetrics: AntiPatternMetrics | null = null;
 
   constructor(options?: AntiPatternOptions) {
     this.thrashThreshold = options?.thrashThreshold ?? DEFAULT_THRASH_THRESHOLD;
@@ -91,11 +92,18 @@ export class AntiPatternDetector {
     patterns.push(...this.detectBlindEditing(toolCalls));
     patterns.push(...this.detectOverDelegation(toolCalls));
 
-    return {
+    const metrics = {
       readEfficiency: this.computeReadEfficiency(toolCalls),
       verifyRate: this.computeVerifyRate(toolCalls),
       patterns,
     };
+
+    this.lastMetrics = metrics;
+    return metrics;
+  }
+
+  getCurrentPatterns(): readonly AntiPattern[] {
+    return this.lastMetrics?.patterns ?? [];
   }
 
   emitMetrics(aggregator: MetricAggregator, patterns: AntiPattern[]): void {

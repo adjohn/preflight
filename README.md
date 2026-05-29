@@ -266,6 +266,34 @@ When running in proxy mode, you can also enable an **inbound OTLP receiver** tha
 
 ---
 
+## Local mode
+
+If you'd rather not ship telemetry to New Relic, set `mode: 'local'` in your config:
+
+```json
+{
+  "mode": "local"
+}
+```
+
+In local mode:
+
+- The MCP server does **not** construct `NrIngestManager` and never makes outbound HTTP calls to NR.
+- An embedded dashboard boots at **http://127.0.0.1:7777** (configurable via `dashboard.port` or `NR_AI_DASHBOARD_PORT`).
+- All telemetry stays in `~/.nr-ai-observe/` on your machine.
+- `licenseKey` and `accountId` are not required.
+
+The dashboard has four views:
+
+- **Today** — live KPIs, sparkline of tool latencies, recent calls, anti-pattern alerts.
+- **Sessions** — list of past sessions with a per-session timeline of every tool call.
+- **History** — weekly efficiency and daily spend trends.
+- **Audit** — every classified tool call (sensitive file access, destructive commands, external network), with a JSONL export button.
+
+Run `nr-ai-observe setup` to choose a mode interactively.
+
+---
+
 ## Weekly Digest
 
 Register a Slack webhook to receive a weekly summary every Monday morning:

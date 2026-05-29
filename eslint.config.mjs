@@ -1,5 +1,7 @@
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
+import reactPlugin from 'eslint-plugin-react';
+import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import prettierConfig from 'eslint-config-prettier';
 
 export default [
@@ -7,12 +9,13 @@ export default [
     ignores: ['dist/', 'coverage/', 'node_modules/'],
   },
   {
-    files: ['**/*.ts'],
+    files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: 'module',
+        ecmaFeatures: { jsx: true },
       },
     },
     plugins: {
@@ -27,6 +30,26 @@ export default [
       }],
       '@typescript-eslint/no-explicit-any': 'warn',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+  {
+    files: ['**/*.tsx'],
+    plugins: {
+      react: reactPlugin,
+      'react-hooks': reactHooksPlugin,
+    },
+    settings: {
+      // Pin instead of 'detect' — eslint-plugin-react@7.37 calls a removed
+      // ESLint 10 context API during version detection.
+      react: { version: '18.3' },
+    },
+    rules: {
+      ...reactPlugin.configs.recommended.rules,
+      ...reactHooksPlugin.configs.recommended.rules,
+      // Modern React (17+) JSX transform — no need to import React in scope.
+      'react/react-in-jsx-scope': 'off',
+      // Vite/esbuild handle prop-types via TypeScript.
+      'react/prop-types': 'off',
     },
   },
   prettierConfig,

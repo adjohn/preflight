@@ -17,9 +17,13 @@
     "nr-ai-observe": "dist/hooks/collector-script.js"
   },
   "scripts": {
-    "build": "tsc --build && chmod +x dist/index.js dist/hooks/collector-script.js",
-    "build:clean": "tsc --build --clean",
+    "build:server": "tsc --build && chmod +x dist/index.js dist/hooks/collector-script.js",
+    "build:web": "vite build",
+    "build": "npm run build:server && npm run build:web",
+    "build:clean": "tsc --build --clean && rimraf dist/web",
+    "dev:web": "vite",
     "test": "jest",
+    "test:web": "vitest run",
     "lint": "eslint src/",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -31,7 +35,8 @@
     "deploy:dashboard:update": "npx tsx scripts/deploy-dashboard.ts --all --update",
     "deploy:dashboard:teardown": "npx tsx scripts/deploy-dashboard.ts --all --teardown",
     "backfill:sessions": "npx tsx scripts/backfill-sessions.ts",
-    "sync:shared": "npx tsx scripts/sync-shared.ts"
+    "sync:shared": "npx tsx scripts/sync-shared.ts",
+    "check:bundle-size": "npx tsx scripts/check-bundle-size.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -48,14 +53,38 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@tanstack/react-query": "5.100.14",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
     "@types/jest": "^30.0.0",
+    "@types/react": "18.3.29",
+    "@types/react-dom": "18.3.7",
     "@typescript-eslint/eslint-plugin": "^8.58.1",
     "@typescript-eslint/parser": "^8.58.1",
+    "@vitejs/plugin-react": "4.7.0",
+    "@vitest/coverage-v8": "2.1.9",
+    "autoprefixer": "10.5.0",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-hooks": "5.2.0",
     "jest": "^30.3.0",
+    "jsdom": "25.0.1",
+    "lucide-react": "0.453.0",
+    "postcss": "8.5.15",
     "prettier": "^3.8.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "recharts": "2.15.4",
+    "rimraf": "6.1.3",
+    "tailwindcss": "3.4.19",
     "ts-jest": "^29.4.9",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vite": "5.4.21",
+    "vitest": "2.1.9",
+    "wouter": "3.10.0",
+    "zustand": "4.5.7"
   }
 }

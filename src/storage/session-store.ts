@@ -198,6 +198,12 @@ export class SessionStore {
 
     return results.sort((a, b) => a.startTime - b.startTime);
   }
+
+  loadTodaySessions(): FullSessionSummary[] {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    return this.loadAllSessions({ since: today });
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -186,6 +186,28 @@ export default {
   // Default: "0 9 * * 1" (Monday 9am)
   digestSchedule: '0 9 * * 1',
 
+  // ── Local dashboard mode ───────────────────────────────────────────────────
+  //
+  // `mode` controls what destinations receive your AI-coding telemetry:
+  //
+  //   'cloud' — (default) ship every event to New Relic. Existing behaviour.
+  //             Requires `licenseKey` and `accountId`.
+  //   'local' — keep all data on your machine. The MCP server boots an
+  //             embedded HTTP dashboard at http://127.0.0.1:7777 and does
+  //             NOT send anything to NR. `licenseKey` is optional.
+  //   'both'  — do both. Useful as a transition aid.
+  //
+  // Env: NR_AI_MODE
+  // Default: "cloud"
+  // mode: 'cloud',
+  //
+  // dashboard: {
+  //   port: 7777,             // local HTTP port for the dashboard
+  //   host: '127.0.0.1',      // loopback only in v1; non-loopback values
+  //                           // are warned and overridden
+  //   openOnStart: false,     // (future) auto-open in your default browser
+  // },
+
   // ── Model ─────────────────────────────────────────────────────────────────
 
   // AI model identifier stamped on NR events when not inferred from tool calls.

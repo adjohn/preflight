@@ -290,6 +290,97 @@ export class CostPerOutcomeAnalyzer {
 }
 
 // ---------------------------------------------------------------------------
+// Session-level classification (for History view)
+// ---------------------------------------------------------------------------
+
+/**
+ * Subset of FullSessionSummary fields needed to bucket a stored session into
+ * an outcome category. Used by the History view so we can render a
+ * cost-per-outcome breakdown across persisted sessions without retaining the
+ * raw per-task tool-call sequence on disk.
+ *
+ * The heuristic mirrors classifyOutcome's priority order but uses session
+ * aggregates: it cannot detect intra-session "test fail → edit → test pass"
+ * flow precisely, so a passing test with edits is treated as bug_fix.
+ */
+export interface SessionOutcomeInputs {
+  readonly testRunCount: number;
+  readonly testPassCount: number;
+  readonly filesModified: readonly string[];
+  readonly toolBreakdown: Record<string, number>;
+  readonly toolCallCount: number;
+}
+
+export function classifySessionOutcome(s: SessionOutcomeInputs): OutcomeType {
+  if (s.testRunCount > 0 && s.testPassCount === 0) return 'failed_attempt';
+  if (s.testRunCount > 0 && s.testPassCount > 0 && s.filesModified.length > 0) return 'bug_fix';
+
+  const writeCount = s.toolBreakdown['Write'] ?? 0;
+  if (writeCount >= 1 && s.filesModified.length > 0) return 'feature';
+
+  if (s.filesModified.length > 0 && s.filesModified.every((f) => CONFIG_EXTENSIONS.test(f))) {
+    return 'configuration';
+  }
+  if (s.filesModified.length > 0 && s.filesModified.every((f) => DOC_EXTENSIONS.test(f))) {
+    return 'documentation';
+  }
+  if (s.filesModified.length > 0) return 'refactor';
+
+  if (s.toolCallCount > 0) {
+    const readCount =
+      (s.toolBreakdown['Read'] ?? 0) +
+      (s.toolBreakdown['Grep'] ?? 0) +
+      (s.toolBreakdown['Glob'] ?? 0);
+    if (readCount / s.toolCallCount >= 0.8) return 'investigation';
+  }
+
+  return 'feature';
+}
+
+export interface SessionLikeForCostOutcome extends SessionOutcomeInputs {
+  readonly estimatedCostUsd: number | null;
+}
+
+export function attributeSessionCosts(sessions: readonly SessionLikeForCostOutcome[]): CostAttribution {
+  const distribution: OutcomeDistribution = {};
+  let totalCost = 0;
+
+  for (const s of sessions) {
+    const outcome = classifySessionOutcome(s);
+    const cost = s.estimatedCostUsd ?? 0;
+    totalCost += cost;
+    if (!distribution[outcome]) {
+      distribution[outcome] = { count: 0, totalCost: 0, avgCost: 0 };
+    }
+    distribution[outcome].count++;
+    distribution[outcome].totalCost += cost;
+  }
+
+  for (const entry of Object.values(distribution)) {
+    entry.avgCost = entry.count > 0 ? round(entry.totalCost / entry.count, 4) : 0;
+    entry.totalCost = round(entry.totalCost, 4);
+  }
+
+  const avgCostFor = (outcome: string): number => distribution[outcome]?.avgCost ?? 0;
+  const failedCost = distribution['failed_attempt']?.totalCost ?? 0;
+  const wasteRatio = totalCost > 0 ? round(failedCost / totalCost, 4) : 0;
+
+  return {
+    outcomeDistribution: distribution,
+    costPerBugFix: avgCostFor('bug_fix'),
+    costPerFeature: avgCostFor('feature'),
+    costPerRefactor: avgCostFor('refactor'),
+    costPerInvestigation: avgCostFor('investigation'),
+    costPerConfiguration: avgCostFor('configuration'),
+    costPerDocumentation: avgCostFor('documentation'),
+    costPerFailedAttempt: avgCostFor('failed_attempt'),
+    wasteRatio,
+    totalCost: round(totalCost, 4),
+    totalTasks: sessions.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

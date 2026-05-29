@@ -115,7 +115,7 @@ describe('F-138: setup-wizard idempotency and env-detection', () => {
   });
 
   // Wires readline to answer prompts in sequence; defaults to '' (accept wizard default).
-  // Wizard asks 7 questions: accountId, licenseKey, developer, teamId, projectId,
+  // Wizard asks 8 questions: mode, accountId, licenseKey, developer, teamId, projectId,
   // sessionBudget, installHooks.
   function sequenceAnswers(...answers: (string | undefined)[]): void {
     let i = 0;
@@ -131,7 +131,7 @@ describe('F-138: setup-wizard idempotency and env-detection', () => {
       retainSessionsDays: 90,                      // not managed by wizard
     };
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(existingConfig));
-    sequenceAnswers('', '', '', '', '', '', 'n');
+    sequenceAnswers('', '', '', '', '', '', '', 'n');
 
     await runSetupWizard();
 
@@ -150,7 +150,7 @@ describe('F-138: setup-wizard idempotency and env-detection', () => {
       mockedFs.readFileSync.mockReturnValue(
         JSON.stringify({ accountId: '99999', licenseKey: 'NRLIC-test' }),
       );
-      sequenceAnswers('', '', '', '', '', '', 'n');
+      sequenceAnswers('', '', '', '', '', '', '', 'n');
 
       await runSetupWizard();
 
@@ -175,7 +175,7 @@ describe('F-138: setup-wizard idempotency and env-detection', () => {
 
   it('malformed JSON in existing config does not crash the wizard', async () => {
     mockedFs.readFileSync.mockReturnValue('not-valid-json{{{');
-    sequenceAnswers('12345', 'NRLIC-test', 'testdev', '', '', '', 'n');
+    sequenceAnswers('', '12345', 'NRLIC-test', 'testdev', '', '', '', 'n');
 
     await runSetupWizard();
 
@@ -184,5 +184,230 @@ describe('F-138: setup-wizard idempotency and env-detection', () => {
     const written = JSON.parse(writtenJson) as Record<string, unknown>;
     expect(written.accountId).toBe('12345');
     expect(written.licenseKey).toBe('NRLIC-test');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mode branch: cloud / local / both
+// ---------------------------------------------------------------------------
+describe('setupWizard mode branch', () => {
+  let stdoutSpy: ReturnType<typeof jest.spyOn>;
+  let stderrSpy: ReturnType<typeof jest.spyOn>;
+  let mockRl: { question: jest.Mock; close: jest.Mock };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    mockRl = { question: jest.fn(), close: jest.fn() };
+    mockedRl.createInterface.mockReturnValue(mockRl);
+    mockedFs.mkdirSync.mockReturnValue(undefined);
+    mockedFs.writeFileSync.mockReturnValue(undefined);
+    mockedFs.readFileSync.mockReturnValue('{}');
+  });
+
+  afterEach(() => {
+    stdoutSpy.mockRestore();
+    stderrSpy.mockRestore();
+  });
+
+  function answers(...values: string[]): void {
+    let i = 0;
+    mockRl.question.mockImplementation(async () => values[i++] ?? '');
+  }
+
+  it("when mode='local' is chosen, does NOT prompt for licenseKey or accountId", async () => {
+    // Order: mode, [skipped: accountId, licenseKey], developer, teamId, projectId,
+    // sessionBudget, dashboardPort, installHooks
+    answers('local', 'tester', '', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const promptMessages = mockRl.question.mock.calls.map((c) => String(c[0]).toLowerCase());
+    expect(promptMessages.some((m) => m.includes('license'))).toBe(false);
+    expect(promptMessages.some((m) => m.includes('account id'))).toBe(false);
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.mode).toBe('local');
+    expect(written.licenseKey).toBeUndefined();
+    expect(written.accountId).toBeUndefined();
+  });
+
+  it("when mode='local', persists dashboard config with chosen port", async () => {
+    answers('local', 'tester', '', '', '', '8080', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.mode).toBe('local');
+    expect(written.dashboard).toEqual({ port: 8080, host: '127.0.0.1', openOnStart: false });
+  });
+
+  it("when mode='both', prompts for credentials AND port", async () => {
+    answers('both', '12345', 'NRLIC-test', 'tester', '', '', '', '7777', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.mode).toBe('both');
+    expect(written.accountId).toBe('12345');
+    expect(written.licenseKey).toBe('NRLIC-test');
+    expect(written.dashboard).toEqual({ port: 7777, host: '127.0.0.1', openOnStart: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I11: Validation rejection paths
+// ---------------------------------------------------------------------------
+describe('setupWizard input validation', () => {
+  let stdoutSpy: ReturnType<typeof jest.spyOn>;
+  let stderrSpy: ReturnType<typeof jest.spyOn>;
+  let consoleErrorSpy: ReturnType<typeof jest.spyOn>;
+  let exitSpy: ReturnType<typeof jest.spyOn>;
+  let mockRl: { question: jest.Mock; close: jest.Mock };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    exitSpy = jest.spyOn(process, 'exit').mockImplementation((code?: string | number | null | undefined) => {
+      throw new Error(`process.exit(${String(code)})`);
+    });
+    mockRl = { question: jest.fn(), close: jest.fn() };
+    mockedRl.createInterface.mockReturnValue(mockRl);
+    mockedFs.mkdirSync.mockReturnValue(undefined);
+    mockedFs.writeFileSync.mockReturnValue(undefined);
+    mockedFs.readFileSync.mockReturnValue('{}');
+  });
+
+  afterEach(() => {
+    stdoutSpy.mockRestore();
+    stderrSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
+
+  function answers(...values: string[]): void {
+    let i = 0;
+    mockRl.question.mockImplementation(async () => values[i++] ?? '');
+  }
+
+  it('rejects an account ID that is not 1–12 digits', async () => {
+    // mode (default cloud), accountId, licenseKey, ...
+    answers('', 'abc-123', 'NRLIC-test', 'tester', '', '', '', 'n');
+
+    await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid account ID'),
+    );
+    expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects an account ID with more than 12 digits', async () => {
+    answers('', '1234567890123', 'NRLIC-test', 'tester', '', '', '', 'n');
+
+    await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid account ID'),
+    );
+    expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing license key when none is in existing config', async () => {
+    answers('', '12345', '', 'tester', '', '', '', 'n');
+
+    await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith('License key is required.');
+    expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-numeric session budget', async () => {
+    answers('', '12345', 'NRLIC-test', 'tester', '', '', 'free', 'n');
+
+    await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid session budget'),
+    );
+    expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects a session budget of zero', async () => {
+    answers('', '12345', 'NRLIC-test', 'tester', '', '', '0', 'n');
+
+    await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid session budget'),
+    );
+    expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects a negative session budget', async () => {
+    answers('', '12345', 'NRLIC-test', 'tester', '', '', '-5', 'n');
+
+    await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid session budget'),
+    );
+    expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects a dashboard port of 0 in local mode', async () => {
+    // mode=local, [no creds], developer, teamId, projectId, sessionBudget, dashboardPort
+    answers('local', 'tester', '', '', '', '0', 'n');
+
+    await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid port'),
+    );
+    expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects a dashboard port of 65536 in local mode', async () => {
+    answers('local', 'tester', '', '', '', '65536', 'n');
+
+    await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid port'),
+    );
+    expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-numeric dashboard port in both mode', async () => {
+    answers('both', '12345', 'NRLIC-test', 'tester', '', '', '', 'eight-thousand', 'n');
+
+    await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid port'),
+    );
+    expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it('falls back to existing license key when prompt is blank', async () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({ accountId: '12345', licenseKey: 'NRLIC-existing' }),
+    );
+    // accept all defaults — blank licenseKey should fall back to existing
+    answers('', '', '', '', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.licenseKey).toBe('NRLIC-existing');
+    expect(exitSpy).not.toHaveBeenCalled();
   });
 });

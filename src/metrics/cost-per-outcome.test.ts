@@ -2,7 +2,11 @@ import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals
 import type { MetricAggregator } from '../shared/index.js';
 import type { AiCodingTask } from './task-detector.js';
 import type { ToolCallRecord } from '../storage/types.js';
-import { CostPerOutcomeAnalyzer } from './cost-per-outcome.js';
+import {
+  CostPerOutcomeAnalyzer,
+  classifySessionOutcome,
+  attributeSessionCosts,
+} from './cost-per-outcome.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 
@@ -452,5 +456,150 @@ describe('CostPerOutcomeAnalyzer', () => {
       expect(evt.attrs?.developer).toBe('alice');
       expect(evt.attrs?.outcome).toBeTruthy();
     }
+  });
+});
+
+describe('classifySessionOutcome', () => {
+  it('returns failed_attempt when tests run but none pass', () => {
+    const r = classifySessionOutcome({
+      testRunCount: 3,
+      testPassCount: 0,
+      filesModified: ['src/foo.ts'],
+      toolBreakdown: { Edit: 1 },
+      toolCallCount: 5,
+    });
+    expect(r).toBe('failed_attempt');
+  });
+
+  it('returns bug_fix when tests pass and files modified', () => {
+    const r = classifySessionOutcome({
+      testRunCount: 3,
+      testPassCount: 2,
+      filesModified: ['src/foo.ts'],
+      toolBreakdown: { Edit: 2 },
+      toolCallCount: 8,
+    });
+    expect(r).toBe('bug_fix');
+  });
+
+  it('returns feature when Write tool used', () => {
+    const r = classifySessionOutcome({
+      testRunCount: 0,
+      testPassCount: 0,
+      filesModified: ['src/new.ts'],
+      toolBreakdown: { Write: 1, Edit: 1 },
+      toolCallCount: 4,
+    });
+    expect(r).toBe('feature');
+  });
+
+  it('returns documentation when only .md modified', () => {
+    const r = classifySessionOutcome({
+      testRunCount: 0,
+      testPassCount: 0,
+      filesModified: ['README.md', 'docs/guide.md'],
+      toolBreakdown: { Edit: 2 },
+      toolCallCount: 3,
+    });
+    expect(r).toBe('documentation');
+  });
+
+  it('returns configuration when only config files modified', () => {
+    const r = classifySessionOutcome({
+      testRunCount: 0,
+      testPassCount: 0,
+      filesModified: ['package.json', '.eslintrc.yaml'],
+      toolBreakdown: { Edit: 2 },
+      toolCallCount: 3,
+    });
+    expect(r).toBe('configuration');
+  });
+
+  it('returns refactor when files modified, no tests, mixed extensions', () => {
+    const r = classifySessionOutcome({
+      testRunCount: 0,
+      testPassCount: 0,
+      filesModified: ['src/a.ts', 'README.md'],
+      toolBreakdown: { Edit: 2 },
+      toolCallCount: 4,
+    });
+    expect(r).toBe('refactor');
+  });
+
+  it('returns investigation when 80%+ read tools and no edits', () => {
+    const r = classifySessionOutcome({
+      testRunCount: 0,
+      testPassCount: 0,
+      filesModified: [],
+      toolBreakdown: { Read: 8, Grep: 2 },
+      toolCallCount: 10,
+    });
+    expect(r).toBe('investigation');
+  });
+
+  it('returns feature as default when nothing else fits', () => {
+    const r = classifySessionOutcome({
+      testRunCount: 0,
+      testPassCount: 0,
+      filesModified: [],
+      toolBreakdown: { Bash: 1 },
+      toolCallCount: 1,
+    });
+    expect(r).toBe('feature');
+  });
+});
+
+describe('attributeSessionCosts', () => {
+  it('aggregates session costs by classified outcome', () => {
+    const sessions = [
+      {
+        testRunCount: 2,
+        testPassCount: 0,
+        filesModified: ['src/a.ts'],
+        toolBreakdown: { Edit: 1 },
+        toolCallCount: 5,
+        estimatedCostUsd: 0.5,
+      },
+      {
+        testRunCount: 3,
+        testPassCount: 2,
+        filesModified: ['src/b.ts'],
+        toolBreakdown: { Edit: 2 },
+        toolCallCount: 8,
+        estimatedCostUsd: 1.0,
+      },
+      {
+        testRunCount: 0,
+        testPassCount: 0,
+        filesModified: ['README.md'],
+        toolBreakdown: { Edit: 1 },
+        toolCallCount: 3,
+        estimatedCostUsd: 0.2,
+      },
+    ];
+    const result = attributeSessionCosts(sessions);
+    expect(result.totalTasks).toBe(3);
+    expect(result.outcomeDistribution.failed_attempt.count).toBe(1);
+    expect(result.outcomeDistribution.bug_fix.count).toBe(1);
+    expect(result.outcomeDistribution.documentation.count).toBe(1);
+    expect(result.totalCost).toBeCloseTo(1.7, 4);
+    // wasteRatio = 0.5 / 1.7 ≈ 0.2941
+    expect(result.wasteRatio).toBeCloseTo(0.2941, 3);
+  });
+
+  it('handles null estimatedCostUsd as zero', () => {
+    const result = attributeSessionCosts([
+      {
+        testRunCount: 0,
+        testPassCount: 0,
+        filesModified: ['src/x.ts'],
+        toolBreakdown: { Write: 1 },
+        toolCallCount: 1,
+        estimatedCostUsd: null,
+      },
+    ]);
+    expect(result.totalCost).toBe(0);
+    expect(result.outcomeDistribution.feature.count).toBe(1);
+    expect(result.outcomeDistribution.feature.totalCost).toBe(0);
   });
 });

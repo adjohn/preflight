@@ -14,6 +14,7 @@ import { WeeklySummaryGenerator } from './storage/weekly-summary.js';
 import { HookEventProcessor } from './hooks/index.js';
 import { SessionTracker } from './metrics/session-tracker.js';
 import { CostTracker } from './metrics/cost-tracker.js';
+import { buildCostForecast } from './metrics/cost-forecast.js';
 import { BudgetTracker } from './metrics/budget-tracker.js';
 import { TaskDetector } from './metrics/task-detector.js';
 import { AntiPatternDetector } from './metrics/anti-patterns.js';
@@ -22,6 +23,7 @@ import { TrendAnalyzer } from './metrics/trend-analyzer.js';
 import { CollaborationProfiler } from './metrics/collaboration-profile.js';
 import { ClaudeMdTracker } from './metrics/claudemd-tracker.js';
 import { CostPerOutcomeAnalyzer } from './metrics/cost-per-outcome.js';
+import { PersonalCoach } from './metrics/personal-coach.js';
 import { PromptFeedbackEngine } from './metrics/prompt-feedback.js';
 import { RecommendationEngine } from './metrics/recommendation-engine.js';
 import { ContextWindowTracker } from './metrics/context-window-tracker.js';
@@ -29,6 +31,9 @@ import { LatencyTracker } from './metrics/latency-tracker.js';
 import { TaskCompletionTracker } from './metrics/task-completion-tracker.js';
 import { ModelUsageTracker } from './metrics/model-usage-tracker.js';
 import { NrIngestManager } from './transport/nr-ingest.js';
+import { AuditTrailManager } from './security/audit-trail.js';
+import { LiveEventBus } from './dashboard/index.js';
+import { DashboardServer } from './dashboard/dashboard-server.js';
 import { FeedbackCollector } from './tools/workflow-tools.js';
 import { registerTools } from './tools/session-stats.js';
 import { initMcpTracer } from './tracing/mcp-tracer.js';
@@ -130,6 +135,7 @@ async function main(): Promise<void> {
   let taskDetector: TaskDetector | undefined;
   let sessionSpan: SessionSpan | undefined;
   let taskSpanTracker: TaskSpanTracker | undefined;
+  let dashboardServer: DashboardServer | undefined;
 
   let shuttingDown = false;
   const shutdown = async () => {
@@ -145,6 +151,7 @@ async function main(): Promise<void> {
         sessionSpan.end(stats.toolCallCount, taskMetrics.totalTasksCompleted);
       }
       eventProcessor?.stop();
+      if (dashboardServer) await dashboardServer.stop();
       if (nrIngest) await nrIngest.stop();
       if (mcpServer) await mcpServer.close();
       if (proxyManager) await proxyManager.stop();
@@ -219,6 +226,7 @@ async function main(): Promise<void> {
     const collaborationProfiler = new CollaborationProfiler({ sessionStore });
     const claudeMdTracker = new ClaudeMdTracker({ sessionStore });
     const costPerOutcomeAnalyzer = new CostPerOutcomeAnalyzer();
+    const personalCoach = new PersonalCoach(weeklySummaryGenerator, config.developer);
     const promptFeedbackEngine = new PromptFeedbackEngine({
       sessionStore,
       collaborationProfiler,
@@ -236,36 +244,91 @@ async function main(): Promise<void> {
 
     const sessionStartMs = Date.now();
 
+    const liveBus = new LiveEventBus();
+
     const budgetTracker = new BudgetTracker({
       sessionBudgetUsd: config.sessionBudgetUsd,
       dailyBudgetUsd: config.dailyBudgetUsd,
       weeklyBudgetUsd: config.weeklyBudgetUsd,
     });
 
-    nrIngest = new NrIngestManager({
-      licenseKey: config.licenseKey,
-      transportOptions: {
-        accountId: config.accountId,
-        collectorHost: config.collectorHost,
-      },
+    // Construct AuditTrailManager once and share it across NrIngestManager and the
+    // DashboardServer. In local mode there is no NrIngestManager, but the dashboard
+    // and McpServer still need an audit log.
+    const auditTrail = new AuditTrailManager({
       developer: config.developer,
-      appName: config.appName,
-      teamId: config.teamId,
-      projectId: config.projectId,
-      orgId: config.orgId,
-      sessionTracker,
+      sessionId: null,
       localStore,
-      eventHarvestIntervalMs: config.harvestIntervalMs.events,
-      metricHarvestIntervalMs: config.harvestIntervalMs.metrics,
-      costTracker,
-      efficiencyScorer,
-      sessionTraceId,
     });
 
-    const capturedNrIngest = nrIngest;
+    const dashboardEnabled = config.mode === 'local' || config.mode === 'both';
+    if (dashboardEnabled) {
+      const { dirname, resolve: resolvePath } = await import('node:path');
+      // Resolve relative to the running entry script so this works whether the
+      // server is launched from source via tsx or from the compiled dist/ bin.
+      const here = dirname(process.argv[1] ?? process.cwd());
+      const staticDir = resolvePath(here, '..', 'web');
+
+      dashboardServer = new DashboardServer({
+        port: config.dashboard.port,
+        host: config.dashboard.host,
+        bus: liveBus,
+        staticDir,
+        api: {
+          sessionTracker,
+          auditTrailManager: auditTrail,
+          sessionStore,
+          costTracker,
+          costForecast: () =>
+            buildCostForecast(
+              costTracker.getMetrics().sessionTotalCostUsd ?? 0,
+              sessionStartMs,
+            ),
+          antiPatternDetector,
+          weeklySummaryGenerator,
+          budgetTracker,
+          latencyTracker,
+          personalCoach,
+        },
+      });
+      const addr = await dashboardServer.start();
+      logger.info(`Dashboard ready at http://${addr.address}:${addr.port}`);
+    }
+
+    let capturedNrIngest: NrIngestManager | undefined;
+    if (config.mode !== 'local') {
+      if (!config.licenseKey || !config.accountId) {
+        throw new Error(
+          'licenseKey and accountId must be defined. ' +
+          'This should have been caught by config validation. ' +
+          'Check that mode is not "local" or that cloud credentials are configured.',
+        );
+      }
+      nrIngest = new NrIngestManager({
+        licenseKey: config.licenseKey,
+        transportOptions: {
+          accountId: config.accountId,
+          collectorHost: config.collectorHost,
+        },
+        developer: config.developer,
+        appName: config.appName,
+        teamId: config.teamId,
+        projectId: config.projectId,
+        orgId: config.orgId,
+        sessionTracker,
+        localStore,
+        auditTrail,
+        eventHarvestIntervalMs: config.harvestIntervalMs.events,
+        metricHarvestIntervalMs: config.harvestIntervalMs.metrics,
+        costTracker,
+        efficiencyScorer,
+        sessionTraceId,
+      });
+      capturedNrIngest = nrIngest;
+    }
 
     budgetTracker.setOnThreshold((event) => {
-      capturedNrIngest.ingestBudgetWarning(event);
+      capturedNrIngest?.ingestBudgetWarning(event);
       logger.warn('Budget threshold reached', {
         period: event.period,
         pct: event.thresholdPct,
@@ -305,7 +368,20 @@ async function main(): Promise<void> {
 
         contextWindowTracker.recordToolCall(record);
         latencyTracker.recordToolCall(record);
-        capturedNrIngest.ingestToolCall(record);
+
+        // Record audit trail unconditionally so the local dashboard's Audit view
+        // populates regardless of mode. NrIngestManager (when present) reuses the
+        // returned AuditRecord rather than recording a second time.
+        const auditRecord = auditTrail.recordToolCall(record);
+        capturedNrIngest?.ingestToolCall(record, auditRecord);
+
+        liveBus.emit('tool-call', {
+          id: record.id,
+          tool: record.toolName,
+          durationMs: record.durationMs ?? 0,
+          costUsd: 0,
+          ts: record.timestamp,
+        });
 
         // Fallback cost estimation from tool payload byte sizes.
         // Only fires when no exact token report has been received yet for this session,
@@ -326,12 +402,17 @@ async function main(): Promise<void> {
             priorDailyCostUsd + costMetrics.sessionTotalCostUsd,
             priorWeeklyCostUsd + costMetrics.sessionTotalCostUsd,
           );
+          liveBus.emit('cost-update', {
+            sessionTotalUsd: costMetrics.sessionTotalCostUsd,
+            todayTotalUsd: priorDailyCostUsd + costMetrics.sessionTotalCostUsd,
+            forecastEodUsd: null,
+          });
         }
 
         // Emit any tasks that completed as a result of this record,
         // and detect anti-patterns across each completed task's tool calls
         for (const task of taskDetector.drainNewlyCompletedTasks()) {
-          capturedNrIngest.ingestCodingTask(task);
+          capturedNrIngest?.ingestCodingTask(task);
           taskCompletionTracker.recordTask(task);
           // Close the task span — this handles both signal-driven and idle-timer-driven closures
           if (config.transport !== 'nr-events-api' && taskSpanTracker) {
@@ -346,14 +427,27 @@ async function main(): Promise<void> {
           const { patterns } = antiPatternDetector.analyze(task.toolCalls);
           efficiencyScorer.computeScore(task, patterns);
           for (const pattern of patterns) {
-            capturedNrIngest.ingestAntiPattern(pattern, context);
+            capturedNrIngest?.ingestAntiPattern(pattern, context);
+            liveBus.emit('anti-pattern', {
+              type: pattern.type,
+              target: pattern.file ?? pattern.command ?? 'unknown',
+              count:
+                pattern.iterations
+                ?? pattern.readCount
+                ?? pattern.repeatCount
+                ?? pattern.editCount
+                ?? pattern.agentCount
+                ?? 1,
+            });
           }
         }
       },
     });
 
-    // Wire audit trail into resource handlers (was undefined at createServer() time)
-    mcpServer.auditTrailManager = nrIngest.auditTrail;
+    // Wire audit trail into resource handlers (was undefined at createServer() time).
+    // Same instance is shared with the DashboardServer and NrIngestManager so all
+    // three see the same audit log.
+    mcpServer.auditTrailManager = auditTrail;
 
     // Re-register tools with full dependencies (replaces empty handlers)
     registerTools(mcpServer.server, {
@@ -406,7 +500,7 @@ async function main(): Promise<void> {
     };
 
     eventProcessor.start();
-    nrIngest.start();
+    nrIngest?.start();
     logger.info('Server running on stdio transport');
 
     process.stdin.once('end', () => {

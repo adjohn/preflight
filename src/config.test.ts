@@ -38,6 +38,10 @@ beforeEach(() => {
   delete process.env.NEW_RELIC_AI_PROJECT_ID;
   delete process.env.NEW_RELIC_AI_ORG_ID;
   delete process.env.NEW_RELIC_API_KEY;
+  delete process.env.NR_AI_MODE;
+  delete process.env.NR_AI_DASHBOARD_PORT;
+  delete process.env.NR_AI_DASHBOARD_HOST;
+  delete process.env.NR_AI_DASHBOARD_OPEN;
 });
 
 afterEach(() => {
@@ -1003,6 +1007,317 @@ describe('developer sanitization via loadMcpConfig() (N-07)', () => {
     const configPath = writeConfigFile({});
     const config = loadMcpConfig({ config: configPath });
     expect(config.nrApiKey).toBeNull();
+  });
+});
+
+describe('mode field', () => {
+  it("defaults to 'cloud' when unset", () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.mode).toBe('cloud');
+  });
+
+  it('reads mode from NR_AI_MODE env var', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_MODE = 'local';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.mode).toBe('local');
+  });
+
+  it('file value beats default but loses to env var', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_MODE = 'local';
+    const configPath = writeConfigFile({ mode: 'both' });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.mode).toBe('local');
+  });
+
+  it('file value wins when env var unset', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({ mode: 'both' });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.mode).toBe('both');
+  });
+});
+
+describe('licenseKey gating', () => {
+  it("throws when mode='cloud' and licenseKey missing", () => {
+    const configPath = writeConfigFile({ accountId: '12345' });
+    expect(() => loadMcpConfig({ config: configPath })).toThrow(
+      /Missing required configuration: licenseKey/,
+    );
+  });
+
+  it("does NOT throw when mode='local' and licenseKey missing", () => {
+    process.env.NR_AI_MODE = 'local';
+    const configPath = writeConfigFile({});
+    expect(() => loadMcpConfig({ config: configPath })).not.toThrow();
+  });
+
+  it("throws when mode='both' and licenseKey missing", () => {
+    process.env.NR_AI_MODE = 'both';
+    const configPath = writeConfigFile({ accountId: '12345' });
+    expect(() => loadMcpConfig({ config: configPath })).toThrow(
+      /Missing required configuration: licenseKey/,
+    );
+  });
+
+  it("does NOT throw when mode='local' and accountId missing", () => {
+    process.env.NR_AI_MODE = 'local';
+    const configPath = writeConfigFile({});
+    expect(() => loadMcpConfig({ config: configPath })).not.toThrow();
+  });
+
+  it("throws when mode='cloud' and accountId missing", () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key-1234567890';
+    const configPath = writeConfigFile({});
+    expect(() => loadMcpConfig({ config: configPath })).toThrow(
+      /Missing required configuration: accountId/,
+    );
+  });
+
+  it("throws when mode='both' and accountId missing", () => {
+    process.env.NR_AI_MODE = 'both';
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key-1234567890';
+    const configPath = writeConfigFile({});
+    expect(() => loadMcpConfig({ config: configPath })).toThrow(
+      /Missing required configuration: accountId/,
+    );
+  });
+
+  it('throws when NR_AI_MODE is set to an invalid value', () => {
+    process.env.NR_AI_MODE = 'offline';
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key-1234567890';
+    process.env.NEW_RELIC_ACCOUNT_ID = '1234';
+    const configPath = writeConfigFile({});
+    expect(() => loadMcpConfig({ config: configPath })).toThrow(
+      /Invalid NR_AI_MODE='offline'.*cloud, local, both/,
+    );
+  });
+
+  it('treats NR_AI_MODE empty string as unset and falls back to file/default', () => {
+    process.env.NR_AI_MODE = '';
+    const configPath = writeConfigFile({ mode: 'local' });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.mode).toBe('local');
+  });
+
+  it('throws when config file mode is invalid (caught by zod)', () => {
+    const configPath = writeConfigFile({ mode: 'offline' as 'cloud' });
+    expect(() => loadMcpConfig({ config: configPath })).toThrow(
+      /Config file validation failed.*mode.*Expected.*'cloud'.*'local'.*'both'.*received 'offline'/,
+    );
+  });
+});
+
+describe('OTLP forward gating on mode=local', () => {
+  beforeEach(() => {
+    delete process.env.NR_AI_OTLP_FORWARD_ENDPOINT;
+    delete process.env.NR_AI_OTLP_FORWARD_HEADERS;
+  });
+
+  it("does NOT synthesize NR OTLP defaults when mode='local' and licenseKey is set", () => {
+    process.env.NR_AI_MODE = 'local';
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key-1234567890';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.otlpForwardEndpoint).toBeNull();
+    expect(config.otlpForwardHeaders).toEqual({});
+  });
+
+  it("DOES synthesize NR OTLP defaults when mode='cloud' and licenseKey is set", () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key-1234567890';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.otlpForwardEndpoint).toBe('https://otlp.nr-data.net');
+    expect(config.otlpForwardHeaders).toEqual({ 'api-key': 'test-key-1234567890' });
+  });
+
+  it("DOES synthesize NR OTLP defaults when mode='both' and licenseKey is set", () => {
+    process.env.NR_AI_MODE = 'both';
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key-1234567890';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.otlpForwardEndpoint).toBe('https://otlp.nr-data.net');
+    expect(config.otlpForwardHeaders).toEqual({ 'api-key': 'test-key-1234567890' });
+  });
+
+  it("respects explicit env override even when mode='local'", () => {
+    process.env.NR_AI_MODE = 'local';
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key-1234567890';
+    process.env.NR_AI_OTLP_FORWARD_ENDPOINT = 'https://collector.example.com';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.otlpForwardEndpoint).toBe('https://collector.example.com');
+  });
+
+  it("respects explicit file value even when mode='local'", () => {
+    process.env.NR_AI_MODE = 'local';
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key-1234567890';
+    const configPath = writeConfigFile({
+      otlpForwardEndpoint: 'https://collector.example.com',
+    });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.otlpForwardEndpoint).toBe('https://collector.example.com');
+  });
+});
+
+describe('dashboard config', () => {
+  it("defaults port=7777, host='127.0.0.1', openOnStart=false", () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.port).toBe(7777);
+    expect(config.dashboard.host).toBe('127.0.0.1');
+    expect(config.dashboard.openOnStart).toBe(false);
+  });
+
+  it('reads dashboard.port from NR_AI_DASHBOARD_PORT', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_DASHBOARD_PORT = '9999';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.port).toBe(9999);
+  });
+
+  it('reads dashboard.port from config file', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({ dashboard: { port: 8888 } });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.port).toBe(8888);
+  });
+
+  it('env var NR_AI_DASHBOARD_PORT overrides config file', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_DASHBOARD_PORT = '9999';
+    const configPath = writeConfigFile({ dashboard: { port: 8888 } });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.port).toBe(9999);
+  });
+
+  it('clamps dashboard port to minimum 1', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_DASHBOARD_PORT = '0';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.port).toBe(7777);
+  });
+
+  it('clamps dashboard port to maximum 65535', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_DASHBOARD_PORT = '99999';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.port).toBe(7777);
+  });
+
+  it('reads dashboard.host from config file', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({ dashboard: { host: '127.0.0.1' } });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.host).toBe('127.0.0.1');
+  });
+
+  it('reads dashboard.host from NR_AI_DASHBOARD_HOST env var', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_DASHBOARD_HOST = 'localhost';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.host).toBe('127.0.0.1');
+  });
+
+  it('normalizes localhost to 127.0.0.1 without warning', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({ dashboard: { host: 'localhost' } });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.host).toBe('127.0.0.1');
+    const stderrOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(stderrOutput).not.toMatch(/non-loopback/);
+  });
+
+  it("warns and forces host to 127.0.0.1 when non-loopback '0.0.0.0' configured", () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({ dashboard: { host: '0.0.0.0' } });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.host).toBe('127.0.0.1');
+    const stderrOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(stderrOutput).toMatch(/non-loopback/);
+    expect(stderrOutput).toMatch(/0\.0\.0\.0/);
+  });
+
+  it('warns and forces host to 127.0.0.1 when non-loopback env var set', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_DASHBOARD_HOST = '192.168.1.1';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.host).toBe('127.0.0.1');
+    const stderrOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(stderrOutput).toMatch(/non-loopback/);
+    expect(stderrOutput).toMatch(/192\.168\.1\.1/);
+  });
+
+  it('reads dashboard.openOnStart from config file', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({ dashboard: { openOnStart: true } });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.openOnStart).toBe(true);
+  });
+
+  it('reads dashboard.openOnStart from NR_AI_DASHBOARD_OPEN env var', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_DASHBOARD_OPEN = 'true';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.openOnStart).toBe(true);
+  });
+
+  it('env var NR_AI_DASHBOARD_OPEN overrides config file', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_DASHBOARD_OPEN = 'true';
+    const configPath = writeConfigFile({ dashboard: { openOnStart: false } });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.openOnStart).toBe(true);
+  });
+
+  it('NR_AI_DASHBOARD_OPEN=false does not set openOnStart to true', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_DASHBOARD_OPEN = 'false';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.openOnStart).toBe(false);
+  });
+
+  it('NR_AI_DASHBOARD_OPEN=1 enables openOnStart', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_DASHBOARD_OPEN = '1';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dashboard.openOnStart).toBe(true);
   });
 });
 

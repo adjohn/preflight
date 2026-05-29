@@ -20,6 +20,8 @@ function loadExisting(): Record<string, unknown> {
   }
 }
 
+export type WizardMode = 'cloud' | 'local' | 'both';
+
 export function buildConfig(
   existing: Record<string, unknown>,
   inputs: {
@@ -29,17 +31,35 @@ export function buildConfig(
     teamId: string | null;
     projectId: string | null;
     sessionBudgetUsd: number | null;
+    mode?: WizardMode;
+    dashboardPort?: number | null;
   },
 ): Record<string, unknown> {
+  const mode = inputs.mode ?? 'cloud';
+  const includeNrCreds = mode !== 'local';
   return {
     ...existing,
-    accountId: inputs.accountId,
-    licenseKey: inputs.licenseKey,
+    ...(inputs.mode ? { mode } : {}),
+    ...(includeNrCreds
+      ? { accountId: inputs.accountId, licenseKey: inputs.licenseKey }
+      : {}),
     developer: inputs.developer,
     ...(inputs.teamId ? { teamId: inputs.teamId } : {}),
     ...(inputs.projectId ? { projectId: inputs.projectId } : {}),
     ...(inputs.sessionBudgetUsd !== null ? { sessionBudgetUsd: inputs.sessionBudgetUsd } : {}),
+    ...(inputs.dashboardPort != null
+      ? { dashboard: { port: inputs.dashboardPort, host: '127.0.0.1', openOnStart: false } }
+      : {}),
   };
+}
+
+function parseModeAnswer(raw: string, fallback: WizardMode): WizardMode {
+  const trimmed = raw.trim().toLowerCase();
+  if (trimmed === '' || trimmed === fallback) return fallback;
+  if (trimmed === 'cloud' || trimmed === '1') return 'cloud';
+  if (trimmed === 'local' || trimmed === '2') return 'local';
+  if (trimmed === 'both' || trimmed === '3') return 'both';
+  return fallback;
 }
 
 export async function runSetupWizard(): Promise<void> {
@@ -51,32 +71,48 @@ export async function runSetupWizard(): Promise<void> {
 
   const existing = loadExisting();
 
-  // Step 1: Account ID
-  const existingAccountId = typeof existing.accountId === 'string' ? existing.accountId : '';
-  const accountIdPrompt = existingAccountId
-    ? `New Relic Account ID [${existingAccountId}]: `
-    : 'New Relic Account ID: ';
-  let accountId = (await rl.question(accountIdPrompt)).trim();
-  if (!accountId) accountId = existingAccountId;
-  if (!/^\d{1,12}$/.test(accountId)) {
-    console.error(`Invalid account ID: "${accountId}". Must be 1–12 digits.`);
-    rl.close();
-    process.exit(1);
-  }
+  // Step 0: Mode
+  const existingMode =
+    typeof existing.mode === 'string' &&
+    (existing.mode === 'cloud' || existing.mode === 'local' || existing.mode === 'both')
+      ? (existing.mode as WizardMode)
+      : 'cloud';
+  print('Modes:');
+  print('  1) cloud — ship telemetry to New Relic (default)');
+  print('  2) local — keep all data on this machine, run a local dashboard');
+  print('  3) both  — ship to NR AND run the local dashboard');
+  const modeRaw = await rl.question(`Which mode? [${existingMode}]: `);
+  const mode = parseModeAnswer(modeRaw, existingMode);
 
-  // Step 2: License key
-  const existingKey = typeof existing.licenseKey === 'string' ? '(already set)' : '';
-  const keyPrompt = existingKey
-    ? `New Relic License Key ${existingKey}: `
-    : 'New Relic License Key (NEW_RELIC_LICENSE_KEY): ';
-  let licenseKey = (await rl.question(keyPrompt)).trim();
-  if (!licenseKey && typeof existing.licenseKey === 'string') {
-    licenseKey = existing.licenseKey;
-  }
-  if (!licenseKey) {
-    console.error('License key is required.');
-    rl.close();
-    process.exit(1);
+  // Step 1+2: NR credentials (skip in local mode)
+  let accountId = '';
+  let licenseKey = '';
+  if (mode !== 'local') {
+    const existingAccountId = typeof existing.accountId === 'string' ? existing.accountId : '';
+    const accountIdPrompt = existingAccountId
+      ? `New Relic Account ID [${existingAccountId}]: `
+      : 'New Relic Account ID: ';
+    accountId = (await rl.question(accountIdPrompt)).trim();
+    if (!accountId) accountId = existingAccountId;
+    if (!/^\d{1,12}$/.test(accountId)) {
+      console.error(`Invalid account ID: "${accountId}". Must be 1–12 digits.`);
+      rl.close();
+      process.exit(1);
+    }
+
+    const existingKey = typeof existing.licenseKey === 'string' ? '(already set)' : '';
+    const keyPrompt = existingKey
+      ? `New Relic License Key ${existingKey}: `
+      : 'New Relic License Key (NEW_RELIC_LICENSE_KEY): ';
+    licenseKey = (await rl.question(keyPrompt)).trim();
+    if (!licenseKey && typeof existing.licenseKey === 'string') {
+      licenseKey = existing.licenseKey;
+    }
+    if (!licenseKey) {
+      console.error('License key is required.');
+      rl.close();
+      process.exit(1);
+    }
   }
 
   // Step 3: Developer name
@@ -112,8 +148,41 @@ export async function runSetupWizard(): Promise<void> {
     sessionBudgetUsd = parsed;
   }
 
+  // Step 5b: Dashboard port (local/both only)
+  let dashboardPort: number | null = null;
+  if (mode === 'local' || mode === 'both') {
+    const existingDashboard =
+      existing.dashboard && typeof existing.dashboard === 'object'
+        ? (existing.dashboard as { port?: number })
+        : null;
+    const defaultPort = existingDashboard?.port ?? 7777;
+    const portStr = (
+      await rl.question(`Local dashboard port (loopback only) [${defaultPort}]: `)
+    ).trim();
+    if (portStr) {
+      const parsed = parseInt(portStr, 10);
+      if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 65536) {
+        console.error(`Invalid port "${portStr}": must be 1–65535.`);
+        rl.close();
+        process.exit(1);
+      }
+      dashboardPort = parsed;
+    } else {
+      dashboardPort = defaultPort;
+    }
+  }
+
   // Write config
-  const config = buildConfig(existing, { accountId, licenseKey, developer, teamId, projectId, sessionBudgetUsd });
+  const config = buildConfig(existing, {
+    accountId,
+    licenseKey,
+    developer,
+    teamId,
+    projectId,
+    sessionBudgetUsd,
+    mode,
+    dashboardPort,
+  });
 
   mkdirSync(DEFAULT_STORAGE_PATH, { recursive: true, mode: 0o700 });
   writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), { mode: 0o600 });
@@ -130,13 +199,17 @@ export async function runSetupWizard(): Promise<void> {
   }
 
   // Step 7: Dashboard deploy — show manual command (deploy-dashboard.ts is not a library)
-  print('\nTo deploy dashboards, run:');
-  print(`  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts --all`);
-  print(`\nFor a personal dashboard pre-filtered to you:`);
-  print(`  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer ${developer}`);
+  if (mode !== 'local') {
+    print('\nTo deploy dashboards, run:');
+    print(`  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts --all`);
+    print(`\nFor a personal dashboard pre-filtered to you:`);
+    print(`  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer ${developer}`);
 
-  print(`\nFor personal alerts scoped to you:`);
-  print(`  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-alerts.ts --developer ${developer}`);
+    print(`\nFor personal alerts scoped to you:`);
+    print(`  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-alerts.ts --developer ${developer}`);
+  } else {
+    print(`\nLocal mode: open the dashboard at http://127.0.0.1:${dashboardPort ?? 7777} once Claude Code starts.`);
+  }
 
   rl.close();
 
