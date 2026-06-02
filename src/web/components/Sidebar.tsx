@@ -55,13 +55,13 @@ export function Sidebar({ currentPath, onNavigate, connected }: SidebarProps): J
                 <span
                   data-testid="alert-badge"
                   data-severity={maxSeverity ?? 'info'}
-                  aria-label={`${alertCount} firing ${alertCount === 1 ? 'alert' : 'alerts'}`}
+                  aria-label={`${alertCount > 99 ? '99+' : alertCount} firing ${alertCount === 1 ? 'alert' : 'alerts'}`}
                   className={
                     `ml-auto px-1.5 rounded text-[10px] font-semibold tabular-nums ` +
                     BADGE_TONE[maxSeverity ?? 'info']
                   }
                 >
-                  {alertCount}
+                  {alertCount > 99 ? '99+' : alertCount}
                 </span>
               )}
             </button>

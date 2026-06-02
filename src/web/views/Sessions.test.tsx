@@ -104,6 +104,22 @@ describe('Sessions view', () => {
     expect(screen.getByText('80ms')).toBeInTheDocument();
   });
 
+  it('renders both rows when two timeline entries share timestamp and toolName', async () => {
+    const detail = {
+      sessionId: 's1',
+      timeline: [
+        { timestamp: 1_000, toolName: 'Read', durationMs: 50, success: true },
+        { timestamp: 1_000, toolName: 'Read', durationMs: 80, success: true },
+      ],
+    };
+    renderSessions(SAMPLE_LIST, { s1: detail });
+    await waitFor(() => expect(screen.getByText(/s1/)).toBeInTheDocument());
+    fireEvent.click(screen.getAllByText(/s1/)[0]);
+    await waitFor(() => expect(screen.getByText('50ms')).toBeInTheDocument());
+    expect(screen.getByText('80ms')).toBeInTheDocument();
+    expect(screen.getAllByText('Read').length).toBe(2);
+  });
+
   it('shows the timeline header with session ID and call count', async () => {
     const detail = {
       sessionId: 's1-abcdef',

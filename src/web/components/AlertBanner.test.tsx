@@ -124,6 +124,30 @@ describe('AlertBanner', () => {
     expect(icon?.getAttribute('aria-hidden')).toBe('true');
   });
 
+  it('exposes the outer banner as keyboard-focusable so ESC works from outer focus', () => {
+    const onDismiss = vi.fn();
+    const { container } = render(
+      <AlertBanner alert={makeAlert({ id: 'r-outer' })} onDismiss={onDismiss} />,
+    );
+    const root = container.firstElementChild as HTMLDivElement;
+    expect(root.getAttribute('tabindex')).toBe('0');
+    root.focus();
+    expect(document.activeElement).toBe(root);
+    fireEvent.keyDown(root, { key: 'Escape' });
+    expect(onDismiss).toHaveBeenCalledWith('r-outer');
+  });
+
+  it('associates the banner with its title via aria-labelledby', () => {
+    const { container } = render(
+      <AlertBanner alert={makeAlert({ id: 'r-aria', title: 'My title' })} onDismiss={() => {}} />,
+    );
+    const root = container.firstElementChild as HTMLDivElement;
+    const labelledBy = root.getAttribute('aria-labelledby');
+    expect(labelledBy).toBe('alert-title-r-aria');
+    const titleEl = container.querySelector(`#${labelledBy}`);
+    expect(titleEl?.textContent).toBe('My title');
+  });
+
   it('exposes the alert id as a data attribute for tests/debugging', () => {
     const { container } = render(
       <AlertBanner alert={makeAlert({ id: 'rule-x' })} onDismiss={() => {}} />,

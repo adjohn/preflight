@@ -326,13 +326,13 @@ function SessionTimeline({ data }: { data: SessionDetail }): JSX.Element {
         <div>
           <div className="text-[10px] text-ink-muted uppercase tracking-wider mb-2">Timeline</div>
           <div className="flex flex-col gap-0.5">
-            {entries.map((c) => {
+            {entries.map((c, i) => {
               const dur = c.durationMs ?? 0;
               const left = ((c.timestamp - first) / span) * 100;
               const width = Math.max(0.5, (dur / span) * 100);
               return (
                 <div
-                  key={`${c.timestamp}-${c.toolName}`}
+                  key={`${c.timestamp}-${c.toolName}-${i}`}
                   className="flex items-center gap-2 text-[11px]"
                 >
                   <span className="w-20 text-ink-subtle truncate">{c.toolName}</span>

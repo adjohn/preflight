@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { createApiHandler } from './api-handler.js';
 import { IncomingMessage, ServerResponse } from 'node:http';
 
@@ -169,6 +170,30 @@ describe('api-handler GET /api/sessions', () => {
     const { res, status } = fakeRes();
     await handler(req, res);
     expect(status()).toBe(503);
+  });
+
+  it('does not call loadAllSessions for /api/sessions list (F-035)', async () => {
+    const fakeSessions = Array.from({ length: 5 }, (_v, i) => ({
+      filename: `2026-05-${String(i + 1).padStart(2, '0')}_sess-${i}.json`,
+      sessionId: `sess-${i}`,
+      date: `2026-05-${String(i + 1).padStart(2, '0')}`,
+    }));
+    const listSessionsSpy = jest.fn(() => fakeSessions);
+    const loadAllSessionsSpy = jest.fn(() => fakeSessions);
+    const handler = createApiHandler({
+      sessionStore: {
+        loadTodaySessions: () => [],
+        listSessions: listSessionsSpy,
+        loadAllSessions: loadAllSessionsSpy,
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+    });
+    const req = { method: 'GET', url: '/api/sessions' } as IncomingMessage;
+    const { res, status } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    expect(listSessionsSpy).toHaveBeenCalled();
+    expect(loadAllSessionsSpy).not.toHaveBeenCalled();
   });
 });
 

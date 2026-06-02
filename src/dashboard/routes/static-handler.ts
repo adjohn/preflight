@@ -26,6 +26,10 @@ async function serveIndexFallback(root: string, res: ServerResponse): Promise<vo
     res.writeHead(200, {
       'content-type': 'text/html; charset=utf-8',
       'content-length': String(data.length),
+      // index.html must always be revalidated so a fresh build is picked
+      // up immediately. The hashed assets it references can be cached
+      // aggressively.
+      'cache-control': 'no-cache',
     });
     res.end(data);
   } catch {
@@ -51,14 +55,34 @@ export function createStaticHandler(rootDir: string): (req: IncomingMessage, res
     try {
       const st = await stat(target);
       if (!st.isFile()) {
-        if (hasFileExtension) { res.writeHead(404); res.end(); return; }
-        return await serveIndexFallback(root, res);
+        // F-033: An on-disk path that exists but is not a regular file
+        // (typically a directory like /assets/) is not a valid SPA route —
+        // returning index.html here masks misconfigured asset paths in
+        // dev. The SPA fallback is reserved for genuinely missing paths
+        // (the ENOENT path below).
+        res.writeHead(404);
+        res.end();
+        return;
       }
       const type = MIME[ext] ?? 'application/octet-stream';
       const data = await readFile(target);
+      // F-034: Vite-built assets live under /assets/ with content-hash
+      // filenames (main-abc123.js), so they can be cached forever. The
+      // shell index.html must revalidate every time so a fresh build's
+      // new asset hashes are picked up. Other static files (the rare
+      // unhashed asset, robots.txt, favicons that aren't in /assets/)
+      // get a short cache for sane DevTools behaviour.
+      const isAsset = target.includes(`${sep}assets${sep}`);
+      const isIndexHtml = filename === 'index.html';
+      const cacheControl = isIndexHtml
+        ? 'no-cache'
+        : isAsset
+          ? 'public, max-age=31536000, immutable'
+          : 'public, max-age=300';
       res.writeHead(200, {
         'content-type': type,
         'content-length': String(data.length),
+        'cache-control': cacheControl,
       });
       res.end(data);
     } catch {

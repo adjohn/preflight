@@ -284,7 +284,10 @@ export function aggregateDailyCost(
   const byDay = new Map<string, number>();
   for (const r of rows) {
     if (r.estimatedCostUsd == null || r.startTime == null) continue;
-    const day = new Date(r.startTime).toISOString().slice(5, 10);
+    const d = new Date(r.startTime);
+    // Use local-time getters so a session at 10pm UTC-5 lands on its
+    // local day, not the UTC day after.
+    const day = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     byDay.set(day, (byDay.get(day) ?? 0) + r.estimatedCostUsd);
   }
   const sorted = Array.from(byDay.entries()).sort((a, b) => a[0].localeCompare(b[0]));

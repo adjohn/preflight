@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from 'react';
 import { Route, Switch, useLocation } from 'wouter';
 import { Sidebar } from './components/Sidebar';
 import { AlertBannerStack } from './components/AlertBannerStack';
@@ -14,13 +13,6 @@ export function App(): JSX.Element {
   useLiveEvents();
   const connected = useLiveStore((s) => s.connected);
   const [location, navigate] = useLocation();
-
-  const isClient = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
-  if (!isClient) return <></>;
 
   return (
     <div className="flex flex-col h-full">

@@ -61,15 +61,31 @@ jest.unstable_mockModule('node:http', async () => {
 });
 
 describe('privacy proof — config + tracker (mode=local)', () => {
+  // Node 18+ exposes a global `fetch`. The node:http / node:https mocks
+  // above only cover request() — not undici-backed fetch() — so any
+  // dependency that switched to fetch could leak past the privacy proof.
+  // Stub the global with a spy that throws if invoked.
+  const originalFetch: typeof fetch | undefined = global.fetch;
+  const fetchSpy = jest.fn(() => {
+    throw new Error('fetch blocked in privacy-proof test');
+  });
+
   beforeEach(() => {
     ingestCtor.mockClear();
     httpRequest.mockClear();
+    fetchSpy.mockClear();
+    global.fetch = fetchSpy as unknown as typeof fetch;
     process.env.NR_AI_MODE = 'local';
     delete process.env.NEW_RELIC_LICENSE_KEY;
     delete process.env.NEW_RELIC_ACCOUNT_ID;
   });
 
   afterEach(() => {
+    if (originalFetch) {
+      global.fetch = originalFetch;
+    } else {
+      delete (global as { fetch?: typeof fetch }).fetch;
+    }
     delete process.env.NR_AI_MODE;
   });
 
@@ -92,6 +108,24 @@ describe('privacy proof — config + tracker (mode=local)', () => {
       success: true,
     });
     expect(httpRequest).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('global fetch is not invoked during config load or tracker.recordToolCall', async () => {
+    const { loadMcpConfig } = await import('./config.js');
+    loadMcpConfig({ port: 9847, config: null, logLevel: 'info', stdio: true });
+    const { SessionTracker } = await import('./metrics/session-tracker.js');
+    const tracker = new SessionTracker();
+    tracker.recordToolCall({
+      id: 't2',
+      sessionId: 's2',
+      toolName: 'Edit',
+      toolUseId: 'tu2',
+      timestamp: Date.now(),
+      durationMs: 5,
+      success: true,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

@@ -137,10 +137,26 @@ export class OsNotifier {
     return this.run('osascript', ['-e', script]);
   }
 
-  private notifyLinux(title: string, body: string): Promise<void> {
+  private async notifyLinux(title: string, body: string): Promise<void> {
     // notify-send -- <title> <body>. The `--` guard stops a future title
     // starting with `-` from being parsed as a flag.
-    return this.run('notify-send', ['--', title, body]);
+    try {
+      await this.run('notify-send', ['--', title, body]);
+    } catch (err) {
+      const code =
+        err && typeof err === 'object' && 'code' in err
+          ? (err as NodeJS.ErrnoException).code
+          : undefined;
+      if (code === 'ENOENT') {
+        this.log.warn(
+          'os-notifier: notify-send not installed — install libnotify-bin (apt) or libnotify (dnf/pacman) to enable Linux desktop notifications',
+        );
+        return;
+      }
+      this.log.warn('os-notifier: notify-send failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   private async notifyWin32(title: string, body: string): Promise<void> {

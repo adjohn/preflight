@@ -60,6 +60,28 @@ describe('Audit view', () => {
     await waitFor(() => expect(screen.getByText('/etc/hosts')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /export jsonl/i })).toBeInTheDocument();
   });
+
+  it('caps rendered rows at 200 and shows the "showing first" note when over the limit', async () => {
+    const big = Array.from({ length: 500 }, (_, i) => ({
+      ts: 1_000_000 + i,
+      tool: 'Read',
+      target: `/file/${i}`,
+      classification: 'sensitive_file',
+      sessionId: `s-${i}`,
+    }));
+    renderAudit(big);
+    await waitFor(() => expect(screen.getByText('/file/0')).toBeInTheDocument());
+    expect(screen.getByText('/file/199')).toBeInTheDocument();
+    expect(screen.queryByText('/file/200')).toBeNull();
+    expect(screen.queryByText('/file/499')).toBeNull();
+    expect(screen.getByText(/showing first 200 of 500 entries/i)).toBeInTheDocument();
+  });
+
+  it('does not show the "showing first" note when entries are at or below the cap', async () => {
+    renderAudit(SAMPLE);
+    await waitFor(() => expect(screen.getByText('/etc/hosts')).toBeInTheDocument());
+    expect(screen.queryByText(/showing first/i)).toBeNull();
+  });
 });
 
 describe('Audit downloadJsonl', () => {

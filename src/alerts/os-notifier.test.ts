@@ -150,6 +150,36 @@ describe('OsNotifier — linux', () => {
     ).resolves.toBeUndefined();
     expect(log.warn).toHaveBeenCalled();
   });
+
+  it('logs a friendly "not installed" message on ENOENT, not "unexpected error"', async () => {
+    const enoent = new Error('spawn notify-send ENOENT') as NodeJS.ErrnoException;
+    enoent.code = 'ENOENT';
+    const { exec } = mockFailure(enoent);
+    const log = makeLogger();
+    const notifier = new OsNotifier({ platform: 'linux', exec, logger: log });
+    await notifier.notify({ title: 'a', body: 'b' });
+    const calls = (log.warn as jest.Mock).mock.calls.flat().map((arg: unknown) =>
+      typeof arg === 'string' ? arg : JSON.stringify(arg ?? ''),
+    );
+    const combined = calls.join(' ');
+    expect(combined).toMatch(/notify-send not installed/);
+    expect(combined).not.toMatch(/unexpected error/);
+  });
+
+  it('logs a generic "notify-send failed" message for non-ENOENT failures', async () => {
+    const eperm = new Error('spawn notify-send EPERM') as NodeJS.ErrnoException;
+    eperm.code = 'EPERM';
+    const { exec } = mockFailure(eperm);
+    const log = makeLogger();
+    const notifier = new OsNotifier({ platform: 'linux', exec, logger: log });
+    await notifier.notify({ title: 'a', body: 'b' });
+    const calls = (log.warn as jest.Mock).mock.calls.flat().map((arg: unknown) =>
+      typeof arg === 'string' ? arg : JSON.stringify(arg ?? ''),
+    );
+    const combined = calls.join(' ');
+    expect(combined).toMatch(/notify-send failed/);
+    expect(combined).not.toMatch(/not installed/);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -38,9 +38,10 @@ function ariaRole(severity: Severity): 'alert' | 'status' {
 }
 
 export function AlertBanner({ alert, onDismiss }: AlertBannerProps): JSX.Element {
-  // ESC dismisses no matter where focus lives within the banner — attaching
-  // the handler to the outer container (rather than just the X button) makes
-  // the gesture work even when the title/description is keyboard-focused.
+  // ESC dismisses anywhere within the banner. The outer div carries
+  // tabIndex={0} so it is itself keyboard-focusable; combined with bubbling
+  // from the dismiss button (the only other focusable descendant) every
+  // legitimate keyboard focus point routes through this handler.
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -48,14 +49,17 @@ export function AlertBanner({ alert, onDismiss }: AlertBannerProps): JSX.Element
     }
   };
 
+  const titleId = `alert-title-${alert.id}`;
   return (
     <div
       role={ariaRole(alert.severity)}
       aria-live={alert.severity === 'critical' ? 'assertive' : 'polite'}
+      aria-labelledby={titleId}
+      tabIndex={0}
       data-alert-id={alert.id}
       data-severity={alert.severity}
       onKeyDown={handleKeyDown}
-      className={`flex items-center gap-3 px-3 py-2 border-b text-xs ${SEVERITY_BG[alert.severity]}`}
+      className={`flex items-center gap-3 px-3 py-2 border-b text-xs focus:outline-none focus:ring-2 focus:ring-accent-cyan/40 ${SEVERITY_BG[alert.severity]}`}
     >
       <span
         aria-hidden="true"
@@ -63,7 +67,7 @@ export function AlertBanner({ alert, onDismiss }: AlertBannerProps): JSX.Element
       >
         ● {SEVERITY_LABEL[alert.severity]}
       </span>
-      <span className="font-medium text-ink-base shrink-0">{alert.title}</span>
+      <span id={titleId} className="font-medium text-ink-base shrink-0">{alert.title}</span>
       <span className="text-ink-muted truncate">{alert.description}</span>
       <span className="ml-auto shrink-0 text-ink-subtle tabular-nums whitespace-nowrap">
         {formatValue(alert.value)} / {formatValue(alert.threshold)}

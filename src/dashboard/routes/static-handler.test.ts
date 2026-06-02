@@ -56,6 +56,60 @@ describe('static-handler', () => {
     expect(status()).toBe(404);
   });
 
+  it('serves /assets/ files with immutable, max-age=31536000 cache (F-034)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'static-'));
+    mkdirSync(join(dir, 'assets'));
+    writeFileSync(join(dir, 'assets', 'main-abc123.js'), 'console.log(1)');
+    const handler = createStaticHandler(dir);
+    const { req, res, status, headers } = makeReqRes('/assets/main-abc123.js');
+    await handler(req, res);
+    expect(status()).toBe(200);
+    expect(headers()['cache-control']).toBe('public, max-age=31536000, immutable');
+  });
+
+  it('serves index.html on / with no-cache (F-034)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'static-'));
+    writeFileSync(join(dir, 'index.html'), '<!doctype html>');
+    const handler = createStaticHandler(dir);
+    const { req, res, status, headers } = makeReqRes('/');
+    await handler(req, res);
+    expect(status()).toBe(200);
+    expect(headers()['cache-control']).toBe('no-cache');
+  });
+
+  it('serves SPA-fallback index.html with no-cache for unknown extensionless routes (F-034)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'static-'));
+    writeFileSync(join(dir, 'index.html'), '<!doctype html>');
+    const handler = createStaticHandler(dir);
+    const { req, res, status, headers } = makeReqRes('/sessions');
+    await handler(req, res);
+    expect(status()).toBe(200);
+    expect(headers()['cache-control']).toBe('no-cache');
+  });
+
+  it('serves non-asset top-level files with a short max-age (F-034)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'static-'));
+    writeFileSync(join(dir, 'index.html'), '<!doctype html>');
+    writeFileSync(join(dir, 'favicon.ico'), '');
+    const handler = createStaticHandler(dir);
+    const { req, res, status, headers } = makeReqRes('/favicon.ico');
+    await handler(req, res);
+    expect(status()).toBe(200);
+    expect(headers()['cache-control']).toBe('public, max-age=300');
+  });
+
+  it('returns 404 for an existing directory request (F-033)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'static-'));
+    writeFileSync(join(dir, 'index.html'), '<!doctype html>');
+    mkdirSync(join(dir, 'assets'));
+    const handler = createStaticHandler(dir);
+    const { req, res, status, chunks } = makeReqRes('/assets/');
+    await handler(req, res);
+    expect(status()).toBe(404);
+    // Must not fall through to SPA index.html (which would render as 200).
+    expect(Buffer.concat(chunks).toString()).not.toContain('<!doctype html>');
+  });
+
   it('rejects path traversal (../)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'static-'));
     writeFileSync(join(dir, 'index.html'), '<!doctype html>');

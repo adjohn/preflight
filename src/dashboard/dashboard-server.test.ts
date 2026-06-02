@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DashboardServer } from './dashboard-server.js';
@@ -117,6 +117,65 @@ describe('DashboardServer', () => {
     } finally {
       stderrSpy.mockRestore();
     }
+  });
+});
+
+describe('DashboardServer staticDir bootstrap warning (F-036)', () => {
+  let stderrSpy: jest.SpiedFunction<typeof process.stderr.write>;
+  let server: DashboardServer | undefined;
+
+  beforeEach(() => {
+    stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(async () => {
+    await server?.stop();
+    server = undefined;
+    stderrSpy.mockRestore();
+  });
+
+  it('logs a build:web hint when staticDir exists but index.html is missing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dash-empty-'));
+    try {
+      server = new DashboardServer({
+        port: 0,
+        host: '127.0.0.1',
+        bus: new LiveEventBus(),
+        staticDir: dir,
+      });
+      const writes = stderrSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(writes).toMatch(/missing index\.html/);
+      expect(writes).toMatch(/npm run build:web/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not log the build:web hint when index.html is present', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dash-built-'));
+    try {
+      writeFileSync(join(dir, 'index.html'), '<!doctype html>');
+      server = new DashboardServer({
+        port: 0,
+        host: '127.0.0.1',
+        bus: new LiveEventBus(),
+        staticDir: dir,
+      });
+      const writes = stderrSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(writes).not.toMatch(/missing index\.html/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not log the build:web hint when staticDir is not configured', () => {
+    server = new DashboardServer({
+      port: 0,
+      host: '127.0.0.1',
+      bus: new LiveEventBus(),
+    });
+    const writes = stderrSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(writes).not.toMatch(/missing index\.html/);
   });
 });
 

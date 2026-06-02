@@ -114,6 +114,24 @@ describe('Sidebar', () => {
     expect(badge.className).toContain('text-accent-red');
   });
 
+  it('caps the badge text at 99+ when alert count exceeds 99', () => {
+    for (let i = 0; i < 100; i += 1) {
+      fireOne({ id: `alert-${i}`, severity: 'warning' });
+    }
+    render(<Sidebar currentPath="/" onNavigate={() => {}} connected={true} />);
+    const badge = screen.getByTestId('alert-badge');
+    expect(badge.textContent).toBe('99+');
+    expect(badge).toHaveAttribute('aria-label', '99+ firing alerts');
+  });
+
+  it('shows the raw count for badges at or below 99', () => {
+    for (let i = 0; i < 99; i += 1) {
+      fireOne({ id: `alert-${i}`, severity: 'warning' });
+    }
+    render(<Sidebar currentPath="/" onNavigate={() => {}} connected={true} />);
+    expect(screen.getByTestId('alert-badge').textContent).toBe('99');
+  });
+
   it('only shows the badge on the Today nav item, not on others', () => {
     fireOne({ id: 'a', severity: 'warning' });
     render(<Sidebar currentPath="/" onNavigate={() => {}} connected={true} />);

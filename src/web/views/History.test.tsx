@@ -250,11 +250,14 @@ describe('History view', () => {
 describe('History data helpers', () => {
   describe('aggregateDailyCost', () => {
     it('groups sessions by day, sums cost, and trims to N most recent days', () => {
+      // Locally-constructed instants so the test is timezone-portable;
+      // UTC ISO strings would shift days under negative-offset runners
+      // after the F-026 fix moved bucketing to local-time getters.
       const out = aggregateDailyCost(
         [
-          { sessionId: 'a', startTime: '2026-05-26T09:00:00Z', estimatedCostUsd: 1.2 },
-          { sessionId: 'b', startTime: '2026-05-26T15:00:00Z', estimatedCostUsd: 0.8 },
-          { sessionId: 'c', startTime: '2026-05-27T10:00:00Z', estimatedCostUsd: 2.4 },
+          { sessionId: 'a', startTime: new Date(2026, 4, 26, 9, 0, 0).getTime(), estimatedCostUsd: 1.2 },
+          { sessionId: 'b', startTime: new Date(2026, 4, 26, 15, 0, 0).getTime(), estimatedCostUsd: 0.8 },
+          { sessionId: 'c', startTime: new Date(2026, 4, 27, 10, 0, 0).getTime(), estimatedCostUsd: 2.4 },
         ],
         30,
       );
@@ -267,8 +270,8 @@ describe('History data helpers', () => {
     it('skips sessions with null cost', () => {
       const out = aggregateDailyCost(
         [
-          { sessionId: 'a', startTime: '2026-05-26T09:00:00Z', estimatedCostUsd: null },
-          { sessionId: 'b', startTime: '2026-05-26T15:00:00Z', estimatedCostUsd: 0.8 },
+          { sessionId: 'a', startTime: new Date(2026, 4, 26, 9, 0, 0).getTime(), estimatedCostUsd: null },
+          { sessionId: 'b', startTime: new Date(2026, 4, 26, 15, 0, 0).getTime(), estimatedCostUsd: 0.8 },
         ],
         30,
       );
@@ -278,7 +281,7 @@ describe('History data helpers', () => {
     it('keeps only the most recent N days when there are more', () => {
       const rows = Array.from({ length: 10 }, (_, i) => ({
         sessionId: `s${i}`,
-        startTime: `2026-05-${String(20 + i).padStart(2, '0')}T09:00:00Z`,
+        startTime: new Date(2026, 4, 20 + i, 9, 0, 0).getTime(),
         estimatedCostUsd: 1,
       }));
       const out = aggregateDailyCost(rows, 3);
@@ -288,6 +291,32 @@ describe('History data helpers', () => {
 
     it('returns an empty array when given no rows', () => {
       expect(aggregateDailyCost([], 30)).toEqual([]);
+    });
+
+    it('buckets sessions by local day, not UTC day', () => {
+      // Construct an instant whose local representation is unambiguous
+      // regardless of the runner's timezone. getTime() yields epoch ms that
+      // round-trip through new Date(...) to the same local Y/M/D/H/M/S.
+      // For runners east of UTC, toISOString() of this instant may report
+      // the next UTC day — local bucketing must still report 05-31.
+      const localLateEvening = new Date(2026, 4, 31, 22, 0, 0).getTime();
+      const out = aggregateDailyCost(
+        [{ sessionId: 'late', startTime: localLateEvening, estimatedCostUsd: 1.5 }],
+        30,
+      );
+      expect(out).toEqual([{ day: '05-31', cost: 1.5 }]);
+    });
+
+    it('buckets local early-morning sessions to their local day', () => {
+      // Mirror of the above in the negative direction: runners west of UTC
+      // see toISOString() report the previous UTC day for an early-morning
+      // local instant, but local bucketing must report 06-01.
+      const localEarlyMorning = new Date(2026, 5, 1, 1, 30, 0).getTime();
+      const out = aggregateDailyCost(
+        [{ sessionId: 'early', startTime: localEarlyMorning, estimatedCostUsd: 0.4 }],
+        30,
+      );
+      expect(out).toEqual([{ day: '06-01', cost: 0.4 }]);
     });
   });
 

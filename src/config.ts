@@ -77,7 +77,7 @@ export interface McpServerConfig {
     readonly evaluationIntervalSeconds: number;
     readonly osNotifications: boolean;
     readonly logRetentionMb: number;
-    readonly rulesPath: string | null;
+    readonly rulesPath: string;
   };
 }
 

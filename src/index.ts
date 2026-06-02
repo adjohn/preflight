@@ -322,37 +322,38 @@ async function main(): Promise<void> {
           void capturedAlertLog.append(event);
         });
 
-        // Initial rule load and fs.watch wiring.
+        // Initial rule load and fs.watch wiring. rulesPath is always a
+        // resolved string after config load (validateRulesPath falls back
+        // to the default when user input is invalid), so no null guard
+        // is needed here.
         const rulesPath = config.alerts.rulesPath;
-        if (rulesPath) {
-          loadAlertRulesFromDisk(alertEngine, rulesPath);
-          try {
-            const fs = await import('node:fs');
-            // fs.watch on macOS fires twice (write + rename) for many editors;
-            // debounce via a 200 ms timer. The watch handle is closed during
-            // shutdown.
-            alertRulesWatcher = fs.watch(rulesPath, { persistent: false }, () => {
-              try {
-                if (alertRulesWatchTimer) clearTimeout(alertRulesWatchTimer);
-                alertRulesWatchTimer = setTimeout(() => {
-                  if (alertEngine) {
-                    loadAlertRulesFromDisk(alertEngine, rulesPath);
-                  }
-                }, 200);
-                alertRulesWatchTimer.unref?.();
-              } catch (err) {
-                logger.warn('Alert rules watch handler errored', { error: String(err) });
-              }
-            });
-            alertRulesWatcher.on('error', (err) => {
-              logger.warn('Alert rules watcher errored', { error: String(err) });
-            });
-          } catch (err) {
-            logger.warn('Could not start fs.watch on alert rules file', {
-              rulesPath,
-              error: String(err),
-            });
-          }
+        loadAlertRulesFromDisk(alertEngine, rulesPath);
+        try {
+          const fs = await import('node:fs');
+          // fs.watch on macOS fires twice (write + rename) for many editors;
+          // debounce via a 200 ms timer. The watch handle is closed during
+          // shutdown.
+          alertRulesWatcher = fs.watch(rulesPath, { persistent: false }, () => {
+            try {
+              if (alertRulesWatchTimer) clearTimeout(alertRulesWatchTimer);
+              alertRulesWatchTimer = setTimeout(() => {
+                if (alertEngine) {
+                  loadAlertRulesFromDisk(alertEngine, rulesPath);
+                }
+              }, 200);
+              alertRulesWatchTimer.unref?.();
+            } catch (err) {
+              logger.warn('Alert rules watch handler errored', { error: String(err) });
+            }
+          });
+          alertRulesWatcher.on('error', (err) => {
+            logger.warn('Alert rules watcher errored', { error: String(err) });
+          });
+        } catch (err) {
+          logger.warn('Could not start fs.watch on alert rules file', {
+            rulesPath,
+            error: String(err),
+          });
         }
 
         // Periodic evaluation. The interval is unref'd so the Node event

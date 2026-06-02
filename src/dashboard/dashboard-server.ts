@@ -1,5 +1,7 @@
 import { createServer, IncomingMessage, ServerResponse, Server as HttpServer } from 'node:http';
 import { AddressInfo } from 'node:net';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { createLogger, VERSION } from '../shared/index.js';
 import { LiveEventBus } from './live-event-bus.js';
 import { createStaticHandler } from './routes/static-handler.js';
@@ -40,6 +42,20 @@ export class DashboardServer {
   constructor(opts: DashboardServerOptions) {
     this.opts = opts;
     this.staticHandler = opts.staticDir ? createStaticHandler(opts.staticDir) : undefined;
+    // F-036: When staticDir is configured but the SPA bundle hasn't been
+    // built (e.g. fresh checkout, skipped `npm run build:web`), every
+    // route returns a silent 404 and the user sees a blank page with no
+    // diagnostic. Surface a one-shot warning at boot so the cause is
+    // obvious in the server log.
+    if (opts.staticDir) {
+      const indexPath = join(opts.staticDir, 'index.html');
+      if (!existsSync(indexPath)) {
+        logger.warn(
+          `Dashboard static dir is missing index.html (${indexPath}). ` +
+            "Run 'npm run build:web' to build the SPA bundle.",
+        );
+      }
+    }
     // Merge alertLog from the top-level options into the api deps so the
     // /api/alerts/recent route can read from it. Top-level opts.alertLog
     // wins over any value already on opts.api.alertLog (it's the

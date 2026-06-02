@@ -809,7 +809,7 @@ Findings begin in the next sections.
 
 ## Medium severity
 
-### [F-024] Sidebar badge has no `99+` cap; visual overflow at 100+ alerts — Medium (UX)
+### ✅ [F-024] Sidebar badge has no `99+` cap; visual overflow at 100+ alerts — Medium (UX)
 **Location:** `src/web/components/Sidebar.tsx:63`
 **Issue:** The badge renders the raw count in a `px-1.5 rounded text-[10px]` container sized for 1–2 digit numbers. With 100+ firing alerts the badge overflows or breaks layout.
 **Impact:** Visual bug at high alert volumes.
@@ -829,7 +829,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-025] AlertBanner ESC handler on outer div with no `tabIndex` — Medium (UX)
+### ✅ [F-025] AlertBanner ESC handler on outer div with no `tabIndex` — Medium (UX)
 **Location:** `src/web/components/AlertBanner.tsx:51-58`
 **Issue:** The outer `<div>` has `onKeyDown` but no `tabIndex`. Only the dismiss `<button>` is keyboard-focusable. The comment claims attaching to the outer container makes ESC work even when title/description spans are focused, but spans without `tabIndex` are never focused. The test that simulates `fireEvent.keyDown(title, ...)` bypasses focus rules and passes anyway.
 **Impact:** ESC works when the dismiss button is focused (the only focusable descendant). The test passes for the wrong reason.
@@ -848,7 +848,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-026] `aggregateDailyCost` uses UTC dates — wrong day for negative-offset users — Medium (CORR)
+### ✅ [F-026] `aggregateDailyCost` uses UTC dates — wrong day for negative-offset users — Medium (CORR)
 **Location:** `src/web/views/History.tsx:284`
 **Issue:** `new Date(r.startTime).toISOString().slice(5, 10)` always produces UTC. A session at 10 PM in UTC-5 is at 3 AM UTC next day, attributed to the wrong day.
 **Impact:** History chart bars are mis-attributed for users west of UTC.
@@ -871,7 +871,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-027] `SessionTimeline` row keys collide for concurrent same-tool calls — Medium (CORR)
+### ✅ [F-027] `SessionTimeline` row keys collide for concurrent same-tool calls — Medium (CORR)
 **Location:** `src/web/views/Sessions.tsx:117`
 **Issue:** Key `${c.startTime}-${c.toolName}` collides when two `Read` calls share `startTime` (possible if pre-events arrive in the same millisecond). React drops one row silently and logs a warning.
 **Impact:** Missing rows in busy sessions.
@@ -888,7 +888,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-028] `useSyncExternalStore` ready-gate in `App.tsx` is dead code — Medium (DOC)
+### ✅ [F-028] `useSyncExternalStore` ready-gate in `App.tsx` is dead code — Medium (DOC)
 **Location:** `src/web/App.tsx:17-22`
 **Issue:** The `useSyncExternalStore` block returns `false` only during SSR. This app has no SSR (it's a Vite SPA). The `if (!isClient) return <></>` guard never runs. `useLiveEvents()` is called above the guard, so even the intent of "delay subscription" doesn't hold.
 **Impact:** No bug, but confusing dead code that misleads future readers.
@@ -905,7 +905,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-029] `Audit` view has no virtualization — freezes on large logs — Medium (PERF)
+### ✅ [F-029] `Audit` view has no virtualization — freezes on large logs — Medium (PERF)
 **Location:** `src/web/views/Audit.tsx:86-127`
 **Issue:** All audit rows are rendered in a single `<table>`. With thousands of entries the page hangs during render.
 **Impact:** Long sessions (500+ tool calls each generating audit entries) make the Audit view unusable.
@@ -934,7 +934,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-030] `rulesPath: string | null` interface lies; null guard is dead — Medium (TYPE)
+### ✅ [F-030] `rulesPath: string | null` interface lies; null guard is dead — Medium (TYPE)
 **Location:** `src/config.ts:80` (interface) and `src/index.ts:327`
 **Issue:** Interface declares `string | null` but the loader always returns a non-null string (default fallback to `~/.nr-ai-observe/alerts/rules.json`). The `if (rulesPath)` guard in `index.ts` can never be false. A future loader change that legitimately produces `null` would silently disable rules.
 **Impact:** Type-system lie; latent regression vector.
@@ -952,7 +952,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-031] Privacy mock doesn't cover global `fetch` — Medium (TEST)
+### ✅ [F-031] Privacy mock doesn't cover global `fetch` — Medium (TEST)
 **Location:** `src/index.privacy.test.ts:26-42`
 **Issue:** The mock intercepts `node:http` and `node:https` `request` but not the global `fetch` introduced in Node 18+. If any dependency uses `fetch` in its outbound path (likely for OTLP exporters or future dependencies), the privacy proof would not detect it.
 **Impact:** Privacy promise has a known coverage gap.
@@ -974,7 +974,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-032] Linux notify-send ENOENT logs as "unexpected error" — Medium (UX)
+### ✅ [F-032] Linux notify-send ENOENT logs as "unexpected error" — Medium (UX)
 **Location:** `src/alerts/os-notifier.ts:121`
 **Issue:** When `notify-send` is not installed on Linux, the outer try/catch logs `'os-notifier: unexpected error'`. The message looks like a code bug rather than a missing binary.
 **Impact:** Developer confusion when enabling OS notifications on Linux.
@@ -1001,7 +1001,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-033] Static handler directory request → SPA fallback (untested) — Medium (CORR)
+### ✅ [F-033] Static handler directory request → SPA fallback (untested) — Medium (CORR)
 **Location:** `src/dashboard/routes/static-handler.ts:50-53`
 **Issue:** A request for an existing directory (e.g., `/assets/`) succeeds the `stat`, fails `isFile()`, then falls through to `serveIndexFallback` returning `index.html` with 200. This is technically valid SPA behaviour but masks misconfigured asset paths in development.
 **Impact:** `/assets/` returns the SPA HTML, which the browser tries to interpret as `index.html` — confusing in DevTools.
@@ -1027,7 +1027,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-034] No `Cache-Control` headers on static assets — Medium (PERF)
+### ✅ [F-034] No `Cache-Control` headers on static assets — Medium (PERF)
 **Location:** `src/dashboard/routes/static-handler.ts:56-61`
 **Issue:** Every asset is served without `Cache-Control`. Vite-built assets have content-hash filenames (`main-abc123.js`) and should be served with `Cache-Control: max-age=31536000, immutable`. `index.html` should be `no-cache`.
 **Impact:** Browser cache behavior is unpredictable; full re-downloads on every page load.
@@ -1058,7 +1058,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-035] `/api/sessions` uses `loadAllSessions` (cost shape) — Medium (CORR)
+### ✅ [F-035] `/api/sessions` uses `loadAllSessions` (cost shape) — Medium (CORR)
 **Location:** `src/dashboard/routes/api-handler.ts:91`
 **Issue:** `loadAllSessions?.() ?? listSessions()` — when `loadAllSessions` is present it's called with no `since` filter and returns the cost-analysis-only `SessionLikeForCostOutcome[]` shape. The Sessions view may rely on fields not present in that shape (e.g., full `outcome` data, `developer`).
 **Impact:** Sessions list may render incomplete data when both helpers are wired.
@@ -1081,7 +1081,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-036] Missing `index.html` returns silent 404 with no diagnostic — Medium (UX)
+### ✅ [F-036] Missing `index.html` returns silent 404 with no diagnostic — Medium (UX)
 **Location:** `src/dashboard/routes/static-handler.ts:31-35`
 **Issue:** If `dist/web/` was never built, every SPA route returns an empty 404. No log, no helpful message.
 **Impact:** First-time users who skip `npm run build:web` see a blank page they can't diagnose.

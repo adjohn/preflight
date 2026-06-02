@@ -50,6 +50,11 @@ export function Audit(): JSX.Element {
 
   const rows = data ?? [];
   const visible = filter === 'all' ? rows : rows.filter((r) => r.classification === filter);
+  // F-029: Cap rendered rows so the Audit view stays responsive on large
+  // logs. Server-side pagination is the proper fix; this guard prevents
+  // the table from freezing the page in the meantime.
+  const VISIBLE_LIMIT = 200;
+  const visibleSlice = visible.slice(0, VISIBLE_LIMIT);
 
   return (
     <section>
@@ -85,6 +90,12 @@ export function Audit(): JSX.Element {
       {isLoading && <div className="text-ink-muted text-xs">Loading…</div>}
       {error && <div className="text-accent-red text-xs">Error loading audit log.</div>}
 
+      {!isLoading && !error && visible.length > VISIBLE_LIMIT && (
+        <div className="text-[11px] text-ink-muted mb-2">
+          Showing first {VISIBLE_LIMIT} of {visible.length} entries.
+        </div>
+      )}
+
       {!isLoading && !error && (
         <div className="bg-bg-panel border border-bg-line rounded">
           <table className="w-full text-xs">
@@ -105,7 +116,7 @@ export function Audit(): JSX.Element {
                   </td>
                 </tr>
               )}
-              {visible.map((r) => (
+              {visibleSlice.map((r) => (
                 <tr
                   key={`${r.ts}-${r.tool}-${r.target}`}
                   className="border-t border-bg-line"

@@ -174,7 +174,11 @@ export function createApiHandler(deps: ApiHandlerDeps): (req: IncomingMessage, r
     if (!Number.isNaN(parsed)) {
       limit = Math.min(Math.max(parsed, 1), 500);
     }
-    const allSessions = deps.sessionStore.loadAllSessions?.() ?? deps.sessionStore.listSessions();
+    // F-035: Always use listSessions() — loadAllSessions returns the
+    // narrower SessionLikeForCostOutcome shape that drops fields the
+    // Sessions view needs (model, developer, full toolBreakdown, etc.).
+    // loadAllSessions is reserved for the cost-per-outcome endpoints.
+    const allSessions = deps.sessionStore.listSessions();
     const sliced = allSessions.slice(-limit) as unknown[];
 
     // Append the current live session so it appears in the list before shutdown
