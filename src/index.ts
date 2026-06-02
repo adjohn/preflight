@@ -267,7 +267,7 @@ async function main(): Promise<void> {
       // Resolve relative to the running entry script so this works whether the
       // server is launched from source via tsx or from the compiled dist/ bin.
       const here = dirname(process.argv[1] ?? process.cwd());
-      const staticDir = resolvePath(here, '..', 'web');
+      const staticDir = resolvePath(here, 'web');
 
       dashboardServer = new DashboardServer({
         port: config.dashboard.port,
