@@ -224,6 +224,128 @@ describe('LocalAlertEngine — budget rules', () => {
     expect(events).toHaveLength(2);
     expect(calls).toBe(2);
   });
+
+  it('emits cleared when session cost drops below firing spentUsd (session reset)', () => {
+    const engine = new LocalAlertEngine();
+    engine.loadRules([makeBudgetRule({ threshold: 80 })]);
+    const seen: AlertEvent[] = [];
+    engine.setOnAlert((e) => seen.push(e));
+
+    const t0 = 1700000000000;
+    // Fire at 80% with $4 spent.
+    let events = engine.evaluate(
+      makeSnapshot({
+        cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 },
+        budgetThresholds: [
+          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
+        ],
+      }),
+      t0,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]!.state).toBe('firing');
+
+    // New Claude Code session starts: CostTracker resets, sessionUsd drops to 0,
+    // BudgetTracker stops emitting any threshold breach.
+    events = engine.evaluate(
+      makeSnapshot({ cost: { sessionUsd: 0, todayUsd: 0, weekUsd: 0 } }),
+      t0 + 1000,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]!.state).toBe('cleared');
+    expect(events[0]!.id).toBe('session-budget');
+    expect(engine.getFiringRuleIds()).toEqual([]);
+  });
+
+  it('does not re-fire after clearing when no threshold matches', () => {
+    const engine = new LocalAlertEngine();
+    engine.loadRules([makeBudgetRule({ threshold: 80 })]);
+
+    const t0 = 1700000000000;
+    engine.evaluate(
+      makeSnapshot({
+        cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 },
+        budgetThresholds: [
+          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
+        ],
+      }),
+      t0,
+    );
+    // Session resets → cleared.
+    engine.evaluate(
+      makeSnapshot({ cost: { sessionUsd: 0, todayUsd: 0, weekUsd: 0 } }),
+      t0 + 1000,
+    );
+    // Subsequent tick with no threshold breach should produce no events.
+    const events = engine.evaluate(
+      makeSnapshot({ cost: { sessionUsd: 0, todayUsd: 0, weekUsd: 0 } }),
+      t0 + 2000,
+    );
+    expect(events).toEqual([]);
+  });
+
+  // F-009 + loadRules interaction: loadRules() preserves state for rules
+  // whose id is unchanged. A hot-reload between fire and clear must not
+  // wipe `firedSpentUsd`, otherwise the next snapshot with sessionUsd=0
+  // would silently keep the rule firing.
+  it('preserves firedSpentUsd across hot-reload so the F-009 clear path still fires', () => {
+    const engine = new LocalAlertEngine();
+    const rule = makeBudgetRule({ threshold: 80 });
+    engine.loadRules([rule]);
+
+    const t0 = 1700000000000;
+    let events = engine.evaluate(
+      makeSnapshot({
+        cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 },
+        budgetThresholds: [
+          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
+        ],
+      }),
+      t0,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]!.state).toBe('firing');
+
+    // Hot-reload: rules.json changed (e.g. user edited the threshold)
+    // but the rule id is unchanged, so engine state is preserved.
+    const reloaded = makeBudgetRule({ threshold: 80, name: 'Renamed' });
+    engine.loadRules([reloaded]);
+    expect(engine.getFiringRuleIds()).toEqual(['session-budget']);
+
+    // Session resets — sessionUsd drops to 0, below the preserved
+    // firedSpentUsd of 4 → rule clears.
+    events = engine.evaluate(
+      makeSnapshot({ cost: { sessionUsd: 0, todayUsd: 0, weekUsd: 0 } }),
+      t0 + 1000,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]!.state).toBe('cleared');
+    expect(engine.getFiringRuleIds()).toEqual([]);
+  });
+
+  it('does not clear session rule while session cost stays above firing spentUsd', () => {
+    const engine = new LocalAlertEngine();
+    engine.loadRules([makeBudgetRule({ threshold: 80 })]);
+
+    const t0 = 1700000000000;
+    engine.evaluate(
+      makeSnapshot({
+        cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 },
+        budgetThresholds: [
+          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
+        ],
+      }),
+      t0,
+    );
+    // BudgetTracker dedupes within a period — no thresholds emitted on next tick,
+    // but cost is unchanged. Rule must stay firing (no flapping).
+    const events = engine.evaluate(
+      makeSnapshot({ cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 } }),
+      t0 + 1000,
+    );
+    expect(events).toEqual([]);
+    expect(engine.getFiringRuleIds()).toEqual(['session-budget']);
+  });
 });
 
 describe('LocalAlertEngine — clock + state housekeeping', () => {

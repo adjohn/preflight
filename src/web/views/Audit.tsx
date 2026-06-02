@@ -23,18 +23,20 @@ export function downloadJsonl(rows: AuditEntry[]): void {
   const text = rows.map((r) => JSON.stringify(r)).join('\n');
   const blob = new Blob([text], { type: 'application/x-ndjson' });
   const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `audit-${new Date().toISOString().slice(0, 10)}.jsonl`;
+  a.rel = 'noopener';
+  // F-018: Firefox silently no-ops .click() on an anchor that's not in
+  // the DOM. Append before clicking, then remove. Chromium/Safari work
+  // either way; the append is harmless there.
+  document.body.appendChild(a);
   try {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `audit-${new Date().toISOString().slice(0, 10)}.jsonl`;
-    a.rel = 'noopener';
     a.click();
   } finally {
+    document.body.removeChild(a);
     // Revoke synchronously: a.click() returns once the browser has
-    // queued the navigation/save, so the blob URL is no longer
-    // needed. The original setTimeout(…, 1000) leaked the URL if
-    // the page navigated, the user cancelled the save dialog, or
-    // the tab closed before the timer fired.
+    // queued the navigation/save, so the blob URL is no longer needed.
     URL.revokeObjectURL(url);
   }
 }

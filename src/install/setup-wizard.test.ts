@@ -383,6 +383,31 @@ describe('setupWizard mode branch', () => {
     expect(written.licenseKey).toBe('NRLIC-test');
     expect(written.dashboard).toEqual({ port: 7777, host: '127.0.0.1', openOnStart: false });
   });
+
+  // F-020: in cloud mode, the wizard MUST NOT copy the starter alert
+  // rules — the alert engine isn't constructed, so the on-disk rules
+  // file would be ignored and would just clutter the user's home dir.
+  // The mode-gating in setup-wizard.ts:276 was correct, but no test
+  // pinned the negative case; removing the guard would not have broken
+  // any existing test.
+  it("when mode='cloud', does NOT copy starter alert rules (F-020)", async () => {
+    // Cloud mode skips the dashboardPort and copyStarterRules prompts,
+    // so the answer sequence is shorter than the local/both flows.
+    // Order: mode, accountId, licenseKey, developer, teamId, projectId,
+    //        sessionBudget, installHooks
+    answers('cloud', '12345', 'NRLIC-test', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.mode).toBe('cloud');
+    // The starter rules copy must not have run.
+    expect(mockedFs.copyFileSync).not.toHaveBeenCalled();
+    // And the user must not have been prompted about it.
+    const promptMessages = mockRl.question.mock.calls.map((c) => String(c[0]).toLowerCase());
+    expect(promptMessages.some((m) => m.includes('starter alert rules'))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

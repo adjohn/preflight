@@ -91,6 +91,26 @@ describe('Today view', () => {
     expect(screen.getByText(/\+\$6\.23/)).toBeInTheDocument();
   });
 
+  // Regression for F-017: the +$ prefix used to be hardcoded, so a
+  // downward-revised forecast (delta < 0) rendered as `+$-1.23 from now`.
+  it('renders a negative delta with a leading "−$" not "+$-" (F-017)', () => {
+    useLiveStore.setState({
+      cost: { sessionTotalUsd: 3.42, todayTotalUsd: 10, forecastEodUsd: 8 },
+    });
+    renderToday();
+    // Match the rendered delta strictly; reject the legacy bug substring.
+    expect(screen.getByText(/−\$2\.00/)).toBeInTheDocument();
+    expect(screen.queryByText(/\+\$-2\.00/)).toBeNull();
+  });
+
+  it('still renders a positive delta with "+$" (F-017 regression guard)', () => {
+    useLiveStore.setState({
+      cost: { sessionTotalUsd: 3.42, todayTotalUsd: 10, forecastEodUsd: 12 },
+    });
+    renderToday();
+    expect(screen.getByText(/\+\$2\.00/)).toBeInTheDocument();
+  });
+
   it('shows an "insufficient data" message when forecast is null', () => {
     useLiveStore.setState({
       cost: { sessionTotalUsd: 3.42, todayTotalUsd: 12.17, forecastEodUsd: null },
@@ -289,5 +309,60 @@ describe('Today view — Recent alerts panel', () => {
       String(c[0]).includes('/api/alerts/recent'),
     );
     expect(alertsCalls).toHaveLength(1);
+  });
+
+  // Regression for F-016: AlertLog.readRecent returns the file's last N
+  // lines in append (chronological) order — oldest-first within the slice.
+  // The panel must sort descending by firedAt so the most-recent firing
+  // sits at the top.
+  it('orders rows by firedAt descending (most recent first — F-016)', async () => {
+    const oldAlert = {
+      id: 'rule-old',
+      state: 'firing' as const,
+      severity: 'warning' as const,
+      title: 'Old alert',
+      description: 'd',
+      value: 1,
+      threshold: 0,
+      firedAt: 1000,
+    };
+    const middleAlert = {
+      id: 'rule-mid',
+      state: 'firing' as const,
+      severity: 'warning' as const,
+      title: 'Middle alert',
+      description: 'd',
+      value: 1,
+      threshold: 0,
+      firedAt: 2000,
+    };
+    const newAlert = {
+      id: 'rule-new',
+      state: 'firing' as const,
+      severity: 'warning' as const,
+      title: 'New alert',
+      description: 'd',
+      value: 1,
+      threshold: 0,
+      firedAt: 3000,
+    };
+    // Server returns in append order (oldest first); UI must reverse.
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify([oldAlert, middleAlert, newAlert]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ) as typeof fetch;
+
+    renderToday();
+
+    await screen.findByText('New alert');
+    const titles = screen.getAllByText(/(?:Old|Middle|New) alert/);
+    expect(titles.map((el) => el.textContent)).toEqual([
+      'New alert',
+      'Middle alert',
+      'Old alert',
+    ]);
   });
 });

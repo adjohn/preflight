@@ -4,35 +4,38 @@ import { useLiveStore } from '../store/liveStore';
 export function useLiveEvents(url: string = '/sse'): void {
   useEffect(() => {
     const es = new EventSource(url);
-    const store = useLiveStore.getState();
 
     es.onopen = (): void => useLiveStore.getState().setConnected(true);
     es.onerror = (): void => useLiveStore.getState().setConnected(false);
 
+    // F-019: read live state inside each callback rather than capturing
+    // a one-time snapshot at effect-run time. Zustand action references
+    // are stable today, but a future memoization or selector wrapper
+    // would silently break the captured-snapshot pattern.
     const onToolCall = (e: MessageEvent): void => {
       try {
-        store.pushToolCall(JSON.parse(e.data));
+        useLiveStore.getState().pushToolCall(JSON.parse(e.data));
       } catch {
         /* ignore malformed */
       }
     };
     const onCost = (e: MessageEvent): void => {
       try {
-        store.setCost(JSON.parse(e.data));
+        useLiveStore.getState().setCost(JSON.parse(e.data));
       } catch {
         /* ignore malformed */
       }
     };
     const onAnti = (e: MessageEvent): void => {
       try {
-        store.pushAntiPattern(JSON.parse(e.data));
+        useLiveStore.getState().pushAntiPattern(JSON.parse(e.data));
       } catch {
         /* ignore malformed */
       }
     };
     const onAlert = (e: MessageEvent): void => {
       try {
-        store.addOrUpdateAlert(JSON.parse(e.data));
+        useLiveStore.getState().addOrUpdateAlert(JSON.parse(e.data));
       } catch {
         /* ignore malformed */
       }

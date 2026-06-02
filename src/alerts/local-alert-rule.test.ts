@@ -237,4 +237,63 @@ describe('parseLocalAlertRules — bulk parsing', () => {
     expect(valid).toHaveLength(0);
     expect(invalid).toHaveLength(0);
   });
+
+  // F-022: two rules sharing an `id` both pass schema validation, but the
+  // LocalAlertEngine keys state by id, so the second silently shadowed
+  // the first. Drop duplicates here, keeping the first occurrence and
+  // surfacing the rest as `invalid`.
+  it('drops duplicate rule ids — keeps the first occurrence (F-022)', () => {
+    const { valid, invalid } = parseLocalAlertRules([
+      {
+        id: 'shared',
+        name: 'First',
+        type: 'budget.session',
+        severity: 'warning',
+        threshold: 50,
+      },
+      {
+        id: 'shared',
+        name: 'Second (different threshold)',
+        type: 'budget.session',
+        severity: 'critical',
+        threshold: 80,
+      },
+      {
+        id: 'distinct',
+        name: 'Distinct',
+        type: 'budget.session',
+        severity: 'warning',
+        threshold: 50,
+      },
+    ]);
+    expect(valid).toHaveLength(2);
+    expect(valid.map((r) => r.id)).toEqual(['shared', 'distinct']);
+    // First-wins: keep the warning/threshold=50 rule, not the critical/80 one.
+    expect(valid[0]!.name).toBe('First');
+    expect(invalid).toHaveLength(1);
+    expect(invalid[0]!.error).toMatch(/duplicate rule id 'shared'/);
+  });
+
+  it('logs a warning when a duplicate rule id is dropped (F-022)', () => {
+    const warnSpy = jest.spyOn(process.stderr, 'write');
+    parseLocalAlertRules([
+      {
+        id: 'dup',
+        name: 'A',
+        type: 'budget.session',
+        severity: 'warning',
+        threshold: 50,
+      },
+      {
+        id: 'dup',
+        name: 'B',
+        type: 'budget.session',
+        severity: 'warning',
+        threshold: 50,
+      },
+    ]);
+    const captured = warnSpy.mock.calls.map((args) => String(args[0])).join('');
+    expect(captured).toContain('duplicate alert rule id');
+    expect(captured).toContain('"id":"dup"');
+  });
 });

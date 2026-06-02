@@ -399,8 +399,43 @@ async function main(): Promise<void> {
         alertEngine,
         alertLog,
       });
-      const addr = await dashboardServer.start();
+      let addr;
+      try {
+        addr = await dashboardServer.start();
+      } catch (err) {
+        // F-014: rewrap EADDRINUSE with an actionable hint pointing at the
+        // env var that overrides the port. Other errors propagate untouched.
+        if (
+          err &&
+          typeof err === 'object' &&
+          'code' in err &&
+          (err as { code?: string }).code === 'EADDRINUSE'
+        ) {
+          // Pick a sensible suggestion that always lands inside the valid
+          // 1–65535 range. Adjacent ports usually work; if the user is at
+          // the top of the range we wrap to 7778 (the documented default
+          // alternative). 0 is also valid (ephemeral) but unhelpful as a
+          // hint, so avoid suggesting it.
+          const port = config.dashboard.port;
+          const suggested = port < 65535 ? port + 1 : 7778;
+          throw new Error(
+            `Dashboard port ${port} is already in use. ` +
+            `Set NR_AI_DASHBOARD_PORT to a different port (e.g. ${suggested}) ` +
+            `or stop the process using port ${port}.`,
+          );
+        }
+        throw err;
+      }
       logger.info(`Dashboard ready at http://${addr.address}:${addr.port}`);
+      // F-013: openOnStart is declared in config but auto-open isn't
+      // implemented in v1 — log a warning so a user who set it doesn't
+      // assume the feature works silently.
+      if (config.dashboard.openOnStart) {
+        logger.warn(
+          'dashboard.openOnStart is not implemented in v1; the dashboard URL is logged above. ' +
+          'Open it manually in your browser.',
+        );
+      }
     }
 
     let capturedNrIngest: NrIngestManager | undefined;

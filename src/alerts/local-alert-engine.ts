@@ -75,6 +75,10 @@ interface RuleState {
   lastClearedAt: number;
   firedPeriodKey?: string;
   firstBelowAt?: number;
+  // For budget.session rules: the snapshot's spentUsd at fire time.
+  // When the next snapshot's session cost drops below this value, the
+  // CostTracker has reset (a new session started) and the rule should clear.
+  firedSpentUsd?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,20 +125,12 @@ export class LocalAlertEngine {
       if (!idsAfter.has(id)) this.state.delete(id);
     }
     this.rules = [...rules];
-    // Warn about rules that the v1.1 collector cannot evaluate (today/week
-    // cost variants). The rule still loads — it just never fires.
-    for (const rule of rules) {
-      if (
-        rule.enabled &&
-        rule.type === 'cost.window' &&
-        (rule.costPeriod === 'today' || rule.costPeriod === 'week')
-      ) {
-        logger.warn(
-          'cost.window rule will not fire — today/week cost is stubbed in v1.1; use costPeriod: "session" until v1.2',
-          { ruleId: rule.id, costPeriod: rule.costPeriod },
-        );
-      }
-    }
+    // Note: the v1.1-only warning about cost.window today/week rules
+    // lives in loadAlertRulesFromDisk (src/index.ts) so it fires once
+    // per disk load with the rule id and exact costPeriod inline. We
+    // deliberately don't duplicate it here — programmatic callers (tests,
+    // future code) get the rule loaded without stderr noise; the user-
+    // facing path that reads rules.json still surfaces the warning.
     logger.debug('Loaded alert rules', { count: this.rules.length });
   }
 
@@ -444,6 +440,7 @@ export class LocalAlertEngine {
       state.status = 'firing';
       state.lastFiredAt = now;
       state.firedPeriodKey = periodKey;
+      state.firedSpentUsd = matching.spentUsd;
       out.push({
         id: rule.id,
         state: 'firing',
@@ -466,11 +463,21 @@ export class LocalAlertEngine {
       if (stored) {
         const [, , storedPeriodKey] = stored.split('|');
         const currentPeriodKey = this.periodKey(period, now);
-        if (storedPeriodKey !== currentPeriodKey) {
+        // Session period rolls over via CostTracker reset (new Claude Code
+        // session) rather than calendar turnover, so periodKey() returns the
+        // constant `'session:infinite'` and storedPeriodKey === currentPeriodKey
+        // forever. Detect the reset by watching for sessionUsd dropping below
+        // the spent value at fire time.
+        const sessionReset =
+          period === 'session' &&
+          state.firedSpentUsd !== undefined &&
+          snapshot.cost.sessionUsd < state.firedSpentUsd;
+        if (storedPeriodKey !== currentPeriodKey || sessionReset) {
           state.status = 'idle';
           const lastFiredAt = state.lastFiredAt;
           state.lastFiredAt = now;
           state.firedPeriodKey = undefined;
+          state.firedSpentUsd = undefined;
           out.push({
             id: rule.id,
             state: 'cleared',

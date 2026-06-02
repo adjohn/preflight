@@ -1,5 +1,7 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { AddressInfo } from 'node:net';
+import { EventEmitter } from 'node:events';
+import { jest } from '@jest/globals';
 import { LiveEventBus } from '../live-event-bus.js';
 import { createSseHandler } from './sse-handler.js';
 
@@ -177,10 +179,96 @@ describe('sse-handler', () => {
     }
   });
 
+  // Regression for F-010. A client sending Last-Event-ID: -1 (or any negative
+  // number) must NOT trigger a replay. With the original bug, replaySeq would
+  // be -1 (no replay) but nextLocalSeq became 0; the next reconnect with
+  // Last-Event-ID: 0 then replayed the entire bus buffer.
+  it('Last-Event-ID: -1 does not trigger replay (F-010 regression)', async () => {
+    const bus = new LiveEventBus();
+    bus.emit('tool-call', { id: 'a', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
+    bus.emit('tool-call', { id: 'b', tool: 'Edit', durationMs: 2, costUsd: 0, ts: 2 });
+    const server = await startTestServer(createSseHandler(bus));
+    try {
+      const res = await fetch(`${server.url}/sse`, {
+        headers: { 'last-event-id': '-1' },
+      });
+      await new Promise((r) => setTimeout(r, 30));
+      // Trigger a live event so the readSseChunks call resolves.
+      bus.emit('tool-call', { id: 'live', tool: 'Read', durationMs: 1, costUsd: 0, ts: 3 });
+      const chunks = await readSseChunks(res, 2);
+      const merged = chunks.join('');
+      // Only the live event arrives — the buffered 'a' and 'b' must NOT replay.
+      expect(merged).toContain('"id":"live"');
+      expect(merged).not.toContain('"id":"a"');
+      expect(merged).not.toContain('"id":"b"');
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('Last-Event-ID: not-a-number does not trigger replay (F-010 regression)', async () => {
+    const bus = new LiveEventBus();
+    bus.emit('tool-call', { id: 'a', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
+    bus.emit('tool-call', { id: 'b', tool: 'Edit', durationMs: 2, costUsd: 0, ts: 2 });
+    const server = await startTestServer(createSseHandler(bus));
+    try {
+      const res = await fetch(`${server.url}/sse`, {
+        headers: { 'last-event-id': 'not-a-number' },
+      });
+      await new Promise((r) => setTimeout(r, 30));
+      bus.emit('tool-call', { id: 'live', tool: 'Read', durationMs: 1, costUsd: 0, ts: 3 });
+      const chunks = await readSseChunks(res, 2);
+      const merged = chunks.join('');
+      expect(merged).toContain('"id":"live"');
+      expect(merged).not.toContain('"id":"a"');
+      expect(merged).not.toContain('"id":"b"');
+    } finally {
+      await server.close();
+    }
+  });
+
   // Heartbeats use a string id like "hb-<ts>" so they don't share the bus
   // seq namespace. The browser sends them back as Last-Event-ID on reconnect;
   // parseInt("hb-...") → NaN → no replay. This guards against a heartbeat id
   // contaminating the seq numbering and triggering an unintended replay.
+  // Regression for F-023. Both `req.on('close')` and `res.on('close')` register
+  // the same cleanup function — on a normal disconnect both fire. The
+  // `cleaned` guard makes the second invocation a no-op so a future change
+  // (e.g. wrapping cleanup in something that side-effects) can't introduce
+  // a real double-execution bug. This test asserts each `bus.offWithSeq`
+  // is called exactly once even when both close events fire.
+  it('cleanup runs exactly once when both req and res emit close (F-023)', () => {
+    const bus = new LiveEventBus();
+    const offSpy = jest.spyOn(bus, 'offWithSeq');
+
+    // Synthesize req + res as EventEmitters so we can drive close events.
+    const req = new EventEmitter() as IncomingMessage;
+    req.headers = {};
+    const res = new EventEmitter() as ServerResponse;
+    // The handler calls res.writeHead and res.write — stub them.
+    (res as unknown as { writeHead: jest.Mock }).writeHead = jest.fn();
+    (res as unknown as { write: jest.Mock }).write = jest.fn();
+
+    createSseHandler(bus)(req, res);
+    // Sanity: bus.onWithSeq attached one listener per channel (4 total).
+    expect(offSpy).not.toHaveBeenCalled();
+
+    // Both close events fire — cleanup runs twice but the guard makes the
+    // second a no-op, so each bus.offWithSeq is called exactly once.
+    req.emit('close');
+    res.emit('close');
+
+    const callsByEvent: Record<string, number> = {};
+    for (const [event] of offSpy.mock.calls) {
+      callsByEvent[event as string] = (callsByEvent[event as string] ?? 0) + 1;
+    }
+    expect(callsByEvent['tool-call']).toBe(1);
+    expect(callsByEvent['cost-update']).toBe(1);
+    expect(callsByEvent['anti-pattern']).toBe(1);
+    expect(callsByEvent['alert']).toBe(1);
+    expect(offSpy).toHaveBeenCalledTimes(4);
+  });
+
   it('heartbeat frame id is non-numeric ("hb-<ts>") and does not affect bus seq', async () => {
     const bus = new LiveEventBus();
     // Construct an SSE handler with a 50ms heartbeat by NOT using the

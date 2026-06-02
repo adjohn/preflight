@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { AlertBanner } from './AlertBanner';
 import { useLiveAlerts } from '../hooks/useLiveAlerts';
@@ -28,6 +28,14 @@ const SEVERITY_BORDER: Record<Severity, string> = {
 export function AlertBannerStack(): JSX.Element | null {
   const { alerts, maxSeverity, count, dismiss } = useLiveAlerts();
   const [expanded, setExpanded] = useState(false);
+
+  // F-015: when count drops back below the collapse threshold the expanded
+  // path renders without a collapse button (because count < threshold), so
+  // a stuck-expanded user could never recollapse without reloading. Reset
+  // expanded so the next time the threshold is crossed it starts collapsed.
+  useEffect(() => {
+    if (count < COLLAPSE_THRESHOLD) setExpanded(false);
+  }, [count]);
 
   if (count === 0) return null;
 

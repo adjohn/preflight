@@ -376,9 +376,11 @@ Findings begin in the next sections.
 
 ---
 
-## High severity
+## ✅ High severity
 
-### [F-009] `budget.session` rule never emits cleared event — banner stays forever — High (CORR)
+### ✅ [F-009] `budget.session` rule never emits cleared event — banner stays forever — High (CORR)
+**Status:** Fixed in commit `ef1bb6b`. Added `firedSpentUsd` to `RuleState`; clear branch detects session reset when `cost.sessionUsd < firedSpentUsd`. Three new tests cover clear-on-reset, no re-fire post-clear, and no spurious clear while cost stays above firing spent.
+
 **Location:** `src/alerts/local-alert-engine.ts:460-485, 501-509`
 **Issue:** Once a `budget.session` rule fires, it stays in `firing` for the entire process lifetime. The clear logic only fires when `storedPeriodKey !== currentPeriodKey`, but `periodKey('session', now)` returns the constant `'session:infinite'`, so the keys never differ. Starting a new Claude Code session (which resets the `CostTracker`) does not clear the alert.
 **Impact:** Banner persists indefinitely. The smoke-test step "Within one evaluation interval, the banner disappears and a cleared line is appended" will never pass for `budget.session` rules.
@@ -408,7 +410,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-010] Negative `Last-Event-ID` enables full unintended replay on next reconnect — High (CORR)
+### ✅ [F-010] Negative `Last-Event-ID` enables full unintended replay on next reconnect — High (CORR)
+**Status:** Fixed in commit `db10881`. The clamping fix (`rawSeq >= 0`) had already landed during F-005 work; this commit adds the missing regression tests for `Last-Event-ID: -1` and `Last-Event-ID: not-a-number`.
+
 **Location:** `src/dashboard/routes/sse-handler.ts:26-33`
 **Issue:** A client sending `Last-Event-ID: -1` gets `replaySeq = -1 < 0` so no replay runs, but `nextLocalSeq = -1 + 1 = 0`. The first live event is sent with `id: 0`. On the next reconnect, the browser sends `Last-Event-ID: 0`, triggering `bus.replayFrom(0)` — a full replay of all 100 buffered events. (Note: this finding compounds with F-005 above — fix F-005 first.)
 **Impact:** A second reconnect floods the client with up to 100 buffered events, causing UI duplicates.
@@ -433,7 +437,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-011] `start()` error listener never removed — runtime errors silently swallowed — High (LIFE)
+### ✅ [F-011] `start()` error listener never removed — runtime errors silently swallowed — High (LIFE)
+**Status:** Fixed in commit `31f7ec5`. On listen success, the rejecter is removed and a permanent error logger is attached. Regression test asserts post-start errors are logged.
+
 **Location:** `src/dashboard/dashboard-server.ts:88`
 **Issue:** `server.once('error', reject)` remains attached after `start()` resolves. A later runtime error on the server (e.g., the OS reclaims the port, NIC change) calls `reject` on the already-resolved promise — a no-op. Because the `once` listener consumed the error event, Node does not re-emit it. The error is silently dropped with no log entry.
 **Impact:** Production failures are invisible; debugging is impossible.
@@ -463,7 +469,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-012] `Host: 127.0.0.1:1234.evil.com` passes validation — High (SEC)
+### ✅ [F-012] `Host: 127.0.0.1:1234.evil.com` passes validation — High (SEC)
+**Status:** Fixed in commit `27b942a`. Both the IPv4/hostname and bracketed-IPv6 paths now reject any non-numeric or empty port suffix. Tests cover `127.0.0.1:abc.evil.com`, `127.0.0.1:`, `localhost:7777.evil.com`, and `[::1]:abc`.
+
 **Location:** `src/dashboard/dashboard-server.ts:174-185`
 **Issue:** The Host validator splits on the first `:`, extracts `127.0.0.1`, and returns true. A non-numeric port suffix is not rejected. Not exploitable via browser-based DNS rebinding (browsers don't allow JS to set malformed Host headers), but a raw HTTP client (`curl -H "Host: 127.0.0.1:abc.evil.com" ...`) would pass.
 **Impact:** Defence-in-depth gap; intent of the validator is bypassed.
@@ -491,7 +499,11 @@ Findings begin in the next sections.
 
 ---
 
-### [F-013] `openOnStart` config field is read but never consumed — High (DOC)
+### ✅ [F-013] `openOnStart` config field is read but never consumed — High (DOC)
+**Status:** Fixed in commit `af99ac1` via the minimal-effort path. `index.ts` logs a warning when `dashboard.openOnStart=true` so users who set it know they must open the URL manually. Full auto-open deferred per `example.config.js` "(future)" comment.
+
+**Test coverage gap (intentional):** No unit test pins the warning. The fix is a 5-line conditional log inside `main()`, which would require either spawning a subprocess or extracting the block into a helper purely for testing — both have a higher cost/risk than the warning itself. If `openOnStart` ever gains real auto-open behaviour, that change should land with a test.
+
 **Location:** `src/config.ts:68, 158, 689-695` (interface, schema, loader) and `src/index.ts` (no consumer)
 **Issue:** `config.dashboard.openOnStart` is declared in the interface, validated by Zod, and accepted from both file (`dashboard.openOnStart`) and env (`NR_AI_DASHBOARD_OPEN`). `src/index.ts` never references it. A user who sets `openOnStart: true` sees no browser open, no warning, no log line.
 **Impact:** Spec mismatch; users assume the feature works.
@@ -525,7 +537,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-014] Port-in-use error lacks `NR_AI_DASHBOARD_PORT` remediation — High (UX)
+### ✅ [F-014] Port-in-use error lacks `NR_AI_DASHBOARD_PORT` remediation — High (UX)
+**Status:** Fixed in commit `f6d2c7b`. `index.ts` catches EADDRINUSE from `dashboardServer.start()` and rethrows with a hint naming the conflicting port plus `NR_AI_DASHBOARD_PORT`. Regression test asserts the underlying `start()` rejects with `err.code='EADDRINUSE'`.
+
 **Location:** `src/index.ts` (around `dashboardServer.start()`) and `src/dashboard/dashboard-server.ts:88`
 **Issue:** When port 7777 is already in use, `dashboardServer.start()` rejects with raw `EADDRINUSE`. The user sees `Fatal error: Error: listen EADDRINUSE: address already in use 127.0.0.1:7777` with no remediation hint. Spec §5 explicitly requires the message to suggest `NR_AI_DASHBOARD_PORT`.
 **Impact:** User confusion; support burden.
@@ -560,7 +574,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-015] AlertBannerStack stuck-expanded UX trap when count drops below threshold — High (UX)
+### ✅ [F-015] AlertBannerStack stuck-expanded UX trap when count drops below threshold — High (UX)
+**Status:** Fixed in commit `348e80b`. Added a `useEffect` that resets `expanded=false` when `count < COLLAPSE_THRESHOLD`. Test covers: expand at 6, dismiss to 4, no collapse button visible; new firings to 9 render the expand-header again.
+
 **Location:** `src/web/components/AlertBannerStack.tsx:33-34, 63`
 **Issue:** With 6+ alerts, user expands the stack; subsequently dismisses 2 down to 4. `expanded` state is local to the component and never resets. The expanded path renders without the collapse button (because `count < COLLAPSE_THRESHOLD`). The user can never re-collapse without reloading the page.
 **Impact:** UI feels broken once count crosses 5 and back. Users perceive bugs.
@@ -584,7 +600,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-016] `RecentAlertsPanel` ordering follows JSONL append order (oldest first) — High (UX)
+### ✅ [F-016] `RecentAlertsPanel` ordering follows JSONL append order (oldest first) — High (UX)
+**Status:** Fixed in commit `e611371` as a defensive sort. **Note: the auditor's premise was partially wrong** — `AlertLog.readRecent` already calls `.reverse()` on the sliced lines (`alert-log.ts:76`) so it returns newest-first today, and the existing unit test (`alert-log.test.ts:50`: `expect(...).toEqual(['c', 'b', 'a'])`) pins that behaviour. The commit still adds an explicit `firedAt`-descending sort in the panel so a future refactor of `readRecent` can't silently break the UI ordering. Two regression tests now also pin the panel's sort behaviour.
+
 **Location:** `src/web/views/Today.tsx:140` (the `entries.slice(0, 50)` render) and `src/alerts/alert-log.ts:63-68` (`readRecent` implementation)
 **Issue:** `AlertLog.readRecent(50)` reads the file end and returns the last 50 lines in *append* order (oldest first within the slice). The UI does not reverse them. Users see the most-recent alert at the bottom of the table; they must scroll to find what just fired.
 **Impact:** Recent alerts panel surfaces stale data first; usability is poor for the panel's primary purpose.
@@ -606,7 +624,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-017] `ForecastEodCard` hardcodes `+$` sign — renders `+$-1.23` for negative deltas — High (UX)
+### ✅ [F-017] `ForecastEodCard` hardcodes `+$` sign — renders `+$-1.23` for negative deltas — High (UX)
+**Status:** Fixed in commit `454e0b4`. Render the sign explicitly via `delta >= 0 ? '+' : '−'` plus `Math.abs(delta)`. Two regression tests pin both the negative path (`−$2.00`) and the positive path (`+$2.00`).
+
 **Location:** `src/web/views/Today.tsx:215`
 **Issue:** Line 215 unconditionally prepends `+$` to `delta.toFixed(2)`. When `delta < 0` (forecast revised downward, possible after a quiet period), the output is `+$-1.23 from now`. The `pct` sign on line 216 is handled correctly with a conditional — the `delta` line was missed.
 **Impact:** Visible UI bug whenever the forecast revises downward.
@@ -633,7 +653,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-018] `downloadJsonl` Audit export fails silently in Firefox — High (UX)
+### ✅ [F-018] `downloadJsonl` Audit export fails silently in Firefox — High (UX)
+**Status:** Fixed in commit `5b8b1d0`. Append the anchor to `document.body` before `.click()`, remove it in the `finally`. Test asserts `parentNode === document.body` at click time and that the same anchor is appended and removed.
+
 **Location:** `src/web/views/Audit.tsx:27-31`
 **Issue:** Programmatically clicking an `<a download>` anchor that's not in the DOM works in Chromium and Safari but is silently no-op in Firefox.
 **Impact:** Firefox users cannot export audit logs. No error shown.
@@ -659,7 +681,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-019] `useLiveEvents` stale-snapshot pattern (latent fragility) — High (CORR)
+### ✅ [F-019] `useLiveEvents` stale-snapshot pattern (latent fragility) — High (CORR)
+**Status:** Fixed in commit `6797e4b`. Replaced the one-time `const store = useLiveStore.getState()` snapshot with `useLiveStore.getState().<action>(...)` inside each callback. Existing tests still pass (no behaviour change today; future-proofs against selector wrappers).
+
 **Location:** `src/web/hooks/useLiveEvents.ts:7-10`
 **Issue:** The hook captures `const store = useLiveStore.getState()` once at effect-run time and reuses that snapshot in named listeners. With Zustand, action functions are stable references, so the bug doesn't manifest today. But a future change that adds memoization or wraps actions will silently start failing.
 **Impact:** No current functional bug, but a hard-to-find latent regression vector.
@@ -677,7 +701,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-020] No test that cloud-mode skips `copyStarterAlertRules` — High (TEST)
+### ✅ [F-020] No test that cloud-mode skips `copyStarterAlertRules` — High (TEST)
+**Status:** Fixed in commit `a760c6b`. Added a wizard test that runs `mode='cloud'` and asserts both `copyFileSync` was never called AND the user was never prompted about starter rules.
+
 **Location:** `src/install/setup-wizard.test.ts` (missing test) and `src/install/setup-wizard.ts:276`
 **Issue:** The wizard correctly gates rule-copying on `mode === 'local' || mode === 'both'`. No test asserts the negative case: that `copyFileSync` is NOT called when `mode='cloud'`. Removing the guard would not break any test.
 **Impact:** Regression risk — a future refactor could silently start copying rules in cloud mode.
@@ -700,7 +726,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-021] JSONL log rotation TOCTOU may lose events on crash — High (LIFE)
+### ✅ [F-021] JSONL log rotation TOCTOU may lose events on crash — High (LIFE)
+**Status:** Resolved as Option A (accept for v1.1) in commit `73ff424`. Source comment in `alert-log.ts:append` documents the rotate→appendFile crash window and why a temp-file workaround would double append I/O. Revisit if/when audit-trail compliance demands strict durability.
+
 **Location:** `src/alerts/alert-log.ts:51-56` (`rotateIfNeeded` then `appendFile`)
 **Issue:** Rotation does `fs.rename(log.jsonl, log.jsonl.1)` then `appendFile` the new line. If the process crashes between the two calls, the alert event is lost (not in `.1`, not in the new file).
 **Impact:** Audit gap on rare crash boundaries.
@@ -718,7 +746,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-022] `parseLocalAlertRules` does not warn on duplicate rule IDs — High (CORR)
+### ✅ [F-022] `parseLocalAlertRules` does not warn on duplicate rule IDs — High (CORR)
+**Status:** Fixed in commit `493b11d`. After schema validation we now dedupe by `id` (first wins), log a warning per dupe, and surface the rest in `invalid`. Two new tests cover the dedup behaviour and the warning. Also corrected the Phase 2 acceptance test which had pinned the F-009 bug.
+
 **Location:** `src/alerts/local-alert-rule.ts:148-168`
 **Issue:** Two rules with the same `id` both pass validation. The engine's per-rule state (`Map<string, RuleState>`) overwrites on `getOrInitState()`, but both rules still run in `evaluate()`. The second rule sees the first's state — if rule-A is firing and rule-B's condition becomes true, B won't fire because it sees `status: 'firing'` in shared state.
 **Impact:** Silent rule shadowing. Hard to debug.
@@ -748,7 +778,9 @@ Findings begin in the next sections.
 
 ---
 
-### [F-023] Double-cleanup in SSE handler (low actual impact) — High (LIFE)
+### ✅ [F-023] Double-cleanup in SSE handler (low actual impact) — High (LIFE)
+**Status:** Fixed in commit `db1f436`. The `cleaned` guard fix had already landed during F-005 work; this commit adds the missing regression test asserting each `bus.offWithSeq` runs exactly once when both `req` and `res` close events fire.
+
 **Location:** `src/dashboard/routes/sse-handler.ts:65-66`
 **Issue:** Both `req.on('close')` and `res.on('close')` register the same `cleanup` function. On a normal disconnect both fire. Second call to `bus.off(event, handler)` is a no-op, `clearInterval` on cleared timer is safe — so no current functional bug, but intent is ambiguous.
 **Impact:** No current bug. Future code change could introduce a real double-execution issue.

@@ -85,9 +85,16 @@ export class DashboardServer {
   async start(): Promise<AddressInfo> {
     return await new Promise((resolve, reject) => {
       const server = createServer((req, res) => { void this.handle(req, res); });
+      // Reject the start() promise on any pre-listen error (e.g. EADDRINUSE).
+      // Once listen() succeeds, swap in a permanent error logger so post-start
+      // errors aren't silently swallowed by the resolved promise. See F-011.
       server.once('error', reject);
       server.listen(this.opts.port, this.opts.host, () => {
         const addr = server.address() as AddressInfo;
+        server.removeListener('error', reject);
+        server.on('error', (err) => {
+          logger.error('Dashboard server error after start', { error: String(err) });
+        });
         logger.info('Dashboard server listening', { host: addr.address, port: addr.port });
         this.server = server;
         resolve(addr);
@@ -177,10 +184,19 @@ export class DashboardServer {
       const closing = hostHeader.indexOf(']');
       if (closing === -1) return false;
       const ipv6 = hostHeader.slice(1, closing).toLowerCase();
+      // After ']' must be either end-of-string or a numeric port suffix.
+      const after = hostHeader.slice(closing + 1);
+      if (after !== '' && !/^:\d+$/.test(after)) return false;
       return ipv6 === '::1' || ipv6 === '0:0:0:0:0:0:0:1';
     }
     const firstColon = hostHeader.indexOf(':');
     const hostOnly = (firstColon === -1 ? hostHeader : hostHeader.slice(0, firstColon)).toLowerCase();
+    // Reject non-numeric port suffixes — `Host: 127.0.0.1:abc.evil.com` would
+    // otherwise pass with hostOnly='127.0.0.1'. See F-012.
+    if (firstColon !== -1) {
+      const portStr = hostHeader.slice(firstColon + 1);
+      if (portStr === '' || !/^\d+$/.test(portStr)) return false;
+    }
     return hostOnly === '127.0.0.1' || hostOnly === 'localhost';
   }
 }

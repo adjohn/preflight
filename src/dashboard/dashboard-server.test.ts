@@ -67,6 +67,57 @@ describe('DashboardServer', () => {
     await server.stop();
     await expect(fetch(`http://127.0.0.1:${addr.port}/api/health`)).rejects.toThrow();
   });
+
+  // F-014 prerequisite: start() must reject with an Error carrying
+  // code='EADDRINUSE' when the port is busy. The rewrap in index.ts that
+  // adds the NR_AI_DASHBOARD_PORT remediation hint relies on this.
+  it('rejects with EADDRINUSE when the port is already in use (F-014 prerequisite)', async () => {
+    const blocker = http.createServer().listen(0, '127.0.0.1');
+    await new Promise((r) => blocker.once('listening', r));
+    const blockedPort = (blocker.address() as { port: number }).port;
+    try {
+      server = new DashboardServer({
+        port: blockedPort, host: '127.0.0.1', bus: new LiveEventBus(),
+      });
+      const err = await server.start().then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(err).toBeTruthy();
+      expect((err as { code?: string }).code).toBe('EADDRINUSE');
+    } finally {
+      await new Promise<void>((r) => blocker.close(() => r()));
+    }
+  });
+
+  // Regression for F-011. Before the fix, the start()-time `once('error', reject)`
+  // listener stayed attached after the listen callback resolved. A later
+  // runtime error called reject() on an already-resolved promise (a no-op)
+  // and Node didn't re-emit because the once listener consumed the event —
+  // production failures were invisible.
+  it('logs server errors that fire after start() resolves (F-011 regression)', async () => {
+    const stderrSpy = jest
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+    try {
+      server = new DashboardServer({
+        port: 0, host: '127.0.0.1', bus: new LiveEventBus(),
+      });
+      await server.start();
+      // Reach into the private http server to fire a synthetic error.
+      const inner = (server as unknown as { server: http.Server }).server;
+      inner.emit('error', new Error('after-start boom'));
+      // Logger writes JSON to stderr asynchronously via process.nextTick.
+      await new Promise((r) => setImmediate(r));
+      const captured = stderrSpy.mock.calls
+        .map((args) => String(args[0]))
+        .join('');
+      expect(captured).toContain('Dashboard server error after start');
+      expect(captured).toContain('after-start boom');
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  });
 });
 
 describe('DashboardServer Host validation', () => {
@@ -164,6 +215,34 @@ describe('DashboardServer Host validation', () => {
     // A bracketed form is reserved for IPv6; "[127.0.0.1]" is not a valid
     // IPv6 loopback and must not be granted access on the v4 allow-list.
     expect(await requestWithHost(addr.port, '[127.0.0.1]:8080')).toBe(403);
+  });
+
+  // F-012: a non-numeric port suffix on an IPv4 host snuck through the
+  // .indexOf(':') / .slice() parser because only the host portion was
+  // checked. A raw HTTP client sending `Host: 127.0.0.1:abc.evil.com`
+  // would have been served — defence-in-depth gap.
+  it('rejects Host=127.0.0.1:abc.evil.com (non-numeric port — F-012)', async () => {
+    server = new DashboardServer({ port: 0, host: '127.0.0.1', bus: new LiveEventBus() });
+    const addr = await server.start();
+    expect(await requestWithHost(addr.port, '127.0.0.1:abc.evil.com')).toBe(403);
+  });
+
+  it('rejects Host=127.0.0.1: (empty port suffix — F-012)', async () => {
+    server = new DashboardServer({ port: 0, host: '127.0.0.1', bus: new LiveEventBus() });
+    const addr = await server.start();
+    expect(await requestWithHost(addr.port, '127.0.0.1:')).toBe(403);
+  });
+
+  it('rejects Host=localhost:7777.evil.com (non-numeric port — F-012)', async () => {
+    server = new DashboardServer({ port: 0, host: '127.0.0.1', bus: new LiveEventBus() });
+    const addr = await server.start();
+    expect(await requestWithHost(addr.port, 'localhost:7777.evil.com')).toBe(403);
+  });
+
+  it('rejects bracketed IPv6 with non-numeric port [::1]:abc (F-012)', async () => {
+    server = new DashboardServer({ port: 0, host: '127.0.0.1', bus: new LiveEventBus() });
+    const addr = await server.start();
+    expect(await requestWithHost(addr.port, '[::1]:abc.evil.com')).toBe(403);
   });
 });
 

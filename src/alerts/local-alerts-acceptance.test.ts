@@ -321,10 +321,12 @@ describe('Local alerts — Phase 2 acceptance (full starter rule set)', () => {
     ).toHaveLength(1);
 
     // Tick 6: snapshot supplies values that resolve every firing threshold
-    // rule. The session-cost-budget rule does NOT clear here — budget rules
-    // only clear when the period itself rolls over (and `session:infinite`
-    // never does). This avoids flapping when BudgetTracker stops re-emitting
-    // after the initial fire within a period.
+    // rule. The session-cost-budget rule ALSO clears here because
+    // sessionUsd drops to 0 (below the firing spentUsd of 4), which the
+    // engine treats as a session reset (CostTracker reset on new Claude
+    // Code session). See F-009 in docs/CODE_REVIEW.md — daily/weekly rules
+    // still rely on calendar period rollover, but session can reset
+    // mid-process so it must clear by cost drop.
     t += 30_000;
     engine.evaluate(
       emptySnapshot(t, {
@@ -349,6 +351,7 @@ describe('Local alerts — Phase 2 acceptance (full starter rule set)', () => {
         'bash-latency',
         'bash-failures',
         'low-efficiency',
+        'session-cost-budget',
       ]),
     );
   });

@@ -115,4 +115,37 @@ describe('AlertBannerStack', () => {
     fireEvent.click(dismissButtons[0]!);
     expect(screen.getAllByRole('button', { name: 'Dismiss alert' }).length).toBe(1);
   });
+
+  // F-015: once the user expands a 5+ stack and the count drops below the
+  // threshold (e.g., dismisses 2 down to 4), the expanded path renders
+  // without a collapse button — there's no way to recollapse without
+  // reloading the page. The fix resets `expanded` when count falls back
+  // below the threshold so the next time it crosses, the stack starts
+  // collapsed again.
+  it('resets expanded state when count drops below the collapse threshold (F-015)', () => {
+    for (let i = 0; i < 6; i++) {
+      fireOne({ id: `r-${i}`, title: `Rule ${i}` });
+    }
+    const { rerender } = render(<AlertBannerStack />);
+    fireEvent.click(screen.getByRole('button', { name: /6 alerts firing — expand/ }));
+    // Now expanded — all banners are visible plus the collapse header.
+    expect(screen.getByText('Rule 0')).toBeInTheDocument();
+
+    // User dismisses 2 alerts; count drops from 6 to 4 (below threshold).
+    useLiveStore.getState().dismissAlert('r-0');
+    useLiveStore.getState().dismissAlert('r-1');
+    rerender(<AlertBannerStack />);
+    expect(screen.getByText('Rule 2')).toBeInTheDocument();
+
+    // The reset effect must hide the collapse-header button (count < threshold).
+    expect(screen.queryByRole('button', { name: /alerts firing — collapse/ })).toBeNull();
+
+    // Now five more rules fire — total is 9 (4 visible + 5 new − 0 dismissed).
+    for (let i = 6; i < 11; i++) {
+      fireOne({ id: `r-${i}`, title: `Rule ${i}` });
+    }
+    rerender(<AlertBannerStack />);
+    // With 9 firing and expanded reset to false, we render the count header.
+    expect(screen.getByRole('button', { name: /9 alerts firing — expand/ })).toBeInTheDocument();
+  });
 });

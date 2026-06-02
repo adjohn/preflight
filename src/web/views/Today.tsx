@@ -131,6 +131,11 @@ function RecentAlertsPanel(): JSX.Element | null {
   if (data === null) return null;
 
   const entries: readonly AlertEvent[] = data ?? [];
+  // F-016: defensive sort — `AlertLog.readRecent` already reverses the
+  // last-N-lines slice before returning, so the API is newest-first today.
+  // Sorting again is idempotent and pins the UI ordering against any future
+  // refactor of `readRecent` that drops or reorders the .reverse() call.
+  const sortedEntries = [...entries].sort((a, b) => b.firedAt - a.firedAt);
 
   return (
     <div className="bg-bg-panel border border-bg-line rounded p-3">
@@ -139,10 +144,10 @@ function RecentAlertsPanel(): JSX.Element | null {
       </div>
       {isLoading && <div className="text-ink-muted text-xs">Loading…</div>}
       {error && <div className="text-accent-red text-xs">Error loading recent alerts.</div>}
-      {!isLoading && !error && entries.length === 0 && (
+      {!isLoading && !error && sortedEntries.length === 0 && (
         <div className="text-ink-muted text-xs">No alerts in recent history.</div>
       )}
-      {!isLoading && !error && entries.length > 0 && (
+      {!isLoading && !error && sortedEntries.length > 0 && (
         <table className="w-full text-xs">
           <thead className="text-ink-muted">
             <tr>
@@ -154,7 +159,7 @@ function RecentAlertsPanel(): JSX.Element | null {
             </tr>
           </thead>
           <tbody>
-            {entries.slice(0, 50).map((a) => (
+            {sortedEntries.slice(0, 50).map((a) => (
               <tr key={`${a.id}-${a.firedAt}-${a.state}`} className="border-t border-bg-line">
                 <td className="py-1 text-ink-subtle tabular-nums whitespace-nowrap">
                   {formatRelativeTime(a.firedAt)}
@@ -229,7 +234,9 @@ function ForecastEodCard({
             ${forecastEod.toFixed(2)}
           </span>
           <span className="text-xs text-ink-muted tabular-nums">
-            +${delta.toFixed(2)}
+            {/* F-017: render the sign explicitly and use the absolute value
+                so a negative delta renders as `-$1.23`, never `+$-1.23`. */}
+            {delta >= 0 ? '+' : '−'}${Math.abs(delta).toFixed(2)}
             {todayTotal > 0 && ` (${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%)`} from now
           </span>
         </div>

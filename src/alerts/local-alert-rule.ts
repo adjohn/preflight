@@ -169,5 +169,25 @@ export function parseLocalAlertRules(input: unknown): ParsedRules {
     }
   }
 
-  return { valid, invalid };
+  // F-022: two rules with the same `id` both pass schema validation, but
+  // LocalAlertEngine keys per-rule state by id (`Map<string, RuleState>`),
+  // so the second rule shadows the first's state — A is firing, B's
+  // condition becomes true, B silently won't fire because it sees
+  // status='firing' in the shared state. Detect duplicates here, keep
+  // the first occurrence, log the rest, and surface them as `invalid`
+  // so the rules-fixture test can pin the behaviour.
+  const seen = new Set<string>();
+  const dedupedValid: LocalAlertRule[] = [];
+  for (const rule of valid) {
+    if (seen.has(rule.id)) {
+      const error = `duplicate rule id '${rule.id}' — keeping first occurrence`;
+      logger.warn('Skipping duplicate alert rule id', { id: rule.id });
+      invalid.push({ input: rule, error });
+      continue;
+    }
+    seen.add(rule.id);
+    dedupedValid.push(rule);
+  }
+
+  return { valid: dedupedValid, invalid };
 }

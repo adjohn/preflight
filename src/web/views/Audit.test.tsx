@@ -97,6 +97,48 @@ describe('Audit downloadJsonl', () => {
     }
   });
 
+  // F-018: Firefox silently no-ops .click() on an anchor that's not in
+  // the DOM. Audit export must append the anchor to document.body before
+  // clicking and remove it after, even when click() throws.
+  it('appends the anchor to document.body before clicking and removes after (F-018)', () => {
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(() => 'blob:test/0') as typeof URL.createObjectURL;
+    URL.revokeObjectURL = vi.fn() as typeof URL.revokeObjectURL;
+
+    const appendSpy = vi.spyOn(document.body, 'appendChild');
+    const removeSpy = vi.spyOn(document.body, 'removeChild');
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        // At click time the anchor must already be in the DOM (Firefox).
+        expect(this.parentNode).toBe(document.body);
+      });
+
+    try {
+      downloadJsonl([
+        { ts: 1, tool: 'Read', target: '/etc/hosts', classification: 'sensitive_file' },
+      ]);
+      // appendChild called with the anchor element exactly once.
+      const appended = appendSpy.mock.calls.find(
+        (args) => args[0] instanceof HTMLAnchorElement,
+      );
+      expect(appended).toBeTruthy();
+      // The same anchor element was removed after click().
+      const removed = removeSpy.mock.calls.find(
+        (args) => args[0] instanceof HTMLAnchorElement,
+      );
+      expect(removed).toBeTruthy();
+      expect(appended![0]).toBe(removed![0]);
+    } finally {
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
+      clickSpy.mockRestore();
+      appendSpy.mockRestore();
+      removeSpy.mockRestore();
+    }
+  });
+
   it('still revokes the URL when click() throws', () => {
     const created: string[] = [];
     const revoked: string[] = [];
