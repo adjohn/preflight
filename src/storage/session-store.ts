@@ -21,7 +21,8 @@ import {
 } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { createLogger } from '../shared/index.js';
-import type { SessionSummary } from './types.js';
+import { redactSensitive } from '../config.js';
+import type { SessionSummary, ReplayTimelineEntry } from './types.js';
 import type { SessionTracker } from '../metrics/session-tracker.js';
 import type { CostTracker } from '../metrics/cost-tracker.js';
 import type { TaskDetector } from '../metrics/task-detector.js';
@@ -62,6 +63,7 @@ export interface FullSessionSummary extends SessionSummary {
   readonly userCorrections: number;
   readonly outcome: string;
   readonly platform?: string;
+  readonly timeline?: ReplayTimelineEntry[];
 }
 
 export interface SessionFileInfo {
@@ -288,6 +290,20 @@ export function buildSessionSummary(sources: BuildSessionSummarySources): FullSe
     ? Math.round((totalTestsPassed / totalTestsRun) * 1000) / 1000
     : null;
 
+  // Enriched timeline for session replay
+  const timeline: ReplayTimelineEntry[] = allToolCalls.map((tc) => ({
+    timestamp: tc.timestamp,
+    toolName: tc.toolName,
+    durationMs: tc.durationMs,
+    success: tc.success,
+    filePath: tc.filePath ? redactSensitive(String(tc.filePath)) : undefined,
+    command: tc.command ? redactSensitive(String(tc.command)) : undefined,
+    isTestCommand: (tc.isTestCommand as boolean | undefined) || undefined,
+    isBuildCommand: (tc.isBuildCommand as boolean | undefined) || undefined,
+    isLintCommand: (tc.isLintCommand as boolean | undefined) || undefined,
+    errorType: tc.errorType || undefined,
+  }));
+
   const now = Date.now();
 
   return {
@@ -323,6 +339,7 @@ export function buildSessionSummary(sources: BuildSessionSummarySources): FullSe
     assistantMessages: 0,
     userCorrections: 0,
     outcome: 'completed',
+    timeline: timeline.length > 0 ? timeline : undefined,
   };
 }
 
@@ -402,6 +419,7 @@ function deserializeSession(raw: string): FullSessionSummary | null {
     userCorrections:      typeof obj.userCorrections === 'number'      ? obj.userCorrections      : 0,
     outcome:              typeof obj.outcome === 'string'              ? obj.outcome              : 'unknown',
     platform:             typeof obj.platform === 'string'             ? obj.platform             : undefined,
+    timeline:             Array.isArray(obj.timeline) ? (obj.timeline as ReplayTimelineEntry[]) : undefined,
   };
 }
 

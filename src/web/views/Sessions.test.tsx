@@ -11,7 +11,7 @@ function renderSessions(listData: unknown, detailMap: DetailMap = {}) {
   globalThis.fetch = ((url: string) => {
     if (url.startsWith('/api/sessions/')) {
       const id = decodeURIComponent(url.split('/').pop() ?? '');
-      const detail = detailMap[id] ?? { sessionId: id, toolCalls: [] };
+      const detail = detailMap[id] ?? { sessionId: id, timeline: [] };
       return Promise.resolve(
         new Response(JSON.stringify(detail), {
           status: 200,
@@ -76,7 +76,7 @@ describe('Sessions view', () => {
   });
 
   it('shows the empty-timeline message when the selected session has no tool calls', async () => {
-    renderSessions(SAMPLE_LIST, { s1: { sessionId: 's1', toolCallCount: 0, toolCalls: [] } });
+    renderSessions(SAMPLE_LIST, { s1: { sessionId: 's1', toolCallCount: 0, timeline: [] } });
     await waitFor(() => expect(screen.getByText(/s1/)).toBeInTheDocument());
     fireEvent.click(screen.getAllByText(/s1/)[0]);
     await waitFor(() =>
@@ -87,10 +87,10 @@ describe('Sessions view', () => {
   it('renders one timeline row per tool call with name and duration', async () => {
     const detail = {
       sessionId: 's1',
-      toolCalls: [
-        { toolName: 'Read', durationMs: 120, startTime: 1_000, endTime: 1_120 },
-        { toolName: 'Edit', durationMs: 240, startTime: 1_200, endTime: 1_440 },
-        { toolName: 'Bash', durationMs: 80, startTime: 1_500, endTime: 1_580 },
+      timeline: [
+        { timestamp: 1_000, toolName: 'Read', durationMs: 120, success: true },
+        { timestamp: 1_200, toolName: 'Edit', durationMs: 240, success: true },
+        { timestamp: 1_500, toolName: 'Bash', durationMs: 80, success: true },
       ],
     };
     renderSessions(SAMPLE_LIST, { s1: detail });

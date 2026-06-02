@@ -103,8 +103,8 @@ export function History(): JSX.Element {
 
       <div className="grid grid-cols-2 gap-3">
         <Panel title="Weekly efficiency · last 8">
-          <div className="h-44">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-44 min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <LineChart data={weeklyData}>
                 <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" />
                 <XAxis dataKey="week" tick={TICK_STYLE} stroke={GRID_STROKE} />
@@ -129,8 +129,8 @@ export function History(): JSX.Element {
         </Panel>
 
         <Panel title="Daily spend · last 30 days">
-          <div className="h-44">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-44 min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={dailyData}>
                 <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" />
                 <XAxis dataKey="day" tick={TICK_STYLE} stroke={GRID_STROKE} />
@@ -152,8 +152,8 @@ export function History(): JSX.Element {
           {outcomeData.length === 0 ? (
             <EmptyState text="No outcomes yet — finish a few sessions and check back." />
           ) : (
-            <div className="h-44">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-44 min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={outcomeData} layout="vertical">
                   <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" />
                   <XAxis type="number" tick={TICK_STYLE} stroke={GRID_STROKE} unit="$" />
@@ -182,8 +182,8 @@ export function History(): JSX.Element {
           {antiPatternSeries.length === 0 ? (
             <EmptyState text="No anti-patterns detected in the loaded weeks." />
           ) : (
-            <div className="h-44">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-44 min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={antiPatternSeries}>
                   <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" />
                   <XAxis dataKey="week" tick={TICK_STYLE} stroke={GRID_STROKE} />

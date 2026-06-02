@@ -8,6 +8,7 @@ import { Today } from './views/Today';
 import { Sessions } from './views/Sessions';
 import { History } from './views/History';
 import { Audit } from './views/Audit';
+import { Replay } from './views/Replay';
 
 export function App(): JSX.Element {
   useLiveEvents();
@@ -28,6 +29,7 @@ export function App(): JSX.Element {
         <Sidebar currentPath={location} onNavigate={navigate} connected={connected} />
         <main className="flex-1 overflow-auto p-5">
           <Switch>
+            <Route path="/replay/:sessionId" component={Replay} />
             <Route path="/sessions" component={Sessions} />
             <Route path="/history" component={History} />
             <Route path="/audit" component={Audit} />

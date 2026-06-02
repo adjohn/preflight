@@ -35,6 +35,19 @@ export interface ToolCallRecord {
   readonly [key: string]: unknown;
 }
 
+export interface ReplayTimelineEntry {
+  readonly timestamp: number;
+  readonly toolName: string;
+  readonly durationMs: number | null;
+  readonly success: boolean;
+  readonly filePath?: string;
+  readonly command?: string;
+  readonly isTestCommand?: boolean;
+  readonly isBuildCommand?: boolean;
+  readonly isLintCommand?: boolean;
+  readonly errorType?: string;
+}
+
 export interface AuditEntry {
   readonly timestamp: number;
   readonly action: string;

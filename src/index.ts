@@ -395,6 +395,7 @@ async function main(): Promise<void> {
           latencyTracker,
           personalCoach,
           alertLog,
+          taskDetector,
         },
         alertEngine,
         alertLog,

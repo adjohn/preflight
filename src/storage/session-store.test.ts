@@ -580,6 +580,187 @@ describe('SessionStore corruption-recovery (F-132)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// buildSessionSummary — timeline persistence
+// ---------------------------------------------------------------------------
+
+describe('buildSessionSummary timeline', () => {
+  it('includes timeline from task tool calls', () => {
+    const mockSessionTracker = {
+      getMetrics: () => ({
+        sessionId: 'timeline-session',
+        sessionStartTime: 1700000000000,
+        sessionDurationMs: 30_000,
+        toolCallCount: 3,
+        toolCallCountByTool: { Read: 1, Edit: 1, Bash: 1 },
+        toolDurationMsByTool: {},
+        toolSuccessRate: 1,
+        toolSuccessRateByTool: {},
+        toolErrorCount: 0,
+        toolErrorsByType: {},
+        uniqueFilesRead: 1,
+        uniqueFilesWritten: 1,
+        bashCommandsRun: 1,
+        bashExitCodes: {},
+        searchQueries: 0,
+        toolCallTimeline: [],
+      }),
+    };
+
+    const mockTaskDetector = {
+      getCurrentTask: () => null,
+      getMetrics: () => ({
+        totalTasksCompleted: 1,
+        currentTaskActive: false,
+        currentTaskToolCalls: 0,
+        averageTaskDurationMs: 30_000,
+        averageToolCallsPerTask: 3,
+        completedTasks: [
+          {
+            taskId: 't1',
+            startTime: 1700000000000,
+            endTime: 1700000030000,
+            durationMs: 30_000,
+            toolCallCount: 3,
+            toolCallsByType: { Read: 1, Edit: 1, Bash: 1 },
+            filesRead: ['/src/index.ts'],
+            filesModified: ['/src/index.ts'],
+            linesChanged: 5,
+            linesAdded: 5,
+            linesRemoved: 0,
+            bashCommandsRun: 1,
+            testsRun: 1,
+            testsPassed: 1,
+            buildRun: 0,
+            buildPassed: 0,
+            estimatedCostUsd: 0.02,
+            tokensUsed: 1000,
+            askedUserQuestions: 0,
+            subAgentsSpawned: 0,
+            toolCalls: [
+              {
+                id: 'tc1',
+                sessionId: 'timeline-session',
+                toolName: 'Read',
+                toolUseId: 'tu1',
+                timestamp: 1700000001000,
+                durationMs: 30,
+                success: true,
+                filePath: '/src/index.ts',
+              },
+              {
+                id: 'tc2',
+                sessionId: 'timeline-session',
+                toolName: 'Edit',
+                toolUseId: 'tu2',
+                timestamp: 1700000010000,
+                durationMs: 50,
+                success: true,
+                filePath: '/src/index.ts',
+              },
+              {
+                id: 'tc3',
+                sessionId: 'timeline-session',
+                toolName: 'Bash',
+                toolUseId: 'tu3',
+                timestamp: 1700000020000,
+                durationMs: 2000,
+                success: true,
+                command: 'npm test',
+                isTestCommand: true,
+              },
+            ],
+          },
+        ],
+      }),
+    };
+
+    const summary = buildSessionSummary({
+      sessionTracker: mockSessionTracker as unknown as SessionTracker,
+      taskDetector: mockTaskDetector as unknown as TaskDetector,
+      developer: 'alice',
+    });
+
+    expect(summary.timeline).toBeDefined();
+    expect(summary.timeline).toHaveLength(3);
+    expect(summary.timeline![0]!.toolName).toBe('Read');
+    expect(summary.timeline![0]!.filePath).toBe('/src/index.ts');
+    expect(summary.timeline![1]!.toolName).toBe('Edit');
+    expect(summary.timeline![2]!.toolName).toBe('Bash');
+    expect(summary.timeline![2]!.command).toBe('npm test');
+    expect(summary.timeline![2]!.isTestCommand).toBe(true);
+  });
+
+  it('returns undefined timeline when no tool calls are present', () => {
+    const mockSessionTracker = {
+      getMetrics: () => ({
+        sessionId: 'empty-timeline',
+        sessionStartTime: Date.now() - 30_000,
+        sessionDurationMs: 30_000,
+        toolCallCount: 0,
+        toolCallCountByTool: {},
+        toolDurationMsByTool: {},
+        toolSuccessRate: 1,
+        toolSuccessRateByTool: {},
+        toolErrorCount: 0,
+        toolErrorsByType: {},
+        uniqueFilesRead: 0,
+        uniqueFilesWritten: 0,
+        bashCommandsRun: 0,
+        bashExitCodes: {},
+        searchQueries: 0,
+        toolCallTimeline: [],
+      }),
+    };
+
+    const mockTaskDetector = {
+      getCurrentTask: () => null,
+      getMetrics: () => ({
+        totalTasksCompleted: 0,
+        currentTaskActive: false,
+        currentTaskToolCalls: 0,
+        averageTaskDurationMs: null,
+        averageToolCallsPerTask: null,
+        completedTasks: [],
+      }),
+    };
+
+    const summary = buildSessionSummary({
+      sessionTracker: mockSessionTracker as unknown as SessionTracker,
+      taskDetector: mockTaskDetector as unknown as TaskDetector,
+      developer: 'alice',
+    });
+
+    expect(summary.timeline).toBeUndefined();
+  });
+
+  it('deserialization handles sessions with and without timeline', () => {
+    const store = new SessionStore({ storagePath: tmpDir });
+    const sessionsDir = join(tmpDir, 'sessions');
+
+    // Session WITH timeline
+    const withTimeline = {
+      ...makeSummary({ sessionId: 'with-tl' }),
+      timeline: [
+        { timestamp: 1000, toolName: 'Read', durationMs: 30, success: true, filePath: '/a.ts' },
+      ],
+    };
+    writeFileSync(join(sessionsDir, '2026-01-01_with-tl.json'), JSON.stringify(withTimeline) + '\n');
+
+    // Session WITHOUT timeline (legacy)
+    const withoutTimeline = makeSummary({ sessionId: 'no-tl' });
+    writeFileSync(join(sessionsDir, '2026-01-01_no-tl.json'), JSON.stringify(withoutTimeline) + '\n');
+
+    const loaded1 = store.loadSession('with-tl') as Record<string, unknown> | null;
+    expect(loaded1).not.toBeNull();
+    expect(Array.isArray(loaded1!['timeline'])).toBe(true);
+
+    const loaded2 = store.loadSession('no-tl') as Record<string, unknown> | null;
+    expect(loaded2).not.toBeNull();
+    expect(loaded2!['timeline']).toBeUndefined();
+  });
+});
+
 // N-06: deserializeSession — explicit field extraction
 describe('SessionStore deserialization (N-06)', () => {
   it('loads a session with prototype-shadowing toolBreakdown keys safely', () => {

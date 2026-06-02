@@ -33,6 +33,8 @@ export const fetchCostPerOutcome = (days = 30): Promise<unknown> =>
   getJson<unknown>(`/api/cost-per-outcome?days=${days}`);
 export const fetchPersonalCoach = (): Promise<unknown> => getJson<unknown>('/api/personal-coach');
 export const fetchRecentAlerts = (): Promise<unknown> => getJson<unknown>('/api/alerts/recent');
+export const fetchSessionReplay = (id: string): Promise<unknown> =>
+  getJson<unknown>(`/api/sessions/${encodeURIComponent(id)}/replay`);
 
 export const qk = {
   sessionCurrent: ['session', 'current'] as const,
@@ -48,4 +50,5 @@ export const qk = {
   costPerOutcome: (days: number) => ['cost-per-outcome', days] as const,
   personalCoach: ['personal-coach'] as const,
   alertsRecent: ['alerts', 'recent'] as const,
+  sessionReplay: (id: string) => ['session', id, 'replay'] as const,
 };

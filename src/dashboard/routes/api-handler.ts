@@ -4,6 +4,8 @@ import {
   attributeSessionCosts,
   type SessionLikeForCostOutcome,
 } from '../../metrics/cost-per-outcome.js';
+import { analyzeReplayTimeline } from './replay-analyzer.js';
+import type { ReplayTimelineEntry, ToolCallRecord } from '../../storage/types.js';
 
 interface RawAuditRecord {
   readonly timestamp: number;
@@ -80,6 +82,10 @@ export interface ApiHandlerDeps {
   readonly latencyTracker?: { getMetrics: () => unknown };
   readonly personalCoach?: { generate: () => unknown };
   readonly alertLog?: { readRecent: (limit: number) => Promise<readonly unknown[]> };
+  readonly taskDetector?: {
+    getCompletedTasks: () => readonly { toolCalls: readonly ToolCallRecord[] }[];
+    getCurrentTask: () => { toolCalls: readonly ToolCallRecord[] } | null;
+  };
 }
 
 type RouteFn = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
@@ -96,6 +102,54 @@ function jsonOk(res: ServerResponse, body: unknown): void {
 function unavailable(res: ServerResponse, what: string): void {
   res.writeHead(503, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ error: 'unavailable', what }));
+}
+
+function toolCallToTimelineEntry(tc: ToolCallRecord): ReplayTimelineEntry {
+  return {
+    timestamp: tc.timestamp,
+    toolName: tc.toolName,
+    durationMs: tc.durationMs,
+    success: tc.success,
+    filePath: tc.filePath ? redactSensitive(String(tc.filePath)) : undefined,
+    command: tc.command ? redactSensitive(String(tc.command)) : undefined,
+    isTestCommand: (tc.isTestCommand as boolean | undefined) || undefined,
+    isBuildCommand: (tc.isBuildCommand as boolean | undefined) || undefined,
+    isLintCommand: (tc.isLintCommand as boolean | undefined) || undefined,
+    errorType: tc.errorType || undefined,
+  };
+}
+
+function buildReplayResponse(sessionId: string, deps: ApiHandlerDeps): unknown | null {
+  // Try persisted session first
+  if (deps.sessionStore) {
+    const session = deps.sessionStore.loadSession(sessionId) as Record<string, unknown> | null;
+    if (session && Array.isArray(session['timeline'])) {
+      const timeline = session['timeline'] as ReplayTimelineEntry[];
+      const analysis = analyzeReplayTimeline(timeline);
+      return { sessionId, timeline, segments: analysis.segments, worstSegment: analysis.worstSegment };
+    }
+  }
+
+  // Try live session from TaskDetector
+  if (deps.taskDetector) {
+    const completed = deps.taskDetector.getCompletedTasks();
+    const current = deps.taskDetector.getCurrentTask();
+    const allCalls: ToolCallRecord[] = [];
+    for (const task of completed) {
+      allCalls.push(...(task.toolCalls as ToolCallRecord[]));
+    }
+    if (current) {
+      allCalls.push(...(current.toolCalls as ToolCallRecord[]));
+    }
+    if (allCalls.length > 0) {
+      allCalls.sort((a, b) => a.timestamp - b.timestamp);
+      const timeline = allCalls.map(toolCallToTimelineEntry);
+      const analysis = analyzeReplayTimeline(timeline);
+      return { sessionId, timeline, segments: analysis.segments, worstSegment: analysis.worstSegment };
+    }
+  }
+
+  return null;
 }
 
 export function createApiHandler(deps: ApiHandlerDeps): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
@@ -231,6 +285,19 @@ export function createApiHandler(deps: ApiHandlerDeps): (req: IncomingMessage, r
     }
 
     // Try dynamic routes
+    const replayMatch = /^\/api\/sessions\/([A-Za-z0-9_-]{1,128})\/replay$/.exec(path);
+    if (req.method === 'GET' && replayMatch) {
+      const sessionId = replayMatch[1]!;
+      const replay = buildReplayResponse(sessionId, deps);
+      if (replay === null) {
+        res.writeHead(404, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'no_replay_data' }));
+        return;
+      }
+      jsonOk(res, replay);
+      return;
+    }
+
     const sessionIdMatch = /^\/api\/sessions\/([A-Za-z0-9_-]{1,128})$/.exec(path);
     if (req.method === 'GET' && sessionIdMatch) {
       const sessionId = sessionIdMatch[1]!;
@@ -256,11 +323,14 @@ export function createApiHandler(deps: ApiHandlerDeps): (req: IncomingMessage, r
             estimatedCostUsd: costUsd,
             toolBreakdown: live.toolCallCountByTool,
             antiPatterns,
-            toolCalls: live.toolCallTimeline.map((t) => ({
+            // Use the same `timeline` shape as persisted sessions so the
+            // Sessions and Replay views can consume one type. See
+            // src/storage/types.ts ReplayTimelineEntry.
+            timeline: live.toolCallTimeline.map((t) => ({
+              timestamp: t.timestamp,
               toolName: t.toolName,
-              durationMs: t.durationMs ?? 0,
-              startTime: t.timestamp,
-              endTime: t.timestamp + (t.durationMs ?? 0),
+              durationMs: t.durationMs,
+              success: true,
             })),
           });
           return;
