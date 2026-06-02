@@ -45,7 +45,8 @@ export default [
     },
     rules: {
       ...reactPlugin.configs.recommended.rules,
-      ...reactHooksPlugin.configs.recommended.rules,
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
       // Modern React (17+) JSX transform — no need to import React in scope.
       'react/react-in-jsx-scope': 'off',
       // Vite/esbuild handle prop-types via TypeScript.
