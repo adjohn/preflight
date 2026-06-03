@@ -1,6 +1,8 @@
 # NR AI Coding Observability — Installation Walkthrough
 
-End-to-end testing guide for both the **New Relic (cloud)** and **local** happy paths. Work through one path at a time. Each section ends with a verification checkpoint — don't proceed until it passes.
+> **Internal dogfood guide.** The cloud path targets the **New Relic staging environment** (`staging-one.newrelic.com`). Use staging keys and add `--staging` to every deploy command.
+
+End-to-end testing guide for both the **New Relic (cloud/staging)** and **local** happy paths. Work through one path at a time. Each section ends with a verification checkpoint — don't proceed until it passes.
 
 ---
 
@@ -15,10 +17,10 @@ End-to-end testing guide for both the **New Relic (cloud)** and **local** happy 
 | Claude Code (latest) | Open it and confirm it launches |
 | **Cloud path only:** New Relic account with a license key + user API key | See below |
 
-**New Relic keys (cloud path only):**
-- **License key** — NR One → top-right menu → **API keys** → create a key of type **License**. Looks like a long hex string ending in `NRAL`.
-- **User API key** — same screen, create a key of type **User**. Starts with `NRAK-`.
-- **Account ID** — visible in the NR One URL: `https://one.newrelic.com/nr1-core?account=`**`12345`**
+**New Relic keys (cloud path only — use staging keys):**
+- **License key** — [staging-one.newrelic.com](https://staging-one.newrelic.com) → top-right menu → **API keys** → create a key of type **License**. Looks like a long hex string ending in `NRAL`.
+- **User API key** — same screen, create a key of type **User**. Starts with `NRAK-`. **Must be a staging key** — production keys return 401 against the staging API.
+- **Account ID** — visible in the staging URL: `https://staging-one.newrelic.com/nr1-core?account=`**`12345`**
 
 ---
 
@@ -58,7 +60,7 @@ If you see `command not found`, the `npm link` step didn't work — retry it, or
 
 ---
 
-## Path A — Cloud (New Relic)
+## Path A — Cloud (New Relic Staging)
 
 ### A1. Run the setup wizard
 
@@ -130,15 +132,16 @@ If you see `tool not found` or `MCP server unavailable`, the server didn't start
 
 ### A3. Deploy dashboards
 
-Run the command the wizard printed (replace `NRAK-...` and `12345`):
+Use your **staging** User API key and add `--staging` (required — production keys return 401 against the staging API):
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-dashboard.ts --all
+  npx tsx scripts/deploy-dashboard.ts --all --staging
 ```
 
 **Expected output:**
 ```
+Targeting staging API: https://staging-api.newrelic.com/graphql
 Deploying 7 dashboards...
   ✓ AI Coding — Overview
   ✓ AI Coding — Session Detail
@@ -147,16 +150,16 @@ Deploying 7 dashboards...
   ✓ AI Coding — Manager View
   ✓ AI Coding — Platform Comparison
   ✓ AI Coding — Security Audit
-Done. Find dashboards in NR One under Dashboards → search "AI Coding".
+Done.
 ```
 
 Optional — deploy alerts:
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-alerts.ts
+  npx tsx scripts/deploy-alerts.ts --staging
 ```
 
-**Checkpoint:** Open NR One → **Dashboards** → search `AI Coding`. You should see the 7 dashboards listed.
+**Checkpoint:** Open [staging-one.newrelic.com](https://staging-one.newrelic.com) → **Dashboards** → search `AI Coding`. You should see the 7 dashboards listed.
 
 ---
 
@@ -173,7 +176,7 @@ Then verify the data is flowing:
 
 You should see `tool_calls` > 0 and a non-zero `session_duration_ms`.
 
-**In NR One**, open the **AI Coding — Overview** dashboard. Within 1–2 minutes of your first tool call, you should see:
+**In staging NR One**, open the **AI Coding — Overview** dashboard. Within 1–2 minutes of your first tool call, you should see:
 - `AiToolCall` events in the event table
 - Tool call count ticking up
 - Your developer name in the developer filter
@@ -355,12 +358,12 @@ nr-ai-observe uninstall
 # Clear local data (sessions, config, buffer)
 rm -rf ~/.nr-ai-observe
 
-# Cloud: dashboards and alerts stay in NR until deleted
+# Cloud (staging): dashboards and alerts stay in NR until deleted
 # To remove them:
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-dashboard.ts --all --teardown
+  npx tsx scripts/deploy-dashboard.ts --all --teardown --staging
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-alerts.ts --teardown
+  npx tsx scripts/deploy-alerts.ts --teardown --staging
 ```
 
 Then restart Claude Code.
@@ -377,3 +380,4 @@ Then restart Claude Code.
 | Dashboard at 7777 unreachable | Port in use or mode is not local | Check `lsof -i:7777`; confirm `config.json` has `"mode": "local"` |
 | Hook not firing | `nr-ai-observe` not on PATH when Claude Code launched | Run `npm link`, then restart Claude Code |
 | `Invalid account ID` in wizard | Entered a non-numeric value | Account IDs are digits only (e.g. `3456789`) |
+| `HTTP 401: authentication required` on deploy | Using a production key against staging | Use a key created at `staging-one.newrelic.com` and add `--staging` to the deploy command |
