@@ -1230,7 +1230,7 @@ describe('dashboard config', () => {
     expect(config.dashboard.port).toBe(7777);
   });
 
-  it('clamps dashboard port to maximum 65535', () => {
+  it('falls back to default 7777 when dashboard port exceeds 65535', () => {
     process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
     process.env.NEW_RELIC_ACCOUNT_ID = '12345';
     process.env.NR_AI_DASHBOARD_PORT = '99999';

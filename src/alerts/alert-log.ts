@@ -110,6 +110,15 @@ export class AlertLog {
       const rotated = `${this.path}.1`;
       // Replace any existing .1 (only one rotation kept).
       await fs.rename(this.path, rotated);
+      // F-046: rename preserves source perms, so a manually pre-created
+      // log with looser modes would carry that into .1. Force 0o600
+      // explicitly. Best-effort — Windows/NFS may not support chmod, and
+      // a perms failure shouldn't break rotation itself.
+      try {
+        await fs.chmod(rotated, 0o600);
+      } catch {
+        /* ignore */
+      }
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === 'ENOENT') return;

@@ -121,7 +121,14 @@ export function Audit(): JSX.Element {
                   key={`${r.ts}-${r.tool}-${r.target}`}
                   className="border-t border-bg-line"
                 >
-                  <td className="p-2 tabular-nums">{new Date(r.ts).toLocaleTimeString()}</td>
+                  <td className="p-2 tabular-nums">
+                    {new Date(r.ts).toLocaleString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                  </td>
                   <td className="p-2">{r.tool}</td>
                   <td className="p-2 font-mono text-[11px]">{r.target}</td>
                   <td className="p-2">

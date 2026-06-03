@@ -74,12 +74,18 @@ export class LiveEventBus {
   private readonly bufferSize: number;
   // Start at 1 so a fresh client's Last-Event-ID: 0 (or no header) replays
   // every buffered event — replayFrom filters seq > lastSeq, so seq=0 means
-  // "I have nothing yet."
+  // "I have nothing yet." Overflow at Number.MAX_SAFE_INTEGER is theoretical
+  // (~285k years at 1 event/ms); no wraparound logic enforced. See F-045 in
+  // docs/CODE_REVIEW.md.
   private nextSeq = 1;
 
   constructor(opts: LiveEventBusOptions = {}) {
     this.bufferSize = opts.replayBufferSize ?? DEFAULT_BUFFER_SIZE;
-    this.emitter.setMaxListeners(50);
+    // Each SSE connection adds 4 listeners (tool-call, cost-update,
+    // anti-pattern, alert). 200 ÷ 4 = 50 concurrent connections before
+    // Node emits MaxListenersExceededWarning, which is comfortable
+    // headroom for parallel test runs and bursty client reconnects.
+    this.emitter.setMaxListeners(200);
   }
 
   on<E extends LiveEventName>(event: E, handler: (payload: LiveEventMap[E]) => void): void {

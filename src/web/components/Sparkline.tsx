@@ -32,7 +32,7 @@ export function Sparkline({
     <svg
       viewBox={`0 0 ${width} ${height}`}
       className="w-full"
-      style={{ height }}
+      height={height}
       {...a11yProps}
     >
       <polyline fill="none" stroke={stroke} strokeWidth={1.5} points={points} />

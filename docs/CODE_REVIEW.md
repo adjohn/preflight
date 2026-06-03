@@ -1110,7 +1110,7 @@ Findings begin in the next sections.
 
 ## Low severity
 
-### [F-037] `RecentAlertsPanel` no `retry: false`; 4× request multiplier in cloud mode — Low (PERF)
+### ✅ [F-037] `RecentAlertsPanel` no `retry: false`; 4× request multiplier in cloud mode — Low (PERF)
 **Location:** `src/web/views/Today.tsx:110-114`
 **Issue:** React Query defaults to `retry: 3`. In cloud mode each refetch fires the query and retries 3 times before settling (4 requests every 30 s). Once F-007 is fixed with `retry: false`, this finding is also addressed.
 **Impact:** Server access-log noise; minor wasted bandwidth.
@@ -1123,7 +1123,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-038] Audit timestamp shows time without date — Low (UX)
+### ✅ [F-038] Audit timestamp shows time without date — Low (UX)
 **Location:** `src/web/views/Audit.tsx:111`
 **Issue:** `toLocaleTimeString()` returns only the time portion. Two entries at the same time on different days are indistinguishable.
 **Impact:** Confusing when entries span multiple days.
@@ -1146,7 +1146,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-039] `Sparkline` `style={{ height }}` overrides responsive `viewBox` height — Low (UX)
+### ✅ [F-039] `Sparkline` `style={{ height }}` overrides responsive `viewBox` height — Low (UX)
 **Location:** `src/web/components/Sparkline.tsx:32-38`
 **Issue:** Inline `style={{ height: 50 }}` makes the SVG fixed-height regardless of any caller's `height` prop. The polyline scales correctly, but the SVG element does not. API confusion.
 **Impact:** Cosmetic; consumers passing `height={80}` get a 50px-tall SVG.
@@ -1162,7 +1162,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-040] `History.weekStart.slice(5)` truncates year — breaks cross-year display — Low (CORR)
+### ✅ [F-040] `History.weekStart.slice(5)` truncates year — breaks cross-year display — Low (CORR)
 **Location:** `src/web/views/History.tsx:89, 312`
 **Issue:** `w.weekStart.slice(5)` strips the year from `'2026-01-05'` to `'01-05'`. Two entries from different years with the same month-day produce identical X-axis labels.
 **Impact:** Edge case at year boundary; only matters for users with 8+ weeks of data spanning year transitions.
@@ -1185,7 +1185,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-041] `alertRulesWatcher` not nilled after close — Low (LIFE)
+### ✅ [F-041] `alertRulesWatcher` not nilled after close — Low (LIFE)
 **Location:** `src/index.ts:164-169`
 **Issue:** After `alertRulesWatcher.close()`, the variable is not set to `undefined`. The `shuttingDown` guard prevents double-close today, but a future change that calls shutdown twice would attempt double-close.
 **Impact:** Future regression risk only.
@@ -1201,7 +1201,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-042] Test name vs behaviour mismatch — "clamps to min 1" but actually falls back to 7777 — Low (DOC)
+### ✅ [F-042] Test name vs behaviour mismatch — "clamps to min 1" but actually falls back to 7777 — Low (DOC)
 **Location:** `src/config.test.ts:1211` and `src/config.ts:678`
 **Issue:** Test name says "clamps dashboard port to minimum 1" but the implementation falls back to `7777` (the default) for out-of-range values. Misleading test name.
 **Impact:** Reader confusion.
@@ -1218,7 +1218,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-043] Static handler MIME table missing `.wasm`, `.webp`, `.avif`, `.txt` — Low (CORR)
+### ✅ [F-043] Static handler MIME table missing `.wasm`, `.webp`, `.avif`, `.txt` — Low (CORR)
 **Location:** `src/dashboard/routes/static-handler.ts:5-20`
 **Issue:** Files with these extensions are served as `application/octet-stream`. For `.wasm` this prevents WebAssembly instantiation (browsers require `application/wasm`). Current dependencies don't use WASM, but it's a future-proofing gap.
 **Impact:** Future-proofing.
@@ -1240,7 +1240,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-044] `LiveEventBus.setMaxListeners(50)` may noise-warn at scale — Low (LIFE)
+### ✅ [F-044] `LiveEventBus.setMaxListeners(50)` may noise-warn at scale — Low (LIFE)
 **Location:** `src/dashboard/live-event-bus.ts:71`
 **Issue:** Each SSE connection adds 4 listeners (tool-call, cost-update, anti-pattern, alert). 50 ÷ 4 = 12 concurrent connections before Node emits `MaxListenersExceededWarning`. Test parallelism could exceed this.
 **Impact:** Noisy warnings; harmless.
@@ -1256,7 +1256,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-045] `nextSeq` overflow theoretical (~285,000 years at 1 ms/event) — Low (CORR)
+### ✅ [F-045] `nextSeq` overflow theoretical (~285,000 years at 1 ms/event) — Low (CORR)
 **Location:** `src/dashboard/live-event-bus.ts:83`
 **Issue:** `nextSeq` increments without bound. Overflow at `Number.MAX_SAFE_INTEGER` is impossibly far away.
 **Impact:** None practical.
@@ -1269,7 +1269,7 @@ Findings begin in the next sections.
 
 ---
 
-### [F-046] Rotated `.1` log file may inherit looser permissions if pre-existing — Low (SEC)
+### ✅ [F-046] Rotated `.1` log file may inherit looser permissions if pre-existing — Low (SEC)
 **Location:** `src/alerts/alert-log.ts:103-104`
 **Issue:** `fs.rename` preserves the source file's existing permissions. In normal operation `appendFile(..., {mode: 0o600})` creates the file at 0o600, so the `.1` rotation inherits 0o600. If a user manually pre-created the log with looser permissions, that mode is preserved.
 **Impact:** Edge case; only affects users who manually create the log file.

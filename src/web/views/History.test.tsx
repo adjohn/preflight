@@ -363,10 +363,12 @@ describe('History data helpers', () => {
         { weekStart: '2026-05-05', efficiencyScore: 0.91, totalCostUsd: 12, antiPatternCounts: {} },
         { weekStart: '2026-05-12', efficiencyScore: 0.94, totalCostUsd: 16, antiPatternCounts: { stuck_loop: 4 } },
       ]);
+      // F-040: keep the full ISO date in chart data so cross-year ticks
+      // remain unique; the XAxis tickFormatter shortens to MM-DD on render.
       expect(out).toEqual([
-        { week: '04-21', count: 3 },
-        { week: '04-28', count: 3 },
-        { week: '05-12', count: 4 },
+        { week: '2026-04-21', count: 3 },
+        { week: '2026-04-28', count: 3 },
+        { week: '2026-05-12', count: 4 },
       ]);
     });
 
@@ -465,9 +467,12 @@ describe('History helpers with real API data shapes', () => {
           antiPatternCounts: { stuck_loop: 3 },
         },
       ]);
+      // F-040: keep the full week identifier in chart data; the XAxis
+      // tickFormatter shortens to MM-DD on render (or leaves unchanged
+      // for non-ISO labels like '2026-W22').
       expect(out).toEqual([
-        { week: 'W22', count: 3 },
-        { week: 'W23', count: 3 },
+        { week: '2026-W22', count: 3 },
+        { week: '2026-W23', count: 3 },
       ]);
     });
 
@@ -483,10 +488,9 @@ describe('History helpers with real API data shapes', () => {
       ]);
       expect(out).toHaveLength(1);
       expect(out[0].count).toBe(5);
-      // Should slice from index 5 of "2026-W22" -> "W22"... actually let's check
-      // (w.weekStart ?? w.week ?? '').slice(5) -- weekStart is undefined so ?? picks week
-      // "2026-W22".slice(5) -> "W22"
-      expect(out[0].week).toBe('W22');
+      // F-040: full label preserved in chart data; XAxis tickFormatter
+      // handles display-time shortening.
+      expect(out[0].week).toBe('2026-W22');
     });
 
     it('handles empty antiPatternCounts (skips the week)', () => {

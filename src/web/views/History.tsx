@@ -66,6 +66,13 @@ const GRID_STROKE = '#1e293b';
 const ACCENT = '#22d3ee';
 const ACCENT_AMBER = '#f59e0b';
 
+// Render only the month-day portion of an ISO `YYYY-MM-DD` axis label
+// while keeping the full year-prefixed string in the chart data so
+// cross-year ticks remain unique.
+function shortMonthDay(value: string): string {
+  return typeof value === 'string' && value.length >= 10 ? value.slice(5, 10) : value;
+}
+
 export function History(): JSX.Element {
   const weekly = useQuery<WeeklyRow[]>({
     queryKey: qk.weekly,
@@ -88,9 +95,9 @@ export function History(): JSX.Element {
   });
 
   const weeklyData = (weekly.data ?? []).map((w) => {
-    const label = (w.weekStart ?? w.week ?? '').slice(5) || '?';
+    const fullDate = w.weekStart ?? w.week ?? '';
     const score = w.efficiencyScore ?? w.avgEfficiencyScore ?? 0;
-    return { week: label, efficiency: Math.round((score ?? 0) * 100) };
+    return { week: fullDate || '?', efficiency: Math.round((score ?? 0) * 100) };
   });
 
   const dailyData = aggregateDailyCost(sessions.data ?? [], 30);
@@ -107,7 +114,12 @@ export function History(): JSX.Element {
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <LineChart data={weeklyData}>
                 <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" />
-                <XAxis dataKey="week" tick={TICK_STYLE} stroke={GRID_STROKE} />
+                <XAxis
+                  dataKey="week"
+                  tick={TICK_STYLE}
+                  stroke={GRID_STROKE}
+                  tickFormatter={shortMonthDay}
+                />
                 <YAxis tick={TICK_STYLE} stroke={GRID_STROKE} domain={[0, 100]} unit="%" />
                 <Tooltip
                   contentStyle={{
@@ -186,7 +198,12 @@ export function History(): JSX.Element {
               <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={antiPatternSeries}>
                   <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" />
-                  <XAxis dataKey="week" tick={TICK_STYLE} stroke={GRID_STROKE} />
+                  <XAxis
+                    dataKey="week"
+                    tick={TICK_STYLE}
+                    stroke={GRID_STROKE}
+                    tickFormatter={shortMonthDay}
+                  />
                   <YAxis tick={TICK_STYLE} stroke={GRID_STROKE} />
                   <Tooltip
                     contentStyle={{
@@ -315,7 +332,7 @@ export function buildAntiPatternSeries(
     const counts = w.antiPatternCounts ?? {};
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
     if (total > 0) {
-      out.push({ week: (w.weekStart ?? w.week ?? '').slice(5) || '?', count: total });
+      out.push({ week: (w.weekStart ?? w.week ?? '') || '?', count: total });
     }
   }
   return out;

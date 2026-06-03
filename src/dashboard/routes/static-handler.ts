@@ -17,6 +17,10 @@ const MIME: Record<string, string> = {
   '.woff': 'font/woff',
   '.woff2':'font/woff2',
   '.map':  'application/json; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.txt':  'text/plain; charset=utf-8',
 };
 
 async function serveIndexFallback(root: string, res: ServerResponse): Promise<void> {

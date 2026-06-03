@@ -167,6 +167,7 @@ async function main(): Promise<void> {
         } catch {
           // ignore close errors during shutdown
         }
+        alertRulesWatcher = undefined;
       }
       eventProcessor?.stop();
       if (dashboardServer) await dashboardServer.stop();
