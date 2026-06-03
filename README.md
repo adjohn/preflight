@@ -266,6 +266,54 @@ When running in proxy mode, you can also enable an **inbound OTLP receiver** tha
 
 ---
 
+## Uninstalling
+
+To remove the Observatory hooks and MCP server from Claude Code:
+
+```bash
+nr-ai-observe uninstall
+```
+
+This removes the hooks from your user-level Claude Code settings and deregisters the MCP server. A timestamped backup of your settings is saved automatically before any changes are made.
+
+If you installed at the project level, add `--project`:
+
+```bash
+nr-ai-observe uninstall --project
+```
+
+Restart Claude Code after uninstalling for the changes to take effect.
+
+### Removing dashboards and alerts
+
+If you deployed dashboards or alerts, tear them down separately:
+
+```bash
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
+  npx tsx scripts/deploy-dashboard.ts --all --teardown
+
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
+  npx tsx scripts/deploy-alerts.ts --teardown
+```
+
+### Removing local data
+
+Session history and configuration are stored in `~/.nr-ai-observe/`. To remove everything:
+
+```bash
+rm -rf ~/.nr-ai-observe
+```
+
+### Unlinking the binary
+
+If you registered the CLI globally via `npm link`, remove it with:
+
+```bash
+npm unlink -g nr-ai-observatory
+```
+
+---
+
 ## Local mode
 
 If you'd rather not ship telemetry to New Relic, set `mode: 'local'` in your config:
