@@ -266,6 +266,18 @@ When running in proxy mode, you can also enable an **inbound OTLP receiver** tha
 
 ---
 
+## Updating
+
+To pull the latest changes and rebuild in one step:
+
+```bash
+nr-ai-observe update
+```
+
+This runs `git pull` followed by `npm run build` in the repo directory. Restart Claude Code afterwards to pick up the new version.
+
+---
+
 ## Uninstalling
 
 To remove the Observatory hooks and MCP server from Claude Code:

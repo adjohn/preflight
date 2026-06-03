@@ -6,9 +6,9 @@
  */
 
 import { Command } from 'commander';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, unlinkSync, copyFileSync, realpathSync } from 'node:fs';
-import { dirname, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import {
   mergeSettings,
@@ -84,6 +84,49 @@ function printPathWarning(): void {
   print('  Fix: run `npm link` in the project directory, or install globally:');
   print('    npm install -g nr-ai-mcp-server');
   print('');
+}
+
+// ---------------------------------------------------------------------------
+// Repo root discovery (for update command)
+// ---------------------------------------------------------------------------
+
+function findRepoRoot(): string | null {
+  try {
+    let dir = dirname(realpathSync(process.argv[1]));
+    while (true) {
+      if (existsSync(join(dir, 'package.json'))) return dir;
+      const parent = dirname(dir);
+      if (parent === dir) return null;
+      dir = parent;
+    }
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Update handler
+// ---------------------------------------------------------------------------
+
+function handleUpdate(): void {
+  const repoRoot = findRepoRoot();
+  if (!repoRoot) {
+    print('✗ Could not locate the repo root. Run this command from within the cloned repo or after npm link.');
+    process.exit(1);
+  }
+
+  print(`Updating NR AI Coding Observability from ${repoRoot}...\n`);
+
+  try {
+    print('→ git pull');
+    execFileSync('git', ['pull'], { cwd: repoRoot, stdio: 'inherit' });
+    print('\n→ npm run build');
+    execFileSync('npm', ['run', 'build'], { cwd: repoRoot, stdio: 'inherit' });
+    print('\n✓ Update complete. Restart Claude Code to pick up the new version.');
+  } catch {
+    print('\n✗ Update failed. Check the output above for details.');
+    process.exit(1);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -199,6 +242,11 @@ export function createInstallProgram(): Command {
       const { runSetupWizard } = await import('./setup-wizard.js');
       await runSetupWizard();
     });
+
+  program
+    .command('update')
+    .description('Pull the latest changes and rebuild (git pull + npm run build)')
+    .action(handleUpdate);
 
   return program;
 }

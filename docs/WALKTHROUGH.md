@@ -332,6 +332,18 @@ Expected: a `re_reading` entry. The dashboard's Today view should show an alert 
 
 ---
 
+## Updating
+
+To pull the latest changes and rebuild:
+
+```bash
+nr-ai-observe update
+```
+
+Then restart Claude Code.
+
+---
+
 ## Teardown / Reset (for re-testing)
 
 To remove all hooks and start fresh:

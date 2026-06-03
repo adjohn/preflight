@@ -39,6 +39,12 @@ npm link           # Register nr-ai-observe on PATH (required for Claude Code ho
 npm test           # Verify everything works
 ```
 
+To pull the latest changes and rebuild later:
+
+```bash
+nr-ai-observe update
+```
+
 ### Useful commands
 
 | Command | What it does |
