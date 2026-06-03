@@ -751,11 +751,14 @@ describe('api-handler GET /api/alerts/recent', () => {
     expect(JSON.parse(body())).toEqual({ error: 'not_found' });
   });
 
-  it('returns 500 when alertLog.readRecent rejects', async () => {
+  it('returns 500 with a generic error code when alertLog.readRecent rejects (F-007)', async () => {
+    // Suppress the server-side console.error log triggered by this case so the
+    // expected error doesn't pollute test output.
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     const handler = createApiHandler({
       alertLog: {
         readRecent: async () => {
-          throw new Error('disk gone');
+          throw new Error('disk gone /Users/secret/path with token sk-test-deadbeef');
         },
       },
     });
@@ -764,8 +767,12 @@ describe('api-handler GET /api/alerts/recent', () => {
     await handler(req, res);
     expect(status()).toBe(500);
     const parsed = JSON.parse(body());
-    expect(parsed.error).toBe('internal');
-    expect(parsed.detail).toContain('disk gone');
+    expect(parsed).toEqual({ error: 'internal' });
+    // Defensive: the response body must NOT echo any part of the raw error to
+    // the client — paths/tokens/stack frames stay server-side only.
+    expect(body()).not.toContain('disk gone');
+    expect(body()).not.toContain('sk-test-deadbeef');
+    consoleSpy.mockRestore();
   });
 
   it('returns an empty array when the log is empty', async () => {

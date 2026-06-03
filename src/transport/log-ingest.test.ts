@@ -93,6 +93,22 @@ describe('auditRecordToLogEntry()', () => {
 
     expect(entry.attributes).not.toHaveProperty('session_id');
   });
+
+  it('redacts secrets in detail, file_path, and command (F-003)', () => {
+    const SECRET_TOKEN = 'sk-test-deadbeef0123456789abcdef0123456789';
+    const record = makeAuditRecord({
+      detail: `Bash: curl -H "Authorization: Bearer ${SECRET_TOKEN}"`,
+      filePath: `/tmp/file?token=${SECRET_TOKEN}`,
+      command: `curl -H "Authorization: Bearer ${SECRET_TOKEN}"`,
+    });
+
+    const entry = auditRecordToLogEntry(record, 'my-app');
+
+    expect(entry.message).not.toContain(SECRET_TOKEN);
+    expect(entry.message).toContain('[REDACTED]');
+    expect(entry.attributes!['audit.file_path'] as string).not.toContain(SECRET_TOKEN);
+    expect(entry.attributes!['audit.command'] as string).not.toContain(SECRET_TOKEN);
+  });
 });
 
 // ---------------------------------------------------------------------------

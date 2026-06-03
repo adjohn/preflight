@@ -226,6 +226,68 @@ describe('toolCallToNrEvent()', () => {
     expect(event.output_size_bytes).toBe(1024);
     expect(event.input_hash).toBe('abc123');
   });
+
+  describe('redaction (F-001)', () => {
+    // Long enough Bearer token to match the pattern's {20,200} length constraint.
+    const SECRET_TOKEN = 'sk-test-deadbeef0123456789abcdef0123456789';
+
+    it('redacts secrets in Bash command before emitting AiToolCall', () => {
+      const record = makeRecord({
+        toolName: 'Bash',
+        command: `curl -H "Authorization: Bearer ${SECRET_TOKEN}" https://api.example.com`,
+      } as Partial<ToolCallRecord>);
+
+      const event = toolCallToNrEvent(record, { developer: 'd', appName: 'a' });
+
+      expect(typeof event.command).toBe('string');
+      expect(event.command as string).not.toContain(SECRET_TOKEN);
+      expect(event.command as string).toContain('[REDACTED]');
+    });
+
+    it('redacts secrets in filePath / file_path / agentDescription / detail / pattern', () => {
+      const record = makeRecord({
+        filePath: `/tmp/config?token=${SECRET_TOKEN}`,
+        file_path: `/tmp/other?token=${SECRET_TOKEN}`,
+        pattern: 'AKIAIOSFODNN7EXAMPLE',
+        agentDescription: `Use token ${SECRET_TOKEN} to fetch`,
+        detail: `Read /etc/passwd with ${SECRET_TOKEN}`,
+      } as unknown as Partial<ToolCallRecord>);
+
+      const event = toolCallToNrEvent(record, { developer: 'd', appName: 'a' });
+
+      expect(event.filePath as string).not.toContain(SECRET_TOKEN);
+      expect(event.file_path as string).not.toContain(SECRET_TOKEN);
+      expect(event.pattern as string).not.toContain('AKIAIOSFODNN7EXAMPLE');
+      expect(event.agentDescription as string).not.toContain(SECRET_TOKEN);
+      expect(event.detail as string).not.toContain(SECRET_TOKEN);
+    });
+
+    it('does not redact non-sensitive string fields', () => {
+      const record = makeRecord({
+        toolName: 'Bash',
+        isTestCommand: true,
+        someBenignString: 'hello world',
+      } as unknown as Partial<ToolCallRecord>);
+
+      const event = toolCallToNrEvent(record, { developer: 'd', appName: 'a' });
+
+      expect(event.someBenignString).toBe('hello world');
+      expect(event.isTestCommand).toBe(true);
+    });
+
+    it('redacts secrets in record.error', () => {
+      const record = makeRecord({
+        success: false,
+        errorType: 'http_error',
+        error: `curl: (22) The requested URL returned error 401 — Authorization: Bearer ${SECRET_TOKEN}`,
+      });
+
+      const event = toolCallToNrEvent(record, { developer: 'd', appName: 'a' });
+
+      expect(event.error as string).not.toContain(SECRET_TOKEN);
+      expect(event.error as string).toContain('[REDACTED]');
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -688,6 +750,26 @@ describe('antiPatternToNrEvent()', () => {
     });
 
     expect(event.platform).toBe('claude-code');
+  });
+
+  it('redacts secrets in pattern.file and pattern.command', () => {
+    const SECRET_TOKEN = 'sk-test-deadbeef0123456789abcdef0123456789';
+    const pattern = makePattern({
+      type: 'thrashing',
+      file: `/src/foo.ts?token=${SECRET_TOKEN}`,
+      command: `curl -H "Authorization: Bearer ${SECRET_TOKEN}"`,
+    });
+
+    const event = antiPatternToNrEvent(pattern, {
+      developer: 'd',
+      appName: 'a',
+      taskId: 'task-redact',
+    });
+
+    expect(event.file as string).not.toContain(SECRET_TOKEN);
+    expect(event.command as string).not.toContain(SECRET_TOKEN);
+    expect(event.file as string).toContain('[REDACTED]');
+    expect(event.command as string).toContain('[REDACTED]');
   });
 
   it('timestamp is in milliseconds (F-021)', () => {

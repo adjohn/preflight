@@ -82,7 +82,7 @@ function printPathWarning(): void {
   print('\n⚠ nr-ai-observe is not on your PATH.');
   print('  Claude Code hooks will fail with "command not found" until this is resolved.');
   print('  Fix: run `npm link` in the project directory, or install globally:');
-  print('    npm install -g nr-ai-observatory');
+  print('    npm install -g nr-ai-mcp-server');
   print('');
 }
 

@@ -313,7 +313,7 @@ export async function runSetupWizard(): Promise<void> {
       print('\n⚠ nr-ai-observe is not on your PATH.');
       print('  Claude Code hooks will fail with "command not found" until this is resolved.');
       print('  Fix: run `npm link` in the project directory, or install globally:');
-      print('    npm install -g nr-ai-observatory');
+      print('    npm install -g nr-ai-mcp-server');
     }
   }
 
@@ -332,6 +332,17 @@ export async function runSetupWizard(): Promise<void> {
 
   rl.close();
 
-  print('\n✓ Setup complete. Start the MCP server with:');
-  print('  nr-ai-mcp-server --stdio\n');
+  // The MCP server is launched automatically by Claude Code based on the
+  // .mcp.json entry written above — there is no manual start step. Telling
+  // testers to run `nr-ai-mcp-server --stdio` themselves leads them to
+  // start a second process that competes with the auto-launched one for
+  // the buffer file lock and produces interleaved metrics.
+  print('\n✓ Setup complete.');
+  print('  Open Claude Code in a project — the MCP server starts automatically.');
+  if (mode === 'local') {
+    print(`  Metrics will appear at http://127.0.0.1:${dashboardPort ?? 7777} within ~30 seconds of your first tool call.`);
+  } else {
+    print('  Metrics will appear in your New Relic dashboard within a few minutes.');
+  }
+  print('');
 }

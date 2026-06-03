@@ -294,8 +294,12 @@ export function createApiHandler(deps: ApiHandlerDeps): (req: IncomingMessage, r
       const entries = await deps.alertLog.readRecent(50);
       jsonOk(res, entries);
     } catch (err) {
+      // Log full error details server-side; never echo to the HTTP client.
+      // Stringifying the raw Error leaks file paths, env-var names, and
+      // potential connection-string fragments via stack frames.
+      console.error('alertLog.readRecent failed', err);
       res.writeHead(500, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'internal', detail: String(err) }));
+      res.end(JSON.stringify({ error: 'internal' }));
     }
   });
 

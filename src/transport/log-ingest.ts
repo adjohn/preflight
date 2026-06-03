@@ -6,6 +6,7 @@
 import { createLogger } from '../shared/index.js';
 import type { NrLogEntry, TransportOptions, TransportResult } from '../shared/index.js';
 import { sendLogs } from '../shared/index.js';
+import { redactSensitive } from '../config.js';
 import type { AuditRecord } from '../security/audit-trail.js';
 
 const logger = createLogger('log-ingest');
@@ -47,8 +48,12 @@ export function auditRecordToLogEntry(record: AuditRecord, appName: string): NrL
   };
 
   if (record.sessionId != null) attributes.session_id = record.sessionId;
-  if (record.filePath != null) attributes['audit.file_path'] = record.filePath;
-  if (record.command != null) attributes['audit.command'] = record.command;
+  // Defense-in-depth: AuditRecord is already constructed with redacted
+  // filePath/command/detail (see audit-trail.ts), but apply redactSensitive
+  // again here so a future caller that bypasses the AuditTrailManager
+  // constructor cannot leak secrets via the NR Logs egress channel.
+  if (record.filePath != null) attributes['audit.file_path'] = redactSensitive(record.filePath);
+  if (record.command != null) attributes['audit.command'] = redactSensitive(record.command);
 
   if (record.securityAlert) {
     attributes['audit.severity'] = record.securityAlert.severity;
@@ -57,7 +62,7 @@ export function auditRecordToLogEntry(record: AuditRecord, appName: string): NrL
 
   return {
     timestamp: record.timestamp,
-    message: record.detail,
+    message: redactSensitive(record.detail),
     attributes,
   };
 }

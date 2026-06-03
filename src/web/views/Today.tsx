@@ -108,6 +108,7 @@ export function Today(): JSX.Element {
   const { data: sessionCurrent } = useQuery<SessionCurrentApiResponse>({
     queryKey: qk.sessionCurrent,
     queryFn: () => fetchSessionCurrent() as Promise<SessionCurrentApiResponse>,
+    refetchInterval: 10_000,
   });
   const { data: todaySessions, isPending: sessionsPending } = useQuery<SessionSummary[]>({
     queryKey: qk.sessionsList(200),
@@ -117,21 +118,16 @@ export function Today(): JSX.Element {
     queryKey: qk.antiPatterns,
     queryFn: () => fetchAntiPatterns() as Promise<SessionAntiPattern[]>,
   });
-  const { data: currentSession } = useQuery<CurrentSessionResponse>({
-    queryKey: qk.sessionCurrent,
-    queryFn: () => fetchSessionCurrent() as Promise<CurrentSessionResponse>,
-    refetchInterval: 10_000,
-  });
 
   const modelHealth = useMemo(
     () =>
       computeModelHealth(
         costApi?.cost?.model ?? null,
-        currentSession?.toolSuccessRate ?? null,
-        currentSession?.toolErrorCount ?? 0,
+        sessionCurrent?.toolSuccessRate ?? null,
+        sessionCurrent?.toolErrorCount ?? 0,
         todaySessions ?? [],
       ),
-    [costApi?.cost?.model, currentSession?.toolSuccessRate, currentSession?.toolErrorCount, todaySessions],
+    [costApi?.cost?.model, sessionCurrent?.toolSuccessRate, sessionCurrent?.toolErrorCount, todaySessions],
   );
 
   const persistedTodaySpend = useMemo(() => computeTodaySpend(todaySessions ?? []), [todaySessions]);
@@ -613,13 +609,6 @@ function formatRelativeTime(ts: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
-}
-
-function formatNumber(n: number): string {
-  if (!Number.isFinite(n)) return '—';
-  if (Math.abs(n) >= 100) return n.toFixed(0);
-  if (Number.isInteger(n)) return String(n);
-  return n.toFixed(2);
 }
 
 function fmtTime(value: number): string {

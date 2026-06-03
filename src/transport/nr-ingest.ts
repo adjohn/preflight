@@ -7,6 +7,7 @@ import type { NrEventData, NrMetric, NrLogEntry, TransportOptions, TransportResu
 import { HarvestScheduler, MetricAggregator, sendEvents, sendMetrics, OtlpTransport, OtlpEventBridge, createLogger } from '../shared/index.js';
 
 const logger = createLogger('nr-ingest');
+import { redactSensitive } from '../config.js';
 import type { ToolCallRecord } from '../storage/types.js';
 import type { ProxyToolCallRecord, ProxyRequestRecord } from '../proxy/types.js';
 import type { AiCodingTask } from '../metrics/task-detector.js';
@@ -112,6 +113,23 @@ const STANDARD_KEYS = new Set([
 ]);
 
 /**
+ * Tool-specific string fields that may carry secrets (Bash commands, file paths,
+ * grep patterns, sub-agent prompts, audit detail strings). Anything in this set
+ * is run through redactSensitive() before leaving the process. New fields that
+ * could contain user input must be added here — silent passthrough is the
+ * default failure mode and it leaks secrets to NR.
+ */
+const REDACT_FIELD_KEYS = new Set([
+  'command',
+  'filePath',
+  'file_path',
+  'pattern',
+  'agentDescription',
+  'agent_description',
+  'detail',
+]);
+
+/**
  * Convert a ToolCallRecord into a flat NR event object.
  *
  * Standard fields are mapped to snake_case NR attributes; any extra
@@ -139,7 +157,10 @@ export function toolCallToNrEvent(
   if (sessionId != null) event.session_id = sessionId;
   if (record.durationMs != null) event.duration_ms = record.durationMs;
   if (record.errorType != null) event.error_type = record.errorType;
-  if (record.error != null) event.error = record.error;
+  // Tool error messages occasionally include URLs from failed curl commands
+  // and similar — possible to embed an Authorization header or token query
+  // string in the message. Same redaction policy as the tool-specific fields.
+  if (record.error != null) event.error = redactSensitive(record.error);
   if (record.inputSizeBytes != null) event.input_size_bytes = record.inputSizeBytes;
   if (record.outputSizeBytes != null) event.output_size_bytes = record.outputSizeBytes;
   if (record.inputHash != null) event.input_hash = record.inputHash;
@@ -147,10 +168,15 @@ export function toolCallToNrEvent(
   // Platform attribution — defaults to 'claude-code' for backward compatibility
   event.platform = typeof record.platform === 'string' ? record.platform : 'claude-code';
 
-  // Include tool-specific fields from parsers
+  // Include tool-specific fields from parsers. String fields known to potentially
+  // carry secrets (commands, file paths, grep patterns, sub-agent prompts) are
+  // redacted before egress — the auditRecordToNrEvent path already does this for
+  // its own egress channel; the AiToolCall path must do the same.
   for (const [key, value] of Object.entries(record)) {
     if (STANDARD_KEYS.has(key)) continue;
-    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    if (typeof value === 'string') {
+      event[key] = REDACT_FIELD_KEYS.has(key) ? redactSensitive(value) : value;
+    } else if (typeof value === 'number' || typeof value === 'boolean') {
       event[key] = value;
     }
   }
@@ -306,8 +332,12 @@ export function antiPatternToNrEvent(
   if (attrs.orgId) event.org_id = attrs.orgId;
 
   if (attrs.sessionId != null) event.session_id = attrs.sessionId;
-  if (pattern.file != null) event.file = pattern.file;
-  if (pattern.command != null) event.command = pattern.command;
+  // pattern.file is sourced from raw call.filePath in detectThrashing, and
+  // pattern.command from raw Bash commands in other detectors — both can
+  // carry query-string tokens or Authorization headers. Same egress channel
+  // as toolCallToNrEvent, so the same redaction policy applies.
+  if (pattern.file != null) event.file = redactSensitive(pattern.file);
+  if (pattern.command != null) event.command = redactSensitive(pattern.command);
   if (pattern.iterations != null) event.iterations = pattern.iterations;
   if (pattern.readCount != null) event.read_count = pattern.readCount;
   if (pattern.repeatCount != null) event.repeat_count = pattern.repeatCount;

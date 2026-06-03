@@ -124,10 +124,14 @@ function buildDetail(record: ToolCallRecord): string {
   const agentDescription = record.agentDescription as string | undefined;
   const pattern = record.pattern as string | undefined;
 
-  if (filePath) return `${tool} ${filePath}`;
-  if (command) return `${tool}: ${command}`;
-  if (agentDescription) return `${tool}: ${agentDescription}`;
-  if (pattern) return `${tool}: ${pattern}`;
+  // Redact at the source so every downstream egress (NR Events API,
+  // NR Logs API, persisted on-disk audit log) sees only scrubbed strings.
+  // detectSecurityAlert runs against the raw record before this is invoked,
+  // so pattern matching still works correctly against unredacted input.
+  if (filePath) return `${tool} ${redactSensitive(filePath)}`;
+  if (command) return `${tool}: ${redactSensitive(command)}`;
+  if (agentDescription) return `${tool}: ${redactSensitive(agentDescription)}`;
+  if (pattern) return `${tool}: ${redactSensitive(pattern)}`;
   return tool;
 }
 
@@ -279,6 +283,8 @@ export class AuditTrailManager {
       this.networkPatterns,
     );
 
+    const rawFilePath = record.filePath as string | undefined;
+    const rawCommand = record.command as string | undefined;
     const auditRecord: AuditRecord = {
       timestamp: record.timestamp,
       sessionId: record.sessionId ?? this.sessionId,
@@ -286,8 +292,10 @@ export class AuditTrailManager {
       tool: record.toolName,
       detail,
       developer: this.developer,
-      filePath: record.filePath as string | undefined,
-      command: record.command as string | undefined,
+      // Store redacted strings on the AuditRecord so every downstream consumer
+      // (NR Events, NR Logs, on-disk audit log) carries only scrubbed values.
+      filePath: rawFilePath != null ? redactSensitive(rawFilePath) : undefined,
+      command: rawCommand != null ? redactSensitive(rawCommand) : undefined,
       securityAlert: alert,
     };
 
@@ -325,8 +333,9 @@ export class AuditTrailManager {
       tool: record.toolName,
       detail,
       developer: this.developer,
-      filePath,
-      command,
+      // Same redaction policy as recordToolCall — see comment there.
+      filePath: filePath != null ? redactSensitive(filePath) : undefined,
+      command: command != null ? redactSensitive(command) : undefined,
       securityAlert: alert,
     };
 
