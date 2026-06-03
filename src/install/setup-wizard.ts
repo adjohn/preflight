@@ -6,6 +6,7 @@ import {
   existsSync,
   copyFileSync,
   chmodSync,
+  realpathSync,
 } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { homedir } from 'node:os';
@@ -32,7 +33,8 @@ interface WizardLogger {
  * pattern as `src/index.ts` for resolving the static dashboard dir.
  */
 function defaultStarterRulesSource(): string {
-  const scriptPath = process.argv[1] ?? process.cwd();
+  const rawPath = process.argv[1] ?? process.cwd();
+  const scriptPath = (() => { try { return realpathSync(rawPath); } catch { return rawPath; } })();
   return resolve(dirname(scriptPath), '..', '..', 'examples', 'local-alert-rules.json');
 }
 
