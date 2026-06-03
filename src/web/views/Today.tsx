@@ -34,14 +34,18 @@ const SEVERITY_DOT: Record<AlertEvent['severity'], string> = {
 };
 
 interface CostApiResponse {
-  readonly cost: { readonly sessionTotalCostUsd?: number | null };
+  readonly cost: { readonly sessionTotalCostUsd?: number | null; readonly model?: string | null };
   readonly forecast: { readonly forecastEndOfDayUsd?: number | null } | null;
 }
 
-// F-050: minimal shape — only the field this view consumes. The endpoint
-// also returns the live SessionMetrics; we don't depend on those here.
+// Minimal view of the /api/session/current payload. F-050 added
+// efficiencyScore; the model-health card consumes toolSuccessRate +
+// toolCallCount + toolErrorCount from the same endpoint.
 interface SessionCurrentApiResponse {
   readonly efficiencyScore?: number | null;
+  readonly toolSuccessRate?: number | null;
+  readonly toolErrorCount?: number;
+  readonly toolCallCount?: number;
 }
 
 interface SessionAntiPattern {
@@ -61,6 +65,8 @@ interface SessionSummary {
   readonly toolCallCount?: number;
   readonly estimatedCostUsd?: number | null;
   readonly antiPatterns?: SessionAntiPattern[];
+  readonly model?: string | null;
+  readonly toolSuccessRate?: number | null;
 }
 
 interface QualityProxyMetrics {
@@ -111,6 +117,22 @@ export function Today(): JSX.Element {
     queryKey: qk.antiPatterns,
     queryFn: () => fetchAntiPatterns() as Promise<SessionAntiPattern[]>,
   });
+  const { data: currentSession } = useQuery<CurrentSessionResponse>({
+    queryKey: qk.sessionCurrent,
+    queryFn: () => fetchSessionCurrent() as Promise<CurrentSessionResponse>,
+    refetchInterval: 10_000,
+  });
+
+  const modelHealth = useMemo(
+    () =>
+      computeModelHealth(
+        costApi?.cost?.model ?? null,
+        currentSession?.toolSuccessRate ?? null,
+        currentSession?.toolErrorCount ?? 0,
+        todaySessions ?? [],
+      ),
+    [costApi?.cost?.model, currentSession?.toolSuccessRate, currentSession?.toolErrorCount, todaySessions],
+  );
 
   const persistedTodaySpend = useMemo(() => computeTodaySpend(todaySessions ?? []), [todaySessions]);
   const persistedTodayCalls = useMemo(() => computeTodayToolCalls(todaySessions ?? []), [todaySessions]);
@@ -148,6 +170,8 @@ export function Today(): JSX.Element {
           value={String(flagsCount)}
         />
       </div>
+
+      <ModelHealthCard health={modelHealth} />
 
       <ForecastEodCard
         todayTotal={todayTotal}
@@ -655,6 +679,95 @@ function EfficiencyKpi({ score }: { score: number | null }): JSX.Element {
   // Bands match the EfficiencyScorer narrative: ≥80% strong, ≥50% mixed, <50% poor.
   const tone: 'good' | 'warn' | 'accent' = pct >= 80 ? 'good' : pct >= 50 ? 'accent' : 'warn';
   return <Kpi label="eff." tone={tone} value={`${pct}%`} />;
+}
+
+export interface ModelHealthResult {
+  readonly status: 'healthy' | 'degraded' | 'poor' | 'unknown';
+  readonly model: string | null;
+  readonly currentRate: number | null;
+  readonly baseline: number | null;
+  readonly message: string;
+}
+
+const MIN_SESSIONS_FOR_BASELINE = 3;
+const DEGRADED_THRESHOLD = 0.10;
+const POOR_THRESHOLD = 0.20;
+const POOR_ERROR_THRESHOLD = 5;
+
+export function computeModelHealth(
+  currentModel: string | null,
+  currentSuccessRate: number | null,
+  currentErrorCount: number,
+  sessions: SessionSummary[],
+): ModelHealthResult {
+  if (!currentModel || currentSuccessRate === null) {
+    return { status: 'unknown', model: currentModel, currentRate: null, baseline: null, message: 'Waiting for data…' };
+  }
+
+  const modelSessions = sessions.filter(
+    (s) => s.model === currentModel && s.toolSuccessRate != null,
+  );
+  const baseline =
+    modelSessions.length >= MIN_SESSIONS_FOR_BASELINE
+      ? modelSessions.reduce((sum, s) => sum + (s.toolSuccessRate ?? 0), 0) / modelSessions.length
+      : null;
+
+  if (baseline === null) {
+    const pct = Math.round(currentSuccessRate * 100);
+    return { status: 'healthy', model: currentModel, currentRate: currentSuccessRate, baseline: null, message: `${pct}% success` };
+  }
+
+  const gap = baseline - currentSuccessRate;
+
+  if (gap > POOR_THRESHOLD || currentErrorCount > POOR_ERROR_THRESHOLD) {
+    const pct = Math.round(currentSuccessRate * 100);
+    const basePct = Math.round(baseline * 100);
+    return {
+      status: 'poor',
+      model: currentModel,
+      currentRate: currentSuccessRate,
+      baseline,
+      message: `${pct}% success (avg ${basePct}%) — consider switching models`,
+    };
+  }
+
+  if (gap > DEGRADED_THRESHOLD) {
+    const pct = Math.round(currentSuccessRate * 100);
+    const basePct = Math.round(baseline * 100);
+    return {
+      status: 'degraded',
+      model: currentModel,
+      currentRate: currentSuccessRate,
+      baseline,
+      message: `${pct}% success (avg ${basePct}%) — may be throttled`,
+    };
+  }
+
+  const pct = Math.round(currentSuccessRate * 100);
+  return { status: 'healthy', model: currentModel, currentRate: currentSuccessRate, baseline, message: `${pct}% success` };
+}
+
+const HEALTH_STYLE: Record<ModelHealthResult['status'], { dot: string; border: string }> = {
+  healthy: { dot: 'text-emerald-400', border: 'border-bg-line' },
+  degraded: { dot: 'text-accent-amber', border: 'border-accent-amber/40' },
+  poor: { dot: 'text-accent-red', border: 'border-accent-red/40' },
+  unknown: { dot: 'text-ink-muted', border: 'border-bg-line' },
+};
+
+function ModelHealthCard({ health }: { health: ModelHealthResult }): JSX.Element {
+  const style = HEALTH_STYLE[health.status];
+  return (
+    <div className={`bg-bg-panel border ${style.border} rounded p-2.5 mb-3`}>
+      <div className="flex items-center gap-2 text-xs">
+        <span className={style.dot} aria-hidden="true">●</span>
+        <span className="font-medium text-ink-default">
+          {health.model ?? 'unknown model'}
+        </span>
+        <span className="text-ink-muted">·</span>
+        <span className="text-ink-subtle">{health.message}</span>
+      </div>
+    </div>
+  );
 }
 
 function ForecastEodCard({

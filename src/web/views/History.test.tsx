@@ -6,6 +6,8 @@ import {
   aggregateDailyCost,
   buildOutcomeData,
   buildAntiPatternSeries,
+  aggregateModelPerformance,
+  aggregateToolUsage,
 } from './History';
 
 const SAMPLE_WEEKLY = [
@@ -36,10 +38,10 @@ const SAMPLE_WEEKLY = [
 ];
 
 const SAMPLE_SESSIONS = [
-  { sessionId: 's1', startTime: '2026-05-26T09:00:00Z', estimatedCostUsd: 1.2 },
-  { sessionId: 's2', startTime: '2026-05-26T15:00:00Z', estimatedCostUsd: 0.8 },
-  { sessionId: 's3', startTime: '2026-05-27T10:00:00Z', estimatedCostUsd: 2.4 },
-  { sessionId: 's4', startTime: '2026-05-28T11:00:00Z', estimatedCostUsd: 1.7 },
+  { sessionId: 's1', startTime: '2026-05-26T09:00:00Z', estimatedCostUsd: 1.2, model: 'claude-opus-4-6', toolSuccessRate: 0.95, efficiencyScore: 0.88, toolBreakdown: { Read: 10, Edit: 5 } },
+  { sessionId: 's2', startTime: '2026-05-26T15:00:00Z', estimatedCostUsd: 0.8, model: 'claude-opus-4-6', toolSuccessRate: 0.92, efficiencyScore: 0.85, toolBreakdown: { Read: 8, Bash: 3 } },
+  { sessionId: 's3', startTime: '2026-05-27T10:00:00Z', estimatedCostUsd: 2.4, model: 'claude-sonnet-4-6', toolSuccessRate: 0.88, efficiencyScore: 0.72, toolBreakdown: { Read: 12, Edit: 7 } },
+  { sessionId: 's4', startTime: '2026-05-28T11:00:00Z', estimatedCostUsd: 1.7, model: 'claude-opus-4-6', toolSuccessRate: 0.94, efficiencyScore: 0.90, toolBreakdown: { Read: 6, Write: 2 } },
 ];
 
 const SAMPLE_OUTCOME = {
@@ -154,6 +156,16 @@ describe('History view', () => {
   it('renders the anti-pattern frequency panel title', async () => {
     renderHistory();
     await waitFor(() => expect(screen.getByText(/anti-pattern frequency/i)).toBeInTheDocument());
+  });
+
+  it('renders the model performance panel title', async () => {
+    renderHistory();
+    await waitFor(() => expect(screen.getByText(/model performance/i)).toBeInTheDocument());
+  });
+
+  it('renders the top tools panel title', async () => {
+    renderHistory();
+    await waitFor(() => expect(screen.getByText(/top tools/i)).toBeInTheDocument());
   });
 
   it('renders the personal coach panel and shows the top recommendation', async () => {
@@ -520,5 +532,96 @@ describe('History helpers with real API data shapes', () => {
       });
       expect(out).toEqual([]);
     });
+  });
+});
+
+describe('aggregateModelPerformance', () => {
+  it('groups sessions by model with computed averages', () => {
+    const sessions = [
+      { sessionId: 's1', model: 'claude-opus-4-6', efficiencyScore: 0.9, toolSuccessRate: 0.95, estimatedCostUsd: 2.0 },
+      { sessionId: 's2', model: 'claude-opus-4-6', efficiencyScore: 0.8, toolSuccessRate: 0.92, estimatedCostUsd: 1.5 },
+      { sessionId: 's3', model: 'claude-sonnet-4-6', efficiencyScore: 0.7, toolSuccessRate: 0.88, estimatedCostUsd: 0.5 },
+    ];
+    const result = aggregateModelPerformance(sessions);
+    expect(result).toHaveLength(2);
+    const opus = result.find((m) => m.model === 'claude-opus-4-6')!;
+    expect(opus.sessions).toBe(2);
+    expect(opus.avgEfficiency).toBeCloseTo(0.85);
+    expect(opus.avgSuccessRate).toBeCloseTo(0.935);
+    expect(opus.avgCost).toBeCloseTo(1.75);
+    expect(opus.flagged).toBe(false);
+  });
+
+  it('flags models that have sessions below 85% success rate', () => {
+    const sessions = [
+      { sessionId: 's1', model: 'claude-opus-4-6', toolSuccessRate: 0.95 },
+      { sessionId: 's2', model: 'claude-opus-4-6', toolSuccessRate: 0.80 },
+      { sessionId: 's3', model: 'claude-opus-4-6', toolSuccessRate: 0.93 },
+    ];
+    const result = aggregateModelPerformance(sessions);
+    expect(result[0].flagged).toBe(true);
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(aggregateModelPerformance([])).toEqual([]);
+  });
+
+  it('treats null model as "unknown"', () => {
+    const sessions = [
+      { sessionId: 's1', model: null, toolSuccessRate: 0.90 },
+    ];
+    const result = aggregateModelPerformance(sessions);
+    expect(result[0].model).toBe('unknown');
+  });
+
+  it('sorts by session count descending', () => {
+    const sessions = [
+      { sessionId: 's1', model: 'sonnet' },
+      { sessionId: 's2', model: 'opus' },
+      { sessionId: 's3', model: 'opus' },
+      { sessionId: 's4', model: 'opus' },
+    ];
+    const result = aggregateModelPerformance(sessions);
+    expect(result[0].model).toBe('opus');
+    expect(result[1].model).toBe('sonnet');
+  });
+});
+
+describe('aggregateToolUsage', () => {
+  it('merges tool breakdowns across sessions and returns top 8', () => {
+    const sessions = [
+      { sessionId: 's1', toolBreakdown: { Read: 10, Edit: 5, Bash: 3 } },
+      { sessionId: 's2', toolBreakdown: { Read: 8, Edit: 7, Write: 2 } },
+    ];
+    const result = aggregateToolUsage(sessions);
+    expect(result[0]).toEqual({ tool: 'Read', count: 18 });
+    expect(result[1]).toEqual({ tool: 'Edit', count: 12 });
+    expect(result[2]).toEqual({ tool: 'Bash', count: 3 });
+    expect(result[3]).toEqual({ tool: 'Write', count: 2 });
+  });
+
+  it('limits to top 8 tools', () => {
+    const toolBreakdown: Record<string, number> = {};
+    for (let i = 0; i < 12; i++) {
+      toolBreakdown[`tool_${i}`] = 12 - i;
+    }
+    const sessions = [{ sessionId: 's1', toolBreakdown }];
+    const result = aggregateToolUsage(sessions);
+    expect(result).toHaveLength(8);
+    expect(result[0].tool).toBe('tool_0');
+    expect(result[7].tool).toBe('tool_7');
+  });
+
+  it('skips sessions without toolBreakdown', () => {
+    const sessions = [
+      { sessionId: 's1' },
+      { sessionId: 's2', toolBreakdown: { Read: 5 } },
+    ];
+    const result = aggregateToolUsage(sessions);
+    expect(result).toEqual([{ tool: 'Read', count: 5 }]);
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(aggregateToolUsage([])).toEqual([]);
   });
 });

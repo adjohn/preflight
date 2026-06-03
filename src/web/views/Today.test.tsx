@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Today } from './Today';
+import { Today, computeModelHealth } from './Today';
 import { useLiveStore } from '../store/liveStore';
 
 function renderToday(qc?: QueryClient) {
@@ -91,16 +91,22 @@ describe('Today view', () => {
     expect(screen.getByText(/\+\$6\.23/)).toBeInTheDocument();
   });
 
-  // Regression for F-017: the +$ prefix used to be hardcoded, so a
-  // downward-revised forecast (delta < 0) rendered as `+$-1.23 from now`.
-  it('renders a negative delta with a leading "−$" not "+$-" (F-017)', () => {
+  // After 45b17db the forecast is clamped to at least todayTotal (you can't
+  // un-spend money), so a raw forecast below current spend renders the
+  // clamped value with an "on pace" annotation (delta ≤ 0 branch in
+  // ForecastEodCard) — never a negative delta.
+  it('clamps forecast to todayTotal when raw forecast is lower (F-017)', () => {
     useLiveStore.setState({
       cost: { sessionTotalUsd: 3.42, todayTotalUsd: 10, forecastEodUsd: 8 },
     });
     renderToday();
-    // Match the rendered delta strictly; reject the legacy bug substring.
-    expect(screen.getByText(/−\$2\.00/)).toBeInTheDocument();
+    // Clamped forecast = todayTotal = 10, delta is zero → "on pace"
+    expect(screen.getByText(/on pace/)).toBeInTheDocument();
+    // Legacy bug substrings must never appear
     expect(screen.queryByText(/\+\$-2\.00/)).toBeNull();
+    expect(screen.queryByText(/\+\$0\.00/)).toBeNull();
+    // Raw (uncramped) forecast value must not surface either
+    expect(screen.queryByText(/\$8\.00/)).toBeNull();
   });
 
   it('still renders a positive delta with "+$" (F-017 regression guard)', () => {
@@ -364,5 +370,68 @@ describe('Today view — Recent alerts panel', () => {
       'Middle alert',
       'Old alert',
     ]);
+  });
+});
+
+describe('computeModelHealth', () => {
+  const makeSessions = (model: string, rates: number[]) =>
+    rates.map((r, i) => ({
+      sessionId: `s${i}`,
+      startTime: Date.now() - i * 3600_000,
+      model,
+      toolSuccessRate: r,
+    }));
+
+  it('returns unknown when model is null', () => {
+    const result = computeModelHealth(null, 0.95, 0, []);
+    expect(result.status).toBe('unknown');
+  });
+
+  it('returns unknown when success rate is null', () => {
+    const result = computeModelHealth('claude-opus-4-6', null, 0, []);
+    expect(result.status).toBe('unknown');
+  });
+
+  it('returns healthy when no baseline exists (fewer than 3 sessions)', () => {
+    const sessions = makeSessions('claude-opus-4-6', [0.95, 0.92]);
+    const result = computeModelHealth('claude-opus-4-6', 0.90, 0, sessions);
+    expect(result.status).toBe('healthy');
+    expect(result.baseline).toBeNull();
+  });
+
+  it('returns healthy when current rate is close to baseline', () => {
+    const sessions = makeSessions('claude-opus-4-6', [0.95, 0.93, 0.96]);
+    const result = computeModelHealth('claude-opus-4-6', 0.92, 0, sessions);
+    expect(result.status).toBe('healthy');
+    expect(result.baseline).toBeCloseTo(0.9467, 2);
+  });
+
+  it('returns degraded when gap exceeds 10 points', () => {
+    const sessions = makeSessions('claude-opus-4-6', [0.95, 0.94, 0.96]);
+    const result = computeModelHealth('claude-opus-4-6', 0.82, 1, sessions);
+    expect(result.status).toBe('degraded');
+    expect(result.message).toContain('may be throttled');
+  });
+
+  it('returns poor when gap exceeds 20 points', () => {
+    const sessions = makeSessions('claude-opus-4-6', [0.95, 0.94, 0.96]);
+    const result = computeModelHealth('claude-opus-4-6', 0.70, 2, sessions);
+    expect(result.status).toBe('poor');
+    expect(result.message).toContain('consider switching');
+  });
+
+  it('returns poor when error count exceeds threshold regardless of rate', () => {
+    const sessions = makeSessions('claude-opus-4-6', [0.95, 0.94, 0.96]);
+    const result = computeModelHealth('claude-opus-4-6', 0.90, 6, sessions);
+    expect(result.status).toBe('poor');
+  });
+
+  it('only compares sessions for the same model', () => {
+    const sessions = [
+      ...makeSessions('claude-opus-4-6', [0.95, 0.94, 0.96]),
+      ...makeSessions('claude-sonnet-4-6', [0.60, 0.65, 0.62]),
+    ];
+    const result = computeModelHealth('claude-opus-4-6', 0.92, 0, sessions);
+    expect(result.status).toBe('healthy');
   });
 });

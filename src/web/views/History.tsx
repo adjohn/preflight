@@ -31,6 +31,11 @@ interface SessionRow {
   readonly sessionId: string;
   readonly startTime?: string | number;
   readonly estimatedCostUsd?: number | null;
+  readonly model?: string | null;
+  readonly toolSuccessRate?: number | null;
+  readonly efficiencyScore?: number | null;
+  readonly toolCallCount?: number;
+  readonly toolBreakdown?: Record<string, number>;
 }
 
 interface OutcomeBucket {
@@ -65,6 +70,7 @@ const TICK_STYLE = { fill: '#94a3b8', fontSize: 10 };
 const GRID_STROKE = '#1e293b';
 const ACCENT = '#22d3ee';
 const ACCENT_AMBER = '#f59e0b';
+const ACCENT_GREEN = '#34d399';
 
 // Render only the month-day portion of an ISO `YYYY-MM-DD` axis label
 // while keeping the full year-prefixed string in the chart data so
@@ -105,6 +111,8 @@ export function History(): JSX.Element {
   const dailyData = aggregateDailyCost(sessions.data ?? [], 30);
   const outcomeData = buildOutcomeData(costPerOutcome.data);
   const antiPatternSeries = buildAntiPatternSeries(weeklyChronological);
+  const modelPerf = aggregateModelPerformance(sessions.data ?? []);
+  const topTools = aggregateToolUsage(sessions.data ?? []);
 
   return (
     <section>
@@ -215,6 +223,78 @@ export function History(): JSX.Element {
                     }}
                   />
                   <Bar dataKey="count" fill={ACCENT_AMBER} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Panel>
+
+        <Panel title="Model performance">
+          {modelPerf.length === 0 ? (
+            <EmptyState text="No model data yet — complete a few sessions." />
+          ) : (
+            <div className="h-44 overflow-y-auto text-xs">
+              <table className="w-full">
+                <thead className="text-ink-muted sticky top-0 bg-bg-panel">
+                  <tr>
+                    <th className="text-left pb-1">Model</th>
+                    <th className="text-right pb-1">Sessions</th>
+                    <th className="text-right pb-1">Eff.</th>
+                    <th className="text-right pb-1">Success</th>
+                    <th className="text-right pb-1">Avg $</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {modelPerf.map((m) => (
+                    <tr key={m.model} className="border-t border-bg-line">
+                      <td className="py-1 font-medium">{m.model}</td>
+                      <td className="py-1 text-right tabular-nums">{m.sessions}</td>
+                      <td className="py-1 text-right tabular-nums">
+                        {m.avgEfficiency !== null ? `${Math.round(m.avgEfficiency * 100)}%` : '—'}
+                      </td>
+                      <td className={`py-1 text-right tabular-nums ${m.flagged ? 'text-accent-amber' : ''}`}>
+                        {m.avgSuccessRate !== null ? `${Math.round(m.avgSuccessRate * 100)}%` : '—'}
+                      </td>
+                      <td className="py-1 text-right tabular-nums">
+                        {m.avgCost !== null ? `$${m.avgCost.toFixed(2)}` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {modelPerf.some((m) => m.flagged) && (
+                <div className="text-accent-amber text-[10px] mt-1">
+                  ⚠ Highlighted models had sessions with elevated error rates
+                </div>
+              )}
+            </div>
+          )}
+        </Panel>
+
+        <Panel title="Top tools · all sessions">
+          {topTools.length === 0 ? (
+            <EmptyState text="No tool data yet." />
+          ) : (
+            <div className="h-44 min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <BarChart data={topTools} layout="vertical">
+                  <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" />
+                  <XAxis type="number" tick={TICK_STYLE} stroke={GRID_STROKE} />
+                  <YAxis
+                    type="category"
+                    dataKey="tool"
+                    tick={TICK_STYLE}
+                    stroke={GRID_STROKE}
+                    width={100}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#0f172a',
+                      border: '1px solid #1e293b',
+                      fontSize: 12,
+                    }}
+                  />
+                  <Bar dataKey="count" fill={ACCENT_GREEN} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -338,4 +418,74 @@ export function buildAntiPatternSeries(
     }
   }
   return out;
+}
+
+export interface ModelPerformanceRow {
+  readonly model: string;
+  readonly sessions: number;
+  readonly avgEfficiency: number | null;
+  readonly avgSuccessRate: number | null;
+  readonly avgCost: number | null;
+  readonly flagged: boolean;
+}
+
+const FLAGGED_SUCCESS_THRESHOLD = 0.85;
+
+export function aggregateModelPerformance(rows: SessionRow[]): ModelPerformanceRow[] {
+  const byModel = new Map<string, { sessions: number; effSum: number; effCount: number; successSum: number; successCount: number; costSum: number; costCount: number; lowSuccessSessions: number }>();
+
+  for (const r of rows) {
+    const model = r.model ?? 'unknown';
+    let entry = byModel.get(model);
+    if (!entry) {
+      entry = { sessions: 0, effSum: 0, effCount: 0, successSum: 0, successCount: 0, costSum: 0, costCount: 0, lowSuccessSessions: 0 };
+      byModel.set(model, entry);
+    }
+    entry.sessions++;
+    if (r.efficiencyScore != null) {
+      entry.effSum += r.efficiencyScore;
+      entry.effCount++;
+    }
+    if (r.toolSuccessRate != null) {
+      entry.successSum += r.toolSuccessRate;
+      entry.successCount++;
+      if (r.toolSuccessRate < FLAGGED_SUCCESS_THRESHOLD) {
+        entry.lowSuccessSessions++;
+      }
+    }
+    if (r.estimatedCostUsd != null) {
+      entry.costSum += r.estimatedCostUsd;
+      entry.costCount++;
+    }
+  }
+
+  const result: ModelPerformanceRow[] = [];
+  for (const [model, e] of byModel) {
+    result.push({
+      model,
+      sessions: e.sessions,
+      avgEfficiency: e.effCount > 0 ? e.effSum / e.effCount : null,
+      avgSuccessRate: e.successCount > 0 ? e.successSum / e.successCount : null,
+      avgCost: e.costCount > 0 ? e.costSum / e.costCount : null,
+      flagged: e.lowSuccessSessions > 0,
+    });
+  }
+
+  return result.sort((a, b) => b.sessions - a.sessions);
+}
+
+export function aggregateToolUsage(
+  rows: SessionRow[],
+): Array<{ tool: string; count: number }> {
+  const totals = new Map<string, number>();
+  for (const r of rows) {
+    if (!r.toolBreakdown) continue;
+    for (const [tool, count] of Object.entries(r.toolBreakdown)) {
+      totals.set(tool, (totals.get(tool) ?? 0) + count);
+    }
+  }
+  return Array.from(totals.entries())
+    .map(([tool, count]) => ({ tool, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
 }
