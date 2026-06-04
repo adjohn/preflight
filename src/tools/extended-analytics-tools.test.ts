@@ -17,7 +17,7 @@ import {
   handleGetApiFailures,
 } from './extended-analytics-tools.js';
 
-jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
 describe('extended-analytics-tools handlers', () => {
   it('handleGetRetryAlerts returns metrics JSON', () => {

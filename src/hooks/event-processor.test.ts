@@ -13,7 +13,7 @@ let records: ToolCallRecord[];
 let onRecord: jest.Mock<(record: ToolCallRecord) => void>;
 
 beforeEach(() => {
-  stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   tmpDir = resolve(tmpdir(), `nr-ep-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(tmpDir, { recursive: true });
   store = new LocalStore(tmpDir);

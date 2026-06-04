@@ -38,7 +38,7 @@ function makeLogIngestOptions(overrides?: Partial<LogIngestOptions>): LogIngestO
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 
 beforeEach(() => {
-  stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   mockSendLogs.mockClear();
 });
 

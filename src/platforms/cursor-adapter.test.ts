@@ -5,7 +5,7 @@ let stderrSpy: ReturnType<typeof jest.spyOn>;
 const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
-  stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   for (const key of ['CURSOR_SESSION_ID', 'CURSOR_TRACE_ID', 'CURSOR_VERSION', 'MCP_CLIENT']) {
     savedEnv[key] = process.env[key];
     delete process.env[key];

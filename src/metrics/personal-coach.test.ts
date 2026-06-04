@@ -4,7 +4,7 @@ import type { WeeklySummary } from '../storage/weekly-summary.js';
 
 // Suppress logger output
 beforeAll(() => {
-  jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 afterAll(() => {
   jest.restoreAllMocks();

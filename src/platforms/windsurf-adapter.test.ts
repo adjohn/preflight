@@ -5,7 +5,7 @@ let stderrSpy: ReturnType<typeof jest.spyOn>;
 const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
-  stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   for (const key of [
     'WINDSURF_SESSION_ID',
     'WINDSURF_CONTEXT_ID',

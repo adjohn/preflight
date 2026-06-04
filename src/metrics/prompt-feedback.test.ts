@@ -15,7 +15,7 @@ let tmpDir: string;
 let store: SessionStore;
 
 beforeEach(() => {
-  stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   tmpDir = resolve(
     tmpdir(),
     `nr-feedback-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,

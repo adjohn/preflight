@@ -14,7 +14,7 @@ let savedEnv: NodeJS.ProcessEnv;
 let tmpDir: string;
 
 beforeEach(() => {
-  stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   savedEnv = { ...process.env };
   tmpDir = resolve(tmpdir(), `nr-mcp-test-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });

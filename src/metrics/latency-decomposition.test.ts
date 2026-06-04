@@ -1,7 +1,7 @@
 import { LatencyDecompositionTracker } from './latency-decomposition.js';
 import type { TurnTimingReport } from './latency-decomposition.js';
 
-const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+const stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 afterEach(() => stderrSpy.mockClear());
 
 function makeReport(overrides: Partial<TurnTimingReport> = {}): TurnTimingReport {

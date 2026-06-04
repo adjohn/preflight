@@ -1,7 +1,7 @@
 import { RetryDetector, normalizedLevenshteinSimilarity } from './retry-detector.js';
 import type { ToolCallRecord } from '../storage/types.js';
 
-const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+const stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
 afterEach(() => stderrSpy.mockClear());
 

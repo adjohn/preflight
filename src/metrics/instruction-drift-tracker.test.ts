@@ -1,6 +1,6 @@
 import { InstructionDriftTracker, hashPrompt } from './instruction-drift-tracker.js';
 
-const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+const stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 afterEach(() => stderrSpy.mockClear());
 
 describe('hashPrompt', () => {

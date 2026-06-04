@@ -13,7 +13,7 @@ const ENV_KEYS = [
 ];
 
 beforeEach(() => {
-  stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
   for (const key of ENV_KEYS) {
     savedEnv[key] = process.env[key];
     delete process.env[key];

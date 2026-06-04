@@ -293,7 +293,7 @@ describe('F-138: setup-wizard idempotency and env-detection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     mockRl = { question: jest.fn(), close: jest.fn() };
     mockedRl.createInterface.mockReturnValue(mockRl);
     mockedFs.mkdirSync.mockReturnValue(undefined);
@@ -391,7 +391,7 @@ describe('setupWizard mode branch', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     mockRl = { question: jest.fn(), close: jest.fn() };
     mockedRl.createInterface.mockReturnValue(mockRl);
     mockedFs.mkdirSync.mockReturnValue(undefined);
@@ -490,7 +490,7 @@ describe('setupWizard input validation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     exitSpy = jest
       .spyOn(process, 'exit')
@@ -628,7 +628,7 @@ describe('setupWizard auto-update step', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     mockRl = { question: jest.fn(), close: jest.fn() };
     mockedRl.createInterface.mockReturnValue(mockRl);
     mockedFs.mkdirSync.mockReturnValue(undefined);
