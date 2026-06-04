@@ -127,7 +127,13 @@ export interface AiAgentTaskSummary {
   readonly customAttributes: Record<string, string | number>;
 }
 
-export type AntiPatternType = 'spinning_wheels' | 'overthinking' | 'underthinking' | 'context_stuffing' | 'token_explosion' | 'bail_out';
+export type AntiPatternType =
+  | 'spinning_wheels'
+  | 'overthinking'
+  | 'underthinking'
+  | 'context_stuffing'
+  | 'token_explosion'
+  | 'bail_out';
 
 export interface AiAntiPattern {
   readonly id: string;

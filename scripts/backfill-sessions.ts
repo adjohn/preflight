@@ -24,7 +24,11 @@ import 'dotenv/config';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { SessionStore, buildSessionSummary } from '../src/storage/session-store.js';
-import { WeeklySummaryGenerator, getIsoWeekId, getWeekDateRange } from '../src/storage/weekly-summary.js';
+import {
+  WeeklySummaryGenerator,
+  getIsoWeekId,
+  getWeekDateRange,
+} from '../src/storage/weekly-summary.js';
 import type { FullSessionSummary } from '../src/storage/session-store.js';
 import { normalizeDeveloperName } from '../src/config.js';
 
@@ -109,7 +113,9 @@ async function main(): Promise<void> {
 
   const apiKey = process.env.NEW_RELIC_API_KEY;
   if (!apiKey) {
-    console.error('Error: NEW_RELIC_API_KEY environment variable is required (User API key, not license key).');
+    console.error(
+      'Error: NEW_RELIC_API_KEY environment variable is required (User API key, not license key).',
+    );
     process.exit(1);
   }
 
@@ -120,7 +126,9 @@ async function main(): Promise<void> {
   const since = `${days} days ago`;
   const devFilter = `developer = '${developer}'`;
 
-  process.stdout.write(`Backfilling sessions for developer "${developer}" over last ${days} days...\n\n`);
+  process.stdout.write(
+    `Backfilling sessions for developer "${developer}" over last ${days} days...\n\n`,
+  );
 
   // Step 1: Session IDs per ISO week.
   // NR's `timestamp` field cannot be used with aggregation functions (min/max/earliest/latest),
@@ -131,7 +139,13 @@ async function main(): Promise<void> {
   const nowMs = Date.now();
   const lookbackMs = days * 24 * 60 * 60 * 1000;
   const seenWeekIds = new Set<string>();
-  const weekRanges: Array<{ weekId: string; startMs: number; endMs: number; sinceStr: string; untilStr: string }> = [];
+  const weekRanges: Array<{
+    weekId: string;
+    startMs: number;
+    endMs: number;
+    sinceStr: string;
+    untilStr: string;
+  }> = [];
   for (let t = nowMs; t >= nowMs - lookbackMs; t -= 7 * 24 * 60 * 60 * 1000) {
     const weekId = getIsoWeekId(new Date(t));
     if (seenWeekIds.has(weekId)) continue;
@@ -150,9 +164,11 @@ async function main(): Promise<void> {
   type BaseInfo = { sessionId: string; startTime: number; endTime: number; toolCallCount: number };
   const sessionMap = new Map<string, BaseInfo>();
   for (const week of weekRanges) {
-    const rows = await runNrql(apiKey, accountId,
+    const rows = await runNrql(
+      apiKey,
+      accountId,
       `SELECT count(*) AS toolCallCount FROM AiToolCall WHERE ${devFilter} ` +
-      `SINCE '${week.sinceStr}' UNTIL '${week.untilStr}' FACET session_id LIMIT MAX`,
+        `SINCE '${week.sinceStr}' UNTIL '${week.untilStr}' FACET session_id LIMIT MAX`,
     );
     for (const row of rows) {
       const sessionId = String(row['session_id'] ?? '');
@@ -170,29 +186,35 @@ async function main(): Promise<void> {
     process.stdout.write('No sessions found in New Relic for this developer and time range.\n');
     return;
   }
-  process.stdout.write(`  Found ${sessionMap.size} sessions across ${weekRanges.length} week(s).\n\n`);
+  process.stdout.write(
+    `  Found ${sessionMap.size} sessions across ${weekRanges.length} week(s).\n\n`,
+  );
 
   // Step 2: Tool breakdown per session
   process.stdout.write('  [2/6] Fetching tool breakdowns...\n');
-  const toolRows = await runNrql(apiKey, accountId,
+  const toolRows = await runNrql(
+    apiKey,
+    accountId,
     `SELECT count(*) AS toolCount FROM AiToolCall WHERE ${devFilter} ` +
-    `SINCE ${since} FACET session_id, tool LIMIT MAX`,
+      `SINCE ${since} FACET session_id, tool LIMIT MAX`,
   );
   const toolBreakdowns = new Map<string, Record<string, number>>();
   for (const row of toolRows) {
     const sessionId = String(row['session_id'] ?? '');
     const tool = String(row['tool'] ?? '');
     if (!sessionId || !tool) continue;
-    const bd = toolBreakdowns.get(sessionId) ?? Object.create(null) as Record<string, number>;
+    const bd = toolBreakdowns.get(sessionId) ?? (Object.create(null) as Record<string, number>);
     bd[tool] = (bd[tool] ?? 0) + Number(row['toolCount'] ?? 0);
     toolBreakdowns.set(sessionId, bd);
   }
 
   // Step 3: Tool success rates per session
   process.stdout.write('  [3/6] Fetching tool success rates...\n');
-  const successRows = await runNrql(apiKey, accountId,
+  const successRows = await runNrql(
+    apiKey,
+    accountId,
     `SELECT filter(count(*), WHERE success = true) AS successCount, count(*) AS totalCount ` +
-    `FROM AiToolCall WHERE ${devFilter} SINCE ${since} FACET session_id LIMIT MAX`,
+      `FROM AiToolCall WHERE ${devFilter} SINCE ${since} FACET session_id LIMIT MAX`,
   );
   const successRates = new Map<string, number>();
   for (const row of successRows) {
@@ -204,20 +226,27 @@ async function main(): Promise<void> {
 
   // Step 4: Task aggregates per session
   process.stdout.write('  [4/6] Fetching task aggregates...\n');
-  const taskRows = await runNrql(apiKey, accountId,
+  const taskRows = await runNrql(
+    apiKey,
+    accountId,
     `SELECT uniqueCount(task_id) AS taskCount, ` +
-    `sum(estimated_cost_usd) AS estimatedCostUsd, ` +
-    `sum(lines_added) AS linesAdded, sum(lines_removed) AS linesRemoved, ` +
-    `sum(bash_commands_run) AS bashCommandCount, ` +
-    `sum(tests_run) AS testRunCount, sum(tests_passed) AS testPassCount, ` +
-    `sum(build_run) AS buildRunCount, sum(build_passed) AS buildPassCount ` +
-    `FROM AiCodingTask WHERE ${devFilter} SINCE ${since} FACET session_id LIMIT MAX`,
+      `sum(estimated_cost_usd) AS estimatedCostUsd, ` +
+      `sum(lines_added) AS linesAdded, sum(lines_removed) AS linesRemoved, ` +
+      `sum(bash_commands_run) AS bashCommandCount, ` +
+      `sum(tests_run) AS testRunCount, sum(tests_passed) AS testPassCount, ` +
+      `sum(build_run) AS buildRunCount, sum(build_passed) AS buildPassCount ` +
+      `FROM AiCodingTask WHERE ${devFilter} SINCE ${since} FACET session_id LIMIT MAX`,
   );
   type TaskAgg = {
-    estimatedCostUsd: number; taskCount: number;
-    linesAdded: number; linesRemoved: number; bashCommandCount: number;
-    testRunCount: number; testPassCount: number;
-    buildRunCount: number; buildPassCount: number;
+    estimatedCostUsd: number;
+    taskCount: number;
+    linesAdded: number;
+    linesRemoved: number;
+    bashCommandCount: number;
+    testRunCount: number;
+    testPassCount: number;
+    buildRunCount: number;
+    buildPassCount: number;
   };
   const taskAggregates = new Map<string, TaskAgg>();
   for (const row of taskRows) {
@@ -238,9 +267,11 @@ async function main(): Promise<void> {
 
   // Step 5: Anti-patterns per session
   process.stdout.write('  [5/6] Fetching anti-patterns...\n');
-  const antiPatternRows = await runNrql(apiKey, accountId,
+  const antiPatternRows = await runNrql(
+    apiKey,
+    accountId,
     `SELECT count(*) AS patternCount FROM AiAntiPattern WHERE ${devFilter} ` +
-    `SINCE ${since} FACET session_id, type LIMIT MAX`,
+      `SINCE ${since} FACET session_id, type LIMIT MAX`,
   );
   const antiPatterns = new Map<string, Array<{ type: string; count: number }>>();
   for (const row of antiPatternRows) {
@@ -255,13 +286,17 @@ async function main(): Promise<void> {
   // Step 6: Efficiency score and cost from Metric (more reliable than task-level)
   process.stdout.write('  [6/6] Fetching efficiency scores and costs from Metric...\n');
   const [efficiencyRows, costRows] = await Promise.all([
-    runNrql(apiKey, accountId,
+    runNrql(
+      apiKey,
+      accountId,
       `SELECT average(ai.efficiency.score.sum) AS efficiencyScore ` +
-      `FROM Metric WHERE ${devFilter} SINCE ${since} FACET session_id LIMIT MAX`,
+        `FROM Metric WHERE ${devFilter} SINCE ${since} FACET session_id LIMIT MAX`,
     ),
-    runNrql(apiKey, accountId,
+    runNrql(
+      apiKey,
+      accountId,
       `SELECT sum(ai.cost.session_total_usd.sum) AS estimatedCostUsd ` +
-      `FROM Metric WHERE ${devFilter} SINCE ${since} FACET session_id LIMIT MAX`,
+        `FROM Metric WHERE ${devFilter} SINCE ${since} FACET session_id LIMIT MAX`,
     ),
   ]);
   const efficiencyScores = new Map<string, number>();
@@ -309,8 +344,8 @@ async function main(): Promise<void> {
       developer,
       model: null,
       toolBreakdown: toolBreakdowns.get(sessionId) ?? {},
-      filesRead: [],        // not recoverable from NR event data
-      filesModified: [],    // not recoverable from NR event data
+      filesRead: [], // not recoverable from NR event data
+      filesModified: [], // not recoverable from NR event data
       linesAdded: tasks?.linesAdded ?? 0,
       linesRemoved: tasks?.linesRemoved ?? 0,
       bashCommandCount: tasks?.bashCommandCount ?? 0,
@@ -319,7 +354,7 @@ async function main(): Promise<void> {
       buildRunCount: tasks?.buildRunCount ?? 0,
       buildPassCount: tasks?.buildPassCount ?? 0,
       estimatedCostUsd: typeof estimatedCostUsd === 'number' ? estimatedCostUsd : null,
-      tokensInput: 0,     // not recoverable from NR event data
+      tokensInput: 0, // not recoverable from NR event data
       tokensOutput: 0,
       tokensThinking: 0,
       efficiencyScore: efficiencyScores.get(sessionId) ?? null,
@@ -341,10 +376,10 @@ async function main(): Promise<void> {
     if (dryRun) {
       process.stdout.write(
         `  [dry-run] ${sessionId.slice(0, 8)}… ` +
-        `${new Date(base.startTime).toISOString().slice(0, 10)} ` +
-        `week=${weekId}  tools=${base.toolCallCount}  ` +
-        `cost=$${(typeof estimatedCostUsd === 'number' ? estimatedCostUsd : 0).toFixed(4)}  ` +
-        `eff=${efficiencyScores.get(sessionId)?.toFixed(1) ?? 'n/a'}\n`,
+          `${new Date(base.startTime).toISOString().slice(0, 10)} ` +
+          `week=${weekId}  tools=${base.toolCallCount}  ` +
+          `cost=$${(typeof estimatedCostUsd === 'number' ? estimatedCostUsd : 0).toFixed(4)}  ` +
+          `eff=${efficiencyScores.get(sessionId)?.toFixed(1) ?? 'n/a'}\n`,
       );
     } else {
       sessionStore.saveSession(summary);
@@ -354,7 +389,7 @@ async function main(): Promise<void> {
 
   process.stdout.write(
     `\n${dryRun ? '[dry-run] Would save' : 'Saved'} ${saved} session(s). ` +
-    `Skipped ${skipped} already-present.\n`,
+      `Skipped ${skipped} already-present.\n`,
   );
 
   if (!dryRun && saved > 0) {
@@ -364,14 +399,18 @@ async function main(): Promise<void> {
         const summary = weeklySummaryGenerator.generate(weekId);
         process.stdout.write(
           `  ${weekId}: ${summary.sessionCount} sessions, ` +
-          `$${summary.totalCostUsd.toFixed(4)} total, ` +
-          `avg efficiency ${summary.avgEfficiencyScore?.toFixed(1) ?? 'n/a'}\n`,
+            `$${summary.totalCostUsd.toFixed(4)} total, ` +
+            `avg efficiency ${summary.avgEfficiencyScore?.toFixed(1) ?? 'n/a'}\n`,
         );
       } catch (err) {
-        process.stdout.write(`  ${weekId}: FAILED — ${err instanceof Error ? err.message : String(err)}\n`);
+        process.stdout.write(
+          `  ${weekId}: FAILED — ${err instanceof Error ? err.message : String(err)}\n`,
+        );
       }
     }
-    process.stdout.write('\nDone. Run nr_observe_get_personal_insights to see your coaching report.\n');
+    process.stdout.write(
+      '\nDone. Run nr_observe_get_personal_insights to see your coaching report.\n',
+    );
   }
 }
 

@@ -146,7 +146,7 @@ export class LatencyDecompositionTracker {
     if (samples.length === 0) return null;
     const sorted = [...samples].sort((a, b) => a - b);
     return {
-      p50: computePercentile(sorted, 0.50) ?? 0,
+      p50: computePercentile(sorted, 0.5) ?? 0,
       p95: computePercentile(sorted, 0.95) ?? 0,
       count: sorted.length,
     };

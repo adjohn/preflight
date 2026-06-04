@@ -188,12 +188,14 @@ export class ProxyMetricsTracker {
         latencyMs: computeDurationStats(latencies),
         errorRate: errorEntry.total > 0 ? errorEntry.failed / errorEntry.total : 0,
         errorsByType,
-        avgRequestSizeBytes: requestSizes.length > 0
-          ? requestSizes.reduce((a, b) => a + b, 0) / requestSizes.length
-          : 0,
-        avgResponseSizeBytes: responseSizes.length > 0
-          ? responseSizes.reduce((a, b) => a + b, 0) / responseSizes.length
-          : 0,
+        avgRequestSizeBytes:
+          requestSizes.length > 0
+            ? requestSizes.reduce((a, b) => a + b, 0) / requestSizes.length
+            : 0,
+        avgResponseSizeBytes:
+          responseSizes.length > 0
+            ? responseSizes.reduce((a, b) => a + b, 0) / responseSizes.length
+            : 0,
       };
     }
 
@@ -208,9 +210,10 @@ export class ProxyMetricsTracker {
     toolPopularity.sort((a, b) => b.count - a.count);
 
     // Average proxy overhead
-    const avgProxyOverheadMs = this.proxyOverheadValues.length > 0
-      ? this.proxyOverheadValues.reduce((a, b) => a + b, 0) / this.proxyOverheadValues.length
-      : 0;
+    const avgProxyOverheadMs =
+      this.proxyOverheadValues.length > 0
+        ? this.proxyOverheadValues.reduce((a, b) => a + b, 0) / this.proxyOverheadValues.length
+        : 0;
 
     return {
       perServer,
@@ -233,13 +236,16 @@ export class ProxyMetricsTracker {
 
       const errorEntry = this.serverErrors.get(server);
       if (errorEntry && errorEntry.total > 0) {
-        aggregator.record('ai.mcp.server_error_rate', errorEntry.failed / errorEntry.total, { server });
+        aggregator.record('ai.mcp.server_error_rate', errorEntry.failed / errorEntry.total, {
+          server,
+        });
       }
     }
 
     // Global proxy overhead
     if (this.proxyOverheadValues.length > 0) {
-      const avg = this.proxyOverheadValues.reduce((a, b) => a + b, 0) / this.proxyOverheadValues.length;
+      const avg =
+        this.proxyOverheadValues.reduce((a, b) => a + b, 0) / this.proxyOverheadValues.length;
       aggregator.record('ai.mcp.proxy_overhead_ms', avg);
     }
 

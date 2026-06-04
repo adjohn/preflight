@@ -62,7 +62,9 @@ describe('classifyError', () => {
   // 6. Network error ECONNREFUSED → NETWORK_ERROR
   // ---------------------------------------------------------------------------
   it('classifies ECONNREFUSED as NETWORK_ERROR', () => {
-    const err = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:443'), { code: 'ECONNREFUSED' });
+    const err = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:443'), {
+      code: 'ECONNREFUSED',
+    });
     expect(classifyError(err, 'anthropic')).toBe(AiErrorClassification.NETWORK_ERROR);
   });
 
@@ -75,7 +77,11 @@ describe('classifyError', () => {
   });
 
   it('classifies undici timeout codes as TIMEOUT', () => {
-    for (const code of ['UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT']) {
+    for (const code of [
+      'UND_ERR_CONNECT_TIMEOUT',
+      'UND_ERR_HEADERS_TIMEOUT',
+      'UND_ERR_BODY_TIMEOUT',
+    ]) {
       const err = Object.assign(new Error(`undici ${code}`), { code });
       expect(classifyError(err, 'anthropic')).toBe(AiErrorClassification.TIMEOUT);
     }

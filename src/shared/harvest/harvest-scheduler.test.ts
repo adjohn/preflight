@@ -15,15 +15,17 @@ const failureResult: TransportResult = {
   error: 'server error',
 };
 
-function makeScheduler(
-  overrides: Partial<HarvestSchedulerOptions> = {},
-): {
+function makeScheduler(overrides: Partial<HarvestSchedulerOptions> = {}): {
   scheduler: HarvestScheduler;
   sendEventsFn: jest.Mock;
   sendMetricsFn: jest.Mock;
 } {
-  const sendEventsFn = jest.fn<Promise<TransportResult>, unknown[]>().mockResolvedValue(successResult);
-  const sendMetricsFn = jest.fn<Promise<TransportResult>, unknown[]>().mockResolvedValue(successResult);
+  const sendEventsFn = jest
+    .fn<Promise<TransportResult>, unknown[]>()
+    .mockResolvedValue(successResult);
+  const sendMetricsFn = jest
+    .fn<Promise<TransportResult>, unknown[]>()
+    .mockResolvedValue(successResult);
 
   const scheduler = new HarvestScheduler({
     licenseKey: 'testkey123',
@@ -111,14 +113,16 @@ describe('HarvestScheduler', () => {
   it('events added during send are captured in next harvest', async () => {
     let addDuringSend: (() => void) | null = null;
 
-    const sendEventsFn = jest.fn<Promise<TransportResult>, unknown[]>().mockImplementation(async () => {
-      // Simulate adding an event while the send is in-flight
-      if (addDuringSend) {
-        addDuringSend();
-        addDuringSend = null;
-      }
-      return successResult;
-    });
+    const sendEventsFn = jest
+      .fn<Promise<TransportResult>, unknown[]>()
+      .mockImplementation(async () => {
+        // Simulate adding an event while the send is in-flight
+        if (addDuringSend) {
+          addDuringSend();
+          addDuringSend = null;
+        }
+        return successResult;
+      });
 
     const { scheduler } = makeScheduler({ sendEventsFn });
 
@@ -341,12 +345,16 @@ describe('HarvestScheduler', () => {
   // 9. Concurrent stop() calls await the same flush (no short-circuit)
   // ---------------------------------------------------------------------------
   it('concurrent stop() calls share the same flush promise', async () => {
-    const sendEventsFn = jest.fn<Promise<TransportResult>, unknown[]>().mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(successResult), 100)),
-    );
-    const sendMetricsFn = jest.fn<Promise<TransportResult>, unknown[]>().mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(successResult), 100)),
-    );
+    const sendEventsFn = jest
+      .fn<Promise<TransportResult>, unknown[]>()
+      .mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve(successResult), 100)),
+      );
+    const sendMetricsFn = jest
+      .fn<Promise<TransportResult>, unknown[]>()
+      .mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve(successResult), 100)),
+      );
 
     const { scheduler } = makeScheduler({ sendEventsFn, sendMetricsFn });
 
@@ -427,7 +435,9 @@ describe('HarvestScheduler', () => {
   // 11. OTLP routing — 'otlp' mode calls otlpEventBridge.sendEvents, not NR API
   // ---------------------------------------------------------------------------
   it("transport: 'otlp' routes events to otlpEventBridge.sendEvents, not NR API", async () => {
-    const sendEventsFn = jest.fn<Promise<TransportResult>, unknown[]>().mockResolvedValue(successResult);
+    const sendEventsFn = jest
+      .fn<Promise<TransportResult>, unknown[]>()
+      .mockResolvedValue(successResult);
     const otlpEventBridgeSendFn = jest.fn<void, [NrEventData[]]>();
     const otlpEventBridge = {
       sendEvents: otlpEventBridgeSendFn,
@@ -463,7 +473,9 @@ describe('HarvestScheduler', () => {
   // 12. OTLP routing — 'otlp' mode calls otlpTransport.exportMetrics, not NR API
   // ---------------------------------------------------------------------------
   it("transport: 'otlp' routes metrics to otlpTransport.exportMetrics, not NR API", async () => {
-    const sendMetricsFn = jest.fn<Promise<TransportResult>, unknown[]>().mockResolvedValue(successResult);
+    const sendMetricsFn = jest
+      .fn<Promise<TransportResult>, unknown[]>()
+      .mockResolvedValue(successResult);
     const otlpTransportExportFn = jest.fn<Promise<void>, [NrMetric[]]>();
     const otlpTransport = {
       start: jest.fn(),
@@ -501,7 +513,9 @@ describe('HarvestScheduler', () => {
   // 13. OTLP routing — 'both' mode calls both NR API and OTLP concurrently
   // ---------------------------------------------------------------------------
   it("transport: 'both' calls both NR API and OTLP concurrently for events", async () => {
-    const sendEventsFn = jest.fn<Promise<TransportResult>, unknown[]>().mockResolvedValue(successResult);
+    const sendEventsFn = jest
+      .fn<Promise<TransportResult>, unknown[]>()
+      .mockResolvedValue(successResult);
     const otlpEventBridgeSendFn = jest.fn<void, [NrEventData[]]>();
     const otlpEventBridge = {
       sendEvents: otlpEventBridgeSendFn,
@@ -540,7 +554,9 @@ describe('HarvestScheduler', () => {
   // 14. OTLP routing — 'both' mode calls both NR API and OTLP for metrics
   // ---------------------------------------------------------------------------
   it("transport: 'both' calls both NR API and OTLP concurrently for metrics", async () => {
-    const sendMetricsFn = jest.fn<Promise<TransportResult>, unknown[]>().mockResolvedValue(successResult);
+    const sendMetricsFn = jest
+      .fn<Promise<TransportResult>, unknown[]>()
+      .mockResolvedValue(successResult);
     const otlpTransportExportFn = jest.fn<Promise<void>, [NrMetric[]]>();
     const otlpTransport = {
       start: jest.fn(),
@@ -633,7 +649,9 @@ describe('HarvestScheduler', () => {
   // 16. Default transport mode is 'nr-events-api'
   // ---------------------------------------------------------------------------
   it("default transport mode is 'nr-events-api'", async () => {
-    const sendEventsFn = jest.fn<Promise<TransportResult>, unknown[]>().mockResolvedValue(successResult);
+    const sendEventsFn = jest
+      .fn<Promise<TransportResult>, unknown[]>()
+      .mockResolvedValue(successResult);
     const otlpEventBridgeSendFn = jest.fn<void, [NrEventData[]]>();
     const otlpEventBridge = {
       sendEvents: otlpEventBridgeSendFn,

@@ -22,8 +22,12 @@ export function emitToolCallSpan(
         'mcp.tool.use_id': record.toolUseId,
         'ai.session.id': record.sessionId ?? '',
         'mcp.tool.success': record.success,
-        ...(record.inputSizeBytes !== undefined && { 'mcp.tool.input_size_bytes': record.inputSizeBytes }),
-        ...(record.outputSizeBytes !== undefined && { 'mcp.tool.output_size_bytes': record.outputSizeBytes }),
+        ...(record.inputSizeBytes !== undefined && {
+          'mcp.tool.input_size_bytes': record.inputSizeBytes,
+        }),
+        ...(record.outputSizeBytes !== undefined && {
+          'mcp.tool.output_size_bytes': record.outputSizeBytes,
+        }),
         ...(taskId && { 'ai.task.id': taskId }),
       },
     },
@@ -35,7 +39,10 @@ export function emitToolCallSpan(
   if (record.durationMs != null && Number.isFinite(record.durationMs)) {
     const endTime = record.timestamp + record.durationMs;
     if (!record.success) {
-      span.setStatus({ code: SpanStatusCode.ERROR, message: record.error ?? record.errorType ?? 'tool call failed' });
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: record.error ?? record.errorType ?? 'tool call failed',
+      });
       if (record.error) span.recordException(new Error(record.error));
     } else {
       span.setStatus({ code: SpanStatusCode.OK });

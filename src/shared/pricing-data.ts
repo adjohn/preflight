@@ -217,7 +217,7 @@ export const DEFAULT_PRICING_TABLE: Record<string, ModelPricing> = {
     outputPerMTok: 0.6,
     contextWindow: 128_000,
   },
-  'o1': {
+  o1: {
     inputPerMTok: 15,
     outputPerMTok: 60,
     thinkingPerMTok: 60,
@@ -233,7 +233,7 @@ export const DEFAULT_PRICING_TABLE: Record<string, ModelPricing> = {
     outputPerMTok: 60,
     contextWindow: 128_000,
   },
-  'o3': {
+  o3: {
     inputPerMTok: 10,
     outputPerMTok: 40,
     thinkingPerMTok: 40,
@@ -376,7 +376,7 @@ export const DEFAULT_PRICING_TABLE: Record<string, ModelPricing> = {
     outputPerMTok: 0.6,
     contextWindow: 128_000,
   },
-  'command': {
+  command: {
     inputPerMTok: 1,
     outputPerMTok: 2,
     contextWindow: 4_000,

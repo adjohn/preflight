@@ -38,10 +38,42 @@ const SAMPLE_WEEKLY = [
 ];
 
 const SAMPLE_SESSIONS = [
-  { sessionId: 's1', startTime: '2026-05-26T09:00:00Z', estimatedCostUsd: 1.2, model: 'claude-opus-4-6', toolSuccessRate: 0.95, efficiencyScore: 0.88, toolBreakdown: { Read: 10, Edit: 5 } },
-  { sessionId: 's2', startTime: '2026-05-26T15:00:00Z', estimatedCostUsd: 0.8, model: 'claude-opus-4-6', toolSuccessRate: 0.92, efficiencyScore: 0.85, toolBreakdown: { Read: 8, Bash: 3 } },
-  { sessionId: 's3', startTime: '2026-05-27T10:00:00Z', estimatedCostUsd: 2.4, model: 'claude-sonnet-4-6', toolSuccessRate: 0.88, efficiencyScore: 0.72, toolBreakdown: { Read: 12, Edit: 7 } },
-  { sessionId: 's4', startTime: '2026-05-28T11:00:00Z', estimatedCostUsd: 1.7, model: 'claude-opus-4-6', toolSuccessRate: 0.94, efficiencyScore: 0.90, toolBreakdown: { Read: 6, Write: 2 } },
+  {
+    sessionId: 's1',
+    startTime: '2026-05-26T09:00:00Z',
+    estimatedCostUsd: 1.2,
+    model: 'claude-opus-4-6',
+    toolSuccessRate: 0.95,
+    efficiencyScore: 0.88,
+    toolBreakdown: { Read: 10, Edit: 5 },
+  },
+  {
+    sessionId: 's2',
+    startTime: '2026-05-26T15:00:00Z',
+    estimatedCostUsd: 0.8,
+    model: 'claude-opus-4-6',
+    toolSuccessRate: 0.92,
+    efficiencyScore: 0.85,
+    toolBreakdown: { Read: 8, Bash: 3 },
+  },
+  {
+    sessionId: 's3',
+    startTime: '2026-05-27T10:00:00Z',
+    estimatedCostUsd: 2.4,
+    model: 'claude-sonnet-4-6',
+    toolSuccessRate: 0.88,
+    efficiencyScore: 0.72,
+    toolBreakdown: { Read: 12, Edit: 7 },
+  },
+  {
+    sessionId: 's4',
+    startTime: '2026-05-28T11:00:00Z',
+    estimatedCostUsd: 1.7,
+    model: 'claude-opus-4-6',
+    toolSuccessRate: 0.94,
+    efficiencyScore: 0.9,
+    toolBreakdown: { Read: 6, Write: 2 },
+  },
 ];
 
 const SAMPLE_OUTCOME = {
@@ -171,17 +203,13 @@ describe('History view', () => {
   it('renders the personal coach panel and shows the top recommendation', async () => {
     renderHistory();
     await waitFor(() => expect(screen.getByText(/personal coach/i)).toBeInTheDocument());
-    await waitFor(() =>
-      expect(screen.getByText(/strong week/i)).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText(/strong week/i)).toBeInTheDocument());
     expect(screen.getByText(/efficiency up 8 points/i)).toBeInTheDocument();
   });
 
   it('shows the insufficient-data message when the coach reports it', async () => {
     renderHistory({ coach: SAMPLE_COACH_INSUFFICIENT });
-    await waitFor(() =>
-      expect(screen.getByText(/need at least 2 weeks/i)).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText(/need at least 2 weeks/i)).toBeInTheDocument());
   });
 
   it('shows an empty state when there are no outcomes yet', async () => {
@@ -210,7 +238,12 @@ describe('History view', () => {
         return Promise.resolve(
           new Response(
             JSON.stringify([
-              { weekStart: '2026-05-05', efficiencyScore: 0.91, totalCostUsd: 12.75, antiPatternCounts: {} },
+              {
+                weekStart: '2026-05-05',
+                efficiencyScore: 0.91,
+                totalCostUsd: 12.75,
+                antiPatternCounts: {},
+              },
             ]),
             { status: 200, headers: { 'content-type': 'application/json' } },
           ),
@@ -253,9 +286,7 @@ describe('History view', () => {
         <History />
       </QueryClientProvider>,
     );
-    await waitFor(() =>
-      expect(screen.getByText(/no anti-patterns detected/i)).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText(/no anti-patterns detected/i)).toBeInTheDocument());
   });
 });
 
@@ -267,9 +298,21 @@ describe('History data helpers', () => {
       // after the F-026 fix moved bucketing to local-time getters.
       const out = aggregateDailyCost(
         [
-          { sessionId: 'a', startTime: new Date(2026, 4, 26, 9, 0, 0).getTime(), estimatedCostUsd: 1.2 },
-          { sessionId: 'b', startTime: new Date(2026, 4, 26, 15, 0, 0).getTime(), estimatedCostUsd: 0.8 },
-          { sessionId: 'c', startTime: new Date(2026, 4, 27, 10, 0, 0).getTime(), estimatedCostUsd: 2.4 },
+          {
+            sessionId: 'a',
+            startTime: new Date(2026, 4, 26, 9, 0, 0).getTime(),
+            estimatedCostUsd: 1.2,
+          },
+          {
+            sessionId: 'b',
+            startTime: new Date(2026, 4, 26, 15, 0, 0).getTime(),
+            estimatedCostUsd: 0.8,
+          },
+          {
+            sessionId: 'c',
+            startTime: new Date(2026, 4, 27, 10, 0, 0).getTime(),
+            estimatedCostUsd: 2.4,
+          },
         ],
         30,
       );
@@ -282,8 +325,16 @@ describe('History data helpers', () => {
     it('skips sessions with null cost', () => {
       const out = aggregateDailyCost(
         [
-          { sessionId: 'a', startTime: new Date(2026, 4, 26, 9, 0, 0).getTime(), estimatedCostUsd: null },
-          { sessionId: 'b', startTime: new Date(2026, 4, 26, 15, 0, 0).getTime(), estimatedCostUsd: 0.8 },
+          {
+            sessionId: 'a',
+            startTime: new Date(2026, 4, 26, 9, 0, 0).getTime(),
+            estimatedCostUsd: null,
+          },
+          {
+            sessionId: 'b',
+            startTime: new Date(2026, 4, 26, 15, 0, 0).getTime(),
+            estimatedCostUsd: 0.8,
+          },
         ],
         30,
       );
@@ -370,10 +421,25 @@ describe('History data helpers', () => {
   describe('buildAntiPatternSeries', () => {
     it('sums anti-pattern counts per week and skips weeks with zero', () => {
       const out = buildAntiPatternSeries([
-        { weekStart: '2026-04-21', efficiencyScore: 0.82, totalCostUsd: 14, antiPatternCounts: { thrashing: 3 } },
-        { weekStart: '2026-04-28', efficiencyScore: 0.88, totalCostUsd: 18, antiPatternCounts: { thrashing: 1, blind_edit: 2 } },
+        {
+          weekStart: '2026-04-21',
+          efficiencyScore: 0.82,
+          totalCostUsd: 14,
+          antiPatternCounts: { thrashing: 3 },
+        },
+        {
+          weekStart: '2026-04-28',
+          efficiencyScore: 0.88,
+          totalCostUsd: 18,
+          antiPatternCounts: { thrashing: 1, blind_edit: 2 },
+        },
         { weekStart: '2026-05-05', efficiencyScore: 0.91, totalCostUsd: 12, antiPatternCounts: {} },
-        { weekStart: '2026-05-12', efficiencyScore: 0.94, totalCostUsd: 16, antiPatternCounts: { stuck_loop: 4 } },
+        {
+          weekStart: '2026-05-12',
+          efficiencyScore: 0.94,
+          totalCostUsd: 16,
+          antiPatternCounts: { stuck_loop: 4 },
+        },
       ]);
       // F-040: keep the full ISO date in chart data so cross-year ticks
       // remain unique; the XAxis tickFormatter shortens to MM-DD on render.
@@ -538,9 +604,27 @@ describe('History helpers with real API data shapes', () => {
 describe('aggregateModelPerformance', () => {
   it('groups sessions by model with computed averages', () => {
     const sessions = [
-      { sessionId: 's1', model: 'claude-opus-4-6', efficiencyScore: 0.9, toolSuccessRate: 0.95, estimatedCostUsd: 2.0 },
-      { sessionId: 's2', model: 'claude-opus-4-6', efficiencyScore: 0.8, toolSuccessRate: 0.92, estimatedCostUsd: 1.5 },
-      { sessionId: 's3', model: 'claude-sonnet-4-6', efficiencyScore: 0.7, toolSuccessRate: 0.88, estimatedCostUsd: 0.5 },
+      {
+        sessionId: 's1',
+        model: 'claude-opus-4-6',
+        efficiencyScore: 0.9,
+        toolSuccessRate: 0.95,
+        estimatedCostUsd: 2.0,
+      },
+      {
+        sessionId: 's2',
+        model: 'claude-opus-4-6',
+        efficiencyScore: 0.8,
+        toolSuccessRate: 0.92,
+        estimatedCostUsd: 1.5,
+      },
+      {
+        sessionId: 's3',
+        model: 'claude-sonnet-4-6',
+        efficiencyScore: 0.7,
+        toolSuccessRate: 0.88,
+        estimatedCostUsd: 0.5,
+      },
     ];
     const result = aggregateModelPerformance(sessions);
     expect(result).toHaveLength(2);
@@ -555,7 +639,7 @@ describe('aggregateModelPerformance', () => {
   it('flags models that have sessions below 85% success rate', () => {
     const sessions = [
       { sessionId: 's1', model: 'claude-opus-4-6', toolSuccessRate: 0.95 },
-      { sessionId: 's2', model: 'claude-opus-4-6', toolSuccessRate: 0.80 },
+      { sessionId: 's2', model: 'claude-opus-4-6', toolSuccessRate: 0.8 },
       { sessionId: 's3', model: 'claude-opus-4-6', toolSuccessRate: 0.93 },
     ];
     const result = aggregateModelPerformance(sessions);
@@ -567,9 +651,7 @@ describe('aggregateModelPerformance', () => {
   });
 
   it('treats null model as "unknown"', () => {
-    const sessions = [
-      { sessionId: 's1', model: null, toolSuccessRate: 0.90 },
-    ];
+    const sessions = [{ sessionId: 's1', model: null, toolSuccessRate: 0.9 }];
     const result = aggregateModelPerformance(sessions);
     expect(result[0].model).toBe('unknown');
   });
@@ -613,10 +695,7 @@ describe('aggregateToolUsage', () => {
   });
 
   it('skips sessions without toolBreakdown', () => {
-    const sessions = [
-      { sessionId: 's1' },
-      { sessionId: 's2', toolBreakdown: { Read: 5 } },
-    ];
+    const sessions = [{ sessionId: 's1' }, { sessionId: 's2', toolBreakdown: { Read: 5 } }];
     const result = aggregateToolUsage(sessions);
     expect(result).toEqual([{ tool: 'Read', count: 5 }]);
   });

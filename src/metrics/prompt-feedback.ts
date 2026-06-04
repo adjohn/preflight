@@ -149,10 +149,7 @@ export class PromptFeedbackEngine {
   /**
    * Compare before/after CLAUDE.md change with Cohen's d effect sizes.
    */
-  compareClaudeMdVersions(
-    changeTimestamp: number,
-    windowDays: number = 7,
-  ): ClaudeMdAbComparison {
+  compareClaudeMdVersions(changeTimestamp: number, windowDays: number = 7): ClaudeMdAbComparison {
     const windowMs = windowDays * 86_400_000;
     const allSessions = this.sessionStore.loadAllSessions();
 
@@ -198,7 +195,10 @@ export class PromptFeedbackEngine {
     // Tiebreaker: significant > moderate > noise (highest "alarm level" wins on ties).
     let overallLabel: EffectSize['label'] = 'noise';
     if (effectSizes.length > 0) {
-      if (labelCounts.significant >= labelCounts.moderate && labelCounts.significant >= labelCounts.noise) {
+      if (
+        labelCounts.significant >= labelCounts.moderate &&
+        labelCounts.significant >= labelCounts.noise
+      ) {
         overallLabel = 'significant';
       } else if (labelCounts.moderate >= labelCounts.noise) {
         overallLabel = 'moderate';
@@ -233,7 +233,8 @@ export class PromptFeedbackEngine {
     if (1 - profile.dimensions.correctionRate > 0.3) {
       recommendations.push({
         category: 'prompt_context',
-        message: 'Consider providing more context in initial prompts — your correction rate is high compared to team average',
+        message:
+          'Consider providing more context in initial prompts — your correction rate is high compared to team average',
         evidence: `Your correction rate is ${correctionPct}%, vs team average ${teamCorrectionPct}%`,
         estimatedImpact: 'Fewer corrections could reduce session duration by 15-25%',
         priority: 'high',
@@ -244,7 +245,8 @@ export class PromptFeedbackEngine {
     if (profile.dimensions.taskComplexity >= 0.5 && profile.dimensions.autonomy < 0.5) {
       recommendations.push({
         category: 'plan_mode',
-        message: 'For complex tasks, try using /plan mode to align on approach before implementation',
+        message:
+          'For complex tasks, try using /plan mode to align on approach before implementation',
         evidence: `Task complexity: ${round(profile.dimensions.taskComplexity, 2)}, autonomy: ${round(profile.dimensions.autonomy, 2)}`,
         estimatedImpact: 'Plan mode can improve first-attempt quality for complex tasks',
         priority: 'medium',
@@ -261,7 +263,8 @@ export class PromptFeedbackEngine {
       if (reReadingPct > 50) {
         recommendations.push({
           category: 'file_paths',
-          message: 'Your sessions show frequent file re-reads. Adding relevant file paths to your initial prompt can reduce this',
+          message:
+            'Your sessions show frequent file re-reads. Adding relevant file paths to your initial prompt can reduce this',
           evidence: `${reReadingPct}% of sessions (${sessionsWithReReading.length}/${sessions.length}) exhibit re-reading patterns`,
           estimatedImpact: 'Providing file paths upfront can reduce tool calls by 10-20%',
           priority: 'medium',
@@ -279,7 +282,8 @@ export class PromptFeedbackEngine {
         const costPct = Math.abs(impact.deltas.cost.percentChange ?? 0);
         recommendations.push({
           category: 'claudemd_impact',
-          message: 'Recent CLAUDE.md update had a negative impact on metrics. Consider reverting or refining the changes',
+          message:
+            'Recent CLAUDE.md update had a negative impact on metrics. Consider reverting or refining the changes',
           evidence: `${impact.verdict}. Cost changed by ${impact.deltas.cost.percentChange ?? 'N/A'}%, efficiency by ${impact.deltas.efficiencyScore.percentChange ?? 'N/A'}%`,
           estimatedImpact: `Reverting could save ~${costPct}% on costs`,
           priority: 'high',
@@ -303,11 +307,7 @@ export class PromptFeedbackEngine {
   /**
    * Emit recommendation metrics to New Relic.
    */
-  emitMetrics(
-    aggregator: MetricAggregator,
-    developer: string,
-    options?: { since?: Date },
-  ): void {
+  emitMetrics(aggregator: MetricAggregator, developer: string, options?: { since?: Date }): void {
     const recommendations = this.generatePromptRecommendations(developer, options);
 
     for (const rec of recommendations) {
@@ -344,8 +344,7 @@ function cohensD(groupA: number[], groupB: number[]): number {
 
   if (nA + nB < 2) return 0;
 
-  const pooledVariance =
-    ((nA - 1) * sdA * sdA + (nB - 1) * sdB * sdB) / (nA + nB - 2);
+  const pooledVariance = ((nA - 1) * sdA * sdA + (nB - 1) * sdB * sdB) / (nA + nB - 2);
   const pooledSd = Math.sqrt(pooledVariance);
 
   if (pooledSd === 0) return 0;
@@ -379,9 +378,7 @@ function stddev(values: number[], avg: number): number {
 // ---------------------------------------------------------------------------
 
 function avgEfficiency(sessions: FullSessionSummary[]): number | null {
-  const scores = sessions
-    .map((s) => s.efficiencyScore)
-    .filter((v): v is number => v !== null);
+  const scores = sessions.map((s) => s.efficiencyScore).filter((v): v is number => v !== null);
   if (scores.length === 0) return null;
   return round(mean(scores), 3);
 }

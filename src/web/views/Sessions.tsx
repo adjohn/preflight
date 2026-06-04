@@ -1,6 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchSessionsList, fetchSessionCurrent, fetchSessionDetail, fetchSessionReplay, qk } from '../api/client';
+import {
+  fetchSessionsList,
+  fetchSessionCurrent,
+  fetchSessionDetail,
+  fetchSessionReplay,
+  qk,
+} from '../api/client';
 
 // F-051: keep the query limit and the "showing N most recent" notice in
 // lock-step. If you bump this, also update the api-handler clamp upper
@@ -109,8 +115,10 @@ function sortSessions(rows: SessionRow[], key: SortKey): SessionRow[] {
   switch (key) {
     case 'date':
       sorted.sort((a, b) => {
-        const ta = typeof a.startTime === 'number' ? a.startTime : new Date(a.startTime ?? 0).getTime();
-        const tb = typeof b.startTime === 'number' ? b.startTime : new Date(b.startTime ?? 0).getTime();
+        const ta =
+          typeof a.startTime === 'number' ? a.startTime : new Date(a.startTime ?? 0).getTime();
+        const tb =
+          typeof b.startTime === 'number' ? b.startTime : new Date(b.startTime ?? 0).getTime();
         return tb - ta;
       });
       break;
@@ -247,9 +255,7 @@ export function Sessions(): JSX.Element {
       </aside>
 
       <div className="bg-bg-panel border border-bg-line rounded p-3 overflow-auto">
-        {!selectedId && (
-          <div className="text-ink-muted text-xs">Pick a session on the left.</div>
-        )}
+        {!selectedId && <div className="text-ink-muted text-xs">Pick a session on the left.</div>}
         {selectedId && detail.isLoading && (
           <div className="text-ink-muted text-xs">Loading detail…</div>
         )}
@@ -377,11 +383,15 @@ function SessionTimeline({ data, isLive }: { data: SessionDetail; isLive: boolea
               <div className="text-[10px] text-ink-muted uppercase tracking-wider mb-2">
                 Tool Selection
               </div>
-              <div className={`text-2xl font-semibold tabular-nums ${toolScoreColor(data.toolSelectionScore.score)}`}>
+              <div
+                className={`text-2xl font-semibold tabular-nums ${toolScoreColor(data.toolSelectionScore.score)}`}
+              >
                 {data.toolSelectionScore.score.toFixed(2)}
               </div>
               <div className="text-[10px] text-ink-muted mt-1">
-                re-reads: {data.toolSelectionScore.redundantReadCount} · repeat fails: {data.toolSelectionScore.repeatedFailureCount} · unused: {data.toolSelectionScore.unusedOutputCount}
+                re-reads: {data.toolSelectionScore.redundantReadCount} · repeat fails:{' '}
+                {data.toolSelectionScore.repeatedFailureCount} · unused:{' '}
+                {data.toolSelectionScore.unusedOutputCount}
               </div>
             </div>
           )}
@@ -400,10 +410,7 @@ function SessionTimeline({ data, isLive }: { data: SessionDetail; isLive: boolea
                 <div key={tool} className="flex items-center gap-2 text-[11px]">
                   <span className="w-20 text-ink-subtle truncate">{tool}</span>
                   <div className="flex-1 h-3 bg-bg-base relative rounded">
-                    <div
-                      className="h-3 bg-accent-cyan/70 rounded"
-                      style={{ width: `${pct}%` }}
-                    />
+                    <div className="h-3 bg-accent-cyan/70 rounded" style={{ width: `${pct}%` }} />
                   </div>
                   <span className="w-10 text-right text-ink-muted tabular-nums">{count}</span>
                 </div>
@@ -420,7 +427,9 @@ function SessionTimeline({ data, isLive }: { data: SessionDetail; isLive: boolea
           </div>
           <ul className="text-[11px] text-ink-subtle space-y-0.5">
             {data.filesModified!.map((f) => (
-              <li key={f} className="font-mono truncate">{f.split('/').slice(-2).join('/')}</li>
+              <li key={f} className="font-mono truncate">
+                {f.split('/').slice(-2).join('/')}
+              </li>
             ))}
           </ul>
         </div>
@@ -501,10 +510,14 @@ function InlineReplay({ sessionId, isLive }: { sessionId: string; isLive: boolea
         {data.timeline.map((entry, idx) => {
           const seg = segmentAt[idx];
           const borderColor = seg
-            ? seg.severity === 'critical' ? 'border-l-accent-red' : 'border-l-accent-amber'
+            ? seg.severity === 'critical'
+              ? 'border-l-accent-red'
+              : 'border-l-accent-amber'
             : 'border-l-transparent';
           const bgColor = seg
-            ? seg.severity === 'critical' ? 'bg-accent-red/5' : 'bg-accent-amber/5'
+            ? seg.severity === 'critical'
+              ? 'bg-accent-red/5'
+              : 'bg-accent-amber/5'
             : '';
           const elapsed = entry.timestamp - firstTs;
 
@@ -519,21 +532,27 @@ function InlineReplay({ sessionId, isLive }: { sessionId: string; isLive: boolea
               <span className="w-4 text-center shrink-0" aria-hidden="true">
                 {TOOL_ICONS[entry.toolName] ?? '·'}
               </span>
-              <span className="w-16 truncate font-medium text-ink-base shrink-0">{entry.toolName}</span>
+              <span className="w-16 truncate font-medium text-ink-base shrink-0">
+                {entry.toolName}
+              </span>
               <span className="flex-1 truncate text-ink-subtle min-w-0">
                 {entry.filePath ?? entry.command ?? ''}
               </span>
               <span className="w-14 text-right tabular-nums text-ink-muted shrink-0">
                 {entry.durationMs != null ? `${entry.durationMs}ms` : '—'}
               </span>
-              <span className={`w-3 text-center shrink-0 ${entry.success ? 'text-accent-green' : 'text-accent-red'}`}>
+              <span
+                className={`w-3 text-center shrink-0 ${entry.success ? 'text-accent-green' : 'text-accent-red'}`}
+              >
                 {entry.success ? '✓' : '✗'}
               </span>
               {seg && idx === seg.startIndex && (
                 <span
                   className={
                     'ml-0.5 px-1 py-0.5 rounded text-[9px] font-medium shrink-0 ' +
-                    (seg.severity === 'critical' ? 'bg-accent-red/20 text-accent-red' : 'bg-accent-amber/20 text-accent-amber')
+                    (seg.severity === 'critical'
+                      ? 'bg-accent-red/20 text-accent-red'
+                      : 'bg-accent-amber/20 text-accent-amber')
                   }
                 >
                   {SEGMENT_LABELS[seg.type] ?? seg.type}

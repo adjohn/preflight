@@ -29,7 +29,11 @@ describe('ZedAdapter', () => {
 
   describe('normalizeToolCall', () => {
     it('maps "open_file" to "Read"', () => {
-      const normalized = adapter.normalizeToolCall({ tool: 'open_file', timestamp: 2000, success: true });
+      const normalized = adapter.normalizeToolCall({
+        tool: 'open_file',
+        timestamp: 2000,
+        success: true,
+      });
       expect(normalized.toolName).toBe('Read');
       expect(normalized.platformToolName).toBe('open_file');
       expect(normalized.platform).toBe('zed');

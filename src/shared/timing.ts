@@ -64,8 +64,7 @@ export class RequestTimer {
 
     const durationMs = this.stopAt - this.startAt;
 
-    const timeToFirstTokenMs =
-      this.firstTokenAt !== null ? this.firstTokenAt - this.startAt : null;
+    const timeToFirstTokenMs = this.firstTokenAt !== null ? this.firstTokenAt - this.startAt : null;
 
     const thinkingDurationMs =
       this.thinkingStartAt !== null && this.thinkingEndAt !== null
@@ -75,9 +74,7 @@ export class RequestTimer {
     const generationDurationMs = Math.max(0, durationMs - (thinkingDurationMs ?? 0));
 
     const tokensPerSecond =
-      outputTokens !== undefined && durationMs > 0
-        ? outputTokens / (durationMs / 1000)
-        : null;
+      outputTokens !== undefined && durationMs > 0 ? outputTokens / (durationMs / 1000) : null;
 
     const overheadMs = Math.max(0, (timeToFirstTokenMs ?? 0) - (thinkingDurationMs ?? 0));
 

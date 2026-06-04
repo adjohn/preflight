@@ -29,7 +29,7 @@ No `LICENSE` file exists. Without a license, the project is legally closed-sourc
 ### C2. Real Credentials on Disk in test-app/.env
 
 **Severity:** CRITICAL
-**File:** `packages/test-app/.env` *(now in `nr-ai-typescript-agent` repo)*
+**File:** `packages/test-app/.env` _(now in `nr-ai-typescript-agent` repo)_
 
 The file contained credentials matching the format of real New Relic keys. The file is NOT in git history (`.gitignore` is correctly configured), so this is not a historical leak. However, these keys must be rotated before either repo is made public.
 
@@ -71,6 +71,7 @@ GitHub prominently surfaces both files. Their absence signals an incomplete open
 **File:** `package.json`
 
 Published npm packages should include:
+
 - `"license"`: not set
 - `"engines"`: README mentions Node.js v24 as a requirement, but nothing enforces this at install time
 - `"repository"`: npm registry won't link to the source repo without this
@@ -114,6 +115,7 @@ The cache savings calculation (`inputRate - cacheReadRate`) can produce a negati
 The sequential logic requires an Edit/Write tool call to appear immediately after a test failure is detected. If a non-edit tool (e.g., `Bash` grep, `Read`) is invoked between the test failure and the fix, `sawEditAfterFailure` is never set and the task is misclassified as `failed_attempt` instead of `bug_fix`.
 
 Example sequence that is misclassified:
+
 ```
 test_fail → grep (Bash) → edit (Write) → test_pass  ← classified as failed_attempt
 ```
@@ -126,6 +128,7 @@ test_fail → grep (Bash) → edit (Write) → test_pass  ← classified as fail
 
 **Severity:** MEDIUM (low security risk, but low flexibility)
 **Files:**
+
 - `src/tools/cross-session-tools.ts:31–33`
 - `scripts/deploy-alerts.ts:42`
 - `scripts/deploy-dashboard.ts:44`
@@ -187,26 +190,26 @@ Originally flagged as potentially unstable pre-release versions. As of 2026-06-0
 
 ## Open-Source Readiness Checklist
 
-| Item | Status | Notes |
-|------|--------|-------|
-| LICENSE file | ❌ Missing | Must add before publish |
-| No committed secrets | ✅ Clean | `.env` not in git history |
-| Rotate disk credentials | ⚠️ Confirm | `test-app/.env` (in `nr-ai-typescript-agent` repo) — confirm keys were rotated |
-| Internal URLs removed | ❌ Needed | `source.datanerd.us` in `docs/ONBOARDING.md:27` |
-| CONTRIBUTING.md | ❌ Missing | |
-| CODE_OF_CONDUCT.md | ❌ Missing | |
-| npm scope | ✅ N/A | Shared code is synced as source, not a published package; scope claim not required |
-| `license` field in package.json | ❌ Missing | |
-| `engines` field in package.json | ❌ Missing | |
-| `repository` field in package.json | ❌ Missing | Use `nr-ai-coding-observability` repo name |
-| Workspace wildcard deps | ✅ Resolved | Flat repo — no workspaces |
-| README quality | ✅ Excellent | Comprehensive |
-| Security practices | ✅ Strong | Redaction, input validation, audit trail |
-| Test coverage | ✅ Good | Co-located tests, clear patterns |
-| Dashboard/alert JSON clean | ✅ Clean | No account-specific data |
-| No private registry references (code) | ✅ Clean | All deps on public npm |
-| No postinstall hooks | ✅ Safe | |
-| GitHub Actions | ✅ Portable | No internal CI references |
+| Item                                  | Status       | Notes                                                                              |
+| ------------------------------------- | ------------ | ---------------------------------------------------------------------------------- |
+| LICENSE file                          | ❌ Missing   | Must add before publish                                                            |
+| No committed secrets                  | ✅ Clean     | `.env` not in git history                                                          |
+| Rotate disk credentials               | ⚠️ Confirm   | `test-app/.env` (in `nr-ai-typescript-agent` repo) — confirm keys were rotated     |
+| Internal URLs removed                 | ❌ Needed    | `source.datanerd.us` in `docs/ONBOARDING.md:27`                                    |
+| CONTRIBUTING.md                       | ❌ Missing   |                                                                                    |
+| CODE_OF_CONDUCT.md                    | ❌ Missing   |                                                                                    |
+| npm scope                             | ✅ N/A       | Shared code is synced as source, not a published package; scope claim not required |
+| `license` field in package.json       | ❌ Missing   |                                                                                    |
+| `engines` field in package.json       | ❌ Missing   |                                                                                    |
+| `repository` field in package.json    | ❌ Missing   | Use `nr-ai-coding-observability` repo name                                         |
+| Workspace wildcard deps               | ✅ Resolved  | Flat repo — no workspaces                                                          |
+| README quality                        | ✅ Excellent | Comprehensive                                                                      |
+| Security practices                    | ✅ Strong    | Redaction, input validation, audit trail                                           |
+| Test coverage                         | ✅ Good      | Co-located tests, clear patterns                                                   |
+| Dashboard/alert JSON clean            | ✅ Clean     | No account-specific data                                                           |
+| No private registry references (code) | ✅ Clean     | All deps on public npm                                                             |
+| No postinstall hooks                  | ✅ Safe      |                                                                                    |
+| GitHub Actions                        | ✅ Portable  | No internal CI references                                                          |
 
 ---
 

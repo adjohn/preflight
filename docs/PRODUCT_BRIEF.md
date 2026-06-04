@@ -40,9 +40,9 @@
 
 ## Overview Questions
 
-| Product / Initiative Name | Marketing Name TBD / NR AI Coding Observability / AI Coding Insights |
-| :---: | :---- |
-| Product Manager & Engineering Manager | PM: TBD EM: TBD |
+|       Product / Initiative Name       | Marketing Name TBD / NR AI Coding Observability / AI Coding Insights |
+| :-----------------------------------: | :------------------------------------------------------------------- |
+| Product Manager & Engineering Manager | PM: TBD EM: TBD                                                      |
 
 ## Executive Summary
 
@@ -51,8 +51,6 @@ The software development industry is in the middle of the fastest tooling transi
 NR AI Coding Observability represents New Relic's strategic response to this emerging discipline. Building on New Relic's foundational strength as the observability platform for production systems, NR AI Coding Observability extends that same data model and query surface to the AI development workflow itself. The solution captures every tool call, model interaction, anti-pattern, and cost event from a developer's AI assistant; correlates it with the existing telemetry New Relic already collects; and surfaces it through MCP tools, dashboards, alerts, and OpenTelemetry traces.
 
 NR AI Coding Observability fundamentally extends the New Relic value proposition into the build phase of the software lifecycle. Rather than monitoring only what runs in production, New Relic now also illuminates how that production software is being created, by whom, with which AI assistants, at what cost, and with what efficiency. This addresses an urgent customer imperative: bring AI development spending under the same observability discipline already applied to compute, storage, APM, and the rest of the stack. NR AI Coding Observability establishes a powerful new category — AI development observability — and positions New Relic as the platform of record for the AI-augmented engineering organisation.
-
-
 
 ---
 
@@ -127,7 +125,6 @@ Three forces have converged. First, market scale: AI coding assistant adoption i
 
 The window to define the category, set the schema, and become the platform of record is open now. It will not stay open long.
 
-
 ---
 
 ## 2 — Business Impact
@@ -178,7 +175,6 @@ Standard SaaS revenue measurement applies: ARR contribution, attach rate to exis
 
 Telemetry on activation, WAU, and adoption breadth is collected through standard New Relic product analytics. Spend optimisation outcomes and anti-pattern resolution rates are surfaced through opt-in customer reporting and the product's own dashboards. Dashboard locations and reporting cadence will be defined during launch planning.
 
-
 ---
 
 ## 3 — Competitive Landscape
@@ -187,19 +183,19 @@ AI development observability is an emerging category with several adjacent vendo
 
 ### The Competitive Landscape
 
-**LLM Application Observability Vendors** — *Langfuse, Helicone, LangSmith, Braintrust, Arize Phoenix*
+**LLM Application Observability Vendors** — _Langfuse, Helicone, LangSmith, Braintrust, Arize Phoenix_
 
 These tools are designed for developers building LLM-powered applications — they instrument the application's calls into the model and surface latency, cost, and quality metrics for that application's traffic. They do not observe AI coding assistants themselves, do not capture developer-workflow telemetry (tool calls, anti-patterns, session structure), and have no concept of "engineering organisation" as a unit of analysis. Customers using these tools to try to govern AI coding spend report that the data shape is wrong: it is per-request, not per-developer-session, and it covers their applications, not their engineers.
 
-**AI Coding Tool Vendors' Native Dashboards** — *Anthropic Claude Console, GitHub Copilot Metrics API, Cursor Admin, Windsurf Admin*
+**AI Coding Tool Vendors' Native Dashboards** — _Anthropic Claude Console, GitHub Copilot Metrics API, Cursor Admin, Windsurf Admin_
 
 Each AI coding vendor offers a usage dashboard for their own tool. These are limited by design — each shows only its own data, exposes only the metrics the vendor chooses, and does not federate with the rest of an organisation's observability stack. They serve operational reporting (seat counts, basic usage) but cannot answer cross-tool questions, cannot correlate with APM or infrastructure data, and cannot detect workflow anti-patterns. Vendor lock-in is implicit — a customer who depends on Copilot's dashboard cannot ask the same question of their Cursor or Claude Code users.
 
-**Broad Observability Platforms** — *Datadog, Honeycomb, Splunk Observability*
+**Broad Observability Platforms** — _Datadog, Honeycomb, Splunk Observability_
 
 These platforms have begun adding LLM observability features (Datadog LLM Observability, Honeycomb's recent OpenLLMetry integration), focused primarily on the LLM-application use case described above. None has shipped a coding-assistant-specific solution. Their data models are not yet adapted to the workflow, anti-pattern, and developer-coaching concepts that define this category. They have the platform reach to enter this space, but have not yet committed to it.
 
-**AI Developer Productivity Analytics** — *Faros AI, LinearB, DX, Jellyfish*
+**AI Developer Productivity Analytics** — _Faros AI, LinearB, DX, Jellyfish_
 
 These tools focus on engineering productivity measurement broadly — DORA metrics, cycle time, sprint analytics — and have begun adding AI-specific surfaces. Their data sources are typically Git, ticketing systems, and CI; they do not observe the AI assistant itself. Their value proposition addresses the "is the team productive?" question at the level of shipped code, not the "is AI being used effectively?" question at the level of the developer's workflow.
 
@@ -243,7 +239,7 @@ Adopting NR AI Coding Observability does not require choosing or excluding any A
 
 The product captures a structured audit trail of sensitive file access, destructive command execution, and external network requests by AI assistants — alongside redaction primitives for sensitive content. As the EU AI Act and analogous regulations come into force, this audit surface is the basis for AI usage compliance reporting that no AI vendor's native dashboard provides.
 
-*Note: The first iteration focuses on the core observability surface — telemetry capture, dashboards, alerts, anti-pattern detection, and the multi-tool data model. Future iterations will deepen the recommendation engine, expand the platform adapter set, and extend the audit and compliance surface. See [ROADMAP.md](./ROADMAP.md) for the full list of post-launch roadmap themes.*
+_Note: The first iteration focuses on the core observability surface — telemetry capture, dashboards, alerts, anti-pattern detection, and the multi-tool data model. Future iterations will deepen the recommendation engine, expand the platform adapter set, and extend the audit and compliance surface. See [ROADMAP.md](./ROADMAP.md) for the full list of post-launch roadmap themes._
 
 ---
 
@@ -254,7 +250,6 @@ New Relic's NR AI Coding Observability is the observability platform for AI-assi
 NR AI Coding Observability directly addresses the urgent customer need to bring AI development under the same observability discipline already applied to production systems. It positions New Relic as the platform of record for the AI-augmented engineering organisation, capturing a new and rapidly growing observability spend category that did not exist 24 months ago.
 
 Market opportunity is sized by the global AI coding assistant market (TBD: insert sized estimate from market analysis), of which we estimate 5–10% will flow to associated observability and governance tooling — the same ratio observability historically captures from underlying infrastructure spend.
-
 
 ---
 
@@ -277,7 +272,6 @@ Customers retain granular control over their consumption: they choose which AI t
 **Support Model**
 
 Labs assets are supported through Labs' own channels — GitHub issues, the `#help-labs-dev` Slack channel, and Labs Work Items — rather than standard New Relic GTS support. Maintenance commitment is determined by the asset's Labs category (Community, Public Catalog, or Experimental); see the resolved decision linked above for details.
-
 
 ---
 
@@ -339,7 +333,6 @@ A weekly digest summarising AI spend, top anti-patterns, and team-level efficien
 
 The product respects existing New Relic RBAC, supports per-team data isolation, retains all data inside the customer's New Relic account, and offers a high-security mode that disables content capture entirely for organisations with maximum data-handling restrictions.
 
-
 ---
 
 ## 7 — Mindset Shift & Risks
@@ -348,9 +341,9 @@ The product respects existing New Relic RBAC, supports per-team data isolation, 
 
 **From "AI Spend Is a Black Box" to "AI Spend Is Governed Like Any Other Cloud Resource"**
 
-*Current mindset:* We adopted Claude Code and Cursor because our developers wanted them. Our monthly AI invoices are large and growing, and I can't tell my CFO who is generating that cost or whether we are getting our money's worth.
+_Current mindset:_ We adopted Claude Code and Cursor because our developers wanted them. Our monthly AI invoices are large and growing, and I can't tell my CFO who is generating that cost or whether we are getting our money's worth.
 
-*New mindset:* I have a weekly view of AI spend per team, project, and developer, with budget thresholds, alerts, and forecasts. I treat AI development cost the same way I treat compute — instrumented, optimised, and accountable.
+_New mindset:_ I have a weekly view of AI spend per team, project, and developer, with budget thresholds, alerts, and forecasts. I treat AI development cost the same way I treat compute — instrumented, optimised, and accountable.
 
 This is the most important shift the product enables. AI tooling moves from being a procurement and tools-team problem to being a fully governed cost centre with the same operational discipline applied to any other infrastructure line item. Cost dashboards land in the same New Relic UI engineering leaders already use for production observability. Budget alerts fire into the same Slack channels their existing alerts fire into. The discipline transfers because the surface is identical.
 
@@ -358,9 +351,9 @@ This is the most important shift the product enables. AI tooling moves from bein
 
 **From "I Hope AI Is Helping" to "I Can Prove AI Is Helping"**
 
-*Current mindset:* I bought AI coding tools because the productivity claims sounded compelling, but I have no neutral data on whether my teams are actually shipping faster or making fewer mistakes.
+_Current mindset:_ I bought AI coding tools because the productivity claims sounded compelling, but I have no neutral data on whether my teams are actually shipping faster or making fewer mistakes.
 
-*New mindset:* I have measurable efficiency scores, task completion rates, anti-pattern frequencies, and cost-per-task numbers per team, tracked weekly. I can prove which AI tools and which usage patterns are working, and which are not.
+_New mindset:_ I have measurable efficiency scores, task completion rates, anti-pattern frequencies, and cost-per-task numbers per team, tracked weekly. I can prove which AI tools and which usage patterns are working, and which are not.
 
 This shift is what unlocks the executive narrative. ROI moves from being a faith-based claim to being a tracked metric, which fundamentally changes how engineering leaders make AI tooling decisions and how they justify them upward. Pre-built dashboards target the executive narrative directly: cost-per-outcome reports, weekly trend lines, before-and-after comparisons triggered by configuration changes.
 
@@ -368,9 +361,9 @@ This shift is what unlocks the executive narrative. ROI moves from being a faith
 
 **From "AI Tool Adoption Is Risky and Unmonitored" to "AI Tool Adoption Is Auditable and Compliant"**
 
-*Current mindset:* I know my developers are using AI assistants on our codebase, but I cannot tell you what files those assistants accessed, what they wrote, or what they transmitted to external services. If our auditors asked, I would not have an answer.
+_Current mindset:_ I know my developers are using AI assistants on our codebase, but I cannot tell you what files those assistants accessed, what they wrote, or what they transmitted to external services. If our auditors asked, I would not have an answer.
 
-*New mindset:* Every sensitive file access, destructive command, and external network request from an AI assistant is captured in a structured audit trail, redacted, retained per our compliance policy, and queryable on demand.
+_New mindset:_ Every sensitive file access, destructive command, and external network request from an AI assistant is captured in a structured audit trail, redacted, retained per our compliance policy, and queryable on demand.
 
 The audit surface is built into the product from day one rather than added later. Compliance and security teams are surfaced as primary users of the dashboards, not as afterthoughts.
 
@@ -378,9 +371,9 @@ The audit surface is built into the product from day one rather than added later
 
 **From "Each Developer Improves on Their Own" to "AI Workflow Is a Coachable Discipline"**
 
-*Current mindset:* Some of my engineers are very effective with AI; others are not. I have no way to identify what the effective ones are doing differently or to teach the rest.
+_Current mindset:_ Some of my engineers are very effective with AI; others are not. I have no way to identify what the effective ones are doing differently or to teach the rest.
 
-*New mindset:* Each developer has a personal coaching surface showing their efficiency trends, anti-pattern history, and concrete optimisation recommendations. Team leads can identify high-performing patterns and propagate them. *(This will deepen significantly in future iterations — see [Recommendation Engine Maturation in ROADMAP.md](./ROADMAP.md#recommendation-engine-maturation).)*
+_New mindset:_ Each developer has a personal coaching surface showing their efficiency trends, anti-pattern history, and concrete optimisation recommendations. Team leads can identify high-performing patterns and propagate them. _(This will deepen significantly in future iterations — see [Recommendation Engine Maturation in ROADMAP.md](./ROADMAP.md#recommendation-engine-maturation).)_
 
 The personal coaching report is designed to read like advice from a teammate rather than a performance review. Aggregations roll up to patterns, not to individual rankings.
 
@@ -402,7 +395,6 @@ Although NR AI Coding Observability itself is free, the telemetry it generates f
 
 Customers using a specific AI assistant we have not yet adapted (the AI coding tooling space is fragmenting rapidly) will be disappointed if the product cannot observe their primary tool. We must communicate the supported-tool list clearly upfront and ship a credible adapter cadence to demonstrate ongoing investment in coverage breadth. The generic MCP adapter mitigates this for any MCP-speaking client, but is not a complete substitute for purpose-built adapters.
 
-
 ---
 
 ## 8 — Discovery & Access
@@ -413,7 +405,7 @@ Initial launch is targeted for June 9, 2026, immediately preceding Datadog DASH.
 
 **In-Platform Surfaces**
 
-How the product is discoverable inside New Relic depends on the Labs category determination (see [Resolved: UI surface depends on Labs category](#resolved-ui-surface-depends-on-labs-category-was-oq2)). If published as a **Public Catalog** asset, it will be surfaced under *Integrations & Agents → Apps & Visualizations*. If published as a **Community** or **Experimental** asset, the in-platform surface consists entirely of the deployed dashboards, alerts, and the MCP tool catalog — discovery happens through the GitHub README and Labs catalog rather than navigation entries. IDE-embedded surfaces via CodeStream are a future roadmap item ([ROADMAP.md](./ROADMAP.md#ide-embedded-surfaces)).
+How the product is discoverable inside New Relic depends on the Labs category determination (see [Resolved: UI surface depends on Labs category](#resolved-ui-surface-depends-on-labs-category-was-oq2)). If published as a **Public Catalog** asset, it will be surfaced under _Integrations & Agents → Apps & Visualizations_. If published as a **Community** or **Experimental** asset, the in-platform surface consists entirely of the deployed dashboards, alerts, and the MCP tool catalog — discovery happens through the GitHub README and Labs catalog rather than navigation entries. IDE-embedded surfaces via CodeStream are a future roadmap item ([ROADMAP.md](./ROADMAP.md#ide-embedded-surfaces)).
 
 **External Channels**
 
@@ -432,7 +424,6 @@ Because NR AI Coding Observability is a free open-source Labs asset (see [Resolv
 **Per-Developer and Per-Tool Activation**
 
 Within a customer account, individual developers and individual AI tools must be opted in explicitly during setup. This protects against runaway data ingest and against unintentional capture of AI tooling that the customer does not want instrumented.
-
 
 ---
 
@@ -461,7 +452,6 @@ NR AI Coding Observability does not replace, deprecate, or shrink the scope of a
 ### Category Positioning
 
 A new category needs to be established. Internal naming will treat NR AI Coding Observability as a sibling capability to the GenAI Application Observability product — both fall under the broader AI Observability area — but with explicit positioning as the development-time complement to GenAI Application Observability's runtime focus. (Final category and product-area placement TBD during launch planning.)
-
 
 ---
 
@@ -497,20 +487,20 @@ NR AI Coding Observability follows the New Relic Labs publication workflow rathe
 
 ## 11 — Milestones & Dependencies
 
-*Add or delete rows as needed. Grid is helpful way to visualize the milestones you envision*
+_Add or delete rows as needed. Grid is helpful way to visualize the milestones you envision_
 
-|  | Milestone / Dependency Description | Owner | Team | Priority *(H, M, L)* |
-| :---: | :---: | :---: | :---: | :---: |
-| **1** | Customer Zero deployment against New Relic's own engineering organisation; capture cost-optimisation case study | TBD | TBD | H |
-| **2** | Limited Preview onboarding of 5–10 design-partner accounts covering all four major AI coding assistants | TBD | TBD | H |
-| **3** | Anti-pattern signal-quality validation: minimum 80% precision target on flagged anti-patterns, validated against design-partner feedback | TBD | TBD | H |
-| **4** | Labs asset category determination (Community, Public Catalog, or Experimental) and publication path | TBD | TBD | H |
-| **5** | Initial Labs publication on June 9, 2026 with full self-service activation and Slack digest | TBD | TBD | H |
-| **6** | OpenTelemetry GenAI semantic convention compliance certification for portability | TBD | TBD | M |
-| **7** | Documentation of inherited New Relic platform compliance certifications (SOC 2 Type II, ISO 27001) as they apply to telemetry routed through the platform | TBD | TBD | M |
-| **8** | RBAC integration to support per-team data isolation for enterprise customers | TBD | TBD | H |
-| **9** | Adapter set expansion: at least two additional AI client adapters post-publication based on customer demand signal | TBD | TBD | M |
-| **10** | Conditional promotion to Community+ status if adoption justifies elevated GTS support (Pathpoint precedent) | TBD | TBD | L |
+|        |                                                            Milestone / Dependency Description                                                             | Owner | Team | Priority _(H, M, L)_ |
+| :----: | :-------------------------------------------------------------------------------------------------------------------------------------------------------: | :---: | :--: | :------------------: |
+| **1**  |                      Customer Zero deployment against New Relic's own engineering organisation; capture cost-optimisation case study                      |  TBD  | TBD  |          H           |
+| **2**  |                          Limited Preview onboarding of 5–10 design-partner accounts covering all four major AI coding assistants                          |  TBD  | TBD  |          H           |
+| **3**  |         Anti-pattern signal-quality validation: minimum 80% precision target on flagged anti-patterns, validated against design-partner feedback          |  TBD  | TBD  |          H           |
+| **4**  |                            Labs asset category determination (Community, Public Catalog, or Experimental) and publication path                            |  TBD  | TBD  |          H           |
+| **5**  |                                Initial Labs publication on June 9, 2026 with full self-service activation and Slack digest                                |  TBD  | TBD  |          H           |
+| **6**  |                                     OpenTelemetry GenAI semantic convention compliance certification for portability                                      |  TBD  | TBD  |          M           |
+| **7**  | Documentation of inherited New Relic platform compliance certifications (SOC 2 Type II, ISO 27001) as they apply to telemetry routed through the platform |  TBD  | TBD  |          M           |
+| **8**  |                                       RBAC integration to support per-team data isolation for enterprise customers                                        |  TBD  | TBD  |          H           |
+| **9**  |                    Adapter set expansion: at least two additional AI client adapters post-publication based on customer demand signal                     |  TBD  | TBD  |          M           |
+| **10** |                        Conditional promotion to Community+ status if adoption justifies elevated GTS support (Pathpoint precedent)                        |  TBD  | TBD  |          L           |
 
 ---
 
@@ -521,7 +511,6 @@ NR AI Coding Observability aligns with the AI domain and is best understood as t
 Support skillset spans AI/observability (the primary specialisation), Developer Experience (the audience), and FinOps and Compliance (the secondary stakeholder set). Support staff will need fluency in the AI coding assistant landscape and the MCP protocol in addition to standard New Relic platform support skills.
 
 This product is not tied to any EOL or replacement. It opens a new category and does not deprecate any existing capability.
-
 
 ---
 
@@ -541,7 +530,6 @@ Technically, the product captures redacted, opt-in telemetry through standard Ne
 
 The MCP server and OpenTelemetry semantic convention mappings can be released as open-source artefacts, with the analytical and intelligence surface — dashboards, alert library, anti-pattern detection, recommendation engine, audit trail, cross-session analytics — retained as the proprietary, monetised product. This split protects the commercial product while building developer-community trust around the open instrumentation layer, accelerating organic adoption.
 
-
 ---
 
 ## Open Questions
@@ -559,15 +547,15 @@ NR AI Coding Observability will be released as a free open-source asset through 
 - **Customer cost is indirect.** Customers still pay for the underlying New Relic platform consumption — telemetry ingest, query compute, dashboard / alert compute — at standard NR rates. The product is "free" in the sense that there is no product-level meter or licence, not in the sense that ingesting telemetry is free.
 - **Support model.** Labs assets do not use standard New Relic GTS support. Customers self-serve via GitHub issues, request enhancements via Labs Work Items, or ask in `#help-labs-dev` Slack. Only Community+ assets (Pathpoint is the precedent) qualify for standard GTS support.
 - **Maintenance commitment** depends on the asset category:
-    - **Community** — actively maintained: critical / high security vulnerabilities, platform deprecations, and breaking bugs are patched proactively; feature enhancements accepted into the backlog.
-    - **Public Catalog** — same as Community, plus surfaced inside the New Relic UI under *Integrations & Agents → Apps & Visualizations*.
-    - **Experimental** — passively maintained: best-effort updates, prioritised against the Labs queue.
+  - **Community** — actively maintained: critical / high security vulnerabilities, platform deprecations, and breaking bugs are patched proactively; feature enhancements accepted into the backlog.
+  - **Public Catalog** — same as Community, plus surfaced inside the New Relic UI under _Integrations & Agents → Apps & Visualizations_.
+  - **Experimental** — passively maintained: best-effort updates, prioritised against the Labs queue.
 
 ### Resolved: UI surface depends on Labs category (was OQ2)
 
 Whether NR AI Coding Observability has a dedicated in-platform UI is determined by which Labs category the asset lands in:
 
-- **Public Catalog** assets are surfaced inside the New Relic UI under *Integrations & Agents → Apps & Visualizations* — these can include custom UIs built on the Programmability platform (Pathpoint is the precedent).
+- **Public Catalog** assets are surfaced inside the New Relic UI under _Integrations & Agents → Apps & Visualizations_ — these can include custom UIs built on the Programmability platform (Pathpoint is the precedent).
 - **Community** and **Experimental** assets are GitHub-distributed code with no in-platform UI; users consume the analytical surface entirely through pre-built dashboards, alerts, NRQL queries, and the MCP tool surface.
 
 The current product surface is dashboards + alerts + MCP tools + NRQL — no custom UI exists today. Whether to build one before publication reduces to milestone #4 ([§11 — Milestones & Dependencies](#11--milestones--dependencies)) — Labs asset category determination. The brief's §6 and §8 sections have been updated to describe a "data + dashboards + MCP tools" surface rather than assuming a navigable UI.
@@ -604,12 +592,11 @@ New Relic Labs does not use the standard New Relic core-product cadence (Custome
 
 The June 9, 2026 launch date corresponds to **initial publication**, not to a Public Preview or GA milestone. §10 has been rewritten to reflect the Labs publication workflow; §11 milestones have been updated to remove launch artefacts (production pricing, contracts, SLAs) that don't apply to Labs assets.
 
-
 ---
 
 ## Appendix A — High Level Public Facing APIs
 
-* *MCP tool surface — 27 tools currently exposed to AI coding clients; full specification at `docs/COMMANDS_TABLE.md` in the open-source repository.*
-* *NRQL event schema — public event types (`AiToolCall`, `AiCodingTask`, `AiAntiPattern`, `AiMcpToolCall`, `AiProxyRequest`, `AiAuditEvent`, `AiBudgetWarning`, `AiCostGrowthAlert`, `AiCostForecastAlert`, `AiExperimentSummary`, `AiExperimentConclusion`, `AiRecommendation`); see `docs/EVENT_SCHEMA.md`.*
-* *OpenTelemetry GenAI semantic convention mapping — span attributes follow OTel GenAI conventions for portability.*
-* *Hook collector binary — `nr-ai-observe` CLI for AI client integration.*
+- _MCP tool surface — 27 tools currently exposed to AI coding clients; full specification at `docs/COMMANDS_TABLE.md` in the open-source repository._
+- _NRQL event schema — public event types (`AiToolCall`, `AiCodingTask`, `AiAntiPattern`, `AiMcpToolCall`, `AiProxyRequest`, `AiAuditEvent`, `AiBudgetWarning`, `AiCostGrowthAlert`, `AiCostForecastAlert`, `AiExperimentSummary`, `AiExperimentConclusion`, `AiRecommendation`); see `docs/EVENT_SCHEMA.md`._
+- _OpenTelemetry GenAI semantic convention mapping — span attributes follow OTel GenAI conventions for portability._
+- _Hook collector binary — `nr-ai-observe` CLI for AI client integration._

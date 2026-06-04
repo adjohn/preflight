@@ -57,7 +57,9 @@ describe('RetryDetector', () => {
 
     detector.recordToolCall(makeRecord({ toolName: 'Bash', success: false, command: 'npm test' }));
     detector.recordToolCall(makeRecord({ toolName: 'Bash', success: false, command: 'npm test' }));
-    const result = detector.recordToolCall(makeRecord({ toolName: 'Bash', success: false, command: 'npm test' }));
+    const result = detector.recordToolCall(
+      makeRecord({ toolName: 'Bash', success: false, command: 'npm test' }),
+    );
 
     expect(result).not.toBeNull();
     expect(result!.toolName).toBe('Bash');
@@ -68,9 +70,30 @@ describe('RetryDetector', () => {
   it('alerts when inputs are highly similar even if some succeed', () => {
     const detector = new RetryDetector({ similarityThreshold: 0.8 });
 
-    detector.recordToolCall(makeRecord({ toolName: 'Edit', success: true, filePath: '/a/b.ts', command: 'fix bug line 10' }));
-    detector.recordToolCall(makeRecord({ toolName: 'Edit', success: true, filePath: '/a/b.ts', command: 'fix bug line 11' }));
-    const result = detector.recordToolCall(makeRecord({ toolName: 'Edit', success: true, filePath: '/a/b.ts', command: 'fix bug line 12' }));
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Edit',
+        success: true,
+        filePath: '/a/b.ts',
+        command: 'fix bug line 10',
+      }),
+    );
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Edit',
+        success: true,
+        filePath: '/a/b.ts',
+        command: 'fix bug line 11',
+      }),
+    );
+    const result = detector.recordToolCall(
+      makeRecord({
+        toolName: 'Edit',
+        success: true,
+        filePath: '/a/b.ts',
+        command: 'fix bug line 12',
+      }),
+    );
 
     expect(result).not.toBeNull();
     expect(result!.similarity).toBeGreaterThanOrEqual(0.8);
@@ -89,9 +112,15 @@ describe('RetryDetector', () => {
   it('estimates tokens wasted from input/output sizes', () => {
     const detector = new RetryDetector();
 
-    detector.recordToolCall(makeRecord({ toolName: 'Bash', success: false, inputSizeBytes: 400, outputSizeBytes: 600 }));
-    detector.recordToolCall(makeRecord({ toolName: 'Bash', success: false, inputSizeBytes: 400, outputSizeBytes: 600 }));
-    const alert = detector.recordToolCall(makeRecord({ toolName: 'Bash', success: false, inputSizeBytes: 400, outputSizeBytes: 600 }));
+    detector.recordToolCall(
+      makeRecord({ toolName: 'Bash', success: false, inputSizeBytes: 400, outputSizeBytes: 600 }),
+    );
+    detector.recordToolCall(
+      makeRecord({ toolName: 'Bash', success: false, inputSizeBytes: 400, outputSizeBytes: 600 }),
+    );
+    const alert = detector.recordToolCall(
+      makeRecord({ toolName: 'Bash', success: false, inputSizeBytes: 400, outputSizeBytes: 600 }),
+    );
 
     expect(alert).not.toBeNull();
     // 3 calls × (400 + 600) bytes / 4 bytes per token = 750

@@ -105,19 +105,23 @@ describe('RecommendationEngine', () => {
     // High correction rate → prompt_engineering rec
     // Re-reading anti-patterns → prompt_engineering rec (file_paths)
     for (let i = 0; i < 4; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `s-${i}`,
+      store.saveSession(
+        makeSummary({
+          sessionId: `s-${i}`,
+          userMessages: 20,
+          userCorrections: 8,
+          antiPatterns: [{ type: 're_reading', count: 3 }],
+        }),
+      );
+    }
+    store.saveSession(
+      makeSummary({
+        sessionId: 's-clean',
         userMessages: 20,
         userCorrections: 8,
-        antiPatterns: [{ type: 're_reading', count: 3 }],
-      }));
-    }
-    store.saveSession(makeSummary({
-      sessionId: 's-clean',
-      userMessages: 20,
-      userCorrections: 8,
-      antiPatterns: [{ type: 're_reading', count: 1 }],
-    }));
+        antiPatterns: [{ type: 're_reading', count: 1 }],
+      }),
+    );
 
     const recs = engine.generateAllRecommendations('alice');
 
@@ -136,11 +140,13 @@ describe('RecommendationEngine', () => {
 
     // Same conditions that generate same recommendations
     for (let i = 0; i < 3; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `s-${i}`,
-        userMessages: 20,
-        userCorrections: 8,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `s-${i}`,
+          userMessages: 20,
+          userCorrections: 8,
+        }),
+      );
     }
 
     const recs = engine.generateAllRecommendations('alice');
@@ -159,19 +165,23 @@ describe('RecommendationEngine', () => {
 
     // Trigger both high (correction rate) and medium (re-reading) recs
     for (let i = 0; i < 4; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `s-${i}`,
+      store.saveSession(
+        makeSummary({
+          sessionId: `s-${i}`,
+          userMessages: 20,
+          userCorrections: 8,
+          antiPatterns: [{ type: 're_reading', count: 2 }],
+        }),
+      );
+    }
+    store.saveSession(
+      makeSummary({
+        sessionId: 's-clean',
         userMessages: 20,
         userCorrections: 8,
-        antiPatterns: [{ type: 're_reading', count: 2 }],
-      }));
-    }
-    store.saveSession(makeSummary({
-      sessionId: 's-clean',
-      userMessages: 20,
-      userCorrections: 8,
-      antiPatterns: [{ type: 're_reading', count: 1 }],
-    }));
+        antiPatterns: [{ type: 're_reading', count: 1 }],
+      }),
+    );
 
     const recs = engine.generateAllRecommendations('alice');
 
@@ -194,19 +204,23 @@ describe('RecommendationEngine', () => {
 
     // Generate multiple recs
     for (let i = 0; i < 4; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `s-${i}`,
+      store.saveSession(
+        makeSummary({
+          sessionId: `s-${i}`,
+          userMessages: 20,
+          userCorrections: 8,
+          antiPatterns: [{ type: 're_reading', count: 3 }],
+        }),
+      );
+    }
+    store.saveSession(
+      makeSummary({
+        sessionId: 's-extra',
         userMessages: 20,
         userCorrections: 8,
-        antiPatterns: [{ type: 're_reading', count: 3 }],
-      }));
-    }
-    store.saveSession(makeSummary({
-      sessionId: 's-extra',
-      userMessages: 20,
-      userCorrections: 8,
-      antiPatterns: [{ type: 're_reading', count: 1 }],
-    }));
+        antiPatterns: [{ type: 're_reading', count: 1 }],
+      }),
+    );
 
     const allRecs = engine.generateAllRecommendations('alice');
     expect(allRecs.length).toBeGreaterThanOrEqual(2);
@@ -273,13 +287,19 @@ describe('RecommendationEngine', () => {
   it('emitMetrics emits ai.recommendation events with correct attributes', () => {
     const { engine } = createEngine();
 
-    store.saveSession(makeSummary({
-      sessionId: 's1',
-      userMessages: 20,
-      userCorrections: 8,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 's1',
+        userMessages: 20,
+        userCorrections: 8,
+      }),
+    );
 
-    const recorded: Array<{ name: string; value: number; attrs?: Record<string, string | number> }> = [];
+    const recorded: Array<{
+      name: string;
+      value: number;
+      attrs?: Record<string, string | number>;
+    }> = [];
     const aggregator = {
       record(name: string, value: number, attrs?: Record<string, string | number>) {
         recorded.push({ name, value, attrs });

@@ -13,20 +13,21 @@ const mockTracer = { startSpan: jest.fn(() => mockSpan) };
 
 jest.mock('./mcp-tracer.js', () => ({ getMcpTracer: () => mockTracer }));
 
-const makeRecord = (overrides: Partial<ToolCallRecord> = {}): ToolCallRecord => ({
-  sessionId: 'session-1',
-  toolUseId: 'tool-use-1',
-  toolName: 'Read',
-  timestamp: 1000,
-  durationMs: 100,
-  success: true,
-  inputSizeBytes: 10,
-  outputSizeBytes: 20,
-  error: undefined,
-  errorType: undefined,
-  filePath: undefined,
-  ...overrides,
-} as ToolCallRecord);
+const makeRecord = (overrides: Partial<ToolCallRecord> = {}): ToolCallRecord =>
+  ({
+    sessionId: 'session-1',
+    toolUseId: 'tool-use-1',
+    toolName: 'Read',
+    timestamp: 1000,
+    durationMs: 100,
+    success: true,
+    inputSizeBytes: 10,
+    outputSizeBytes: 20,
+    error: undefined,
+    errorType: undefined,
+    filePath: undefined,
+    ...overrides,
+  }) as ToolCallRecord;
 
 describe('emitToolCallSpan', () => {
   beforeEach(() => {

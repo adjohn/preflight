@@ -197,7 +197,10 @@ describe('OtlpEventBridge', () => {
 
     bridge.sendEvents(events);
 
-    const providerInstance = (LoggerProvider as jest.Mock).mock.results[0].value as Record<string, unknown>;
+    const providerInstance = (LoggerProvider as jest.Mock).mock.results[0].value as Record<
+      string,
+      unknown
+    >;
     const emitMock = providerInstance._emitMock as jest.Mock;
     expect(emitMock).toHaveBeenCalledTimes(3);
   });

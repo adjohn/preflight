@@ -186,7 +186,10 @@ function detectSecurityAlert(
 // NR Event helpers
 // ---------------------------------------------------------------------------
 
-export function auditRecordToNrEvent(record: AuditRecord, attrs?: { teamId?: string | null; projectId?: string | null; orgId?: string | null }): NrEventData {
+export function auditRecordToNrEvent(
+  record: AuditRecord,
+  attrs?: { teamId?: string | null; projectId?: string | null; orgId?: string | null },
+): NrEventData {
   const event: NrEventData = {
     eventType: 'AiAuditEvent',
     timestamp: Math.floor(record.timestamp / 1000),
@@ -202,7 +205,7 @@ export function auditRecordToNrEvent(record: AuditRecord, attrs?: { teamId?: str
 
   if (record.sessionId != null) event.session_id = record.sessionId;
   if (record.filePath != null) event.file_path = redactSensitive(record.filePath);
-  if (record.command  != null) event.command   = redactSensitive(record.command);
+  if (record.command != null) event.command = redactSensitive(record.command);
 
   if (record.securityAlert) {
     event['audit.security_alert'] = true;
@@ -215,7 +218,10 @@ export function auditRecordToNrEvent(record: AuditRecord, attrs?: { teamId?: str
   return event;
 }
 
-export function securityAlertToNrEvent(record: AuditRecord, attrs?: { teamId?: string | null; projectId?: string | null; orgId?: string | null }): NrEventData {
+export function securityAlertToNrEvent(
+  record: AuditRecord,
+  attrs?: { teamId?: string | null; projectId?: string | null; orgId?: string | null },
+): NrEventData {
   const alert = record.securityAlert!;
   const event: NrEventData = {
     eventType: 'SecurityAlert',
@@ -233,7 +239,7 @@ export function securityAlertToNrEvent(record: AuditRecord, attrs?: { teamId?: s
 
   if (record.sessionId != null) event.session_id = record.sessionId;
   if (record.filePath != null) event.file_path = redactSensitive(record.filePath);
-  if (record.command  != null) event.command   = redactSensitive(record.command);
+  if (record.command != null) event.command = redactSensitive(record.command);
 
   return event;
 }

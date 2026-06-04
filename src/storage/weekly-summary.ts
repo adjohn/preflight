@@ -8,13 +8,7 @@
  * ISO week helpers use Monday as the first day of the week.
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createLogger } from '../shared/index.js';
 import type { SessionStore } from './session-store.js';
@@ -176,9 +170,9 @@ export class WeeklySummaryGenerator {
     if (!existsSync(this.summariesDir)) return [];
 
     const files = readdirSync(this.summariesDir)
-      .filter(f => f.endsWith('.json'))
+      .filter((f) => f.endsWith('.json'))
       .sort()
-      .reverse()  // newest first
+      .reverse() // newest first
       .slice(0, count);
 
     const results: WeeklySummary[] = [];
@@ -252,8 +246,7 @@ function aggregateSessions(weekId: string, sessions: FullSessionSummary[]): Week
     sessionCount: sessions.length,
     totalCostUsd: round(totalCostUsd, 4),
     avgCostPerSession: sessions.length > 0 ? round(totalCostUsd / sessions.length, 4) : 0,
-    avgEfficiencyScore:
-      efficiencyCount > 0 ? round(efficiencySum / efficiencyCount, 3) : null,
+    avgEfficiencyScore: efficiencyCount > 0 ? round(efficiencySum / efficiencyCount, 3) : null,
     totalToolCalls,
     toolBreakdown,
     totalTasksCompleted,
@@ -299,8 +292,7 @@ function aggregateDeveloperSessions(sessions: FullSessionSummary[]): DeveloperWe
   return {
     sessionCount: sessions.length,
     totalCostUsd: round(totalCostUsd, 4),
-    avgEfficiencyScore:
-      efficiencyCount > 0 ? round(efficiencySum / efficiencyCount, 3) : null,
+    avgEfficiencyScore: efficiencyCount > 0 ? round(efficiencySum / efficiencyCount, 3) : null,
     totalToolCalls,
     toolBreakdown,
     totalTasksCompleted,

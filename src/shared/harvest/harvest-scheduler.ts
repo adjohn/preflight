@@ -89,7 +89,11 @@ export class HarvestScheduler {
     this.eventBuffer.add(event);
   }
 
-  recordMetric(name: string, value: number, attributes: Record<string, string | number> = {}): void {
+  recordMetric(
+    name: string,
+    value: number,
+    attributes: Record<string, string | number> = {},
+  ): void {
     this.metricAggregator.record(name, value, attributes);
   }
 
@@ -152,9 +156,7 @@ export class HarvestScheduler {
 
   async harvestEvents(): Promise<void> {
     const fresh = this.eventBuffer.flush();
-    const batch = this.retryEventBatch.length > 0
-      ? [...this.retryEventBatch, ...fresh]
-      : fresh;
+    const batch = this.retryEventBatch.length > 0 ? [...this.retryEventBatch, ...fresh] : fresh;
     this.retryEventBatch = [];
     if (batch.length === 0) return;
 
@@ -229,9 +231,7 @@ export class HarvestScheduler {
 
   async harvestMetrics(): Promise<void> {
     const fresh = this.metricAggregator.harvest();
-    const batch = this.retryMetricBatch.length > 0
-      ? [...this.retryMetricBatch, ...fresh]
-      : fresh;
+    const batch = this.retryMetricBatch.length > 0 ? [...this.retryMetricBatch, ...fresh] : fresh;
     this.retryMetricBatch = [];
     if (batch.length === 0) return;
 

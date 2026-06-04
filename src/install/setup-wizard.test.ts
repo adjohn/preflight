@@ -2,6 +2,7 @@ import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals
 import { buildConfig, runSetupWizard, copyStarterAlertRules } from './setup-wizard.js';
 import * as rlMod from 'node:readline/promises';
 import * as fsMod from 'node:fs';
+import * as scheduleMod from './schedule.js';
 
 // ---------------------------------------------------------------------------
 // Module-level mocks (hoisted above imports by jest at runtime).
@@ -15,8 +16,15 @@ jest.mock('node:fs', () => ({
   existsSync: jest.fn(),
   copyFileSync: jest.fn(),
   chmodSync: jest.fn(),
+  realpathSync: jest.fn((p: unknown) => p),
 }));
-jest.mock('./cli.js', () => ({ runInstallCli: jest.fn() }));
+jest.mock('./cli.js', () => ({ runInstallCli: jest.fn(), verifyBinaryOnPath: jest.fn() }));
+jest.mock('./schedule.js', () => ({
+  installSchedule: jest.fn(),
+  removeSchedule: jest.fn(),
+  getScheduleStatus: jest.fn(() => ({ installed: false })),
+  resolveBinaryPath: jest.fn(() => null),
+}));
 
 // Typed handles to the mocked module functions.
 const mockedFs = fsMod as unknown as {
@@ -28,6 +36,10 @@ const mockedFs = fsMod as unknown as {
   chmodSync: jest.Mock;
 };
 const mockedRl = rlMod as unknown as { createInterface: jest.Mock };
+const mockedSchedule = scheduleMod as unknown as {
+  installSchedule: jest.Mock;
+  resolveBinaryPath: jest.Mock;
+};
 
 // ---------------------------------------------------------------------------
 // copyStarterAlertRules — Phase 4 task 24
@@ -80,10 +92,10 @@ describe('copyStarterAlertRules', () => {
       destPath: '/dest/alerts/rules.json',
     });
 
-    expect(mockedFs.mkdirSync).toHaveBeenCalledWith(
-      '/dest/alerts',
-      { recursive: true, mode: 0o700 },
-    );
+    expect(mockedFs.mkdirSync).toHaveBeenCalledWith('/dest/alerts', {
+      recursive: true,
+      mode: 0o700,
+    });
   });
 
   it('chmods the copied file to 0o600', () => {
@@ -97,10 +109,7 @@ describe('copyStarterAlertRules', () => {
       destPath: '/dest/alerts/rules.json',
     });
 
-    expect(mockedFs.chmodSync).toHaveBeenCalledWith(
-      '/dest/alerts/rules.json',
-      0o600,
-    );
+    expect(mockedFs.chmodSync).toHaveBeenCalledWith('/dest/alerts/rules.json', 0o600);
   });
 
   it('returns a friendly reason when the source is missing', () => {
@@ -153,7 +162,14 @@ describe('buildConfig', () => {
   it('merges new fields with existing config', () => {
     const result = buildConfig(
       { appName: 'my-app', existingField: 'keep-me' },
-      { accountId: '12345', licenseKey: 'nrlic', developer: 'alice', teamId: null, projectId: null, sessionBudgetUsd: null },
+      {
+        accountId: '12345',
+        licenseKey: 'nrlic',
+        developer: 'alice',
+        teamId: null,
+        projectId: null,
+        sessionBudgetUsd: null,
+      },
     );
     expect(result.accountId).toBe('12345');
     expect(result.existingField).toBe('keep-me');
@@ -162,7 +178,14 @@ describe('buildConfig', () => {
   it('omits teamId when null', () => {
     const result = buildConfig(
       {},
-      { accountId: '1', licenseKey: 'k', developer: 'd', teamId: null, projectId: null, sessionBudgetUsd: null },
+      {
+        accountId: '1',
+        licenseKey: 'k',
+        developer: 'd',
+        teamId: null,
+        projectId: null,
+        sessionBudgetUsd: null,
+      },
     );
     expect(Object.keys(result)).not.toContain('teamId');
   });
@@ -170,7 +193,14 @@ describe('buildConfig', () => {
   it('includes teamId when provided', () => {
     const result = buildConfig(
       {},
-      { accountId: '1', licenseKey: 'k', developer: 'd', teamId: 'eng', projectId: null, sessionBudgetUsd: null },
+      {
+        accountId: '1',
+        licenseKey: 'k',
+        developer: 'd',
+        teamId: 'eng',
+        projectId: null,
+        sessionBudgetUsd: null,
+      },
     );
     expect(result.teamId).toBe('eng');
   });
@@ -178,7 +208,14 @@ describe('buildConfig', () => {
   it('omits projectId when null', () => {
     const result = buildConfig(
       {},
-      { accountId: '1', licenseKey: 'k', developer: 'd', teamId: null, projectId: null, sessionBudgetUsd: null },
+      {
+        accountId: '1',
+        licenseKey: 'k',
+        developer: 'd',
+        teamId: null,
+        projectId: null,
+        sessionBudgetUsd: null,
+      },
     );
     expect(Object.keys(result)).not.toContain('projectId');
   });
@@ -186,7 +223,14 @@ describe('buildConfig', () => {
   it('includes projectId when provided', () => {
     const result = buildConfig(
       {},
-      { accountId: '1', licenseKey: 'k', developer: 'd', teamId: null, projectId: 'org/repo', sessionBudgetUsd: null },
+      {
+        accountId: '1',
+        licenseKey: 'k',
+        developer: 'd',
+        teamId: null,
+        projectId: 'org/repo',
+        sessionBudgetUsd: null,
+      },
     );
     expect(result.projectId).toBe('org/repo');
   });
@@ -194,7 +238,14 @@ describe('buildConfig', () => {
   it('omits sessionBudgetUsd when null', () => {
     const result = buildConfig(
       {},
-      { accountId: '1', licenseKey: 'k', developer: 'd', teamId: null, projectId: null, sessionBudgetUsd: null },
+      {
+        accountId: '1',
+        licenseKey: 'k',
+        developer: 'd',
+        teamId: null,
+        projectId: null,
+        sessionBudgetUsd: null,
+      },
     );
     expect(Object.keys(result)).not.toContain('sessionBudgetUsd');
   });
@@ -202,7 +253,14 @@ describe('buildConfig', () => {
   it('includes sessionBudgetUsd when provided', () => {
     const result = buildConfig(
       {},
-      { accountId: '1', licenseKey: 'k', developer: 'd', teamId: null, projectId: null, sessionBudgetUsd: 5.0 },
+      {
+        accountId: '1',
+        licenseKey: 'k',
+        developer: 'd',
+        teamId: null,
+        projectId: null,
+        sessionBudgetUsd: 5.0,
+      },
     );
     expect(result.sessionBudgetUsd).toBe(5.0);
   });
@@ -210,7 +268,14 @@ describe('buildConfig', () => {
   it('overwrites existing accountId with new value', () => {
     const result = buildConfig(
       { accountId: 'old', licenseKey: 'old-key' },
-      { accountId: 'new', licenseKey: 'new-key', developer: 'd', teamId: null, projectId: null, sessionBudgetUsd: null },
+      {
+        accountId: 'new',
+        licenseKey: 'new-key',
+        developer: 'd',
+        teamId: null,
+        projectId: null,
+        sessionBudgetUsd: null,
+      },
     );
     expect(result.accountId).toBe('new');
     expect(result.licenseKey).toBe('new-key');
@@ -253,8 +318,8 @@ describe('F-138: setup-wizard idempotency and env-detection', () => {
       accountId: '12345',
       licenseKey: 'NRLIC-existing',
       developer: 'alice',
-      otlpEndpoint: 'https://otlp.example.com',  // not managed by wizard
-      retainSessionsDays: 90,                      // not managed by wizard
+      otlpEndpoint: 'https://otlp.example.com', // not managed by wizard
+      retainSessionsDays: 90, // not managed by wizard
     };
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(existingConfig));
     sequenceAnswers('', '', '', '', '', '', '', 'n');
@@ -301,7 +366,9 @@ describe('F-138: setup-wizard idempotency and env-detection', () => {
 
   it('malformed JSON in existing config does not crash the wizard', async () => {
     mockedFs.readFileSync.mockReturnValue('not-valid-json{{{');
-    sequenceAnswers('', '12345', 'NRLIC-test', 'testdev', '', '', '', 'n');
+    // Malformed config → no existing mode → defaults 'local'; force 'cloud' explicitly so
+    // accountId/licenseKey prompts fire. Final 'n' skips Step 7 auto-update (macOS).
+    sequenceAnswers('cloud', '12345', 'NRLIC-test', 'testdev', '', '', '', 'n', 'n');
 
     await runSetupWizard();
 
@@ -425,9 +492,11 @@ describe('setupWizard input validation', () => {
     stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
     stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    exitSpy = jest.spyOn(process, 'exit').mockImplementation((code?: string | number | null | undefined) => {
-      throw new Error(`process.exit(${String(code)})`);
-    });
+    exitSpy = jest
+      .spyOn(process, 'exit')
+      .mockImplementation((code?: string | number | null | undefined) => {
+        throw new Error(`process.exit(${String(code)})`);
+      });
     mockRl = { question: jest.fn(), close: jest.fn() };
     mockedRl.createInterface.mockReturnValue(mockRl);
     mockedFs.mkdirSync.mockReturnValue(undefined);
@@ -448,31 +517,27 @@ describe('setupWizard input validation', () => {
   }
 
   it('rejects an account ID that is not 1–12 digits', async () => {
-    // mode (default cloud), accountId, licenseKey, ...
-    answers('', 'abc-123', 'NRLIC-test', 'tester', '', '', '', 'n');
+    // Explicit 'cloud' mode so accountId/licenseKey prompts fire (default mode is 'local').
+    answers('cloud', 'abc-123', 'NRLIC-test', 'tester', '', '', '', 'n');
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
     expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Invalid account ID'),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid account ID'));
     expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
   });
 
   it('rejects an account ID with more than 12 digits', async () => {
-    answers('', '1234567890123', 'NRLIC-test', 'tester', '', '', '', 'n');
+    answers('cloud', '1234567890123', 'NRLIC-test', 'tester', '', '', '', 'n');
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Invalid account ID'),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid account ID'));
     expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
   });
 
   it('rejects a missing license key when none is in existing config', async () => {
-    answers('', '12345', '', 'tester', '', '', '', 'n');
+    answers('cloud', '12345', '', 'tester', '', '', '', 'n');
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
@@ -481,35 +546,29 @@ describe('setupWizard input validation', () => {
   });
 
   it('rejects a non-numeric session budget', async () => {
-    answers('', '12345', 'NRLIC-test', 'tester', '', '', 'free', 'n');
+    answers('cloud', '12345', 'NRLIC-test', 'tester', '', '', 'free', 'n');
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Invalid session budget'),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid session budget'));
     expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
   });
 
   it('rejects a session budget of zero', async () => {
-    answers('', '12345', 'NRLIC-test', 'tester', '', '', '0', 'n');
+    answers('cloud', '12345', 'NRLIC-test', 'tester', '', '', '0', 'n');
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Invalid session budget'),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid session budget'));
     expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
   });
 
   it('rejects a negative session budget', async () => {
-    answers('', '12345', 'NRLIC-test', 'tester', '', '', '-5', 'n');
+    answers('cloud', '12345', 'NRLIC-test', 'tester', '', '', '-5', 'n');
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Invalid session budget'),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid session budget'));
     expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
   });
 
@@ -519,9 +578,7 @@ describe('setupWizard input validation', () => {
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Invalid port'),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid port'));
     expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
   });
 
@@ -530,9 +587,7 @@ describe('setupWizard input validation', () => {
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Invalid port'),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid port'));
     expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
   });
 
@@ -541,9 +596,7 @@ describe('setupWizard input validation', () => {
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Invalid port'),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid port'));
     expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
   });
 
@@ -560,5 +613,96 @@ describe('setupWizard input validation', () => {
     const written = JSON.parse(writtenJson) as Record<string, unknown>;
     expect(written.licenseKey).toBe('NRLIC-existing');
     expect(exitSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auto-update wizard step
+// ---------------------------------------------------------------------------
+describe('setupWizard auto-update step', () => {
+  let stdoutSpy: ReturnType<typeof jest.spyOn>;
+  let stderrSpy: ReturnType<typeof jest.spyOn>;
+  let mockRl: { question: jest.Mock; close: jest.Mock };
+  const savedPlatform = process.platform;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    mockRl = { question: jest.fn(), close: jest.fn() };
+    mockedRl.createInterface.mockReturnValue(mockRl);
+    mockedFs.mkdirSync.mockReturnValue(undefined);
+    mockedFs.writeFileSync.mockReturnValue(undefined);
+    mockedFs.readFileSync.mockReturnValue('{}');
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+  });
+
+  afterEach(() => {
+    stdoutSpy.mockRestore();
+    stderrSpy.mockRestore();
+    Object.defineProperty(process, 'platform', { value: savedPlatform, configurable: true });
+  });
+
+  // Cloud mode answer order:
+  // mode, accountId, licenseKey, developer, teamId, projectId,
+  // sessionBudget, installHooks, autoUpdate, updateTime
+  function cloudAnswers(...values: string[]): void {
+    let i = 0;
+    mockRl.question.mockImplementation(async () => values[i++] ?? '');
+  }
+
+  it('calls installSchedule with parsed hour and minute when user accepts', async () => {
+    mockedSchedule.resolveBinaryPath.mockReturnValue('/usr/local/bin/nr-ai-observe');
+    cloudAnswers('cloud', '12345', 'NRLIC-test', 'dev', '', '', '', 'n', 'y', '09:00');
+
+    await runSetupWizard();
+
+    expect(mockedSchedule.installSchedule).toHaveBeenCalledWith(
+      '/usr/local/bin/nr-ai-observe',
+      9,
+      0,
+    );
+  });
+
+  it('uses 08:00 as default time when user presses enter', async () => {
+    mockedSchedule.resolveBinaryPath.mockReturnValue('/usr/local/bin/nr-ai-observe');
+    cloudAnswers('cloud', '12345', 'NRLIC-test', 'dev', '', '', '', 'n', 'y', '');
+
+    await runSetupWizard();
+
+    expect(mockedSchedule.installSchedule).toHaveBeenCalledWith(
+      '/usr/local/bin/nr-ai-observe',
+      8,
+      0,
+    );
+  });
+
+  it('does not call installSchedule when user declines auto-update', async () => {
+    cloudAnswers('cloud', '12345', 'NRLIC-test', 'dev', '', '', '', 'n', 'n');
+
+    await runSetupWizard();
+
+    expect(mockedSchedule.installSchedule).not.toHaveBeenCalled();
+  });
+
+  it('prints PATH warning and skips installSchedule when binary not on PATH', async () => {
+    mockedSchedule.resolveBinaryPath.mockReturnValue(null);
+    cloudAnswers('cloud', '12345', 'NRLIC-test', 'dev', '', '', '', 'n', 'y', '08:00');
+
+    await runSetupWizard();
+
+    expect(mockedSchedule.installSchedule).not.toHaveBeenCalled();
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).toContain('PATH');
+  });
+
+  it('skips auto-update step entirely on non-macOS', async () => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    // No auto-update answers needed — step is skipped on non-macOS.
+    cloudAnswers('cloud', '12345', 'NRLIC-test', 'dev', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    expect(mockedSchedule.installSchedule).not.toHaveBeenCalled();
   });
 });

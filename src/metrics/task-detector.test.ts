@@ -155,11 +155,13 @@ describe('Boundary signals', () => {
     jest.advanceTimersByTime(1000);
     detector.recordToolCall(makeRecord({ toolName: 'Edit', filePath: '/a.ts' }));
     jest.advanceTimersByTime(1000);
-    detector.recordToolCall(makeRecord({
-      toolName: 'TaskUpdate',
-      taskId: 'task-1',
-      taskStatus: 'completed',
-    }));
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'TaskUpdate',
+        taskId: 'task-1',
+        taskStatus: 'completed',
+      }),
+    );
 
     // Task should be closed immediately, no idle timeout needed
     expect(detector.getCompletedTasks()).toHaveLength(1);
@@ -174,11 +176,13 @@ describe('Boundary signals', () => {
 
     detector.recordToolCall(makeRecord({ toolName: 'Read' }));
     jest.advanceTimersByTime(1000);
-    detector.recordToolCall(makeRecord({
-      toolName: 'TaskUpdate',
-      taskId: 'task-1',
-      taskStatus: 'in_progress',
-    }));
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'TaskUpdate',
+        taskId: 'task-1',
+        taskStatus: 'in_progress',
+      }),
+    );
 
     // Task should still be active
     expect(detector.getCompletedTasks()).toHaveLength(0);
@@ -203,12 +207,14 @@ describe('Task data accumulation', () => {
     detector.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/b.ts' }));
     detector.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/a.ts' })); // duplicate
     detector.recordToolCall(makeRecord({ toolName: 'Write', filePath: '/c.ts', lineCount: 50 }));
-    detector.recordToolCall(makeRecord({
-      toolName: 'Edit',
-      filePath: '/a.ts',
-      oldLineCount: 10,
-      newLineCount: 15,
-    }));
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Edit',
+        filePath: '/a.ts',
+        oldLineCount: 10,
+        newLineCount: 15,
+      }),
+    );
 
     jest.advanceTimersByTime(30_000);
 
@@ -225,25 +231,33 @@ describe('Task data accumulation', () => {
   it('counts testsRun and testsPassed from Bash calls', () => {
     const detector = new TaskDetector();
 
-    detector.recordToolCall(makeRecord({
-      toolName: 'Bash',
-      isTestCommand: true,
-      success: true,
-    }));
-    detector.recordToolCall(makeRecord({
-      toolName: 'Bash',
-      isTestCommand: true,
-      success: false,
-    }));
-    detector.recordToolCall(makeRecord({
-      toolName: 'Bash',
-      isTestCommand: true,
-      success: true,
-    }));
-    detector.recordToolCall(makeRecord({
-      toolName: 'Bash',
-      isTestCommand: false,
-    }));
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Bash',
+        isTestCommand: true,
+        success: true,
+      }),
+    );
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Bash',
+        isTestCommand: true,
+        success: false,
+      }),
+    );
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Bash',
+        isTestCommand: true,
+        success: true,
+      }),
+    );
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Bash',
+        isTestCommand: false,
+      }),
+    );
 
     jest.advanceTimersByTime(30_000);
 
@@ -258,16 +272,20 @@ describe('Task data accumulation', () => {
   it('counts buildRun and buildPassed from Bash calls', () => {
     const detector = new TaskDetector();
 
-    detector.recordToolCall(makeRecord({
-      toolName: 'Bash',
-      isBuildCommand: true,
-      success: true,
-    }));
-    detector.recordToolCall(makeRecord({
-      toolName: 'Bash',
-      isBuildCommand: true,
-      success: false,
-    }));
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Bash',
+        isBuildCommand: true,
+        success: true,
+      }),
+    );
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Bash',
+        isBuildCommand: true,
+        success: false,
+      }),
+    );
 
     jest.advanceTimersByTime(30_000);
 
@@ -281,16 +299,20 @@ describe('Task data accumulation', () => {
   it('counts subAgentsSpawned from Agent tool calls', () => {
     const detector = new TaskDetector();
 
-    detector.recordToolCall(makeRecord({
-      toolName: 'Agent',
-      agentDescription: 'research',
-      subagentType: 'Explore',
-    }));
-    detector.recordToolCall(makeRecord({
-      toolName: 'Agent',
-      agentDescription: 'plan',
-      subagentType: 'Plan',
-    }));
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Agent',
+        agentDescription: 'research',
+        subagentType: 'Explore',
+      }),
+    );
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Agent',
+        agentDescription: 'plan',
+        subagentType: 'Plan',
+      }),
+    );
 
     jest.advanceTimersByTime(30_000);
 
@@ -303,12 +325,14 @@ describe('Task data accumulation', () => {
   it('Edit deletion has linesChanged = oldLineCount', () => {
     const detector = new TaskDetector();
 
-    detector.recordToolCall(makeRecord({
-      toolName: 'Edit',
-      filePath: '/a.ts',
-      oldLineCount: 5,
-      newLineCount: 0, // deletion
-    }));
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Edit',
+        filePath: '/a.ts',
+        oldLineCount: 5,
+        newLineCount: 0, // deletion
+      }),
+    );
 
     jest.advanceTimersByTime(30_000);
 
@@ -323,12 +347,14 @@ describe('Task data accumulation', () => {
   it('Edit that both adds and removes lines reports both separately', () => {
     const detector = new TaskDetector();
 
-    detector.recordToolCall(makeRecord({
-      toolName: 'Edit',
-      filePath: '/a.ts',
-      oldLineCount: 10, // 10 lines removed
-      newLineCount: 12, // 12 lines added
-    }));
+    detector.recordToolCall(
+      makeRecord({
+        toolName: 'Edit',
+        filePath: '/a.ts',
+        oldLineCount: 10, // 10 lines removed
+        newLineCount: 12, // 12 lines added
+      }),
+    );
 
     jest.advanceTimersByTime(30_000);
 
@@ -400,7 +426,14 @@ describe('Cost tracking integration', () => {
 
     // Accumulate cost before the task starts
     costTracker.recordTokenUsage(
-      { inputTokens: 5000, outputTokens: 1000, thinkingTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 6000 },
+      {
+        inputTokens: 5000,
+        outputTokens: 1000,
+        thinkingTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        totalTokens: 6000,
+      },
       'claude-sonnet-4',
     );
 
@@ -572,7 +605,7 @@ describe('emitMetrics()', () => {
 
     detector.emitMetrics(aggregator);
 
-    const names = recorded.map(r => r.name);
+    const names = recorded.map((r) => r.name);
     expect(names).toContain('ai.task.completed_count');
     expect(names).toContain('ai.task.active');
     expect(names).toContain('ai.task.duration_ms');

@@ -32,11 +32,14 @@ function makeRecord(overrides?: Partial<ToolCallRecord>): ToolCallRecord {
   };
 }
 
-const mockSendEvents = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+const mockSendEvents = jest
+  .fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
   .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
-const mockSendMetrics = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+const mockSendMetrics = jest
+  .fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
   .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
-const mockSendLogs = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+const mockSendLogs = jest
+  .fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
   .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
 
 function makeIngestOptions(overrides?: Partial<NrIngestOptions>): NrIngestOptions {
@@ -81,7 +84,9 @@ describe('End-to-end redaction in emitted NR events (F-125)', () => {
 
     // Verify events were sent
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
     expect(sentEvents.length).toBeGreaterThan(0);
 
     // Verify the payload contains [REDACTED] somewhere (in audit or security events)
@@ -103,7 +108,9 @@ describe('End-to-end redaction in emitted NR events (F-125)', () => {
     await manager.stop();
 
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
     const payload = JSON.stringify(sentEvents);
 
     // Verify that [REDACTED] appears somewhere in the payload (e.g., in audit events)
@@ -124,7 +131,9 @@ describe('End-to-end redaction in emitted NR events (F-125)', () => {
     await manager.stop();
 
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
     const payload = JSON.stringify(sentEvents);
 
     // Verify token is redacted somewhere in the payload (e.g., in audit events)
@@ -149,7 +158,9 @@ describe('End-to-end redaction in emitted NR events (F-125)', () => {
     await manager.stop();
 
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
     const payload = JSON.stringify(sentEvents);
 
     // Verify both tokens are redacted somewhere in the payload
@@ -182,7 +193,9 @@ describe('End-to-end redaction in emitted NR events (F-125)', () => {
     await manager.stop();
 
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
     const payload = JSON.stringify(sentEvents);
 
     // Verify redaction occurred
@@ -230,7 +243,9 @@ describe('High-security mode content verification in emitted NR events (F-126)',
     await manager.stop();
 
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
     const payload = JSON.stringify(sentEvents);
 
     // Verify no dangerous content key names are present
@@ -251,7 +266,9 @@ describe('High-security mode content verification in emitted NR events (F-126)',
     await manager.stop();
 
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
     const payload = JSON.stringify(sentEvents);
 
     // Verify no direct content keys that would leak raw input
@@ -274,7 +291,9 @@ describe('High-security mode content verification in emitted NR events (F-126)',
     await manager.stop();
 
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
     const payload = JSON.stringify(sentEvents);
 
     // Verify that database credentials are redacted
@@ -295,7 +314,9 @@ describe('High-security mode content verification in emitted NR events (F-126)',
     await manager.stop();
 
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
     const payload = JSON.stringify(sentEvents);
 
     // Verify that redaction occurs in audit events
@@ -316,7 +337,9 @@ describe('High-security mode content verification in emitted NR events (F-126)',
     await manager.stop();
 
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
     const payload = JSON.stringify(sentEvents);
 
     // Verify that redaction occurs in audit events
@@ -330,18 +353,16 @@ describe('High-security mode content verification in emitted NR events (F-126)',
     manager.ingestToolCall(
       makeRecord({ id: 'rec-1', toolName: 'Read', filePath: '/src/index.ts' }),
     );
-    manager.ingestToolCall(
-      makeRecord({ id: 'rec-2', toolName: 'Bash', command: 'npm test' }),
-    );
-    manager.ingestToolCall(
-      makeRecord({ id: 'rec-3', toolName: 'Edit', filePath: '/src/app.ts' }),
-    );
+    manager.ingestToolCall(makeRecord({ id: 'rec-2', toolName: 'Bash', command: 'npm test' }));
+    manager.ingestToolCall(makeRecord({ id: 'rec-3', toolName: 'Edit', filePath: '/src/app.ts' }));
 
     manager.start();
     await manager.stop();
 
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
     const payload = JSON.stringify(sentEvents);
 
     // Verify no content-only fields are present

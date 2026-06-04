@@ -40,9 +40,15 @@ export const REPORT_TOKENS_TOOL = {
     properties: {
       input_tokens: { type: 'number', description: 'Number of input/prompt tokens' },
       output_tokens: { type: 'number', description: 'Number of output/completion tokens' },
-      thinking_tokens: { type: 'number', description: 'Number of thinking/reasoning tokens (optional)' },
+      thinking_tokens: {
+        type: 'number',
+        description: 'Number of thinking/reasoning tokens (optional)',
+      },
       cache_read_tokens: { type: 'number', description: 'Number of cache read tokens (optional)' },
-      cache_creation_tokens: { type: 'number', description: 'Number of cache creation tokens (optional)' },
+      cache_creation_tokens: {
+        type: 'number',
+        description: 'Number of cache creation tokens (optional)',
+      },
       model: { type: 'string', description: 'Model identifier (e.g. claude-sonnet-4-20250514)' },
     },
     required: ['input_tokens', 'output_tokens', 'model'],
@@ -65,10 +71,10 @@ export function handleReportTokens(
   args: TokenReport,
   modelUsageTracker?: ModelUsageTracker,
 ) {
-  const inputTokens       = clampToken(args.input_tokens);
-  const outputTokens      = clampToken(args.output_tokens);
-  const thinkingTokens    = clampToken(args.thinking_tokens ?? 0);
-  const cacheReadTokens   = clampToken(args.cache_read_tokens ?? 0);
+  const inputTokens = clampToken(args.input_tokens);
+  const outputTokens = clampToken(args.output_tokens);
+  const thinkingTokens = clampToken(args.thinking_tokens ?? 0);
+  const cacheReadTokens = clampToken(args.cache_read_tokens ?? 0);
   const cacheCreationTokens = clampToken(args.cache_creation_tokens ?? 0);
   const safeModel = typeof args.model === 'string' ? args.model.slice(0, 256) : 'unknown';
 
@@ -135,10 +141,7 @@ export const COST_BREAKDOWN_TOOL = {
   annotations: { readOnlyHint: true },
 };
 
-export function handleGetCostBreakdown(
-  costTracker: CostTracker,
-  taskDetector?: TaskDetector,
-) {
+export function handleGetCostBreakdown(costTracker: CostTracker, taskDetector?: TaskDetector) {
   const metrics = costTracker.getMetrics();
 
   const byTask = taskDetector
@@ -203,9 +206,9 @@ export const COST_FORECAST_TOOL = {
 // Handlers
 // ---------------------------------------------------------------------------
 
-export function handleGetBudgetStatus(
-  budgetTracker: BudgetTracker,
-): { content: Array<{ type: 'text'; text: string }> } {
+export function handleGetBudgetStatus(budgetTracker: BudgetTracker): {
+  content: Array<{ type: 'text'; text: string }>;
+} {
   const status = budgetTracker.getStatus();
   return { content: [{ type: 'text', text: JSON.stringify(status, null, 2) }] };
 }

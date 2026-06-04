@@ -16,7 +16,9 @@ function findMainJs(): string {
   }
   const mainJs = entries.find((f) => /^(index|main)-.*\.js$/.test(f));
   if (!mainJs) {
-    console.error(`No index-*.js or main-*.js found in ${ASSETS_DIR}. Files: ${entries.join(', ')}`);
+    console.error(
+      `No index-*.js or main-*.js found in ${ASSETS_DIR}. Files: ${entries.join(', ')}`,
+    );
     process.exit(1);
   }
   return join(ASSETS_DIR, mainJs);

@@ -10,14 +10,15 @@ End-to-end testing guide for both the **New Relic (cloud/staging)** and **local*
 
 ### Requirements
 
-| Item | Check |
-|------|-------|
-| Node.js v24 | `node --version` → `v24.x.x` |
-| npm v10+ | `npm --version` → `10.x.x` |
-| Claude Code (latest) | Open it and confirm it launches |
-| **Cloud path only:** New Relic account with a license key + user API key | See below |
+| Item                                                                     | Check                           |
+| ------------------------------------------------------------------------ | ------------------------------- |
+| Node.js v24                                                              | `node --version` → `v24.x.x`    |
+| npm v10+                                                                 | `npm --version` → `10.x.x`      |
+| Claude Code (latest)                                                     | Open it and confirm it launches |
+| **Cloud path only:** New Relic account with a license key + user API key | See below                       |
 
 **New Relic keys (cloud path only — use staging keys):**
+
 - **License key** — [staging-one.newrelic.com](https://staging-one.newrelic.com) → top-right menu → **API keys** → create a key of type **License**. Looks like a long hex string ending in `NRAL`.
 - **User API key** — same screen, create a key of type **User**. Starts with `NRAK-`. **Must be a staging key** — production keys return 401 against the staging API.
 - **Account ID** — visible in the staging URL: `https://staging-one.newrelic.com/nr1-core?account=`**`12345`**
@@ -47,6 +48,7 @@ npm link
 ```
 
 **Checkpoint:** `nr-ai-observe --help` should print the command list without errors:
+
 ```
 Usage: nr-ai-observe [options] [command]
 
@@ -54,6 +56,8 @@ Commands:
   install    Configure Claude Code hooks and MCP server...
   uninstall  Remove nr-ai-observe hooks and MCP server...
   setup      Interactive first-run setup...
+  update     Pull the latest changes and rebuild...
+  schedule   Configure daily auto-updates via launchd (macOS only)
 ```
 
 If you see `command not found`, the `npm link` step didn't work — retry it, or confirm `node_modules/.bin` is on your PATH.
@@ -61,6 +65,7 @@ If you see `command not found`, the `npm link` step didn't work — retry it, or
 If you see `EACCES: permission denied` pointing at `/usr/local/lib/node_modules`, your system Node.js is installed in a root-owned directory. Pick one fix:
 
 **Option A — set a user-writable npm prefix** (quick, keeps your existing Node.js):
+
 ```bash
 npm config set prefix ~/.npm-global
 export PATH="$HOME/.npm-global/bin:$PATH"   # add this line to ~/.zshrc or ~/.bash_profile too
@@ -68,6 +73,7 @@ npm link
 ```
 
 **Option B — use nvm** (recommended if you switch Node versions regularly):
+
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 # restart your shell, then:
@@ -89,18 +95,21 @@ nr-ai-observe setup
 
 Answer the prompts:
 
-| Prompt | What to enter |
-|--------|--------------|
-| `Which mode? [cloud]:` | Press **Enter** (accept default `cloud`) |
-| `New Relic Account ID:` | Your account ID (digits only, e.g. `12345`) |
-| `New Relic License Key:` | Your license key |
-| `Developer name [your-username]:` | Your name or alias — it appears on all NR events |
-| `Team ID [optional]:` | Press **Enter** to skip |
-| `Project ID [auto-detect from git]:` | Press **Enter** to auto-detect |
-| `Session budget USD [no limit]:` | Press **Enter** to skip |
-| `Install Claude Code hooks now? [Y/n]:` | Press **Enter** (yes) |
+| Prompt                                  | What to enter                                    |
+| --------------------------------------- | ------------------------------------------------ |
+| `Which mode? [cloud]:`                  | Press **Enter** (accept default `cloud`)         |
+| `New Relic Account ID:`                 | Your account ID (digits only, e.g. `12345`)      |
+| `New Relic License Key:`                | Your license key                                 |
+| `Developer name [your-username]:`       | Your name or alias — it appears on all NR events |
+| `Team ID [optional]:`                   | Press **Enter** to skip                          |
+| `Project ID [auto-detect from git]:`    | Press **Enter** to auto-detect                   |
+| `Session budget USD [no limit]:`        | Press **Enter** to skip                          |
+| `Install Claude Code hooks now? [Y/n]:` | Press **Enter** (yes)                            |
+| `Enable daily auto-updates? [Y/n]:`     | Press **Enter** (yes, macOS only)                |
+| `Update time (24h HH:MM) [08:00]:`      | Press **Enter** to accept default, or enter time |
 
 **Expected output after hook install:**
+
 ```
 ✓ Claude Code hooks updated: ~/.claude/settings.json
   - Added PreToolUse and PostToolUse hooks
@@ -116,9 +125,11 @@ Answer the prompts:
 The wizard also prints the dashboard and alerts deploy commands. Copy them — you'll need them in A3.
 
 **Checkpoint:** Confirm the config was written:
+
 ```bash
 cat ~/.nr-ai-observe/config.json
 ```
+
 Should show `licenseKey`, `accountId`, `developer`, and `mode` (or no mode field, which defaults to cloud).
 
 ---
@@ -131,9 +142,10 @@ Quit Claude Code completely and reopen it. The MCP server starts automatically w
 
 **Checkpoint:** Open a new Claude Code session (in any project directory) and type:
 
-> *Call `nr_observe_health` and show me the result.*
+> _Call `nr_observe_health` and show me the result._
 
 Expected response (values will differ):
+
 ```json
 {
   "status": "ok",
@@ -159,6 +171,7 @@ NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
 ```
 
 **Expected output:**
+
 ```
 Targeting staging API: https://staging-api.newrelic.com/graphql
 Deploying 7 dashboards...
@@ -173,6 +186,7 @@ Done.
 ```
 
 Optional — deploy alerts:
+
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
   npx tsx scripts/deploy-alerts.ts --staging
@@ -186,21 +200,24 @@ NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
 
 Back in Claude Code, run a few tool calls to generate telemetry:
 
-> *Read the file README.md and summarize it in one sentence.*
+> _Read the file README.md and summarize it in one sentence._
 
 Then verify the data is flowing:
 
 **In Claude Code**, ask:
-> *Call `nr_observe_get_session_stats` and show me the result.*
+
+> _Call `nr_observe_get_session_stats` and show me the result._
 
 You should see `tool_calls` > 0 and a non-zero `session_duration_ms`.
 
 **In staging NR One**, open the **AI Coding — Overview** dashboard. Within 1–2 minutes of your first tool call, you should see:
+
 - `AiToolCall` events in the event table
 - Tool call count ticking up
 - Your developer name in the developer filter
 
 Run a NRQL query to confirm events are landing:
+
 ```sql
 SELECT count(*) FROM AiToolCall WHERE developer = 'your-name' SINCE 5 minutes ago
 ```
@@ -213,11 +230,11 @@ Expected: a non-zero count.
 
 Ask Claude Code to self-report token usage:
 
-> *Call `nr_observe_report_tokens` with input_tokens=1000, output_tokens=500, model="claude-sonnet-4-6"*
+> _Call `nr_observe_report_tokens` with input_tokens=1000, output_tokens=500, model="claude-sonnet-4-6"_
 
 Then check:
 
-> *Call `nr_observe_get_cost_breakdown` and show me the result.*
+> _Call `nr_observe_get_cost_breakdown` and show me the result._
 
 Expected: `total_usd` > 0, `by_model` showing the model you just reported.
 
@@ -227,7 +244,7 @@ Expected: `total_usd` > 0, `by_model` showing the model you just reported.
 
 To confirm anti-pattern detection is live:
 
-> *Read the file README.md. Now read it again. And again. Now call `nr_observe_get_anti_patterns`.*
+> _Read the file README.md. Now read it again. And again. Now call `nr_observe_get_anti_patterns`._
 
 Expected: a `re_reading` pattern for `README.md` with `read_count: 3`.
 
@@ -238,30 +255,35 @@ Expected: a `re_reading` pattern for `README.md` with `read_count: 3`.
 ### B1. Run the setup wizard
 
 If you already ran Path A, either use a fresh machine or reset first:
+
 ```bash
 rm ~/.nr-ai-observe/config.json
 nr-ai-observe uninstall
 ```
 
 Then run:
+
 ```bash
 nr-ai-observe setup
 ```
 
 Answer the prompts:
 
-| Prompt | What to enter |
-|--------|--------------|
-| `Which mode? [cloud]:` | Type `local` and press **Enter** |
-| `Developer name [your-username]:` | Your name or alias |
-| `Team ID [optional]:` | Press **Enter** to skip |
-| `Project ID [auto-detect from git]:` | Press **Enter** to skip |
-| `Session budget USD [no limit]:` | Press **Enter** to skip |
-| `Local dashboard port (loopback only) [7777]:` | Press **Enter** (accept default) |
-| `Copy starter alert rules? [Y/n]:` | Press **Enter** (yes) |
-| `Install Claude Code hooks now? [Y/n]:` | Press **Enter** (yes) |
+| Prompt                                         | What to enter                     |
+| ---------------------------------------------- | --------------------------------- |
+| `Which mode? [cloud]:`                         | Type `local` and press **Enter**  |
+| `Developer name [your-username]:`              | Your name or alias                |
+| `Team ID [optional]:`                          | Press **Enter** to skip           |
+| `Project ID [auto-detect from git]:`           | Press **Enter** to skip           |
+| `Session budget USD [no limit]:`               | Press **Enter** to skip           |
+| `Local dashboard port (loopback only) [7777]:` | Press **Enter** (accept default)  |
+| `Copy starter alert rules? [Y/n]:`             | Press **Enter** (yes)             |
+| `Install Claude Code hooks now? [Y/n]:`        | Press **Enter** (yes)             |
+| `Enable daily auto-updates? [Y/n]:`            | Press **Enter** (yes, macOS only) |
+| `Update time (24h HH:MM) [08:00]:`             | Press **Enter** to accept default |
 
 **Expected output:**
+
 ```
 Config written to ~/.nr-ai-observe/config.json
 Starter alert rules copied to ~/.nr-ai-observe/alerts/rules.json
@@ -278,9 +300,11 @@ Local mode: open the dashboard at http://127.0.0.1:7777 once Claude Code starts.
 ```
 
 **Checkpoint:** Confirm the config:
+
 ```bash
 cat ~/.nr-ai-observe/config.json
 ```
+
 Should show `"mode": "local"` and `"dashboard": { "port": 7777, ... }`. No `licenseKey` or `accountId` fields.
 
 ---
@@ -291,9 +315,10 @@ Quit and reopen Claude Code. The MCP server and embedded dashboard start automat
 
 **Checkpoint — MCP:** In a new Claude Code session, type:
 
-> *Call `nr_observe_health` and show me the result.*
+> _Call `nr_observe_health` and show me the result._
 
 Expected:
+
 ```json
 {
   "status": "ok",
@@ -305,10 +330,13 @@ Expected:
 ```
 
 **Checkpoint — Dashboard:** In a terminal:
+
 ```bash
 curl -s http://127.0.0.1:7777/api/health
 ```
+
 Expected:
+
 ```json
 {"ok":true,"uptime":...}
 ```
@@ -321,21 +349,22 @@ If the port is unreachable: check `lsof -i:7777` for conflicts, or set a differe
 
 In Claude Code, do a few things to create data:
 
-> *Read the file README.md and summarize it in one sentence.*
+> _Read the file README.md and summarize it in one sentence._
 
 Then open **http://127.0.0.1:7777** in a browser. You should see the dashboard with four tabs:
 
-| Tab | What to look for |
-|-----|-----------------|
-| **Today** | Tool call count > 0, efficiency score visible, recent calls list |
-| **Sessions** | At least one session row (the current one) |
-| **History** | May be empty on first run — needs multiple sessions |
-| **Audit** | Entries for the Read call you just made |
+| Tab          | What to look for                                                 |
+| ------------ | ---------------------------------------------------------------- |
+| **Today**    | Tool call count > 0, efficiency score visible, recent calls list |
+| **Sessions** | At least one session row (the current one)                       |
+| **History**  | May be empty on first run — needs multiple sessions              |
+| **Audit**    | Entries for the Read call you just made                          |
 
 **Verify MCP stats match:**
 
 In Claude Code:
-> *Call `nr_observe_get_session_stats` and show me the result.*
+
+> _Call `nr_observe_get_session_stats` and show me the result._
 
 The `tool_calls` field should match (approximately) what the Today dashboard shows.
 
@@ -345,10 +374,11 @@ The `tool_calls` field should match (approximately) what the Today dashboard sho
 
 The setup wizard copied a starter rule set. Confirm it loaded:
 
-> *Call `nr_observe_get_anti_patterns` after reading the same file three times.*
+> _Call `nr_observe_get_anti_patterns` after reading the same file three times._
 
 In Claude Code:
-> *Read README.md. Read it again. Read it a third time. Now call `nr_observe_get_anti_patterns`.*
+
+> _Read README.md. Read it again. Read it a third time. Now call `nr_observe_get_anti_patterns`._
 
 Expected: a `re_reading` entry. The dashboard's Today view should show an alert banner if the re-reading count exceeds the rule threshold.
 
@@ -391,12 +421,12 @@ Then restart Claude Code.
 
 ## Quick Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| `nr-ai-observe: command not found` | `npm link` not run | Run `npm link` in the repo root |
-| `nr_observe_health` returns tool-not-found | MCP server not started | Restart Claude Code; check MCP output panel |
-| No data in NR after 5 minutes | Wrong license key or account ID | Re-run `nr-ai-observe setup` with correct credentials |
-| Dashboard at 7777 unreachable | Port in use or mode is not local | Check `lsof -i:7777`; confirm `config.json` has `"mode": "local"` |
-| Hook not firing | `nr-ai-observe` not on PATH when Claude Code launched | Run `npm link`, then restart Claude Code |
-| `Invalid account ID` in wizard | Entered a non-numeric value | Account IDs are digits only (e.g. `3456789`) |
-| `HTTP 401: authentication required` on deploy | Using a production key against staging | Use a key created at `staging-one.newrelic.com` and add `--staging` to the deploy command |
+| Symptom                                       | Likely cause                                          | Fix                                                                                       |
+| --------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `nr-ai-observe: command not found`            | `npm link` not run                                    | Run `npm link` in the repo root                                                           |
+| `nr_observe_health` returns tool-not-found    | MCP server not started                                | Restart Claude Code; check MCP output panel                                               |
+| No data in NR after 5 minutes                 | Wrong license key or account ID                       | Re-run `nr-ai-observe setup` with correct credentials                                     |
+| Dashboard at 7777 unreachable                 | Port in use or mode is not local                      | Check `lsof -i:7777`; confirm `config.json` has `"mode": "local"`                         |
+| Hook not firing                               | `nr-ai-observe` not on PATH when Claude Code launched | Run `npm link`, then restart Claude Code                                                  |
+| `Invalid account ID` in wizard                | Entered a non-numeric value                           | Account IDs are digits only (e.g. `3456789`)                                              |
+| `HTTP 401: authentication required` on deploy | Using a production key against staging                | Use a key created at `staging-one.newrelic.com` and add `--staging` to the deploy command |

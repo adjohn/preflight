@@ -224,10 +224,7 @@ describe('Local alerts — Phase 2 acceptance (full starter rule set)', () => {
     let t = 1700000000000;
 
     // Tick 1: cost window crossed.
-    engine.evaluate(
-      emptySnapshot(t, { cost: { sessionUsd: 6, todayUsd: 0, weekUsd: 0 } }),
-      t,
-    );
+    engine.evaluate(emptySnapshot(t, { cost: { sessionUsd: 6, todayUsd: 0, weekUsd: 0 } }), t);
     expect(
       received.filter((e) => e.id === 'session-cost-spike' && e.state === 'firing'),
     ).toHaveLength(1);
@@ -248,18 +245,16 @@ describe('Local alerts — Phase 2 acceptance (full starter rule set)', () => {
       }),
       t,
     );
-    expect(
-      received.filter((e) => e.id === 'stuck-loop-rate' && e.state === 'firing'),
-    ).toHaveLength(1);
+    expect(received.filter((e) => e.id === 'stuck-loop-rate' && e.state === 'firing')).toHaveLength(
+      1,
+    );
     expect(
       received.filter((e) => e.id === 'any-pattern-rate' && e.state === 'firing'),
     ).toHaveLength(1);
-    expect(
-      received.filter((e) => e.id === 'bash-latency' && e.state === 'firing'),
-    ).toHaveLength(1);
-    expect(
-      received.filter((e) => e.id === 'bash-failures' && e.state === 'firing'),
-    ).toHaveLength(1);
+    expect(received.filter((e) => e.id === 'bash-latency' && e.state === 'firing')).toHaveLength(1);
+    expect(received.filter((e) => e.id === 'bash-failures' && e.state === 'firing')).toHaveLength(
+      1,
+    );
 
     // Tick 3: budget threshold crossed for session at 80%.
     t += 30_000;
@@ -272,9 +267,7 @@ describe('Local alerts — Phase 2 acceptance (full starter rule set)', () => {
         ],
         latency: [{ tool: 'Bash', p50Ms: 200, p95Ms: 2500, p99Ms: 3000 }],
         toolFailures: [{ tool: 'Bash', failurePct: 25, windowMs: 300_000 }],
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       t,
     );
@@ -297,9 +290,7 @@ describe('Local alerts — Phase 2 acceptance (full starter rule set)', () => {
       }),
       t,
     );
-    expect(
-      received.filter((e) => e.id === 'low-efficiency'),
-    ).toHaveLength(0);
+    expect(received.filter((e) => e.id === 'low-efficiency')).toHaveLength(0);
 
     // Tick 5: 31 minutes later, efficiency still below — finally fires.
     t += 31 * 60 * 1000;
@@ -316,9 +307,9 @@ describe('Local alerts — Phase 2 acceptance (full starter rule set)', () => {
       }),
       t,
     );
-    expect(
-      received.filter((e) => e.id === 'low-efficiency' && e.state === 'firing'),
-    ).toHaveLength(1);
+    expect(received.filter((e) => e.id === 'low-efficiency' && e.state === 'firing')).toHaveLength(
+      1,
+    );
 
     // Tick 6: snapshot supplies values that resolve every firing threshold
     // rule. The session-cost-budget rule ALSO clears here because
@@ -340,9 +331,7 @@ describe('Local alerts — Phase 2 acceptance (full starter rule set)', () => {
       }),
       t,
     );
-    const clearedIds = new Set(
-      received.filter((e) => e.state === 'cleared').map((e) => e.id),
-    );
+    const clearedIds = new Set(received.filter((e) => e.state === 'cleared').map((e) => e.id));
     expect(clearedIds).toEqual(
       new Set([
         'session-cost-spike',

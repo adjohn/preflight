@@ -146,11 +146,7 @@ class ActiveTask {
     }
   }
 
-  toCompleted(
-    endTime: number,
-    estimatedCostUsd: number | null,
-    tokensUsed: number,
-  ): AiCodingTask {
+  toCompleted(endTime: number, estimatedCostUsd: number | null, tokensUsed: number): AiCodingTask {
     const toolCallsByType: Record<string, number> = {};
     for (const [tool, count] of this.toolCallsByType) {
       toolCallsByType[tool] = count;
@@ -241,11 +237,7 @@ export class TaskDetector {
 
     const { costUsd, tokens } = this.computeCostDelta();
 
-    return this.activeTask.toCompleted(
-      Date.now(),
-      costUsd,
-      tokens,
-    );
+    return this.activeTask.toCompleted(Date.now(), costUsd, tokens);
   }
 
   getCompletedTasks(): AiCodingTask[] {
@@ -359,9 +351,7 @@ export class TaskDetector {
     const metrics = this.costTracker.getMetrics();
     this.costAtTaskStart = metrics.sessionTotalCostUsd ?? 0;
     this.tokensAtTaskStart =
-      metrics.totalInputTokens +
-      metrics.totalOutputTokens +
-      metrics.totalThinkingTokens;
+      metrics.totalInputTokens + metrics.totalOutputTokens + metrics.totalThinkingTokens;
   }
 
   private computeCostDelta(): { costUsd: number | null; tokens: number } {
@@ -372,9 +362,7 @@ export class TaskDetector {
     const metrics = this.costTracker.getMetrics();
     const currentCost = metrics.sessionTotalCostUsd ?? 0;
     const currentTokens =
-      metrics.totalInputTokens +
-      metrics.totalOutputTokens +
-      metrics.totalThinkingTokens;
+      metrics.totalInputTokens + metrics.totalOutputTokens + metrics.totalThinkingTokens;
 
     return {
       costUsd: Math.max(0, currentCost - this.costAtTaskStart),

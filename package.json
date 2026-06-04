@@ -43,7 +43,7 @@
     "check:bundle-size": "npx tsx scripts/check-bundle-size.ts",
     "start": "node dist/index.js --stdio",
     "start:local": "NEW_RELIC_AI_MODE=local node dist/index.js --stdio",
-    "prepare": "npm run build"
+    "prepare": "husky"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -83,6 +83,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "7.37.5",
     "eslint-plugin-react-hooks": "7.1.1",
+    "husky": "9.1.7",
     "jest": "30.4.2",
     "jsdom": "29.1.1",
     "lucide-react": "1.17.0",

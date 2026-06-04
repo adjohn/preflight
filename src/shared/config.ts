@@ -28,7 +28,11 @@ function envBool(key: string, defaultValue: boolean): boolean {
   return defaultValue;
 }
 
-function envInt(key: string, defaultValue: number, bounds?: { min?: number; max?: number }): number {
+function envInt(
+  key: string,
+  defaultValue: number,
+  bounds?: { min?: number; max?: number },
+): number {
   const val = process.env[key];
   if (val === undefined) return defaultValue;
   const parsed = parseInt(val, 10);
@@ -133,7 +137,8 @@ export function loadConfig(overrides?: Partial<AgentConfig>): Readonly<AgentConf
     customPricingFile:
       overrides?.customPricingFile ?? process.env.NEW_RELIC_AI_CUSTOM_PRICING_FILE ?? null,
     contentMaxLength:
-      overrides?.contentMaxLength ?? envInt('NEW_RELIC_AI_CONTENT_MAX_LENGTH', 4096, { min: 1, max: 1_048_576 }),
+      overrides?.contentMaxLength ??
+      envInt('NEW_RELIC_AI_CONTENT_MAX_LENGTH', 4096, { min: 1, max: 1_048_576 }),
     highSecurity,
     logLevel: overrides?.logLevel ?? envLogLevel('NEW_RELIC_AI_LOG_LEVEL', 'info'),
     collectorHost: overrides?.collectorHost ?? process.env.NEW_RELIC_HOST ?? null,

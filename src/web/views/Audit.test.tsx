@@ -100,9 +100,7 @@ describe('Audit downloadJsonl', () => {
       revoked.push(url);
     }) as typeof URL.revokeObjectURL;
 
-    const clickSpy = vi
-      .spyOn(HTMLAnchorElement.prototype, 'click')
-      .mockImplementation(() => {});
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
     try {
       downloadJsonl([
@@ -130,26 +128,22 @@ describe('Audit downloadJsonl', () => {
 
     const appendSpy = vi.spyOn(document.body, 'appendChild');
     const removeSpy = vi.spyOn(document.body, 'removeChild');
-    const clickSpy = vi
-      .spyOn(HTMLAnchorElement.prototype, 'click')
-      .mockImplementation(function (this: HTMLAnchorElement) {
-        // At click time the anchor must already be in the DOM (Firefox).
-        expect(this.parentNode).toBe(document.body);
-      });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      // At click time the anchor must already be in the DOM (Firefox).
+      expect(this.parentNode).toBe(document.body);
+    });
 
     try {
       downloadJsonl([
         { ts: 1, tool: 'Read', target: '/etc/hosts', classification: 'sensitive_file' },
       ]);
       // appendChild called with the anchor element exactly once.
-      const appended = appendSpy.mock.calls.find(
-        (args) => args[0] instanceof HTMLAnchorElement,
-      );
+      const appended = appendSpy.mock.calls.find((args) => args[0] instanceof HTMLAnchorElement);
       expect(appended).toBeTruthy();
       // The same anchor element was removed after click().
-      const removed = removeSpy.mock.calls.find(
-        (args) => args[0] instanceof HTMLAnchorElement,
-      );
+      const removed = removeSpy.mock.calls.find((args) => args[0] instanceof HTMLAnchorElement);
       expect(removed).toBeTruthy();
       expect(appended![0]).toBe(removed![0]);
     } finally {
@@ -175,11 +169,9 @@ describe('Audit downloadJsonl', () => {
       revoked.push(url);
     }) as typeof URL.revokeObjectURL;
 
-    const clickSpy = vi
-      .spyOn(HTMLAnchorElement.prototype, 'click')
-      .mockImplementation(() => {
-        throw new Error('user cancelled');
-      });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {
+      throw new Error('user cancelled');
+    });
 
     try {
       expect(() =>

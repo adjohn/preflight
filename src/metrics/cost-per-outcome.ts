@@ -196,8 +196,7 @@ export class CostPerOutcomeAnalyzer {
       entry.totalCost = round(entry.totalCost, 4);
     }
 
-    const avgCostFor = (outcome: string): number =>
-      distribution[outcome]?.avgCost ?? 0;
+    const avgCostFor = (outcome: string): number => distribution[outcome]?.avgCost ?? 0;
 
     const failedCost = distribution['failed_attempt']?.totalCost ?? 0;
     const wasteRatio = totalCost > 0 ? round(failedCost / totalCost, 4) : 0;
@@ -253,11 +252,7 @@ export class CostPerOutcomeAnalyzer {
   /**
    * Emit outcome metrics to New Relic.
    */
-  emitMetrics(
-    aggregator: MetricAggregator,
-    tasks: AiCodingTask[],
-    developer: string,
-  ): void {
+  emitMetrics(aggregator: MetricAggregator, tasks: AiCodingTask[], developer: string): void {
     const attribution = this.attributeCosts(tasks);
 
     // Per-task outcome events
@@ -341,7 +336,9 @@ export interface SessionLikeForCostOutcome extends SessionOutcomeInputs {
   readonly estimatedCostUsd: number | null;
 }
 
-export function attributeSessionCosts(sessions: readonly SessionLikeForCostOutcome[]): CostAttribution {
+export function attributeSessionCosts(
+  sessions: readonly SessionLikeForCostOutcome[],
+): CostAttribution {
   const distribution: OutcomeDistribution = {};
   let totalCost = 0;
 

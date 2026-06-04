@@ -29,7 +29,9 @@ describe('analyzeReplayTimeline', () => {
       const timeline: ReplayTimelineEntry[] = [];
       for (let i = 0; i < 4; i++) {
         timeline.push(makeEntry({ toolName: 'Edit', filePath: '/src/bug.ts' }));
-        timeline.push(makeEntry({ toolName: 'Bash', command: 'npm test', isTestCommand: true, success: false }));
+        timeline.push(
+          makeEntry({ toolName: 'Bash', command: 'npm test', isTestCommand: true, success: false }),
+        );
       }
 
       const result = analyzeReplayTimeline(timeline);
@@ -43,10 +45,14 @@ describe('analyzeReplayTimeline', () => {
       const timeline: ReplayTimelineEntry[] = [];
       for (let i = 0; i < 3; i++) {
         timeline.push(makeEntry({ toolName: 'Edit', filePath: '/src/bug.ts' }));
-        timeline.push(makeEntry({ toolName: 'Bash', command: 'npm test', isTestCommand: true, success: false }));
+        timeline.push(
+          makeEntry({ toolName: 'Bash', command: 'npm test', isTestCommand: true, success: false }),
+        );
       }
       timeline.push(makeEntry({ toolName: 'Edit', filePath: '/src/bug.ts' }));
-      timeline.push(makeEntry({ toolName: 'Bash', command: 'npm test', isTestCommand: true, success: true }));
+      timeline.push(
+        makeEntry({ toolName: 'Bash', command: 'npm test', isTestCommand: true, success: true }),
+      );
       // Add more entries after the pass — they should not be in the segment
       timeline.push(makeEntry({ toolName: 'Read', filePath: '/src/other.ts' }));
 

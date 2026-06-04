@@ -101,7 +101,10 @@ export class LatencyTracker {
     for (const [tool, durations] of this.byTool) {
       const prevCount = this.lastSortedToolCounts.get(tool) ?? -1;
       if (durations.length !== prevCount) {
-        this.cachedSortedByTool.set(tool, [...durations].sort((a, b) => a - b));
+        this.cachedSortedByTool.set(
+          tool,
+          [...durations].sort((a, b) => a - b),
+        );
         this.lastSortedToolCounts.set(tool, durations.length);
       }
       const sorted = this.cachedSortedByTool.get(tool) ?? [];

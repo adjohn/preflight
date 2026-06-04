@@ -26,7 +26,11 @@ afterEach(() => {
 
 /** Create a mock MCP HTTP server that responds to JSON-RPC requests. */
 function createMockMcpServer(
-  handler?: (rpc: { method: string; id?: number; params?: unknown }, req: IncomingMessage, res: ServerResponse) => void,
+  handler?: (
+    rpc: { method: string; id?: number; params?: unknown },
+    req: IncomingMessage,
+    res: ServerResponse,
+  ) => void,
 ): Promise<{ server: Server; port: number }> {
   return new Promise((resolve) => {
     const server = createHttpServer((req, res) => {
@@ -128,14 +132,29 @@ describe('ProxyManager', () => {
 
   it('registers multiple upstreams', () => {
     manager = new ProxyManager({ port: 0 });
-    manager.registerUpstream({ name: 'server-a', url: 'http://localhost:1', transportType: 'http', allowPrivateHosts: true });
-    manager.registerUpstream({ name: 'server-b', url: 'http://localhost:2', transportType: 'http', allowPrivateHosts: true });
+    manager.registerUpstream({
+      name: 'server-a',
+      url: 'http://localhost:1',
+      transportType: 'http',
+      allowPrivateHosts: true,
+    });
+    manager.registerUpstream({
+      name: 'server-b',
+      url: 'http://localhost:2',
+      transportType: 'http',
+      allowPrivateHosts: true,
+    });
     expect(manager.getUpstreamNames()).toEqual(['server-a', 'server-b']);
   });
 
   it('getUpstream() returns the registered upstream', () => {
     manager = new ProxyManager({ port: 0 });
-    manager.registerUpstream({ name: 'test', url: 'http://localhost:1', transportType: 'http', allowPrivateHosts: true });
+    manager.registerUpstream({
+      name: 'test',
+      url: 'http://localhost:1',
+      transportType: 'http',
+      allowPrivateHosts: true,
+    });
     const upstream = manager.getUpstream('test');
     expect(upstream).toBeDefined();
     expect(upstream!.name).toBe('test');
@@ -163,7 +182,10 @@ describe('ProxyManager HTTP server', () => {
 
   async function setupProxy(
     mockPort: number,
-    options?: Partial<{ onToolCall: (r: ProxyToolCallRecord) => void; onRequest: (r: ProxyRequestRecord) => void }>,
+    options?: Partial<{
+      onToolCall: (r: ProxyToolCallRecord) => void;
+      onRequest: (r: ProxyRequestRecord) => void;
+    }>,
   ) {
     // Use port 0 to get a random available port
     manager = new ProxyManager({
@@ -178,7 +200,9 @@ describe('ProxyManager HTTP server', () => {
     });
     await manager.start();
     // Get the actual port the server is listening on
-    const addr = (manager as unknown as { httpServer: { address: () => { port: number } } }).httpServer?.address();
+    const addr = (
+      manager as unknown as { httpServer: { address: () => { port: number } } }
+    ).httpServer?.address();
     proxyPort = typeof addr === 'object' && addr ? addr.port : 0;
   }
 
@@ -187,10 +211,22 @@ describe('ProxyManager HTTP server', () => {
     const mockPort = proxyPort;
 
     manager = new ProxyManager({ port: 0 });
-    manager.registerUpstream({ name: 'server-a', url: `http://127.0.0.1:${mockPort}`, transportType: 'http', allowPrivateHosts: true });
-    manager.registerUpstream({ name: 'server-b', url: `http://127.0.0.1:${mockPort}`, transportType: 'http', allowPrivateHosts: true });
+    manager.registerUpstream({
+      name: 'server-a',
+      url: `http://127.0.0.1:${mockPort}`,
+      transportType: 'http',
+      allowPrivateHosts: true,
+    });
+    manager.registerUpstream({
+      name: 'server-b',
+      url: `http://127.0.0.1:${mockPort}`,
+      transportType: 'http',
+      allowPrivateHosts: true,
+    });
     await manager.start();
-    const addr = (manager as unknown as { httpServer: { address: () => { port: number } } }).httpServer?.address();
+    const addr = (
+      manager as unknown as { httpServer: { address: () => { port: number } } }
+    ).httpServer?.address();
     proxyPort = typeof addr === 'object' && addr ? addr.port : 0;
 
     const response = await httpRequest(`http://127.0.0.1:${proxyPort}/health`, { method: 'GET' });
@@ -248,7 +284,13 @@ describe('ProxyManager HTTP server', () => {
   it('forwards tools/list to upstream and returns response unchanged', async () => {
     ({ server: mockServer, port: proxyPort } = await createMockMcpServer((rpc, _req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result: { tools: [{ name: 'read_file', inputSchema: { type: 'object' } }] } }));
+      res.end(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: rpc.id,
+          result: { tools: [{ name: 'read_file', inputSchema: { type: 'object' } }] },
+        }),
+      );
     }));
     await setupProxy(proxyPort);
 
@@ -287,7 +329,11 @@ describe('ProxyManager HTTP server', () => {
   });
 
   it('propagates upstream error (500) with same status and body', async () => {
-    const errorBody = JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Internal error' } });
+    const errorBody = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32603, message: 'Internal error' },
+    });
 
     ({ server: mockServer, port: proxyPort } = await createMockMcpServer((_rpc, _req, res) => {
       res.writeHead(500, { 'content-type': 'application/json' });
@@ -296,7 +342,12 @@ describe('ProxyManager HTTP server', () => {
     await setupProxy(proxyPort);
 
     const response = await httpRequest(`http://127.0.0.1:${proxyPort}/proxy/test-mcp`, {
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'bad_tool' } }),
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'bad_tool' },
+      }),
       headers: { 'content-type': 'application/json' },
     });
 
@@ -318,7 +369,7 @@ describe('ProxyManager HTTP server', () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
       headers: {
         'content-type': 'application/json',
-        'authorization': 'Bearer test-token-123',
+        authorization: 'Bearer test-token-123',
         'mcp-session-id': 'session-abc',
         'x-custom-header': 'custom-value',
       },
@@ -352,9 +403,16 @@ describe('ProxyManager observability', () => {
     },
   ) {
     manager = new ProxyManager({ port: 0, ...callbacks });
-    manager.registerUpstream({ name: 'test-mcp', url: `http://127.0.0.1:${mockPort}`, transportType: 'http', allowPrivateHosts: true });
+    manager.registerUpstream({
+      name: 'test-mcp',
+      url: `http://127.0.0.1:${mockPort}`,
+      transportType: 'http',
+      allowPrivateHosts: true,
+    });
     await manager.start();
-    const addr = (manager as unknown as { httpServer: { address: () => { port: number } } }).httpServer?.address();
+    const addr = (
+      manager as unknown as { httpServer: { address: () => { port: number } } }
+    ).httpServer?.address();
     proxyPort = typeof addr === 'object' && addr ? addr.port : 0;
   }
 
@@ -452,7 +510,12 @@ describe('ProxyManager observability', () => {
     await setupWithCallbacks(mockPort, { onToolCall: (r) => records.push(r) });
 
     await httpRequest(`http://127.0.0.1:${proxyPort}/proxy/test-mcp`, {
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'bad' } }),
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'bad' },
+      }),
       headers: { 'content-type': 'application/json' },
     });
 
@@ -515,9 +578,16 @@ describe('ProxyManager performance', () => {
         if (r.proxyOverheadMs != null) overheads.push(r.proxyOverheadMs);
       },
     });
-    manager.registerUpstream({ name: 'bench', url: `http://127.0.0.1:${mockPort}`, transportType: 'http', allowPrivateHosts: true });
+    manager.registerUpstream({
+      name: 'bench',
+      url: `http://127.0.0.1:${mockPort}`,
+      transportType: 'http',
+      allowPrivateHosts: true,
+    });
     await manager.start();
-    const addr = (manager as unknown as { httpServer: { address: () => { port: number } } }).httpServer?.address();
+    const addr = (
+      manager as unknown as { httpServer: { address: () => { port: number } } }
+    ).httpServer?.address();
     proxyPort = typeof addr === 'object' && addr ? addr.port : 0;
 
     const body = JSON.stringify({
@@ -562,7 +632,9 @@ describe('ProxyManager unhandled request error handler', () => {
       throw new Error('test error before headers');
     };
     await manager.start();
-    const addr = (manager as unknown as { httpServer: { address: () => { port: number } } }).httpServer?.address();
+    const addr = (
+      manager as unknown as { httpServer: { address: () => { port: number } } }
+    ).httpServer?.address();
     const port = typeof addr === 'object' && addr ? addr.port : 0;
 
     try {
@@ -576,35 +648,50 @@ describe('ProxyManager unhandled request error handler', () => {
 
   it('destroys socket (not writing JSON) when handleRequest rejects after headers are sent', async () => {
     const manager = new ProxyManager({ port: 0 });
-    (manager as unknown as { handleRequest: (req: IncomingMessage, res: ServerResponse) => Promise<void> }).handleRequest =
-      async (_req: IncomingMessage, res: ServerResponse) => {
-        res.writeHead(200, { 'content-type': 'text/event-stream' });
-        throw new Error('error mid-stream');
-      };
+    (
+      manager as unknown as {
+        handleRequest: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+      }
+    ).handleRequest = async (_req: IncomingMessage, res: ServerResponse) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      throw new Error('error mid-stream');
+    };
     await manager.start();
-    const addr = (manager as unknown as { httpServer: { address: () => { port: number } } }).httpServer?.address();
+    const addr = (
+      manager as unknown as { httpServer: { address: () => { port: number } } }
+    ).httpServer?.address();
     const port = typeof addr === 'object' && addr ? addr.port : 0;
 
     try {
-      const result = await new Promise<{ statusCode: number; body: string; connectionReset: boolean }>(
-        (resolve) => {
-          const req = nodeRequest(
-            { hostname: '127.0.0.1', port, method: 'POST', path: '/any' },
-            (res) => {
-              const chunks: Buffer[] = [];
-              res.on('data', (c: Buffer) => chunks.push(c));
-              res.on('end', () =>
-                resolve({ statusCode: res.statusCode ?? 0, body: Buffer.concat(chunks).toString(), connectionReset: false }),
-              );
-              res.on('close', () =>
-                resolve({ statusCode: res.statusCode ?? 0, body: Buffer.concat(chunks).toString(), connectionReset: true }),
-              );
-            },
-          );
-          req.on('error', () => resolve({ statusCode: 0, body: '', connectionReset: true }));
-          req.end();
-        },
-      );
+      const result = await new Promise<{
+        statusCode: number;
+        body: string;
+        connectionReset: boolean;
+      }>((resolve) => {
+        const req = nodeRequest(
+          { hostname: '127.0.0.1', port, method: 'POST', path: '/any' },
+          (res) => {
+            const chunks: Buffer[] = [];
+            res.on('data', (c: Buffer) => chunks.push(c));
+            res.on('end', () =>
+              resolve({
+                statusCode: res.statusCode ?? 0,
+                body: Buffer.concat(chunks).toString(),
+                connectionReset: false,
+              }),
+            );
+            res.on('close', () =>
+              resolve({
+                statusCode: res.statusCode ?? 0,
+                body: Buffer.concat(chunks).toString(),
+                connectionReset: true,
+              }),
+            );
+          },
+        );
+        req.on('error', () => resolve({ statusCode: 0, body: '', connectionReset: true }));
+        req.end();
+      });
 
       // Socket was destroyed — connection reset, no JSON error body written
       expect(result.connectionReset).toBe(true);
@@ -646,7 +733,9 @@ describe('ProxyManager upstream connection failures', () => {
     });
     // Override the upstream's connect to throw
     const upstream = manager.getUpstream('bad-server')!;
-    upstream.connect = async () => { throw new Error('spawn failed'); };
+    upstream.connect = async () => {
+      throw new Error('spawn failed');
+    };
 
     await expect(manager.start()).rejects.toThrow('All upstreams failed to connect');
   });
@@ -669,7 +758,9 @@ describe('ProxyManager upstream connection failures', () => {
         command: '/nonexistent/binary',
       });
       const badUpstream = manager.getUpstream('bad-server')!;
-      badUpstream.connect = async () => { throw new Error('spawn failed'); };
+      badUpstream.connect = async () => {
+        throw new Error('spawn failed');
+      };
 
       // Should not throw — one upstream succeeded
       await manager.start();
@@ -725,7 +816,9 @@ describe('ProxyManager body limits (M-05)', () => {
       allowPrivateHosts: true,
     });
     await manager.start();
-    const addr = (manager as unknown as { httpServer: { address: () => { port: number } } }).httpServer?.address();
+    const addr = (
+      manager as unknown as { httpServer: { address: () => { port: number } } }
+    ).httpServer?.address();
     proxyPort = typeof addr === 'object' && addr ? addr.port : 0;
 
     // Body is well over 20 bytes
@@ -752,7 +845,9 @@ describe('ProxyManager body limits (M-05)', () => {
       allowPrivateHosts: true,
     });
     await manager.start();
-    const addr = (manager as unknown as { httpServer: { address: () => { port: number } } }).httpServer?.address();
+    const addr = (
+      manager as unknown as { httpServer: { address: () => { port: number } } }
+    ).httpServer?.address();
     proxyPort = typeof addr === 'object' && addr ? addr.port : 0;
 
     // Send headers only (chunked encoding) and never complete the body
@@ -773,7 +868,10 @@ describe('ProxyManager body limits (M-05)', () => {
           const chunks: Buffer[] = [];
           response.on('data', (c: Buffer) => chunks.push(c));
           response.on('end', () =>
-            resolve({ statusCode: response.statusCode ?? 0, body: Buffer.concat(chunks).toString() }),
+            resolve({
+              statusCode: response.statusCode ?? 0,
+              body: Buffer.concat(chunks).toString(),
+            }),
           );
         },
       );

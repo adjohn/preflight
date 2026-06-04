@@ -80,7 +80,8 @@ export class AntiPatternDetector {
     this.reReadThreshold = options?.reReadThreshold ?? DEFAULT_RE_READ_THRESHOLD;
     this.stuckLoopThreshold = options?.stuckLoopThreshold ?? DEFAULT_STUCK_LOOP_THRESHOLD;
     this.blindEditThreshold = options?.blindEditThreshold ?? DEFAULT_BLIND_EDIT_THRESHOLD;
-    this.overDelegationThreshold = options?.overDelegationThreshold ?? DEFAULT_OVER_DELEGATION_THRESHOLD;
+    this.overDelegationThreshold =
+      options?.overDelegationThreshold ?? DEFAULT_OVER_DELEGATION_THRESHOLD;
   }
 
   analyze(toolCalls: ToolCallRecord[]): AntiPatternMetrics {
@@ -155,7 +156,8 @@ export class AntiPatternDetector {
         type: 'thrashing',
         file,
         iterations,
-        suggestion: 'Consider reading the test output more carefully or reading the test framework docs',
+        suggestion:
+          'Consider reading the test output more carefully or reading the test framework docs',
       });
     }
 
@@ -185,7 +187,8 @@ export class AntiPatternDetector {
           type: 're_reading',
           file,
           readCount: count,
-          suggestion: 'Context may have been compressed — consider breaking the task into smaller pieces',
+          suggestion:
+            'Context may have been compressed — consider breaking the task into smaller pieces',
         });
       }
     }
@@ -298,11 +301,13 @@ export class AntiPatternDetector {
     }
 
     if (agentCount > this.overDelegationThreshold) {
-      return [{
-        type: 'over_delegation',
-        agentCount,
-        suggestion: 'Too many sub-agents spawned — consider handling more work directly',
-      }];
+      return [
+        {
+          type: 'over_delegation',
+          agentCount,
+          suggestion: 'Too many sub-agents spawned — consider handling more work directly',
+        },
+      ];
     }
 
     return [];

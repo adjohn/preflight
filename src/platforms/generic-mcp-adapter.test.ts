@@ -87,15 +87,21 @@ describe('GenericMcpAdapter', () => {
     });
 
     it('throws on missing required tool field', () => {
-      expect(() => adapter.normalizeToolCall({ success: true })).toThrow('Missing required field: tool');
+      expect(() => adapter.normalizeToolCall({ success: true })).toThrow(
+        'Missing required field: tool',
+      );
     });
 
     it('throws on empty tool field', () => {
-      expect(() => adapter.normalizeToolCall({ tool: '', success: true })).toThrow('Missing required field: tool');
+      expect(() => adapter.normalizeToolCall({ tool: '', success: true })).toThrow(
+        'Missing required field: tool',
+      );
     });
 
     it('throws on missing required success field', () => {
-      expect(() => adapter.normalizeToolCall({ tool: 'Read' })).toThrow('Missing required field: success');
+      expect(() => adapter.normalizeToolCall({ tool: 'Read' })).toThrow(
+        'Missing required field: success',
+      );
     });
 
     it('throws on non-object input', () => {
@@ -227,46 +233,50 @@ describe('validateReportToolCallInput', () => {
   });
 
   it('rejects missing tool', () => {
-    expect(() => validateReportToolCallInput({ success: true })).toThrow('Missing required field: tool');
+    expect(() => validateReportToolCallInput({ success: true })).toThrow(
+      'Missing required field: tool',
+    );
   });
 
   it('rejects missing success', () => {
-    expect(() => validateReportToolCallInput({ tool: 'Read' })).toThrow('Missing required field: success');
+    expect(() => validateReportToolCallInput({ tool: 'Read' })).toThrow(
+      'Missing required field: success',
+    );
   });
 
   it('rejects non-numeric duration_ms (F-035)', () => {
     expect(() =>
-      validateReportToolCallInput({ tool: 'Read', success: true, duration_ms: 'not-a-number' })
+      validateReportToolCallInput({ tool: 'Read', success: true, duration_ms: 'not-a-number' }),
     ).toThrow('Field duration_ms must be a number when present');
   });
 
   it('rejects non-numeric input_size_bytes (F-035)', () => {
     expect(() =>
-      validateReportToolCallInput({ tool: 'Read', success: true, input_size_bytes: 'large' })
+      validateReportToolCallInput({ tool: 'Read', success: true, input_size_bytes: 'large' }),
     ).toThrow('Field input_size_bytes must be a number when present');
   });
 
   it('rejects non-numeric output_size_bytes (F-035)', () => {
     expect(() =>
-      validateReportToolCallInput({ tool: 'Read', success: true, output_size_bytes: '1024' })
+      validateReportToolCallInput({ tool: 'Read', success: true, output_size_bytes: '1024' }),
     ).toThrow('Field output_size_bytes must be a number when present');
   });
 
   it('rejects non-numeric timestamp (F-035)', () => {
     expect(() =>
-      validateReportToolCallInput({ tool: 'Read', success: true, timestamp: '2000' })
+      validateReportToolCallInput({ tool: 'Read', success: true, timestamp: '2000' }),
     ).toThrow('Field timestamp must be a number when present');
   });
 
   it('rejects non-string error (F-035)', () => {
-    expect(() =>
-      validateReportToolCallInput({ tool: 'Read', success: false, error: 42 })
-    ).toThrow('Field error must be a string when present');
+    expect(() => validateReportToolCallInput({ tool: 'Read', success: false, error: 42 })).toThrow(
+      'Field error must be a string when present',
+    );
   });
 
   it('rejects non-object input field (F-035)', () => {
     expect(() =>
-      validateReportToolCallInput({ tool: 'Read', success: true, input: 'string' })
+      validateReportToolCallInput({ tool: 'Read', success: true, input: 'string' }),
     ).toThrow('Field input must be an object when present');
   });
 

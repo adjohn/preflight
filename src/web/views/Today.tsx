@@ -127,12 +127,26 @@ export function Today(): JSX.Element {
         sessionCurrent?.toolErrorCount ?? 0,
         todaySessions ?? [],
       ),
-    [costApi?.cost?.model, sessionCurrent?.toolSuccessRate, sessionCurrent?.toolErrorCount, todaySessions],
+    [
+      costApi?.cost?.model,
+      sessionCurrent?.toolSuccessRate,
+      sessionCurrent?.toolErrorCount,
+      todaySessions,
+    ],
   );
 
-  const persistedTodaySpend = useMemo(() => computeTodaySpend(todaySessions ?? []), [todaySessions]);
-  const persistedTodayCalls = useMemo(() => computeTodayToolCalls(todaySessions ?? []), [todaySessions]);
-  const persistedTodayFlags = useMemo(() => computeTodayFlags(todaySessions ?? []), [todaySessions]);
+  const persistedTodaySpend = useMemo(
+    () => computeTodaySpend(todaySessions ?? []),
+    [todaySessions],
+  );
+  const persistedTodayCalls = useMemo(
+    () => computeTodayToolCalls(todaySessions ?? []),
+    [todaySessions],
+  );
+  const persistedTodayFlags = useMemo(
+    () => computeTodayFlags(todaySessions ?? []),
+    [todaySessions],
+  );
 
   const calls = persistedTodayCalls;
   const spendLoading = !cost && costPending && sessionsPending;
@@ -160,11 +174,7 @@ export function Today(): JSX.Element {
         <Kpi label="spend" tone="accent" value={spendLoading ? '…' : `$${todayTotal.toFixed(2)}`} />
         <Kpi label="calls" value={String(calls)} />
         <EfficiencyKpi score={sessionCurrent?.efficiencyScore ?? null} />
-        <Kpi
-          label="flags"
-          tone={flagsCount > 0 ? 'warn' : 'neutral'}
-          value={String(flagsCount)}
-        />
+        <Kpi label="flags" tone={flagsCount > 0 ? 'warn' : 'neutral'} value={String(flagsCount)} />
       </div>
 
       <ModelHealthCard health={modelHealth} />
@@ -176,10 +186,10 @@ export function Today(): JSX.Element {
           // The REST fallback is session-level only, so add persisted spend.
           spendLoading
             ? null
-            : (cost?.forecastEodUsd
-                ?? (costApi?.forecast?.forecastEndOfDayUsd != null
-                  ? persistedTodaySpend + costApi.forecast.forecastEndOfDayUsd
-                  : null))
+            : (cost?.forecastEodUsd ??
+              (costApi?.forecast?.forecastEndOfDayUsd != null
+                ? persistedTodaySpend + costApi.forecast.forecastEndOfDayUsd
+                : null))
         }
       />
 
@@ -196,8 +206,16 @@ export function Today(): JSX.Element {
             <>
               <span className="text-accent-amber font-semibold">⚠ {apiAntiPatterns[0].type}</span>
               <span className="text-ink-muted"> — </span>
-              <span>{apiAntiPatterns[0].count ?? apiAntiPatterns[0].iterations ?? apiAntiPatterns[0].readCount ?? '?'}× on </span>
-              <code className="bg-bg-line px-1 rounded">{apiAntiPatterns[0].file ?? apiAntiPatterns[0].command ?? 'unknown'}</code>
+              <span>
+                {apiAntiPatterns[0].count ??
+                  apiAntiPatterns[0].iterations ??
+                  apiAntiPatterns[0].readCount ??
+                  '?'}
+                × on{' '}
+              </span>
+              <code className="bg-bg-line px-1 rounded">
+                {apiAntiPatterns[0].file ?? apiAntiPatterns[0].command ?? 'unknown'}
+              </code>
             </>
           ) : null}
         </div>
@@ -263,9 +281,7 @@ function QualityProxyPanel(): JSX.Element {
             </div>
           </div>
           {data.degradationDetected && (
-            <div className="text-amber-400 text-xs mt-2">
-              &#9888; Quality degrading
-            </div>
+            <div className="text-amber-400 text-xs mt-2">&#9888; Quality degrading</div>
           )}
         </>
       )}
@@ -304,15 +320,20 @@ function ToolSelectionPanel(): JSX.Element {
           <div className="text-[10px] text-ink-muted mt-1">
             {data.penalizedCalls} of {data.totalCalls} calls penalized
           </div>
-          {(data.redundantReadCount > 0 || data.repeatedFailureCount > 0 || data.unusedOutputCount > 0) && (
+          {(data.redundantReadCount > 0 ||
+            data.repeatedFailureCount > 0 ||
+            data.unusedOutputCount > 0) && (
             <div className="text-[10px] text-ink-subtle mt-1 space-x-2">
               {data.redundantReadCount > 0 && <span>re-reads: {data.redundantReadCount}</span>}
-              {data.repeatedFailureCount > 0 && <span>repeat fails: {data.repeatedFailureCount}</span>}
+              {data.repeatedFailureCount > 0 && (
+                <span>repeat fails: {data.repeatedFailureCount}</span>
+              )}
               {data.unusedOutputCount > 0 && <span>unused output: {data.unusedOutputCount}</span>}
             </div>
           )}
           <div className="text-[9px] text-ink-subtle/60 mt-2">
-            Penalizes: reading the same file 3+ times without editing, repeated tool failures, fetching large outputs never referenced.
+            Penalizes: reading the same file 3+ times without editing, repeated tool failures,
+            fetching large outputs never referenced.
           </div>
         </>
       )}
@@ -396,7 +417,10 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
   const firstTs = timeline.length > 0 ? timeline[0]!.timestamp : 0;
 
   return (
-    <div className="bg-bg-panel border border-bg-line rounded mb-3 grid grid-cols-[220px_1fr] overflow-hidden" style={{ height: '320px' }}>
+    <div
+      className="bg-bg-panel border border-bg-line rounded mb-3 grid grid-cols-[220px_1fr] overflow-hidden"
+      style={{ height: '320px' }}
+    >
       {/* Session list */}
       <div className="border-r border-bg-line overflow-auto">
         <div className="text-[10px] text-ink-muted uppercase tracking-wider p-2 border-b border-bg-line">
@@ -419,8 +443,15 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
               </span>
             </div>
             <div className="flex gap-2 mt-0.5 text-[10px] text-ink-subtle">
-              <span>${(sessions.find((s) => s.sessionId === liveSessionId)?.estimatedCostUsd ?? 0).toFixed(2)}</span>
-              <span>{sessions.find((s) => s.sessionId === liveSessionId)?.toolCallCount ?? 0} calls</span>
+              <span>
+                $
+                {(
+                  sessions.find((s) => s.sessionId === liveSessionId)?.estimatedCostUsd ?? 0
+                ).toFixed(2)}
+              </span>
+              <span>
+                {sessions.find((s) => s.sessionId === liveSessionId)?.toolCallCount ?? 0} calls
+              </span>
             </div>
           </button>
         )}
@@ -438,7 +469,9 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
             >
               <div className="flex items-center gap-1.5">
                 <span className="font-mono text-ink-base">{s.sessionId.slice(0, 8)}</span>
-                <span className="text-[10px] text-ink-muted">{s.startTime ? fmtTime(s.startTime) : ''}</span>
+                <span className="text-[10px] text-ink-muted">
+                  {s.startTime ? fmtTime(s.startTime) : ''}
+                </span>
               </div>
               <div className="flex gap-2 mt-0.5 text-[10px] text-ink-subtle">
                 <span>${(s.estimatedCostUsd ?? 0).toFixed(2)}</span>
@@ -498,7 +531,9 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
                     <span className="w-12 text-right tabular-nums text-ink-muted text-[10px]">
                       {entry.durationMs != null ? `${entry.durationMs}ms` : ''}
                     </span>
-                    <span className={`w-3 text-center text-[10px] ${entry.success ? 'text-accent-green' : 'text-accent-red'}`}>
+                    <span
+                      className={`w-3 text-center text-[10px] ${entry.success ? 'text-accent-green' : 'text-accent-red'}`}
+                    >
                       {entry.success ? '\u{2713}' : '\u{2717}'}
                     </span>
                   </div>
@@ -545,9 +580,7 @@ function RecentAlertsPanel(): JSX.Element | null {
 
   return (
     <div className="bg-bg-panel border border-bg-line rounded p-3">
-      <div className="text-[10px] text-ink-muted uppercase tracking-wider mb-2">
-        recent alerts
-      </div>
+      <div className="text-[10px] text-ink-muted uppercase tracking-wider mb-2">recent alerts</div>
       {isLoading && <div className="text-ink-muted text-xs">Loading…</div>}
       {error && <div className="text-accent-red text-xs">Error loading recent alerts.</div>}
       {!isLoading && !error && sortedEntries.length === 0 && (
@@ -584,8 +617,7 @@ function RecentAlertsPanel(): JSX.Element | null {
                 </td>
                 <td
                   className={
-                    'py-1 pl-2 ' +
-                    (a.state === 'firing' ? 'text-accent-amber' : 'text-ink-muted')
+                    'py-1 pl-2 ' + (a.state === 'firing' ? 'text-accent-amber' : 'text-ink-muted')
                   }
                 >
                   {a.state}
@@ -618,13 +650,14 @@ function fmtTime(value: number): string {
   });
 }
 
-
 function isToday(ts: number): boolean {
   const d = new Date(ts);
   const now = new Date();
-  return d.getFullYear() === now.getFullYear() &&
+  return (
+    d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
+    d.getDate() === now.getDate()
+  );
 }
 
 function computeTodaySpend(sessions: SessionSummary[]): number {
@@ -679,8 +712,8 @@ export interface ModelHealthResult {
 }
 
 const MIN_SESSIONS_FOR_BASELINE = 3;
-const DEGRADED_THRESHOLD = 0.10;
-const POOR_THRESHOLD = 0.20;
+const DEGRADED_THRESHOLD = 0.1;
+const POOR_THRESHOLD = 0.2;
 const POOR_ERROR_THRESHOLD = 5;
 
 export function computeModelHealth(
@@ -690,7 +723,13 @@ export function computeModelHealth(
   sessions: SessionSummary[],
 ): ModelHealthResult {
   if (!currentModel || currentSuccessRate === null) {
-    return { status: 'unknown', model: currentModel, currentRate: null, baseline: null, message: 'Waiting for data…' };
+    return {
+      status: 'unknown',
+      model: currentModel,
+      currentRate: null,
+      baseline: null,
+      message: 'Waiting for data…',
+    };
   }
 
   const modelSessions = sessions.filter(
@@ -703,7 +742,13 @@ export function computeModelHealth(
 
   if (baseline === null) {
     const pct = Math.round(currentSuccessRate * 100);
-    return { status: 'healthy', model: currentModel, currentRate: currentSuccessRate, baseline: null, message: `${pct}% success` };
+    return {
+      status: 'healthy',
+      model: currentModel,
+      currentRate: currentSuccessRate,
+      baseline: null,
+      message: `${pct}% success`,
+    };
   }
 
   const gap = baseline - currentSuccessRate;
@@ -733,7 +778,13 @@ export function computeModelHealth(
   }
 
   const pct = Math.round(currentSuccessRate * 100);
-  return { status: 'healthy', model: currentModel, currentRate: currentSuccessRate, baseline, message: `${pct}% success` };
+  return {
+    status: 'healthy',
+    model: currentModel,
+    currentRate: currentSuccessRate,
+    baseline,
+    message: `${pct}% success`,
+  };
 }
 
 const HEALTH_STYLE: Record<ModelHealthResult['status'], { dot: string; border: string }> = {
@@ -748,10 +799,10 @@ function ModelHealthCard({ health }: { health: ModelHealthResult }): JSX.Element
   return (
     <div className={`bg-bg-panel border ${style.border} rounded p-2.5 mb-3`}>
       <div className="flex items-center gap-2 text-xs">
-        <span className={style.dot} aria-hidden="true">●</span>
-        <span className="font-medium text-ink-default">
-          {health.model ?? 'unknown model'}
+        <span className={style.dot} aria-hidden="true">
+          ●
         </span>
+        <span className="font-medium text-ink-default">{health.model ?? 'unknown model'}</span>
         <span className="text-ink-muted">·</span>
         <span className="text-ink-subtle">{health.message}</span>
       </div>

@@ -58,12 +58,16 @@ export function sanitizeEnv(
 // Command validation — requires absolute paths to prevent PATH hijacking
 // ---------------------------------------------------------------------------
 
-export function validateCommand(upstreamName: string, command: string, allowBareCommand: boolean): void {
+export function validateCommand(
+  upstreamName: string,
+  command: string,
+  allowBareCommand: boolean,
+): void {
   if (!allowBareCommand && !isAbsolute(command)) {
     throw new Error(
       `StdioUpstream "${upstreamName}": command "${command}" must be an absolute path ` +
-      `(bare names can be hijacked via PATH manipulation). ` +
-      `Use the full path (e.g. /usr/bin/node) or set allowBareCommand for development.`,
+        `(bare names can be hijacked via PATH manipulation). ` +
+        `Use the full path (e.g. /usr/bin/node) or set allowBareCommand for development.`,
     );
   }
 }
@@ -164,9 +168,7 @@ export class StdioUpstream implements ProxyUpstream {
       stderr: 'pipe',
     });
 
-    this.client = new Client(
-      { name: `proxy-${this.name}`, version: '1.0.0' },
-    );
+    this.client = new Client({ name: `proxy-${this.name}`, version: '1.0.0' });
 
     await this.client.connect(this.transport);
     logger.info(`Stdio upstream "${this.name}" connected`, { command, args: this.config.args });
@@ -195,19 +197,18 @@ export class StdioUpstream implements ProxyUpstream {
       if (timeoutId !== null) clearTimeout(timeoutId);
     } catch {
       if (timeoutId !== null) clearTimeout(timeoutId);
-      logger.warn(`Stdio upstream "${this.name}" close timed out after ${DISCONNECT_TIMEOUT_MS}ms — force-killing process`);
-      const proc = (transport as unknown as { _process?: { kill(signal?: string): void } })._process;
+      logger.warn(
+        `Stdio upstream "${this.name}" close timed out after ${DISCONNECT_TIMEOUT_MS}ms — force-killing process`,
+      );
+      const proc = (transport as unknown as { _process?: { kill(signal?: string): void } })
+        ._process;
       proc?.kill('SIGKILL');
     }
 
     logger.info(`Stdio upstream "${this.name}" disconnected`);
   }
 
-  async forward(
-    _req: IncomingMessage,
-    res: ServerResponse,
-    body: Buffer,
-  ): Promise<ForwardResult> {
+  async forward(_req: IncomingMessage, res: ServerResponse, body: Buffer): Promise<ForwardResult> {
     if (!this.client) {
       const size = writeJsonRpcError(res, undefined, -32603, 'Upstream not connected');
       return {
@@ -245,7 +246,11 @@ export class StdioUpstream implements ProxyUpstream {
     } catch (err: unknown) {
       const upstreamLatencyMs = performance.now() - start;
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('Stdio upstream error', { upstream: this.name, method: rpc.method, error: message });
+      logger.error('Stdio upstream error', {
+        upstream: this.name,
+        method: rpc.method,
+        error: message,
+      });
 
       const size = writeJsonRpcError(res, rpc.id, -32603, message);
       return {

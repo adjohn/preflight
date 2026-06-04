@@ -23,11 +23,7 @@ interface NotifierLogger {
 export type ExecFileFn = (
   file: string,
   args: readonly string[],
-  callback: (
-    err: NodeJS.ErrnoException | null,
-    stdout: string,
-    stderr: string,
-  ) => void,
+  callback: (err: NodeJS.ErrnoException | null, stdout: string, stderr: string) => void,
 ) => unknown;
 
 export interface OsNotifierOptions {
@@ -63,9 +59,7 @@ const MAX_FIELD_LENGTH = 120;
  *   - backtick            (PowerShell escape character)
  */
 function sanitize(value: string): string {
-  return value
-    .replace(/[\x00-\x1f\x7f"'\\`]/g, '')
-    .slice(0, MAX_FIELD_LENGTH);
+  return value.replace(/[\x00-\x1f\x7f"'\\`]/g, '').slice(0, MAX_FIELD_LENGTH);
 }
 
 // ---------------------------------------------------------------------------
@@ -174,9 +168,9 @@ export class OsNotifier {
     }
 
     const balloon = [
-      "Add-Type -AssemblyName System.Windows.Forms;",
-      "$n = New-Object System.Windows.Forms.NotifyIcon;",
-      "$n.Icon = [System.Drawing.SystemIcons]::Information;",
+      'Add-Type -AssemblyName System.Windows.Forms;',
+      '$n = New-Object System.Windows.Forms.NotifyIcon;',
+      '$n.Icon = [System.Drawing.SystemIcons]::Information;',
       `$n.BalloonTipTitle = '${title}';`,
       `$n.BalloonTipText = '${body}';`,
       '$n.Visible = $true;',
@@ -217,9 +211,7 @@ export class OsNotifier {
         // execFile is documented to be async, but pathological mocks
         // (or genuine OS issues like a too-long argv) can throw
         // synchronously. Treat the same as an async error.
-        rejectFn(
-          syncErr instanceof Error ? syncErr : new Error(String(syncErr)),
-        );
+        rejectFn(syncErr instanceof Error ? syncErr : new Error(String(syncErr)));
       }
     });
   }

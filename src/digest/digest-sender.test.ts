@@ -10,31 +10,32 @@ describe('digest-sender', () => {
     });
 
     it('rejects HTTP URLs (requires HTTPS)', async () => {
-      await expect(sendSlackDigest('http://hooks.slack.com/services/T00/B00/X', { text: 'test' })).rejects.toThrow(
-        'Invalid webhook URL: must start with https://hooks.slack.com/',
-      );
+      await expect(
+        sendSlackDigest('http://hooks.slack.com/services/T00/B00/X', { text: 'test' }),
+      ).rejects.toThrow('Invalid webhook URL: must start with https://hooks.slack.com/');
     });
 
     it('rejects URLs with wrong domain', async () => {
-      await expect(sendSlackDigest('https://hooks.slack.net/services/T00/B00/X', { text: 'test' })).rejects.toThrow(
-        'Invalid webhook URL: must start with https://hooks.slack.com/',
-      );
+      await expect(
+        sendSlackDigest('https://hooks.slack.net/services/T00/B00/X', { text: 'test' }),
+      ).rejects.toThrow('Invalid webhook URL: must start with https://hooks.slack.com/');
     });
 
     it('rejects localhost URLs', async () => {
-      await expect(sendSlackDigest('https://localhost:8080/webhook', { text: 'test' })).rejects.toThrow(
-        'Invalid webhook URL: must start with https://hooks.slack.com/',
-      );
+      await expect(
+        sendSlackDigest('https://localhost:8080/webhook', { text: 'test' }),
+      ).rejects.toThrow('Invalid webhook URL: must start with https://hooks.slack.com/');
     });
 
     it('rejects internal IP addresses', async () => {
-      await expect(sendSlackDigest('https://192.168.1.1/webhook', { text: 'test' })).rejects.toThrow(
-        'Invalid webhook URL: must start with https://hooks.slack.com/',
-      );
+      await expect(
+        sendSlackDigest('https://192.168.1.1/webhook', { text: 'test' }),
+      ).rejects.toThrow('Invalid webhook URL: must start with https://hooks.slack.com/');
     });
 
     it('accepts Slack webhook URL format', async () => {
-      const validUrl = 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX';
+      const validUrl =
+        'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX';
 
       // Mock fetch to resolve successfully
       const originalFetch = global.fetch;

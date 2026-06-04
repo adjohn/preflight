@@ -12,6 +12,7 @@ import { resolve, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { normalizeDeveloperName } from '../config.js';
 import { runInstallCli, verifyBinaryOnPath } from './cli.js';
+import { installSchedule, resolveBinaryPath } from './schedule.js';
 
 const DEFAULT_STORAGE_PATH = resolve(homedir(), '.nr-ai-observe');
 const CONFIG_PATH = resolve(DEFAULT_STORAGE_PATH, 'config.json');
@@ -34,7 +35,13 @@ interface WizardLogger {
  */
 function defaultStarterRulesSource(): string {
   const rawPath = process.argv[1] ?? process.cwd();
-  const scriptPath = (() => { try { return realpathSync(rawPath); } catch { return rawPath; } })();
+  const scriptPath = (() => {
+    try {
+      return realpathSync(rawPath);
+    } catch {
+      return rawPath;
+    }
+  })();
   return resolve(dirname(scriptPath), '..', '..', 'examples', 'local-alert-rules.json');
 }
 
@@ -124,9 +131,7 @@ export function buildConfig(
   return {
     ...existing,
     ...(inputs.mode ? { mode } : {}),
-    ...(includeNrCreds
-      ? { accountId: inputs.accountId, licenseKey: inputs.licenseKey }
-      : {}),
+    ...(includeNrCreds ? { accountId: inputs.accountId, licenseKey: inputs.licenseKey } : {}),
     developer: inputs.developer,
     ...(inputs.teamId ? { teamId: inputs.teamId } : {}),
     ...(inputs.projectId ? { projectId: inputs.projectId } : {}),
@@ -200,10 +205,12 @@ export async function runSetupWizard(): Promise<void> {
   }
 
   // Step 3: Developer name
-  const defaultDeveloper = typeof existing.developer === 'string'
-    ? existing.developer
-    : normalizeDeveloperName(process.env.USER ?? process.env.USERNAME ?? '');
-  const rawInput = (await rl.question(`Developer name [${defaultDeveloper}]: `)).trim() || defaultDeveloper;
+  const defaultDeveloper =
+    typeof existing.developer === 'string'
+      ? existing.developer
+      : normalizeDeveloperName(process.env.USER ?? process.env.USERNAME ?? '');
+  const rawInput =
+    (await rl.question(`Developer name [${defaultDeveloper}]: `)).trim() || defaultDeveloper;
   const developer = normalizeDeveloperName(rawInput);
   if (developer !== rawInput) {
     print(`  → Normalized to: ${developer}`);
@@ -215,12 +222,17 @@ export async function runSetupWizard(): Promise<void> {
   const teamId = teamIdAnswer || existingTeamId;
 
   const existingProjectId = typeof existing.projectId === 'string' ? existing.projectId : null;
-  const projectIdAnswer = (await rl.question(`Project ID [${existingProjectId ?? 'auto-detect from git'}]: `)).trim();
+  const projectIdAnswer = (
+    await rl.question(`Project ID [${existingProjectId ?? 'auto-detect from git'}]: `)
+  ).trim();
   const projectId = projectIdAnswer || existingProjectId;
 
   // Step 5: Budget caps
-  const existingBudget = typeof existing.sessionBudgetUsd === 'number' ? String(existing.sessionBudgetUsd) : null;
-  const sessionBudgetStr = (await rl.question(`Session budget USD [${existingBudget ?? 'no limit'}]: `)).trim() || (existingBudget ?? '');
+  const existingBudget =
+    typeof existing.sessionBudgetUsd === 'number' ? String(existing.sessionBudgetUsd) : null;
+  const sessionBudgetStr =
+    (await rl.question(`Session budget USD [${existingBudget ?? 'no limit'}]: `)).trim() ||
+    (existingBudget ?? '');
   let sessionBudgetUsd: number | null = null;
   if (sessionBudgetStr) {
     const parsed = parseFloat(sessionBudgetStr);
@@ -277,10 +289,10 @@ export async function runSetupWizard(): Promise<void> {
   // overwrites a user-edited rules file.
   if (mode === 'local' || mode === 'both') {
     const copyAnswer = (
-      await rl.question(
-        'Copy starter alert rules to ~/.nr-ai-observe/alerts/rules.json? [Y/n]: ',
-      )
-    ).trim().toLowerCase();
+      await rl.question('Copy starter alert rules to ~/.nr-ai-observe/alerts/rules.json? [Y/n]: ')
+    )
+      .trim()
+      .toLowerCase();
     if (copyAnswer !== 'n' && copyAnswer !== 'no') {
       const result = copyStarterAlertRules({
         sourcePath: defaultStarterRulesSource(),
@@ -303,7 +315,9 @@ export async function runSetupWizard(): Promise<void> {
   // Step 6: Hook install
   // Config is already written above; pass no credentials to install so it only
   // wires hooks and MCP without overwriting the config we just wrote.
-  const installHooks = (await rl.question('\nInstall Claude Code hooks now? [Y/n]: ')).trim().toLowerCase();
+  const installHooks = (await rl.question('\nInstall Claude Code hooks now? [Y/n]: '))
+    .trim()
+    .toLowerCase();
   if (installHooks !== 'n') {
     print('\nRunning hook installer...');
     await runInstallCli(['install']);
@@ -319,17 +333,60 @@ export async function runSetupWizard(): Promise<void> {
     }
   }
 
-  // Step 7: Dashboard deploy — show manual command (deploy-dashboard.ts is not a library)
+  // Step 7: Auto-update schedule (macOS only)
+  if (process.platform === 'darwin') {
+    const enableUpdate = (await rl.question('\nEnable daily auto-updates? [Y/n]: '))
+      .trim()
+      .toLowerCase();
+    if (enableUpdate !== 'n' && enableUpdate !== 'no') {
+      const timeRaw = (await rl.question('Update time (24h HH:MM) [08:00]: ')).trim();
+      const timeStr = timeRaw || '08:00';
+      const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+      const parsedHour = match ? parseInt(match[1], 10) : -1;
+      const parsedMinute = match ? parseInt(match[2], 10) : -1;
+      const validTime =
+        parsedHour >= 0 && parsedHour <= 23 && parsedMinute >= 0 && parsedMinute <= 59;
+      const hour = validTime ? parsedHour : 8;
+      const minute = validTime ? parsedMinute : 0;
+      if (!validTime && timeStr !== '08:00') {
+        print(`⚠ Invalid time "${timeStr}", using default 08:00.`);
+      }
+      const hh = String(hour).padStart(2, '0');
+      const mm = String(minute).padStart(2, '0');
+      const binaryPath = resolveBinaryPath();
+      if (binaryPath) {
+        try {
+          installSchedule(binaryPath, hour, minute);
+          print(`✓ Daily auto-update scheduled for ${hh}:${mm}`);
+        } catch {
+          print(`⚠ Could not register schedule — run: nr-ai-observe schedule --time ${hh}:${mm}`);
+        }
+      } else {
+        print('\n⚠ Cannot schedule — nr-ai-observe not found on PATH.');
+        print(`  Run nr-ai-observe schedule --time ${hh}:${mm} after fixing PATH.`);
+      }
+    }
+  }
+
+  // Step 8: Dashboard deploy — show manual command (deploy-dashboard.ts is not a library)
   if (mode !== 'local') {
     print('\nTo deploy dashboards, run:');
-    print(`  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts --all`);
+    print(
+      `  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts --all`,
+    );
     print(`\nFor a personal dashboard pre-filtered to you:`);
-    print(`  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer ${developer}`);
+    print(
+      `  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer ${developer}`,
+    );
 
     print(`\nFor personal alerts scoped to you:`);
-    print(`  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-alerts.ts --developer ${developer}`);
+    print(
+      `  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-alerts.ts --developer ${developer}`,
+    );
   } else {
-    print(`\nLocal mode: open the dashboard at http://127.0.0.1:${dashboardPort ?? 7777} once Claude Code starts.`);
+    print(
+      `\nLocal mode: open the dashboard at http://127.0.0.1:${dashboardPort ?? 7777} once Claude Code starts.`,
+    );
   }
 
   rl.close();
@@ -342,7 +399,9 @@ export async function runSetupWizard(): Promise<void> {
   print('\n✓ Setup complete.');
   print('  Open Claude Code in a project — the MCP server starts automatically.');
   if (mode === 'local') {
-    print(`  Metrics will appear at http://127.0.0.1:${dashboardPort ?? 7777} within ~30 seconds of your first tool call.`);
+    print(
+      `  Metrics will appear at http://127.0.0.1:${dashboardPort ?? 7777} within ~30 seconds of your first tool call.`,
+    );
   } else {
     print('  Metrics will appear in your New Relic dashboard within a few minutes.');
   }

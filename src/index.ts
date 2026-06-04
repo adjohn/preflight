@@ -110,7 +110,9 @@ export function parseArgs(argv: string[]): CliOptions {
 
   const parsed = parseInt(opts.port, 10);
   if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 65535) {
-    throw new Error(`Invalid port "${opts.port as string}": must be an integer between 1 and 65535`);
+    throw new Error(
+      `Invalid port "${opts.port as string}": must be an integer between 1 and 65535`,
+    );
   }
 
   return {
@@ -256,7 +258,10 @@ async function main(): Promise<void> {
 
     sessionStore = new SessionStore({ storagePath: config.storagePath });
     const currentSessionId = sessionTracker.getMetrics().sessionId;
-    const { priorDailyCostUsd, priorWeeklyCostUsd } = computeHistoricalCosts(sessionStore, currentSessionId);
+    const { priorDailyCostUsd, priorWeeklyCostUsd } = computeHistoricalCosts(
+      sessionStore,
+      currentSessionId,
+    );
     weeklySummaryGenerator = new WeeklySummaryGenerator({
       storagePath: config.storagePath,
       sessionStore,
@@ -330,8 +335,7 @@ async function main(): Promise<void> {
         // null. Internally use getSessionAverage() rather than adding a new
         // public method on the scorer.
         const efficiencyAdapter = {
-          getCurrentScore: (): number | null =>
-            efficiencyScorer.getSessionAverage()?.score ?? null,
+          getCurrentScore: (): number | null => efficiencyScorer.getSessionAverage()?.score ?? null,
         };
         alertSnapshotCollector = new AlertSnapshotCollector({
           costTracker,
@@ -409,10 +413,7 @@ async function main(): Promise<void> {
           sessionStore,
           costTracker,
           costForecast: () =>
-            buildCostForecast(
-              costTracker.getMetrics().sessionTotalCostUsd ?? 0,
-              sessionStartMs,
-            ),
+            buildCostForecast(costTracker.getMetrics().sessionTotalCostUsd ?? 0, sessionStartMs),
           antiPatternDetector,
           weeklySummaryGenerator,
           budgetTracker,
@@ -449,8 +450,8 @@ async function main(): Promise<void> {
           const suggested = port < 65535 ? port + 1 : 7778;
           throw new Error(
             `Dashboard port ${port} is already in use. ` +
-            `Set NR_AI_DASHBOARD_PORT to a different port (e.g. ${suggested}) ` +
-            `or stop the process using port ${port}.`,
+              `Set NR_AI_DASHBOARD_PORT to a different port (e.g. ${suggested}) ` +
+              `or stop the process using port ${port}.`,
           );
         }
         throw err;
@@ -462,7 +463,7 @@ async function main(): Promise<void> {
       if (config.dashboard.openOnStart) {
         logger.warn(
           'dashboard.openOnStart is not implemented in v1; the dashboard URL is logged above. ' +
-          'Open it manually in your browser.',
+            'Open it manually in your browser.',
         );
       }
     }
@@ -472,8 +473,8 @@ async function main(): Promise<void> {
       if (!config.licenseKey || !config.accountId) {
         throw new Error(
           'licenseKey and accountId must be defined. ' +
-          'This should have been caught by config validation. ' +
-          'Check that mode is not "local" or that cloud credentials are configured.',
+            'This should have been caught by config validation. ' +
+            'Check that mode is not "local" or that cloud credentials are configured.',
         );
       }
       nrIngest = new NrIngestManager({
@@ -541,9 +542,8 @@ async function main(): Promise<void> {
         }
 
         // Capture active task ID before recordToolCall may close the current task
-        const taskIdBeforeRecord = config.transport !== 'nr-events-api'
-          ? taskDetector.getActiveTaskId()
-          : null;
+        const taskIdBeforeRecord =
+          config.transport !== 'nr-events-api' ? taskDetector.getActiveTaskId() : null;
 
         sessionTracker.recordToolCall(record);
         taskDetector.recordToolCall(record);
@@ -615,9 +615,10 @@ async function main(): Promise<void> {
           liveBus.emit('cost-update', {
             sessionTotalUsd: costMetrics.sessionTotalCostUsd,
             todayTotalUsd: priorDailyCostUsd + costMetrics.sessionTotalCostUsd,
-            forecastEodUsd: sessionForecast.forecastEndOfDayUsd !== null
-              ? priorDailyCostUsd + sessionForecast.forecastEndOfDayUsd
-              : null,
+            forecastEodUsd:
+              sessionForecast.forecastEndOfDayUsd !== null
+                ? priorDailyCostUsd + sessionForecast.forecastEndOfDayUsd
+                : null,
           });
         }
 
@@ -644,12 +645,12 @@ async function main(): Promise<void> {
               type: pattern.type,
               target: pattern.file ?? pattern.command ?? 'unknown',
               count:
-                pattern.iterations
-                ?? pattern.readCount
-                ?? pattern.repeatCount
-                ?? pattern.editCount
-                ?? pattern.agentCount
-                ?? 1,
+                pattern.iterations ??
+                pattern.readCount ??
+                pattern.repeatCount ??
+                pattern.editCount ??
+                pattern.agentCount ??
+                1,
             });
             // Mirror each detected pattern into the alert collector's
             // rolling buffer so antipattern.count rules have data.
@@ -692,9 +693,10 @@ async function main(): Promise<void> {
           liveBus.emit('cost-update', {
             sessionTotalUsd: costMetrics.sessionTotalCostUsd,
             todayTotalUsd: priorDailyCostUsd + costMetrics.sessionTotalCostUsd,
-            forecastEodUsd: sessionForecast.forecastEndOfDayUsd !== null
-              ? priorDailyCostUsd + sessionForecast.forecastEndOfDayUsd
-              : null,
+            forecastEodUsd:
+              sessionForecast.forecastEndOfDayUsd !== null
+                ? priorDailyCostUsd + sessionForecast.forecastEndOfDayUsd
+                : null,
           });
         }
       },
@@ -784,7 +786,7 @@ async function main(): Promise<void> {
     if (config.proxyUpstreams.length === 0) {
       logger.error(
         'No proxy upstreams configured. Either use --stdio for direct MCP mode ' +
-        'or configure proxyUpstreams in the config file.',
+          'or configure proxyUpstreams in the config file.',
       );
       process.exit(1);
     }
@@ -825,7 +827,10 @@ async function main(): Promise<void> {
     }
 
     await proxyManager.start();
-    logger.info('Proxy server running', { port: config.port, upstreams: proxyManager.getUpstreamNames() });
+    logger.info('Proxy server running', {
+      port: config.port,
+      upstreams: proxyManager.getUpstreamNames(),
+    });
   }
 }
 
@@ -837,10 +842,7 @@ async function main(): Promise<void> {
  * mid-write during a watch reload) are non-fatal: the engine simply keeps
  * its previous rule set in that case.
  */
-function loadAlertRulesFromDisk(
-  engine: LocalAlertEngine,
-  rulesPath: string,
-): void {
+function loadAlertRulesFromDisk(engine: LocalAlertEngine, rulesPath: string): void {
   try {
     if (!existsSync(rulesPath)) {
       logger.info('Alert rules file not found; engine running with no rules', {
@@ -922,7 +924,11 @@ function computeHistoricalCosts(
 // Only run main() when executed directly (not when imported for testing).
 // Resolve symlinks so this also matches when invoked via the `nr-ai-mcp-server` bin link.
 const resolvedArgv1 = (() => {
-  try { return realpathSync(process.argv[1]); } catch { return process.argv[1]; }
+  try {
+    return realpathSync(process.argv[1]);
+  } catch {
+    return process.argv[1];
+  }
 })();
 if (resolvedArgv1 && /index\.[jt]s$/.test(resolvedArgv1)) {
   main().catch((err: unknown) => {

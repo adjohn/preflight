@@ -1,0 +1,158 @@
+import { jest, describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
+import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+// Prevent real launchctl calls.
+jest.mock('node:child_process', () => ({ execFileSync: jest.fn(), execSync: jest.fn() }));
+// Point homedir() at a throw-away temp tree.
+const TEST_HOME = `/tmp/nr-schedule-test-${process.pid}`;
+jest.mock('node:os', () => ({ homedir: () => TEST_HOME }));
+
+import * as childProcess from 'node:child_process';
+import {
+  installSchedule,
+  removeSchedule,
+  getScheduleStatus,
+  resolveBinaryPath,
+} from './schedule.js';
+
+const mockedExecFileSync = childProcess.execFileSync as jest.Mock;
+
+const PLIST_PATH = join(TEST_HOME, 'Library', 'LaunchAgents', 'com.nr-ai-observe.update.plist');
+
+beforeAll(() => {
+  mkdirSync(join(TEST_HOME, 'Library', 'LaunchAgents'), { recursive: true });
+});
+
+afterAll(() => {
+  rmSync(TEST_HOME, { recursive: true, force: true });
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  // Remove plist between tests.
+  try {
+    rmSync(PLIST_PATH);
+  } catch {
+    /* ok */
+  }
+});
+
+describe('installSchedule', () => {
+  it('writes a plist file to the LaunchAgents directory', () => {
+    installSchedule('/usr/local/bin/nr-ai-observe', 8, 0);
+    expect(existsSync(PLIST_PATH)).toBe(true);
+  });
+
+  it('embeds the binary path, hour, and minute in the plist', () => {
+    installSchedule('/usr/local/bin/nr-ai-observe', 14, 30);
+    const content = readFileSync(PLIST_PATH, 'utf-8');
+    expect(content).toContain('<string>/usr/local/bin/nr-ai-observe</string>');
+    expect(content).toContain('<integer>14</integer>');
+    expect(content).toContain('<integer>30</integer>');
+  });
+
+  it('redirects stdout and stderr to update.log', () => {
+    installSchedule('/usr/local/bin/nr-ai-observe', 8, 0);
+    const content = readFileSync(PLIST_PATH, 'utf-8');
+    expect(content).toContain('.nr-ai-observe/update.log');
+  });
+
+  it('calls launchctl unload then load', () => {
+    mockedExecFileSync.mockImplementation(() => Buffer.from(''));
+    installSchedule('/usr/local/bin/nr-ai-observe', 8, 0);
+    const calls = mockedExecFileSync.mock.calls.map((c) => (c as unknown[])[1] as string[]);
+    expect(calls.some((args) => args[0] === 'unload')).toBe(true);
+    expect(calls.some((args) => args[0] === 'load')).toBe(true);
+  });
+
+  it('does not throw when launchctl unload fails (not yet loaded)', () => {
+    mockedExecFileSync
+      .mockImplementationOnce(() => {
+        throw new Error('not loaded');
+      })
+      .mockImplementation(() => Buffer.from('') as unknown as string);
+    expect(() => installSchedule('/usr/local/bin/nr-ai-observe', 8, 0)).not.toThrow();
+  });
+});
+
+describe('removeSchedule', () => {
+  it('is a no-op when plist does not exist', () => {
+    expect(() => removeSchedule()).not.toThrow();
+    expect(mockedExecFileSync).not.toHaveBeenCalled();
+  });
+
+  it('calls launchctl unload and deletes the plist', () => {
+    installSchedule('/usr/local/bin/nr-ai-observe', 8, 0);
+    mockedExecFileSync.mockClear();
+    removeSchedule();
+    const calls = mockedExecFileSync.mock.calls.map((c) => (c as unknown[])[1] as string[]);
+    expect(calls.some((args) => args[0] === 'unload')).toBe(true);
+    expect(existsSync(PLIST_PATH)).toBe(false);
+  });
+});
+
+const FIXTURE_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.nr-ai-observe.update</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/nr-ai-observe</string>
+    <string>update</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>22</integer>
+    <key>Minute</key>
+    <integer>45</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/testuser/.nr-ai-observe/update.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/testuser/.nr-ai-observe/update.log</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>`;
+
+describe('getScheduleStatus', () => {
+  it('returns installed:false when plist is absent', () => {
+    expect(getScheduleStatus()).toEqual({ installed: false });
+  });
+
+  it('returns installed:true with hour, minute, binaryPath after install', () => {
+    installSchedule('/usr/local/bin/nr-ai-observe', 9, 15);
+    const status = getScheduleStatus();
+    expect(status.installed).toBe(true);
+    expect(status.hour).toBe(9);
+    expect(status.minute).toBe(15);
+    expect(status.binaryPath).toBe('/usr/local/bin/nr-ai-observe');
+  });
+
+  it('parses hour, minute, and binaryPath from a fixture plist string', () => {
+    writeFileSync(PLIST_PATH, FIXTURE_PLIST);
+    const status = getScheduleStatus();
+    expect(status.installed).toBe(true);
+    expect(status.hour).toBe(22);
+    expect(status.minute).toBe(45);
+    expect(status.binaryPath).toBe('/opt/homebrew/bin/nr-ai-observe');
+  });
+});
+
+describe('resolveBinaryPath', () => {
+  it('returns the trimmed path string when which succeeds', () => {
+    mockedExecFileSync.mockReturnValue(Buffer.from('/usr/local/bin/nr-ai-observe\n'));
+    expect(resolveBinaryPath()).toBe('/usr/local/bin/nr-ai-observe');
+  });
+
+  it('returns null when which fails', () => {
+    mockedExecFileSync.mockImplementation(() => {
+      throw new Error('not found');
+    });
+    expect(resolveBinaryPath()).toBeNull();
+  });
+});

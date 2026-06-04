@@ -6,7 +6,13 @@ const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
   stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
-  for (const key of ['CONTINUE_SESSION_ID', 'CONTINUE_SERVER_HOST', 'CONTINUE_VERSION', 'MCP_CLIENT', 'MCP_CLIENT_NAME']) {
+  for (const key of [
+    'CONTINUE_SESSION_ID',
+    'CONTINUE_SERVER_HOST',
+    'CONTINUE_VERSION',
+    'MCP_CLIENT',
+    'MCP_CLIENT_NAME',
+  ]) {
     savedEnv[key] = process.env[key];
     delete process.env[key];
   }
@@ -29,7 +35,11 @@ describe('ContinueAdapter', () => {
 
   describe('normalizeToolCall', () => {
     it('maps "readFile" to "Read"', () => {
-      const normalized = adapter.normalizeToolCall({ tool: 'readFile', timestamp: 2000, success: true });
+      const normalized = adapter.normalizeToolCall({
+        tool: 'readFile',
+        timestamp: 2000,
+        success: true,
+      });
       expect(normalized.toolName).toBe('Read');
       expect(normalized.platformToolName).toBe('readFile');
       expect(normalized.platform).toBe('continue');
@@ -117,7 +127,10 @@ describe('ContinueAdapter', () => {
     });
 
     it('maps unknown tool to "Unknown" with platformToolName preserved', () => {
-      const normalized = adapter.normalizeToolCall({ tool: 'custom_continue_tool', timestamp: 2000 });
+      const normalized = adapter.normalizeToolCall({
+        tool: 'custom_continue_tool',
+        timestamp: 2000,
+      });
       expect(normalized.toolName).toBe('Unknown');
       expect(normalized.platformToolName).toBe('custom_continue_tool');
     });

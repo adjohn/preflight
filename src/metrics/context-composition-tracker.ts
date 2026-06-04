@@ -147,9 +147,8 @@ export class ContextCompositionTracker {
   }
 
   getMetrics(): ContextCompositionMetrics {
-    const fillPercent = this.modelContextWindow > 0
-      ? (this.currentTotalTokens / this.modelContextWindow) * 100
-      : 0;
+    const fillPercent =
+      this.modelContextWindow > 0 ? (this.currentTotalTokens / this.modelContextWindow) * 100 : 0;
 
     return {
       currentFillPercent: Math.round(fillPercent * 100) / 100,
@@ -162,9 +161,8 @@ export class ContextCompositionTracker {
   }
 
   emitMetrics(aggregator: MetricAggregator): void {
-    const fillPercent = this.modelContextWindow > 0
-      ? (this.currentTotalTokens / this.modelContextWindow) * 100
-      : 0;
+    const fillPercent =
+      this.modelContextWindow > 0 ? (this.currentTotalTokens / this.modelContextWindow) * 100 : 0;
     aggregator.record('ai.context.fill_percent', fillPercent);
     aggregator.record('ai.context.total_tokens', this.currentTotalTokens);
 
@@ -212,9 +210,10 @@ export class ContextCompositionTracker {
         this.firedThresholds.add(threshold);
 
         const dominant = this.findDominantCategory() ?? 'other';
-        const dominantPercent = this.currentTotalTokens > 0
-          ? (this.currentBreakdown[dominant] / this.currentTotalTokens) * 100
-          : 0;
+        const dominantPercent =
+          this.currentTotalTokens > 0
+            ? (this.currentBreakdown[dominant] / this.currentTotalTokens) * 100
+            : 0;
 
         const alert: ContextThresholdAlert = {
           threshold,

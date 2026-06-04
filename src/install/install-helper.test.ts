@@ -21,7 +21,10 @@ import {
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = resolve(tmpdir(), `nr-install-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  tmpDir = resolve(
+    tmpdir(),
+    `nr-install-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   mkdirSync(tmpDir, { recursive: true });
 });
 
@@ -137,9 +140,13 @@ describe('mergeSettings', () => {
     const existingEntry = hooks.PreToolUse[0] as Record<string, unknown>;
     expect((existingEntry.hooks as Array<Record<string, string>>)[0].command).toBe('my-other-hook');
     const ourEntry = hooks.PreToolUse[1] as Record<string, unknown>;
-    expect((ourEntry.hooks as Array<Record<string, string>>)[0].command).toBe('nr-ai-observe pre-tool');
+    expect((ourEntry.hooks as Array<Record<string, string>>)[0].command).toBe(
+      'nr-ai-observe pre-tool',
+    );
     // Non-Pre/Post hook preserved
-    expect(hooks.StopToolUse).toEqual([{ matcher: 'Bash', hooks: [{ type: 'command', command: 'my-bash-guard' }] }]);
+    expect(hooks.StopToolUse).toEqual([
+      { matcher: 'Bash', hooks: [{ type: 'command', command: 'my-bash-guard' }] },
+    ]);
 
     expect(result.otherSetting).toBe(true);
   });
@@ -166,14 +173,18 @@ describe('removeSettings', () => {
           { matcher: '', hooks: [{ type: 'command', command: 'my-other-hook' }] },
           { matcher: '', hooks: [{ type: 'command', command: 'nr-ai-observe pre-tool' }] },
         ],
-        PostToolUse: [{ matcher: '', hooks: [{ type: 'command', command: 'nr-ai-observe post-tool' }] }],
+        PostToolUse: [
+          { matcher: '', hooks: [{ type: 'command', command: 'nr-ai-observe post-tool' }] },
+        ],
       },
     };
 
     const result = removeSettings(settings);
 
     const hooks = result.hooks as Record<string, unknown[]>;
-    expect(hooks.PreToolUse).toEqual([{ matcher: '', hooks: [{ type: 'command', command: 'my-other-hook' }] }]);
+    expect(hooks.PreToolUse).toEqual([
+      { matcher: '', hooks: [{ type: 'command', command: 'my-other-hook' }] },
+    ]);
     expect(hooks.PostToolUse).toBeUndefined();
   });
 
@@ -289,7 +300,10 @@ describe('integration: install/uninstall cycle', () => {
     writeFileSync(mcpPath, '{}');
 
     // Install hooks into settings.json
-    const existingSettings = JSON.parse(readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>;
+    const existingSettings = JSON.parse(readFileSync(settingsPath, 'utf-8')) as Record<
+      string,
+      unknown
+    >;
     writeFileSync(settingsPath, JSON.stringify(mergeSettings(existingSettings), null, 2));
 
     // Install MCP server into .mcp.json
@@ -308,7 +322,10 @@ describe('integration: install/uninstall cycle', () => {
     const mcp = JSON.parse(readFileSync(mcpPath, 'utf-8')) as Record<string, unknown>;
     expect(mcp.mcpServers).toBeDefined();
     const servers = mcp.mcpServers as Record<string, unknown>;
-    expect(servers['nr-ai-observability']).toEqual({ command: 'nr-ai-mcp-server', args: ['--stdio'] });
+    expect(servers['nr-ai-observability']).toEqual({
+      command: 'nr-ai-mcp-server',
+      args: ['--stdio'],
+    });
   });
 
   it('uninstall after install removes our entries but keeps others', () => {
@@ -335,9 +352,14 @@ describe('integration: install/uninstall cycle', () => {
     mcp = JSON.parse(readFileSync(mcpPath, 'utf-8')) as Record<string, unknown>;
     writeFileSync(mcpPath, JSON.stringify(removeMcpConfig(mcp), null, 2));
 
-    const readBackSettings = JSON.parse(readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>;
+    const readBackSettings = JSON.parse(readFileSync(settingsPath, 'utf-8')) as Record<
+      string,
+      unknown
+    >;
     const hooks = readBackSettings.hooks as Record<string, unknown[]>;
-    expect(hooks.PreToolUse).toEqual([{ matcher: '', hooks: [{ type: 'command', command: 'keep-me' }] }]);
+    expect(hooks.PreToolUse).toEqual([
+      { matcher: '', hooks: [{ type: 'command', command: 'keep-me' }] },
+    ]);
 
     const readBackMcp = JSON.parse(readFileSync(mcpPath, 'utf-8')) as Record<string, unknown>;
     const servers = readBackMcp.mcpServers as Record<string, unknown>;

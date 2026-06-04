@@ -91,7 +91,8 @@ function parseBash(input: Record<string, unknown>): ToolFields {
   }
   if (typeof input.description === 'string') fields.commandDescription = input.description;
   if (typeof input.timeout === 'number') fields.commandTimeout = input.timeout;
-  if (typeof input.run_in_background === 'boolean') fields.runInBackground = input.run_in_background;
+  if (typeof input.run_in_background === 'boolean')
+    fields.runInBackground = input.run_in_background;
   return fields;
 }
 
@@ -119,7 +120,8 @@ function parseAgent(input: Record<string, unknown>): ToolFields {
   } else if (typeof input.prompt === 'string') {
     fields.promptLength = input.prompt.length;
   }
-  if (typeof input.run_in_background === 'boolean') fields.runInBackground = input.run_in_background;
+  if (typeof input.run_in_background === 'boolean')
+    fields.runInBackground = input.run_in_background;
   return fields;
 }
 

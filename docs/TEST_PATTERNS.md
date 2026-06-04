@@ -12,17 +12,17 @@ A single flat `jest.config.ts` at the repo root governs every test. There are no
 
 Key settings:
 
-| Setting | Value | Why |
-|---------|-------|-----|
-| `preset` | `ts-jest/presets/default-esm` | ESM modules with TypeScript |
-| `testEnvironment` | `node` | No browser DOM needed |
-| `testMatch` | `['<rootDir>/src/**/*.test.ts', '<rootDir>/test/**/*.test.ts']` | Co-located unit tests + dedicated `test/` folder |
-| `moduleNameMapper` | `'^(\\.{1,2}/.*)\\.js$': '$1'` | Strips `.js` extensions in TS imports for ts-jest |
-| `extensionsToTreatAsEsm` | `['.ts']` | Tells Jest to treat `.ts` as ESM |
-| `testTimeout` | `15_000` | 15s default per test |
-| `maxWorkers` | `1` | Prevents deadlocks in stdio integration tests |
-| `forceExit` | `true` | Ensures Jest terminates after harvest schedulers / proxies are stopped |
-| `tsconfig` (transform) | `tsconfig.test.json` | Loose TS settings for test compilation |
+| Setting                  | Value                                                           | Why                                                                    |
+| ------------------------ | --------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `preset`                 | `ts-jest/presets/default-esm`                                   | ESM modules with TypeScript                                            |
+| `testEnvironment`        | `node`                                                          | No browser DOM needed                                                  |
+| `testMatch`              | `['<rootDir>/src/**/*.test.ts', '<rootDir>/test/**/*.test.ts']` | Co-located unit tests + dedicated `test/` folder                       |
+| `moduleNameMapper`       | `'^(\\.{1,2}/.*)\\.js$': '$1'`                                  | Strips `.js` extensions in TS imports for ts-jest                      |
+| `extensionsToTreatAsEsm` | `['.ts']`                                                       | Tells Jest to treat `.ts` as ESM                                       |
+| `testTimeout`            | `15_000`                                                        | 15s default per test                                                   |
+| `maxWorkers`             | `1`                                                             | Prevents deadlocks in stdio integration tests                          |
+| `forceExit`              | `true`                                                          | Ensures Jest terminates after harvest schedulers / proxies are stopped |
+| `tsconfig` (transform)   | `tsconfig.test.json`                                            | Loose TS settings for test compilation                                 |
 
 `src/shared/` is imported relatively (`from '../shared/index.js'`), so no special module resolution is required.
 
@@ -90,9 +90,9 @@ function makeRecord(overrides?: Partial<ToolCallRecord>): ToolCallRecord {
 Usage — only specify the fields relevant to what you're testing:
 
 ```typescript
-makeRecord({ toolName: 'Edit', filePath: '/a.ts' })
-makeRecord({ toolName: 'Bash', success: false, errorType: 'timeout' })
-makeRecord({ durationMs: 200 })
+makeRecord({ toolName: 'Edit', filePath: '/a.ts' });
+makeRecord({ toolName: 'Bash', success: false, errorType: 'timeout' });
+makeRecord({ durationMs: 200 });
 ```
 
 ### HookEvent factories
@@ -221,7 +221,7 @@ const calls: ToolCallRecord[] = [
 ];
 
 const result = detector.analyze(calls);
-const thrashing = result.patterns.filter(p => p.type === 'thrashing');
+const thrashing = result.patterns.filter((p) => p.type === 'thrashing');
 expect(thrashing).toHaveLength(1);
 ```
 
@@ -256,7 +256,10 @@ Tests that touch the filesystem create a unique temp directory per test and clea
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = resolve(tmpdir(), `nr-localstore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  tmpDir = resolve(
+    tmpdir(),
+    `nr-localstore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
 });
 
 afterEach(() => {
@@ -412,12 +415,12 @@ Write test names as complete sentences that describe the expected behavior:
 
 ### What we mock
 
-| What | How | Why |
-|------|-----|-----|
-| `process.stderr.write` | `jest.spyOn` | Suppress logger output; optionally assert on log content |
-| `globalThis.fetch` | `jest.fn` | Simulate HTTP responses without network |
-| `sendEventsFn` / `sendMetricsFn` | `jest.fn` injected via constructor | Control harvest send behavior |
-| `onRecord` callback | `jest.fn` | Capture emitted `ToolCallRecord` objects |
+| What                             | How                                | Why                                                      |
+| -------------------------------- | ---------------------------------- | -------------------------------------------------------- |
+| `process.stderr.write`           | `jest.spyOn`                       | Suppress logger output; optionally assert on log content |
+| `globalThis.fetch`               | `jest.fn`                          | Simulate HTTP responses without network                  |
+| `sendEventsFn` / `sendMetricsFn` | `jest.fn` injected via constructor | Control harvest send behavior                            |
+| `onRecord` callback              | `jest.fn`                          | Capture emitted `ToolCallRecord` objects                 |
 
 ### What we don't mock
 
@@ -433,19 +436,19 @@ The philosophy: mock at system boundaries (network, stdio), use real implementat
 
 These files demonstrate the patterns well and serve as templates for new tests:
 
-| File | Demonstrates |
-|------|-------------|
+| File                                           | Demonstrates                                                                      |
+| ---------------------------------------------- | --------------------------------------------------------------------------------- |
 | `src/shared/harvest/harvest-scheduler.test.ts` | Fake timers, mock send functions, retry/requeue, concurrent stop, atomic snapshot |
-| `src/metrics/session-tracker.test.ts` | Metric tracker pattern: record → getMetrics → assert |
-| `src/metrics/anti-patterns.test.ts` | Sequence-based detection: build record arrays, analyze, filter results |
-| `src/metrics/efficiency-score.test.ts` | Task factory, component scoring, boundary conditions |
-| `src/hooks/event-processor.test.ts` | Pre/post event pairing, temp directory, mock callback |
-| `src/storage/local-store.test.ts` | Filesystem tests with temp directory cleanup, edge cases |
-| `src/tools/session-stats.test.ts` | Tool handler pattern: real trackers → handler → JSON.parse |
-| `src/tools/cross-session-tools.test.ts` | Cross-session tools with SessionStore, temp directory, rich factories |
-| `src/shared/transport/http-client.test.ts` | fetch mocking, gzip verification, region detection, retry behavior |
-| `src/security/audit-trail.test.ts` | Security classification, regex pattern testing, false positive/negative coverage |
-| `src/transport/nr-ingest.test.ts` | Proxy event builders, session trace ID propagation, `makeProxyRecord` factory |
+| `src/metrics/session-tracker.test.ts`          | Metric tracker pattern: record → getMetrics → assert                              |
+| `src/metrics/anti-patterns.test.ts`            | Sequence-based detection: build record arrays, analyze, filter results            |
+| `src/metrics/efficiency-score.test.ts`         | Task factory, component scoring, boundary conditions                              |
+| `src/hooks/event-processor.test.ts`            | Pre/post event pairing, temp directory, mock callback                             |
+| `src/storage/local-store.test.ts`              | Filesystem tests with temp directory cleanup, edge cases                          |
+| `src/tools/session-stats.test.ts`              | Tool handler pattern: real trackers → handler → JSON.parse                        |
+| `src/tools/cross-session-tools.test.ts`        | Cross-session tools with SessionStore, temp directory, rich factories             |
+| `src/shared/transport/http-client.test.ts`     | fetch mocking, gzip verification, region detection, retry behavior                |
+| `src/security/audit-trail.test.ts`             | Security classification, regex pattern testing, false positive/negative coverage  |
+| `src/transport/nr-ingest.test.ts`              | Proxy event builders, session trace ID propagation, `makeProxyRecord` factory     |
 
 ---
 

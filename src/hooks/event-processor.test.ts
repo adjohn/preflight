@@ -132,12 +132,12 @@ describe('HookEventProcessor', () => {
       expect(records).toHaveLength(2);
 
       // Grep completes first (its post came first)
-      const grepRecord = records.find(r => r.toolName === 'Grep')!;
+      const grepRecord = records.find((r) => r.toolName === 'Grep')!;
       expect(grepRecord.toolUseId).toBe('toolu_grep');
       expect(grepRecord.durationMs).toBe(10);
 
       // Read completes second
-      const readRecord = records.find(r => r.toolName === 'Read')!;
+      const readRecord = records.find((r) => r.toolName === 'Read')!;
       expect(readRecord.toolUseId).toBe('toolu_read');
       expect(readRecord.durationMs).toBe(100);
     });
@@ -205,7 +205,7 @@ describe('HookEventProcessor', () => {
       processor.stop();
 
       // The old pre should be flushed as timeout
-      const timeoutRecord = records.find(r => r.toolUseId === 'toolu_old');
+      const timeoutRecord = records.find((r) => r.toolUseId === 'toolu_old');
       expect(timeoutRecord).toBeDefined();
       expect(timeoutRecord!.success).toBe(false);
       expect(timeoutRecord!.errorType).toBe('timeout');
@@ -219,26 +219,30 @@ describe('HookEventProcessor', () => {
 
       const events: HookEvent[] = [];
       for (let i = 0; i < 50; i++) {
-        events.push(makePreEvent({
-          tool: `tool-${i}`,
-          toolUseId: `toolu_${i}`,
-          timestamp: 1000 + i * 10,
-        }));
+        events.push(
+          makePreEvent({
+            tool: `tool-${i}`,
+            toolUseId: `toolu_${i}`,
+            timestamp: 1000 + i * 10,
+          }),
+        );
       }
       for (let i = 0; i < 50; i++) {
-        events.push(makePostEvent({
-          tool: `tool-${i}`,
-          toolUseId: `toolu_${i}`,
-          timestamp: 1000 + i * 10 + 5,
-          outputSize: i * 100,
-        }));
+        events.push(
+          makePostEvent({
+            tool: `tool-${i}`,
+            toolUseId: `toolu_${i}`,
+            timestamp: 1000 + i * 10 + 5,
+            outputSize: i * 100,
+          }),
+        );
       }
 
       processor.processEvents(events);
 
       expect(records).toHaveLength(50);
       for (let i = 0; i < 50; i++) {
-        const record = records.find(r => r.toolUseId === `toolu_${i}`)!;
+        const record = records.find((r) => r.toolUseId === `toolu_${i}`)!;
         expect(record).toBeDefined();
         expect(record.toolName).toBe(`tool-${i}`);
         expect(record.durationMs).toBe(5);
@@ -330,7 +334,7 @@ describe('HookEventProcessor', () => {
         expect(record.durationMs).toBeNull();
       }
 
-      const tools = records.map(r => r.toolName).sort();
+      const tools = records.map((r) => r.toolName).sort();
       expect(tools).toEqual(['Read', 'Write']);
     });
   });
@@ -342,7 +346,13 @@ describe('HookEventProcessor', () => {
       // Events without toolUseId — fallback pairing via oldest-pending-by-tool FIFO
       processor.processEvents([
         { mode: 'pre', tool: 'Read', timestamp: 5000, inputSize: 10 } as HookEvent,
-        { mode: 'post', tool: 'Read', timestamp: 5100, outputSize: 100, success: true } as HookEvent,
+        {
+          mode: 'post',
+          tool: 'Read',
+          timestamp: 5100,
+          outputSize: 100,
+          success: true,
+        } as HookEvent,
       ]);
 
       expect(records).toHaveLength(1);
@@ -358,8 +368,20 @@ describe('HookEventProcessor', () => {
       processor.processEvents([
         { mode: 'pre', tool: 'Read', timestamp: 5000, inputSize: 10 } as HookEvent,
         { mode: 'pre', tool: 'Read', timestamp: 5000, inputSize: 20 } as HookEvent,
-        { mode: 'post', tool: 'Read', timestamp: 5100, outputSize: 100, success: true } as HookEvent,
-        { mode: 'post', tool: 'Read', timestamp: 5200, outputSize: 200, success: true } as HookEvent,
+        {
+          mode: 'post',
+          tool: 'Read',
+          timestamp: 5100,
+          outputSize: 100,
+          success: true,
+        } as HookEvent,
+        {
+          mode: 'post',
+          tool: 'Read',
+          timestamp: 5200,
+          outputSize: 200,
+          success: true,
+        } as HookEvent,
       ]);
 
       // Both pre-events survive; each pairs with one post-event
@@ -409,9 +431,7 @@ describe('HookEventProcessor', () => {
       const processor = new HookEventProcessor({ store, onRecord, maxPendingEvents: 5 });
 
       for (let i = 0; i < 10; i++) {
-        processor.processEvents([
-          makePreEvent({ toolUseId: `toolu_${i}`, timestamp: 1000 + i }),
-        ]);
+        processor.processEvents([makePreEvent({ toolUseId: `toolu_${i}`, timestamp: 1000 + i })]);
       }
 
       expect(processor.pendingCount).toBe(5);
@@ -422,38 +442,35 @@ describe('HookEventProcessor', () => {
 
       // Fill to cap with toolUseIds 0, 1, 2
       for (let i = 0; i < 3; i++) {
-        processor.processEvents([
-          makePreEvent({ toolUseId: `toolu_${i}`, timestamp: 1000 + i }),
-        ]);
+        processor.processEvents([makePreEvent({ toolUseId: `toolu_${i}`, timestamp: 1000 + i })]);
       }
 
       // Adding a 4th evicts toolu_0 (the oldest)
-      processor.processEvents([
-        makePreEvent({ toolUseId: 'toolu_3', timestamp: 1003 }),
-      ]);
+      processor.processEvents([makePreEvent({ toolUseId: 'toolu_3', timestamp: 1003 })]);
 
       expect(processor.pendingCount).toBe(3);
 
       // toolu_0 was evicted, so its post produces an orphaned-post record
-      processor.processEvents([
-        makePostEvent({ toolUseId: 'toolu_0', timestamp: 2000 }),
-      ]);
+      processor.processEvents([makePostEvent({ toolUseId: 'toolu_0', timestamp: 2000 })]);
       expect(records).toHaveLength(1);
-      expect(records[0]!.durationMs).toBeNull();  // orphaned post — no matching pre
+      expect(records[0]!.durationMs).toBeNull(); // orphaned post — no matching pre
 
       // toolu_1 through toolu_3 still pair normally
       records.length = 0;
       for (let i = 1; i <= 3; i++) {
-        processor.processEvents([
-          makePostEvent({ toolUseId: `toolu_${i}`, timestamp: 2000 + i }),
-        ]);
+        processor.processEvents([makePostEvent({ toolUseId: `toolu_${i}`, timestamp: 2000 + i })]);
       }
       expect(records).toHaveLength(3);
       expect(records.every((r) => r.durationMs !== null)).toBe(true);
     });
 
     it('logs a warning when non-orphan eviction occurs', () => {
-      const processor = new HookEventProcessor({ store, onRecord, maxPendingEvents: 2, orphanTimeoutMs: 1000 });
+      const processor = new HookEventProcessor({
+        store,
+        onRecord,
+        maxPendingEvents: 2,
+        orphanTimeoutMs: 1000,
+      });
 
       const now = Date.now();
       processor.processEvents([makePreEvent({ toolUseId: 'a', timestamp: now })]);
@@ -470,17 +487,13 @@ describe('HookEventProcessor', () => {
 
       // Fill to just under the default cap
       for (let i = 0; i < 2000; i++) {
-        processor.processEvents([
-          makePreEvent({ toolUseId: `toolu_${i}`, timestamp: 1000 + i }),
-        ]);
+        processor.processEvents([makePreEvent({ toolUseId: `toolu_${i}`, timestamp: 1000 + i })]);
       }
 
       expect(processor.pendingCount).toBe(2000);
 
       // Adding one more should evict the oldest and keep it at 2000
-      processor.processEvents([
-        makePreEvent({ toolUseId: 'toolu_overflow', timestamp: 3001 }),
-      ]);
+      processor.processEvents([makePreEvent({ toolUseId: 'toolu_overflow', timestamp: 3001 })]);
       expect(processor.pendingCount).toBe(2000);
     }, 10_000);
   });
@@ -535,19 +548,15 @@ describe('HookEventProcessor', () => {
       const processor = new HookEventProcessor({ store, onRecord });
 
       // Post arrives first — no matching pre in pending
-      processor.processEvents([
-        makePostEvent({ toolUseId: 'toolu_early', timestamp: 1050 }),
-      ]);
+      processor.processEvents([makePostEvent({ toolUseId: 'toolu_early', timestamp: 1050 })]);
       expect(records).toHaveLength(1);
       expect(records[0]!.durationMs).toBeNull();
       expect(records[0]!.toolUseId).toBe('toolu_early');
       expect(records[0]!.id).toMatch(/^[0-9a-f-]{36}$/);
 
       // Pre arrives later — queued in pending, NOT retroactively matched to the already-emitted orphan
-      processor.processEvents([
-        makePreEvent({ toolUseId: 'toolu_early', timestamp: 1000 }),
-      ]);
-      expect(records).toHaveLength(1);    // no second record emitted
+      processor.processEvents([makePreEvent({ toolUseId: 'toolu_early', timestamp: 1000 })]);
+      expect(records).toHaveLength(1); // no second record emitted
       expect(processor.pendingCount).toBe(1);
     });
 
@@ -556,8 +565,20 @@ describe('HookEventProcessor', () => {
 
       // No pre events — both posts are orphaned via the UUID fallback key
       processor.processEvents([
-        { mode: 'post', tool: 'Bash', timestamp: 5000, outputSize: 100, success: true } as HookEvent,
-        { mode: 'post', tool: 'Bash', timestamp: 5000, outputSize: 200, success: true } as HookEvent,
+        {
+          mode: 'post',
+          tool: 'Bash',
+          timestamp: 5000,
+          outputSize: 100,
+          success: true,
+        } as HookEvent,
+        {
+          mode: 'post',
+          tool: 'Bash',
+          timestamp: 5000,
+          outputSize: 200,
+          success: true,
+        } as HookEvent,
       ]);
 
       expect(records).toHaveLength(2);
@@ -613,7 +634,9 @@ describe('HookEventProcessor', () => {
       const processor = new HookEventProcessor({
         store,
         onRecord,
-        onTokenEvent: (event) => { tokenEvents.push(event); },
+        onTokenEvent: (event) => {
+          tokenEvents.push(event);
+        },
       });
 
       const tokenEvent: HookEvent = {

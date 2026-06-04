@@ -9,7 +9,11 @@ const DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MiB
 const DEFAULT_BODY_TIMEOUT_MS = 30_000; // 30 s
 const DEFAULT_RATE_LIMIT_PER_MINUTE = 100;
 const RATE_LIMIT_WINDOW_MS = 60_000; // 60 seconds
-const ALLOWED_CONTENT_TYPES = new Set(['application/json', 'application/x-protobuf', 'application/octet-stream']);
+const ALLOWED_CONTENT_TYPES = new Set([
+  'application/json',
+  'application/x-protobuf',
+  'application/octet-stream',
+]);
 
 class BodyTooLargeError extends Error {}
 class RequestTimeoutError extends Error {}
@@ -58,8 +62,11 @@ export class OtlpReceiver {
   }
 
   stop(): Promise<void> {
-    return new Promise(resolve => {
-      if (!this.server) { resolve(); return; }
+    return new Promise((resolve) => {
+      if (!this.server) {
+        resolve();
+        return;
+      }
       this.server.close(() => resolve());
     });
   }
@@ -143,12 +150,17 @@ export class OtlpReceiver {
         res.end();
         return;
       }
-      if (err instanceof Error && (err.message.includes('Incomplete body') || err.message === 'Request aborted')) {
+      if (
+        err instanceof Error &&
+        (err.message.includes('Incomplete body') || err.message === 'Request aborted')
+      ) {
         res.writeHead(400);
         res.end();
         return;
       }
-      logger.error('OTLP receiver error', { message: err instanceof Error ? err.message : String(err) });
+      logger.error('OTLP receiver error', {
+        message: err instanceof Error ? err.message : String(err),
+      });
       res.writeHead(500);
       res.end();
     }
@@ -160,7 +172,8 @@ export class OtlpReceiver {
     const expectedBytes = contentLengthHeader ? Number(contentLengthHeader) : null;
 
     return new Promise((resolve, reject) => {
-      const contentEncoding = (req.headers['content-encoding'] as string | undefined)?.toLowerCase() ?? '';
+      const contentEncoding =
+        (req.headers['content-encoding'] as string | undefined)?.toLowerCase() ?? '';
 
       // Attach aborted listener early
       req.on('aborted', () => {
@@ -213,7 +226,11 @@ export class OtlpReceiver {
         if (expectedBytes !== null) {
           const receivedBytes = isCompressed ? compressedBytes : decompressedBytes;
           if (receivedBytes < expectedBytes) {
-            reject(new Error(`Incomplete body: expected ${expectedBytes} bytes, received ${receivedBytes} bytes`));
+            reject(
+              new Error(
+                `Incomplete body: expected ${expectedBytes} bytes, received ${receivedBytes} bytes`,
+              ),
+            );
             return;
           }
         }
@@ -256,7 +273,9 @@ export class OtlpReceiver {
 
     // Check if rate limit exceeded
     if (timestamps.length >= rateLimitPerMinute) {
-      throw new RateLimitExceededError(`Rate limit exceeded: ${rateLimitPerMinute} requests per minute`);
+      throw new RateLimitExceededError(
+        `Rate limit exceeded: ${rateLimitPerMinute} requests per minute`,
+      );
     }
 
     // Record this request
@@ -264,7 +283,9 @@ export class OtlpReceiver {
   }
 
   private checkContentType(req: IncomingMessage): void {
-    const contentType = (req.headers['content-type'] as string | undefined)?.split(';')[0]?.trim() ?? 'application/json';
+    const contentType =
+      (req.headers['content-type'] as string | undefined)?.split(';')[0]?.trim() ??
+      'application/json';
 
     if (!ALLOWED_CONTENT_TYPES.has(contentType)) {
       throw new UnsupportedContentTypeError(`Unsupported Content-Type: ${contentType}`);
@@ -292,7 +313,9 @@ export class OtlpReceiver {
     // OTLP JSON structure: { resourceSpans: [{ resource: { attributes: [...] }, ... }] }
     // Also handle resourceMetrics and resourceLogs for /v1/metrics and /v1/logs
     for (const key of ['resourceSpans', 'resourceMetrics', 'resourceLogs']) {
-      const resources = payload[key] as Array<{ resource?: { attributes?: unknown[] } }> | undefined;
+      const resources = payload[key] as
+        | Array<{ resource?: { attributes?: unknown[] } }>
+        | undefined;
       if (!Array.isArray(resources)) continue;
 
       for (const resource of resources) {

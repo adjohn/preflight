@@ -87,10 +87,12 @@ describe('ProxyMetricsTracker', () => {
   it('computes correct latency stats with known durations', () => {
     const durations = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
     for (const d of durations) {
-      tracker.recordProxyCall(makeToolCallRecord({
-        serverName: 'server-a',
-        durationMs: d,
-      }));
+      tracker.recordProxyCall(
+        makeToolCallRecord({
+          serverName: 'server-a',
+          durationMs: d,
+        }),
+      );
     }
 
     const stats = tracker.getMetrics().perServer['server-a']!.latencyMs;
@@ -107,17 +109,21 @@ describe('ProxyMetricsTracker', () => {
 
   it('computes error rate correctly', () => {
     for (let i = 0; i < 8; i++) {
-      tracker.recordProxyCall(makeToolCallRecord({
-        serverName: 'server-a',
-        success: true,
-      }));
+      tracker.recordProxyCall(
+        makeToolCallRecord({
+          serverName: 'server-a',
+          success: true,
+        }),
+      );
     }
     for (let i = 0; i < 2; i++) {
-      tracker.recordProxyCall(makeToolCallRecord({
-        serverName: 'server-a',
-        success: false,
-        errorType: 'timeout',
-      }));
+      tracker.recordProxyCall(
+        makeToolCallRecord({
+          serverName: 'server-a',
+          success: false,
+          errorType: 'timeout',
+        }),
+      );
     }
 
     const serverStats = tracker.getMetrics().perServer['server-a']!;
@@ -131,22 +137,28 @@ describe('ProxyMetricsTracker', () => {
 
   it('ranks tools across servers by count descending', () => {
     for (let i = 0; i < 5; i++) {
-      tracker.recordProxyCall(makeToolCallRecord({
-        toolName: 'grep_tool',
-        serverName: 'server-a',
-      }));
+      tracker.recordProxyCall(
+        makeToolCallRecord({
+          toolName: 'grep_tool',
+          serverName: 'server-a',
+        }),
+      );
     }
     for (let i = 0; i < 3; i++) {
-      tracker.recordProxyCall(makeToolCallRecord({
-        toolName: 'read_file',
-        serverName: 'server-a',
-      }));
+      tracker.recordProxyCall(
+        makeToolCallRecord({
+          toolName: 'read_file',
+          serverName: 'server-a',
+        }),
+      );
     }
     for (let i = 0; i < 7; i++) {
-      tracker.recordProxyCall(makeToolCallRecord({
-        toolName: 'search',
-        serverName: 'server-b',
-      }));
+      tracker.recordProxyCall(
+        makeToolCallRecord({
+          toolName: 'search',
+          serverName: 'server-b',
+        }),
+      );
     }
 
     const popularity = tracker.getMetrics().toolPopularity;
@@ -200,16 +212,20 @@ describe('ProxyMetricsTracker', () => {
   // -------------------------------------------------------------------------
 
   it('computes average request and response sizes', () => {
-    tracker.recordProxyCall(makeToolCallRecord({
-      serverName: 'server-a',
-      inputSizeBytes: 100,
-      outputSizeBytes: 500,
-    }));
-    tracker.recordProxyCall(makeToolCallRecord({
-      serverName: 'server-a',
-      inputSizeBytes: 200,
-      outputSizeBytes: 1500,
-    }));
+    tracker.recordProxyCall(
+      makeToolCallRecord({
+        serverName: 'server-a',
+        inputSizeBytes: 100,
+        outputSizeBytes: 500,
+      }),
+    );
+    tracker.recordProxyCall(
+      makeToolCallRecord({
+        serverName: 'server-a',
+        inputSizeBytes: 200,
+        outputSizeBytes: 1500,
+      }),
+    );
 
     const stats = tracker.getMetrics().perServer['server-a']!;
     expect(stats.avgRequestSizeBytes).toBe(150);
@@ -221,14 +237,18 @@ describe('ProxyMetricsTracker', () => {
   // -------------------------------------------------------------------------
 
   it('recordProxyRequest updates server stats but not tool popularity', () => {
-    tracker.recordProxyRequest(makeRequestRecord({
-      serverName: 'server-a',
-      durationMs: 30,
-    }));
-    tracker.recordProxyRequest(makeRequestRecord({
-      serverName: 'server-a',
-      durationMs: 50,
-    }));
+    tracker.recordProxyRequest(
+      makeRequestRecord({
+        serverName: 'server-a',
+        durationMs: 30,
+      }),
+    );
+    tracker.recordProxyRequest(
+      makeRequestRecord({
+        serverName: 'server-a',
+        durationMs: 50,
+      }),
+    );
 
     const metrics = tracker.getMetrics();
     expect(metrics.perServer['server-a']!.callCount).toBe(2);
@@ -239,10 +259,12 @@ describe('ProxyMetricsTracker', () => {
 
   it('recordProxyRequest tracks errors', () => {
     tracker.recordProxyRequest(makeRequestRecord({ success: true }));
-    tracker.recordProxyRequest(makeRequestRecord({
-      success: false,
-      error: 'connection_refused',
-    }));
+    tracker.recordProxyRequest(
+      makeRequestRecord({
+        success: false,
+        error: 'connection_refused',
+      }),
+    );
 
     const stats = tracker.getMetrics().perServer['test-server']!;
     expect(stats.errorRate).toBeCloseTo(0.5);
@@ -272,18 +294,22 @@ describe('ProxyMetricsTracker', () => {
 
   it('emits expected metric names via MetricAggregator', () => {
     // Record some data across two servers
-    tracker.recordProxyCall(makeToolCallRecord({
-      serverName: 'server-a',
-      toolName: 'tool_x',
-      durationMs: 100,
-      proxyOverheadMs: 5,
-    }));
-    tracker.recordProxyCall(makeToolCallRecord({
-      serverName: 'server-b',
-      toolName: 'tool_y',
-      durationMs: 200,
-      proxyOverheadMs: 15,
-    }));
+    tracker.recordProxyCall(
+      makeToolCallRecord({
+        serverName: 'server-a',
+        toolName: 'tool_x',
+        durationMs: 100,
+        proxyOverheadMs: 5,
+      }),
+    );
+    tracker.recordProxyCall(
+      makeToolCallRecord({
+        serverName: 'server-b',
+        toolName: 'tool_y',
+        durationMs: 200,
+        proxyOverheadMs: 15,
+      }),
+    );
 
     const aggregator = new MetricAggregator();
     tracker.emitMetrics(aggregator);
@@ -344,13 +370,15 @@ describe('ProxyMetricsTracker', () => {
 
   it('request size array for a server never exceeds 1000 entries', () => {
     for (let i = 0; i < 1002; i++) {
-      tracker.recordProxyCall(makeToolCallRecord({
-        serverName: 'server-req',
-        inputSizeBytes: i + 1,
-        durationMs: null as unknown as number,
-        proxyOverheadMs: null as unknown as number,
-        outputSizeBytes: null as unknown as number,
-      }));
+      tracker.recordProxyCall(
+        makeToolCallRecord({
+          serverName: 'server-req',
+          inputSizeBytes: i + 1,
+          durationMs: null as unknown as number,
+          proxyOverheadMs: null as unknown as number,
+          outputSizeBytes: null as unknown as number,
+        }),
+      );
     }
 
     const metrics = tracker.getMetrics();
@@ -361,12 +389,14 @@ describe('ProxyMetricsTracker', () => {
 
   it('proxyOverheadValues array never exceeds 1000 entries', () => {
     for (let i = 0; i < 1003; i++) {
-      tracker.recordProxyCall(makeToolCallRecord({
-        proxyOverheadMs: i + 1,
-        durationMs: null as unknown as number,
-        inputSizeBytes: null as unknown as number,
-        outputSizeBytes: null as unknown as number,
-      }));
+      tracker.recordProxyCall(
+        makeToolCallRecord({
+          proxyOverheadMs: i + 1,
+          durationMs: null as unknown as number,
+          inputSizeBytes: null as unknown as number,
+          outputSizeBytes: null as unknown as number,
+        }),
+      );
     }
 
     const metrics = tracker.getMetrics();
@@ -377,12 +407,14 @@ describe('ProxyMetricsTracker', () => {
 
   it('response size cap applies via recordProxyRequest too', () => {
     for (let i = 0; i < 1002; i++) {
-      tracker.recordProxyRequest(makeRequestRecord({
-        serverName: 'server-resp',
-        responseSizeBytes: i + 1,
-        durationMs: null as unknown as number,
-        proxyOverheadMs: null as unknown as number,
-      }));
+      tracker.recordProxyRequest(
+        makeRequestRecord({
+          serverName: 'server-resp',
+          responseSizeBytes: i + 1,
+          durationMs: null as unknown as number,
+          proxyOverheadMs: null as unknown as number,
+        }),
+      );
     }
 
     const metrics = tracker.getMetrics();

@@ -63,10 +63,7 @@ describe('OsNotifier — darwin', () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]!.cmd).toBe('osascript');
-    expect(calls[0]!.args).toEqual([
-      '-e',
-      'display notification "World" with title "Hello"',
-    ]);
+    expect(calls[0]!.args).toEqual(['-e', 'display notification "World" with title "Hello"']);
   });
 
   it('strips double-quotes, backslashes, single-quotes, and backticks from inputs', async () => {
@@ -106,9 +103,7 @@ describe('OsNotifier — darwin', () => {
       exec,
       logger: log,
     });
-    await expect(
-      notifier.notify({ title: 'a', body: 'b' }),
-    ).resolves.toBeUndefined();
+    await expect(notifier.notify({ title: 'a', body: 'b' })).resolves.toBeUndefined();
     expect(log.warn).toHaveBeenCalled();
     expect(log.entries[0]?.msg).toMatch(/unexpected error/i);
   });
@@ -145,9 +140,7 @@ describe('OsNotifier — linux', () => {
     const { exec } = mockFailure(enoent);
     const log = makeLogger();
     const notifier = new OsNotifier({ platform: 'linux', exec, logger: log });
-    await expect(
-      notifier.notify({ title: 'a', body: 'b' }),
-    ).resolves.toBeUndefined();
+    await expect(notifier.notify({ title: 'a', body: 'b' })).resolves.toBeUndefined();
     expect(log.warn).toHaveBeenCalled();
   });
 
@@ -158,9 +151,9 @@ describe('OsNotifier — linux', () => {
     const log = makeLogger();
     const notifier = new OsNotifier({ platform: 'linux', exec, logger: log });
     await notifier.notify({ title: 'a', body: 'b' });
-    const calls = (log.warn as jest.Mock).mock.calls.flat().map((arg: unknown) =>
-      typeof arg === 'string' ? arg : JSON.stringify(arg ?? ''),
-    );
+    const calls = (log.warn as jest.Mock).mock.calls
+      .flat()
+      .map((arg: unknown) => (typeof arg === 'string' ? arg : JSON.stringify(arg ?? '')));
     const combined = calls.join(' ');
     expect(combined).toMatch(/notify-send not installed/);
     expect(combined).not.toMatch(/unexpected error/);
@@ -173,9 +166,9 @@ describe('OsNotifier — linux', () => {
     const log = makeLogger();
     const notifier = new OsNotifier({ platform: 'linux', exec, logger: log });
     await notifier.notify({ title: 'a', body: 'b' });
-    const calls = (log.warn as jest.Mock).mock.calls.flat().map((arg: unknown) =>
-      typeof arg === 'string' ? arg : JSON.stringify(arg ?? ''),
-    );
+    const calls = (log.warn as jest.Mock).mock.calls
+      .flat()
+      .map((arg: unknown) => (typeof arg === 'string' ? arg : JSON.stringify(arg ?? '')));
     const combined = calls.join(' ');
     expect(combined).toMatch(/notify-send failed/);
     expect(combined).not.toMatch(/not installed/);
@@ -219,9 +212,7 @@ describe('OsNotifier — win32', () => {
     expect(calls[1]!.args[2]).toContain('NotifyIcon');
     expect(calls[1]!.args[2]).toContain('BalloonTipTitle');
     // Warning logged about BurntToast being unavailable.
-    expect(
-      log.entries.some((e) => /BurntToast/i.test(e.msg)),
-    ).toBe(true);
+    expect(log.entries.some((e) => /BurntToast/i.test(e.msg))).toBe(true);
   });
 
   it('logs and returns when BOTH BurntToast and balloon-tip fail', async () => {
@@ -231,13 +222,9 @@ describe('OsNotifier — win32', () => {
     };
     const log = makeLogger();
     const notifier = new OsNotifier({ platform: 'win32', exec, logger: log });
-    await expect(
-      notifier.notify({ title: 'T', body: 'B' }),
-    ).resolves.toBeUndefined();
+    await expect(notifier.notify({ title: 'T', body: 'B' })).resolves.toBeUndefined();
     expect(log.warn).toHaveBeenCalled();
-    expect(
-      log.entries.some((e) => /balloon-tip/i.test(e.msg)),
-    ).toBe(true);
+    expect(log.entries.some((e) => /balloon-tip/i.test(e.msg))).toBe(true);
   });
 
   it('strips single-quotes and backticks before interpolating into PowerShell literals', async () => {
@@ -295,9 +282,7 @@ describe('OsNotifier — fallbacks', () => {
       exec,
       logger: log,
     });
-    await expect(
-      notifier.notify({ title: 'a', body: 'b' }),
-    ).resolves.toBeUndefined();
+    await expect(notifier.notify({ title: 'a', body: 'b' })).resolves.toBeUndefined();
     expect(log.warn).toHaveBeenCalled();
   });
 

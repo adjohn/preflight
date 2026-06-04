@@ -1,5 +1,9 @@
 import { ContextCompositionTracker } from './context-composition-tracker.js';
-import type { TurnTokenReport, ContextThresholdAlert, CategoryDominanceAlert } from './context-composition-tracker.js';
+import type {
+  TurnTokenReport,
+  ContextThresholdAlert,
+  CategoryDominanceAlert,
+} from './context-composition-tracker.js';
 
 const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
 afterEach(() => stderrSpy.mockClear());
@@ -35,7 +39,16 @@ describe('ContextCompositionTracker', () => {
       onThresholdAlert: (a) => alerts.push(a),
     });
 
-    tracker.recordTurn(makeReport({ totalTokens: 5000, toolResultTokens: 4000, systemPromptTokens: 500, conversationHistoryTokens: 300, injectedFileContentTokens: 100, otherTokens: 100 }));
+    tracker.recordTurn(
+      makeReport({
+        totalTokens: 5000,
+        toolResultTokens: 4000,
+        systemPromptTokens: 500,
+        conversationHistoryTokens: 300,
+        injectedFileContentTokens: 100,
+        otherTokens: 100,
+      }),
+    );
 
     expect(alerts).toHaveLength(1);
     expect(alerts[0].threshold).toBe(50);
@@ -49,9 +62,36 @@ describe('ContextCompositionTracker', () => {
       onThresholdAlert: (a) => alerts.push(a),
     });
 
-    tracker.recordTurn(makeReport({ totalTokens: 5000, toolResultTokens: 5000, systemPromptTokens: 0, conversationHistoryTokens: 0, injectedFileContentTokens: 0, otherTokens: 0 }));
-    tracker.recordTurn(makeReport({ totalTokens: 7500, toolResultTokens: 7500, systemPromptTokens: 0, conversationHistoryTokens: 0, injectedFileContentTokens: 0, otherTokens: 0 }));
-    tracker.recordTurn(makeReport({ totalTokens: 9500, toolResultTokens: 9500, systemPromptTokens: 0, conversationHistoryTokens: 0, injectedFileContentTokens: 0, otherTokens: 0 }));
+    tracker.recordTurn(
+      makeReport({
+        totalTokens: 5000,
+        toolResultTokens: 5000,
+        systemPromptTokens: 0,
+        conversationHistoryTokens: 0,
+        injectedFileContentTokens: 0,
+        otherTokens: 0,
+      }),
+    );
+    tracker.recordTurn(
+      makeReport({
+        totalTokens: 7500,
+        toolResultTokens: 7500,
+        systemPromptTokens: 0,
+        conversationHistoryTokens: 0,
+        injectedFileContentTokens: 0,
+        otherTokens: 0,
+      }),
+    );
+    tracker.recordTurn(
+      makeReport({
+        totalTokens: 9500,
+        toolResultTokens: 9500,
+        systemPromptTokens: 0,
+        conversationHistoryTokens: 0,
+        injectedFileContentTokens: 0,
+        otherTokens: 0,
+      }),
+    );
 
     expect(alerts).toHaveLength(3);
     expect(alerts[0].threshold).toBe(50);
@@ -66,8 +106,26 @@ describe('ContextCompositionTracker', () => {
       onThresholdAlert: (a) => alerts.push(a),
     });
 
-    tracker.recordTurn(makeReport({ totalTokens: 6000, toolResultTokens: 6000, systemPromptTokens: 0, conversationHistoryTokens: 0, injectedFileContentTokens: 0, otherTokens: 0 }));
-    tracker.recordTurn(makeReport({ totalTokens: 6500, toolResultTokens: 6500, systemPromptTokens: 0, conversationHistoryTokens: 0, injectedFileContentTokens: 0, otherTokens: 0 }));
+    tracker.recordTurn(
+      makeReport({
+        totalTokens: 6000,
+        toolResultTokens: 6000,
+        systemPromptTokens: 0,
+        conversationHistoryTokens: 0,
+        injectedFileContentTokens: 0,
+        otherTokens: 0,
+      }),
+    );
+    tracker.recordTurn(
+      makeReport({
+        totalTokens: 6500,
+        toolResultTokens: 6500,
+        systemPromptTokens: 0,
+        conversationHistoryTokens: 0,
+        injectedFileContentTokens: 0,
+        otherTokens: 0,
+      }),
+    );
 
     expect(alerts).toHaveLength(1);
   });
@@ -79,14 +137,16 @@ describe('ContextCompositionTracker', () => {
       onDominanceAlert: (a) => alerts.push(a),
     });
 
-    tracker.recordTurn(makeReport({
-      totalTokens: 10_000,
-      toolResultTokens: 7000,
-      systemPromptTokens: 1000,
-      conversationHistoryTokens: 1000,
-      injectedFileContentTokens: 500,
-      otherTokens: 500,
-    }));
+    tracker.recordTurn(
+      makeReport({
+        totalTokens: 10_000,
+        toolResultTokens: 7000,
+        systemPromptTokens: 1000,
+        conversationHistoryTokens: 1000,
+        injectedFileContentTokens: 500,
+        otherTokens: 500,
+      }),
+    );
 
     expect(alerts).toHaveLength(1);
     expect(alerts[0].category).toBe('tool_results');
@@ -100,14 +160,16 @@ describe('ContextCompositionTracker', () => {
       onDominanceAlert: (a) => alerts.push(a),
     });
 
-    tracker.recordTurn(makeReport({
-      totalTokens: 10_000,
-      toolResultTokens: 3000,
-      systemPromptTokens: 2500,
-      conversationHistoryTokens: 2500,
-      injectedFileContentTokens: 1000,
-      otherTokens: 1000,
-    }));
+    tracker.recordTurn(
+      makeReport({
+        totalTokens: 10_000,
+        toolResultTokens: 3000,
+        systemPromptTokens: 2500,
+        conversationHistoryTokens: 2500,
+        injectedFileContentTokens: 1000,
+        otherTokens: 1000,
+      }),
+    );
 
     expect(alerts).toHaveLength(0);
   });
@@ -129,7 +191,16 @@ describe('ContextCompositionTracker', () => {
 
   it('reset clears all state', () => {
     const tracker = new ContextCompositionTracker({ modelContextWindow: 10_000 });
-    tracker.recordTurn(makeReport({ totalTokens: 6000, toolResultTokens: 6000, systemPromptTokens: 0, conversationHistoryTokens: 0, injectedFileContentTokens: 0, otherTokens: 0 }));
+    tracker.recordTurn(
+      makeReport({
+        totalTokens: 6000,
+        toolResultTokens: 6000,
+        systemPromptTokens: 0,
+        conversationHistoryTokens: 0,
+        injectedFileContentTokens: 0,
+        otherTokens: 0,
+      }),
+    );
 
     tracker.reset('new-session');
     const metrics = tracker.getMetrics();
@@ -156,7 +227,9 @@ describe('ContextCompositionTracker', () => {
     tracker.emitMetrics(aggregator as never);
     expect(aggregator.record).toHaveBeenCalledWith('ai.context.fill_percent', expect.any(Number));
     expect(aggregator.record).toHaveBeenCalledWith('ai.context.total_tokens', 4000);
-    expect(aggregator.record).toHaveBeenCalledWith('ai.context.category_tokens', 1000, { category: 'system_prompt' });
+    expect(aggregator.record).toHaveBeenCalledWith('ai.context.category_tokens', 1000, {
+      category: 'system_prompt',
+    });
   });
 
   it('emitMetrics handles zero modelContextWindow without NaN', () => {

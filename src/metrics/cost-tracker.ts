@@ -120,13 +120,9 @@ export class CostTracker {
       costByTask: null,
       costByModel: Object.fromEntries(this.costByModel),
       costPerLineOfCode:
-        hasData && this.totalLinesChanged > 0
-          ? this.totalCostUsd / this.totalLinesChanged
-          : null,
+        hasData && this.totalLinesChanged > 0 ? this.totalCostUsd / this.totalLinesChanged : null,
       costPerFileModified:
-        hasData && uniqueFilesWritten > 0
-          ? this.totalCostUsd / uniqueFilesWritten
-          : null,
+        hasData && uniqueFilesWritten > 0 ? this.totalCostUsd / uniqueFilesWritten : null,
       model: this.currentModel,
       totalInputTokens: this.totalInputTokens,
       totalOutputTokens: this.totalOutputTokens,

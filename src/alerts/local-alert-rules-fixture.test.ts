@@ -31,16 +31,18 @@ describe('examples/local-alert-rules.json', () => {
     const json = JSON.parse(raw) as unknown;
     const result = parseLocalAlertRules(json);
     const ids = new Set(result.valid.map((r) => r.id));
-    expect(ids).toEqual(new Set([
-      'session-cost-spike',
-      'low-efficiency-score',
-      'stuck-loop-rate',
-      'anti-pattern-rate',
-      'session-cost-budget',
-      'bash-latency-degradation',
-      'daily-budget-warn',
-      'weekly-budget-warn',
-    ]));
+    expect(ids).toEqual(
+      new Set([
+        'session-cost-spike',
+        'low-efficiency-score',
+        'stuck-loop-rate',
+        'anti-pattern-rate',
+        'session-cost-budget',
+        'bash-latency-degradation',
+        'daily-budget-warn',
+        'weekly-budget-warn',
+      ]),
+    );
   });
 
   it('the stuck-loop rule opts into the os channel (it is the only one)', () => {

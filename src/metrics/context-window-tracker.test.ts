@@ -90,6 +90,6 @@ describe('ContextWindowTracker', () => {
     expect(top[1]).toEqual({ file: '/file-b.ts', readCount: 3 });
     expect(top[2]).toEqual({ file: '/file-c.ts', readCount: 2 });
     // file-d has no repeats so it must not appear
-    expect(top.find(e => e.file === '/file-d.ts')).toBeUndefined();
+    expect(top.find((e) => e.file === '/file-d.ts')).toBeUndefined();
   });
 });

@@ -103,10 +103,12 @@ describe('Cross-session tool handlers', () => {
 
   it('handleGetSessionHistory returns paginated session summaries', () => {
     for (let i = 0; i < 5; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `sess-${i}`,
-        startTime: Date.now() - (5 - i) * 86_400_000,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `sess-${i}`,
+          startTime: Date.now() - (5 - i) * 86_400_000,
+        }),
+      );
     }
 
     const result = handleGetSessionHistory(store, { limit: 3 });
@@ -132,11 +134,13 @@ describe('Cross-session tool handlers', () => {
   // -------------------------------------------------------------------------
 
   it('handleGetWeeklySummary with "latest" returns current week data', () => {
-    store.saveSession(makeSummary({
-      sessionId: 'this-week',
-      startTime: Date.now() - 86_400_000,
-      estimatedCostUsd: 2.5,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'this-week',
+        startTime: Date.now() - 86_400_000,
+        estimatedCostUsd: 2.5,
+      }),
+    );
 
     const generator = new WeeklySummaryGenerator({
       storagePath: tmpDir,
@@ -187,16 +191,20 @@ describe('Cross-session tool handlers', () => {
   it('handleGetTrends returns weekly efficiency data points', () => {
     // Create sessions across 2 weeks
     const now = Date.now();
-    store.saveSession(makeSummary({
-      sessionId: 'week-1',
-      startTime: now - 10 * 86_400_000,
-      efficiencyScore: 0.6,
-    }));
-    store.saveSession(makeSummary({
-      sessionId: 'week-2',
-      startTime: now - 3 * 86_400_000,
-      efficiencyScore: 0.8,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'week-1',
+        startTime: now - 10 * 86_400_000,
+        efficiencyScore: 0.6,
+      }),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 'week-2',
+        startTime: now - 3 * 86_400_000,
+        efficiencyScore: 0.8,
+      }),
+    );
 
     const trendAnalyzer = new TrendAnalyzer({ sessionStore: store });
 
@@ -215,14 +223,16 @@ describe('Cross-session tool handlers', () => {
   // -------------------------------------------------------------------------
 
   it('handleGetCollaborationProfile returns dimension scores and classification', () => {
-    store.saveSession(makeSummary({
-      sessionId: 's1',
-      userMessages: 10,
-      userCorrections: 1,
-      toolCallCount: 20,
-      taskCount: 2,
-      agentSpawns: 1,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 's1',
+        userMessages: 10,
+        userCorrections: 1,
+        toolCallCount: 20,
+        taskCount: 2,
+        agentSpawns: 1,
+      }),
+    );
 
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
@@ -246,25 +256,31 @@ describe('Cross-session tool handlers', () => {
     const tracker = new ClaudeMdTracker({ sessionStore: store });
     const changeTimestamp = Date.now();
 
-    tracker.detectChange(makeToolCall({
-      toolName: 'Write',
-      filePath: '/project/CLAUDE.md',
-      lineCount: 30,
-      timestamp: changeTimestamp,
-    } as Partial<ToolCallRecord>));
+    tracker.detectChange(
+      makeToolCall({
+        toolName: 'Write',
+        filePath: '/project/CLAUDE.md',
+        lineCount: 30,
+        timestamp: changeTimestamp,
+      } as Partial<ToolCallRecord>),
+    );
 
-    store.saveSession(makeSummary({
-      sessionId: 'before-1',
-      startTime: changeTimestamp - 86_400_000,
-      efficiencyScore: 0.6,
-      estimatedCostUsd: 4,
-    }));
-    store.saveSession(makeSummary({
-      sessionId: 'after-1',
-      startTime: changeTimestamp + 86_400_000,
-      efficiencyScore: 0.8,
-      estimatedCostUsd: 3,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'before-1',
+        startTime: changeTimestamp - 86_400_000,
+        efficiencyScore: 0.6,
+        estimatedCostUsd: 4,
+      }),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 'after-1',
+        startTime: changeTimestamp + 86_400_000,
+        efficiencyScore: 0.8,
+        estimatedCostUsd: 3,
+      }),
+    );
 
     const result = handleGetClaudeMdImpact(tracker);
     const parsed = JSON.parse(result.content[0]!.text);
@@ -286,16 +302,20 @@ describe('Cross-session tool handlers', () => {
     const taskDetector = new TaskDetector();
 
     // Record tool calls to create a completed task
-    taskDetector.recordToolCall(makeToolCall({
-      toolName: 'Write',
-      filePath: '/src/new.ts',
-      timestamp: Date.now() - 5000,
-    } as Partial<ToolCallRecord>));
+    taskDetector.recordToolCall(
+      makeToolCall({
+        toolName: 'Write',
+        filePath: '/src/new.ts',
+        timestamp: Date.now() - 5000,
+      } as Partial<ToolCallRecord>),
+    );
     // Force task completion with a large gap
-    taskDetector.recordToolCall(makeToolCall({
-      toolName: 'Read',
-      timestamp: Date.now() + 60_000,
-    }));
+    taskDetector.recordToolCall(
+      makeToolCall({
+        toolName: 'Read',
+        timestamp: Date.now() + 60_000,
+      }),
+    );
 
     const result = handleGetCostPerOutcome(analyzer, taskDetector, {});
     const parsed = JSON.parse(result.content[0]!.text);
@@ -313,22 +333,28 @@ describe('Cross-session tool handlers', () => {
 
     const now = Date.now();
     // Create an old completed task
-    taskDetector.recordToolCall(makeToolCall({
-      toolName: 'Write',
-      filePath: '/src/old.ts',
-      timestamp: now - 100_000,
-    } as Partial<ToolCallRecord>));
+    taskDetector.recordToolCall(
+      makeToolCall({
+        toolName: 'Write',
+        filePath: '/src/old.ts',
+        timestamp: now - 100_000,
+      } as Partial<ToolCallRecord>),
+    );
     // Close old task via AskUserQuestion boundary signal
-    taskDetector.recordToolCall(makeToolCall({
-      toolName: 'AskUserQuestion',
-      timestamp: now - 50_000,
-    }));
+    taskDetector.recordToolCall(
+      makeToolCall({
+        toolName: 'AskUserQuestion',
+        timestamp: now - 50_000,
+      }),
+    );
     // Create a recent task (active, not completed)
-    taskDetector.recordToolCall(makeToolCall({
-      toolName: 'Edit',
-      filePath: '/src/new.ts',
-      timestamp: now - 5_000,
-    } as Partial<ToolCallRecord>));
+    taskDetector.recordToolCall(
+      makeToolCall({
+        toolName: 'Edit',
+        filePath: '/src/new.ts',
+        timestamp: now - 5_000,
+      } as Partial<ToolCallRecord>),
+    );
 
     // Filter to only include tasks starting after 60s ago
     const sinceDate = new Date(now - 10_000).toISOString();
@@ -343,11 +369,13 @@ describe('Cross-session tool handlers', () => {
     const taskDetector = new TaskDetector();
 
     // Only an active task (no completed)
-    taskDetector.recordToolCall(makeToolCall({
-      toolName: 'Edit',
-      filePath: '/src/active.ts',
-      timestamp: Date.now(),
-    } as Partial<ToolCallRecord>));
+    taskDetector.recordToolCall(
+      makeToolCall({
+        toolName: 'Edit',
+        filePath: '/src/active.ts',
+        timestamp: Date.now(),
+      } as Partial<ToolCallRecord>),
+    );
 
     expect(taskDetector.getCompletedTasks()).toHaveLength(0);
     expect(taskDetector.getCurrentTask()).not.toBeNull();
@@ -362,15 +390,19 @@ describe('Cross-session tool handlers', () => {
     const analyzer = new CostPerOutcomeAnalyzer();
     const taskDetector = new TaskDetector();
 
-    taskDetector.recordToolCall(makeToolCall({
-      toolName: 'Write',
-      filePath: '/src/file.ts',
-      timestamp: Date.now() - 5000,
-    } as Partial<ToolCallRecord>));
-    taskDetector.recordToolCall(makeToolCall({
-      toolName: 'Read',
-      timestamp: Date.now() + 60_000,
-    }));
+    taskDetector.recordToolCall(
+      makeToolCall({
+        toolName: 'Write',
+        filePath: '/src/file.ts',
+        timestamp: Date.now() - 5000,
+      } as Partial<ToolCallRecord>),
+    );
+    taskDetector.recordToolCall(
+      makeToolCall({
+        toolName: 'Read',
+        timestamp: Date.now() + 60_000,
+      }),
+    );
 
     // Invalid date string — should not crash, returns all tasks
     const result = handleGetCostPerOutcome(analyzer, taskDetector, { since: 'not-a-date' });
@@ -385,11 +417,13 @@ describe('Cross-session tool handlers', () => {
 
   it('handleGetRecommendations returns prioritized list with evidence', () => {
     // High correction rate → generates recommendations
-    store.saveSession(makeSummary({
-      sessionId: 's1',
-      userMessages: 20,
-      userCorrections: 8,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 's1',
+        userMessages: 20,
+        userCorrections: 8,
+      }),
+    );
 
     const trendAnalyzer = new TrendAnalyzer({ sessionStore: store });
     const collaborationProfiler = new CollaborationProfiler({ sessionStore: store });
@@ -430,16 +464,20 @@ describe('Cross-session tool handlers', () => {
   // -------------------------------------------------------------------------
 
   it('handleGetPlatformComparison returns per-platform efficiency data', () => {
-    store.saveSession(makeSummary({
-      sessionId: 'cc-1',
-      efficiencyScore: 0.8,
-      platform: 'claude-code',
-    } as Partial<FullSessionSummary>));
-    store.saveSession(makeSummary({
-      sessionId: 'cur-1',
-      efficiencyScore: 0.6,
-      platform: 'cursor',
-    } as Partial<FullSessionSummary>));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'cc-1',
+        efficiencyScore: 0.8,
+        platform: 'claude-code',
+      } as Partial<FullSessionSummary>),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 'cur-1',
+        efficiencyScore: 0.6,
+        platform: 'cursor',
+      } as Partial<FullSessionSummary>),
+    );
 
     const result = handleGetPlatformComparison(store, { metric: 'efficiency' });
     const parsed = JSON.parse(result.content[0]!.text);
@@ -457,16 +495,20 @@ describe('Cross-session tool handlers', () => {
   // -------------------------------------------------------------------------
 
   it('handleGetPlatformComparison returns per-platform cost data', () => {
-    store.saveSession(makeSummary({
-      sessionId: 'cc-cost',
-      estimatedCostUsd: 1.50,
-      platform: 'claude-code',
-    } as Partial<FullSessionSummary>));
-    store.saveSession(makeSummary({
-      sessionId: 'ws-cost',
-      estimatedCostUsd: 0.75,
-      platform: 'windsurf',
-    } as Partial<FullSessionSummary>));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'cc-cost',
+        estimatedCostUsd: 1.5,
+        platform: 'claude-code',
+      } as Partial<FullSessionSummary>),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 'ws-cost',
+        estimatedCostUsd: 0.75,
+        platform: 'windsurf',
+      } as Partial<FullSessionSummary>),
+    );
 
     const result = handleGetPlatformComparison(store, { metric: 'cost' });
     const parsed = JSON.parse(result.content[0]!.text);
@@ -481,10 +523,12 @@ describe('Cross-session tool handlers', () => {
   // -------------------------------------------------------------------------
 
   it('handleGetPlatformComparison defaults sessions without platform to claude-code', () => {
-    store.saveSession(makeSummary({
-      sessionId: 'no-platform',
-      efficiencyScore: 0.7,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'no-platform',
+        efficiencyScore: 0.7,
+      }),
+    );
 
     const result = handleGetPlatformComparison(store, {});
     const parsed = JSON.parse(result.content[0]!.text);
@@ -499,19 +543,23 @@ describe('Cross-session tool handlers', () => {
 
   it('handleGetPlatformComparison error_rate uses weighted formula across sessions', () => {
     // Session A: 1 call, 100% tool failure rate → contributes 1 failed call
-    store.saveSession(makeSummary({
-      sessionId: 'er-a',
-      toolCallCount: 1,
-      toolSuccessRate: 0,
-      platform: 'claude-code',
-    } as Partial<FullSessionSummary>));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'er-a',
+        toolCallCount: 1,
+        toolSuccessRate: 0,
+        platform: 'claude-code',
+      } as Partial<FullSessionSummary>),
+    );
     // Session B: 100 calls, 10% tool failure rate → contributes 10 failed calls
-    store.saveSession(makeSummary({
-      sessionId: 'er-b',
-      toolCallCount: 100,
-      toolSuccessRate: 0.9,
-      platform: 'claude-code',
-    } as Partial<FullSessionSummary>));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'er-b',
+        toolCallCount: 100,
+        toolSuccessRate: 0.9,
+        platform: 'claude-code',
+      } as Partial<FullSessionSummary>),
+    );
 
     const result = handleGetPlatformComparison(store, { metric: 'error_rate' });
     const parsed = JSON.parse(result.content[0]!.text);
@@ -524,12 +572,14 @@ describe('Cross-session tool handlers', () => {
   });
 
   it('handleGetPlatformComparison error_rate returns 0 when platform has no tool calls', () => {
-    store.saveSession(makeSummary({
-      sessionId: 'er-zero',
-      toolCallCount: 0,
-      toolSuccessRate: 0,
-      platform: 'cursor',
-    } as Partial<FullSessionSummary>));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'er-zero',
+        toolCallCount: 0,
+        toolSuccessRate: 0,
+        platform: 'cursor',
+      } as Partial<FullSessionSummary>),
+    );
 
     const result = handleGetPlatformComparison(store, { metric: 'error_rate' });
     const parsed = JSON.parse(result.content[0]!.text);
@@ -543,13 +593,15 @@ describe('Cross-session tool handlers', () => {
 
   it('handleGetPlatformComparison error_rate reflects tool failures, not test pass rate', () => {
     // Platform with 0 test runs but 50% tool failure — old code showed 0% error rate
-    store.saveSession(makeSummary({
-      sessionId: 'no-tests',
-      toolCallCount: 10,
-      toolSuccessRate: 0.5,   // 50% tool success → 50% error rate
-      taskSuccessRate: null,  // no test runs
-      platform: 'windsurf',
-    } as Partial<FullSessionSummary>));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'no-tests',
+        toolCallCount: 10,
+        toolSuccessRate: 0.5, // 50% tool success → 50% error rate
+        taskSuccessRate: null, // no test runs
+        platform: 'windsurf',
+      } as Partial<FullSessionSummary>),
+    );
 
     const result = handleGetPlatformComparison(store, { metric: 'error_rate' });
     const parsed = JSON.parse(result.content[0]!.text);

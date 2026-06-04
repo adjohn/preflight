@@ -2,14 +2,26 @@ import { jest } from '@jest/globals';
 import { createApiHandler } from './api-handler.js';
 import { IncomingMessage, ServerResponse } from 'node:http';
 
-function fakeRes(): { res: ServerResponse; status: () => number; body: () => string; headers: () => Record<string, string> } {
+function fakeRes(): {
+  res: ServerResponse;
+  status: () => number;
+  body: () => string;
+  headers: () => Record<string, string>;
+} {
   let status = 0;
   let body = '';
   const headers: Record<string, string> = {};
   const res = {
-    writeHead: (s: number, h?: Record<string, string>) => { status = s; if (h) Object.assign(headers, h); },
-    setHeader: (k: string, v: string) => { headers[k.toLowerCase()] = v; },
-    end: (chunk?: string | Buffer) => { if (chunk) body += chunk.toString(); },
+    writeHead: (s: number, h?: Record<string, string>) => {
+      status = s;
+      if (h) Object.assign(headers, h);
+    },
+    setHeader: (k: string, v: string) => {
+      headers[k.toLowerCase()] = v;
+    },
+    end: (chunk?: string | Buffer) => {
+      if (chunk) body += chunk.toString();
+    },
     headersSent: false,
   } as unknown as ServerResponse;
   return { res, status: () => status, body: () => body, headers: () => headers };
@@ -19,7 +31,9 @@ describe('api-handler GET /api/session/current', () => {
   it('returns sessionTracker.getMetrics() with efficiencyScore: null when scorer is absent', async () => {
     const fake = { id: 'sess-1', toolCallCount: 5 };
     const handler = createApiHandler({
-      sessionTracker: { getMetrics: () => fake } as unknown as Parameters<typeof createApiHandler>[0]['sessionTracker'],
+      sessionTracker: { getMetrics: () => fake } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['sessionTracker'],
     });
     const req = { method: 'GET', url: '/api/session/current' } as IncomingMessage;
     const { res, status, body, headers } = fakeRes();
@@ -32,7 +46,9 @@ describe('api-handler GET /api/session/current', () => {
   it('includes efficiencyScore from getSessionAverage() when scorer is wired in', async () => {
     const fake = { id: 'sess-2', toolCallCount: 7 };
     const handler = createApiHandler({
-      sessionTracker: { getMetrics: () => fake } as unknown as Parameters<typeof createApiHandler>[0]['sessionTracker'],
+      sessionTracker: { getMetrics: () => fake } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['sessionTracker'],
       efficiencyScorer: { getSessionAverage: () => ({ score: 0.78 }) },
     });
     const req = { method: 'GET', url: '/api/session/current' } as IncomingMessage;
@@ -45,7 +61,9 @@ describe('api-handler GET /api/session/current', () => {
   it('keeps efficiencyScore null when scorer returns null (no tasks scored yet)', async () => {
     const fake = { id: 'sess-3', toolCallCount: 0 };
     const handler = createApiHandler({
-      sessionTracker: { getMetrics: () => fake } as unknown as Parameters<typeof createApiHandler>[0]['sessionTracker'],
+      sessionTracker: { getMetrics: () => fake } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['sessionTracker'],
       efficiencyScorer: { getSessionAverage: () => null },
     });
     const req = { method: 'GET', url: '/api/session/current' } as IncomingMessage;
@@ -293,7 +311,9 @@ describe('api-handler GET /api/cost', () => {
     const fakeCost = { sessionTotalCostUsd: 0.25, costByModel: { 'claude-sonnet': 0.25 } };
     const fakeForecast = { forecastEndOfDayUsd: 2.5, spentUsd: 0.25 };
     const handler = createApiHandler({
-      costTracker: { getMetrics: () => fakeCost } as unknown as Parameters<typeof createApiHandler>[0]['costTracker'],
+      costTracker: { getMetrics: () => fakeCost } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['costTracker'],
       costForecast: () => fakeForecast,
     });
     const req = { method: 'GET', url: '/api/cost' } as IncomingMessage;
@@ -309,7 +329,9 @@ describe('api-handler GET /api/cost', () => {
   it('returns null forecast when costForecast is missing', async () => {
     const fakeCost = { sessionTotalCostUsd: 0.25 };
     const handler = createApiHandler({
-      costTracker: { getMetrics: () => fakeCost } as unknown as Parameters<typeof createApiHandler>[0]['costTracker'],
+      costTracker: { getMetrics: () => fakeCost } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['costTracker'],
     });
     const req = { method: 'GET', url: '/api/cost' } as IncomingMessage;
     const { res, status, body } = fakeRes();
@@ -336,7 +358,9 @@ describe('api-handler GET /api/anti-patterns', () => {
       { type: 'thrashing', file: '/b.ts', iterations: 3, suggestion: 'Try different approach' },
     ];
     const handler = createApiHandler({
-      antiPatternDetector: { getCurrentPatterns: () => fakePatterns } as unknown as Parameters<typeof createApiHandler>[0]['antiPatternDetector'],
+      antiPatternDetector: { getCurrentPatterns: () => fakePatterns } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['antiPatternDetector'],
     });
     const req = { method: 'GET', url: '/api/anti-patterns' } as IncomingMessage;
     const { res, status, body, headers } = fakeRes();
@@ -381,7 +405,9 @@ describe('api-handler GET /api/audit', () => {
       },
     ];
     const handler = createApiHandler({
-      auditTrailManager: { getAuditLog: () => fakeAuditLog } as unknown as Parameters<typeof createApiHandler>[0]['auditTrailManager'],
+      auditTrailManager: { getAuditLog: () => fakeAuditLog } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['auditTrailManager'],
     });
     const req = { method: 'GET', url: '/api/audit' } as IncomingMessage;
     const { res, status, body, headers } = fakeRes();
@@ -418,7 +444,9 @@ describe('api-handler GET /api/audit', () => {
       },
     ];
     const handler = createApiHandler({
-      auditTrailManager: { getAuditLog: () => fakeAuditLog } as unknown as Parameters<typeof createApiHandler>[0]['auditTrailManager'],
+      auditTrailManager: { getAuditLog: () => fakeAuditLog } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['auditTrailManager'],
     });
     const req = { method: 'GET', url: '/api/audit' } as IncomingMessage;
     const { res, status, body } = fakeRes();
@@ -454,7 +482,9 @@ describe('api-handler GET /api/audit', () => {
       },
     ];
     const handler = createApiHandler({
-      auditTrailManager: { getAuditLog: () => fakeAuditLog } as unknown as Parameters<typeof createApiHandler>[0]['auditTrailManager'],
+      auditTrailManager: { getAuditLog: () => fakeAuditLog } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['auditTrailManager'],
     });
     const req = { method: 'GET', url: '/api/audit' } as IncomingMessage;
     const { res, status, body } = fakeRes();
@@ -479,7 +509,9 @@ describe('api-handler GET /api/weekly', () => {
       { week: '2026-W21', sessionCount: 3, totalCostUsd: 0.8 },
     ];
     const handler = createApiHandler({
-      weeklySummaryGenerator: { loadRecentWeeks: (count: number) => fakeWeekly.slice(0, count) } as unknown as Parameters<typeof createApiHandler>[0]['weeklySummaryGenerator'],
+      weeklySummaryGenerator: {
+        loadRecentWeeks: (count: number) => fakeWeekly.slice(0, count),
+      } as unknown as Parameters<typeof createApiHandler>[0]['weeklySummaryGenerator'],
     });
     const req = { method: 'GET', url: '/api/weekly?count=2' } as IncomingMessage;
     const { res, status, body, headers } = fakeRes();
@@ -563,7 +595,9 @@ describe('api-handler GET /api/budget', () => {
       weeklyPercentUsed: 2.5,
     };
     const handler = createApiHandler({
-      budgetTracker: { getStatus: () => fakeBudgetStatus } as unknown as Parameters<typeof createApiHandler>[0]['budgetTracker'],
+      budgetTracker: { getStatus: () => fakeBudgetStatus } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['budgetTracker'],
     });
     const req = { method: 'GET', url: '/api/budget' } as IncomingMessage;
     const { res, status, body, headers } = fakeRes();
@@ -590,7 +624,9 @@ describe('api-handler GET /api/latency', () => {
       p99ByTool: { Read: 250, Edit: 500, Bash: 1000 },
     };
     const handler = createApiHandler({
-      latencyTracker: { getMetrics: () => fakeLatencyMetrics } as unknown as Parameters<typeof createApiHandler>[0]['latencyTracker'],
+      latencyTracker: { getMetrics: () => fakeLatencyMetrics } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['latencyTracker'],
     });
     const req = { method: 'GET', url: '/api/latency' } as IncomingMessage;
     const { res, status, body, headers } = fakeRes();
@@ -619,7 +655,7 @@ describe('api-handler GET /api/cost-per-outcome', () => {
         filesModified: ['src/foo.ts'],
         toolBreakdown: { Edit: 1 },
         toolCallCount: 5,
-        estimatedCostUsd: 0.50,
+        estimatedCostUsd: 0.5,
       },
       // bug_fix: tests run, some passed, files modified
       {
@@ -628,7 +664,7 @@ describe('api-handler GET /api/cost-per-outcome', () => {
         filesModified: ['src/bar.ts'],
         toolBreakdown: { Edit: 2 },
         toolCallCount: 8,
-        estimatedCostUsd: 0.80,
+        estimatedCostUsd: 0.8,
       },
       // documentation: only .md modified
       {
@@ -637,7 +673,7 @@ describe('api-handler GET /api/cost-per-outcome', () => {
         filesModified: ['README.md'],
         toolBreakdown: { Edit: 1 },
         toolCallCount: 4,
-        estimatedCostUsd: 0.20,
+        estimatedCostUsd: 0.2,
       },
     ];
     const handler = createApiHandler({
@@ -803,7 +839,9 @@ describe('api-handler GET /api/personal-coach', () => {
       baseline: { weekId: 'baseline' },
     };
     const handler = createApiHandler({
-      personalCoach: { generate: () => fake } as unknown as Parameters<typeof createApiHandler>[0]['personalCoach'],
+      personalCoach: { generate: () => fake } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['personalCoach'],
     });
     const req = { method: 'GET', url: '/api/personal-coach' } as IncomingMessage;
     const { res, status, body } = fakeRes();

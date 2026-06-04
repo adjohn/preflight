@@ -82,7 +82,8 @@ export class QualityProxyTracker {
       const filePath = record.filePath as string | undefined;
       if (filePath === this.lastEditFile && turn - this.lastEditTurn <= 3) {
         const recentFailure = this.events.some(
-          (e) => e.signal === 'test_fail' && e.turnNumber > this.lastEditTurn && e.turnNumber < turn,
+          (e) =>
+            e.signal === 'test_fail' && e.turnNumber > this.lastEditTurn && e.turnNumber < turn,
         );
         if (recentFailure) {
           this.addEvent('self_correction', turn, record.toolName);
@@ -182,9 +183,7 @@ export class QualityProxyTracker {
 
     for (let start = 1; start <= maxTurn; start += this.bucketSize) {
       const end = start + this.bucketSize - 1;
-      const inBucket = this.events.filter(
-        (e) => e.turnNumber >= start && e.turnNumber <= end,
-      );
+      const inBucket = this.events.filter((e) => e.turnNumber >= start && e.turnNumber <= end);
 
       const positive = inBucket.filter(
         (e) => e.signal === 'diff_applied_clean' || e.signal === 'test_pass',
@@ -224,9 +223,7 @@ export class QualityProxyTracker {
   }
 
   private averageQualityRatio(buckets: readonly TurnQualityBucket[]): number | null {
-    const ratios = buckets
-      .map((b) => b.qualityRatio)
-      .filter((r): r is number => r !== null);
+    const ratios = buckets.map((b) => b.qualityRatio).filter((r): r is number => r !== null);
     if (ratios.length === 0) return null;
     return ratios.reduce((a, b) => a + b, 0) / ratios.length;
   }

@@ -3,19 +3,25 @@ import type { WeeklySummaryGenerator } from '../storage/weekly-summary.js';
 import type { WeeklySummary } from '../storage/weekly-summary.js';
 
 // Suppress logger output
-beforeAll(() => { jest.spyOn(process.stderr, 'write').mockImplementation(() => true); });
-afterAll(() => { jest.restoreAllMocks(); });
+beforeAll(() => {
+  jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+});
+afterAll(() => {
+  jest.restoreAllMocks();
+});
 
-function makeWeeklyStats(overrides: Partial<{
-  sessionCount: number;
-  totalCostUsd: number;
-  avgEfficiencyScore: number | null;
-  totalToolCalls: number;
-  totalTasksCompleted: number;
-  taskSuccessRate: number | null;
-  toolBreakdown: Record<string, number>;
-  antiPatternCounts: Record<string, number>;
-}> = {}) {
+function makeWeeklyStats(
+  overrides: Partial<{
+    sessionCount: number;
+    totalCostUsd: number;
+    avgEfficiencyScore: number | null;
+    totalToolCalls: number;
+    totalTasksCompleted: number;
+    taskSuccessRate: number | null;
+    toolBreakdown: Record<string, number>;
+    antiPatternCounts: Record<string, number>;
+  }> = {},
+) {
   return {
     sessionCount: 10,
     totalCostUsd: 5.0,
@@ -129,7 +135,7 @@ describe('PersonalCoach', () => {
     const coach = new PersonalCoach(gen, developer);
     const result = coach.generate();
     if (result.status === 'ok') {
-      expect(result.regressions.some(r => r.includes('Cost per session'))).toBe(true);
+      expect(result.regressions.some((r) => r.includes('Cost per session'))).toBe(true);
     }
   });
 
@@ -166,7 +172,7 @@ describe('PersonalCoach', () => {
   it('ignores weeks where the developer has no sessions', () => {
     const summaryWithoutDev: WeeklySummary = {
       ...makeWeeklySummary('2026-W03', 'other_developer'),
-      perDeveloper: { other_developer: makeWeeklyStats() },  // testuser absent
+      perDeveloper: { other_developer: makeWeeklyStats() }, // testuser absent
     };
     const summaries = [
       summaryWithoutDev,

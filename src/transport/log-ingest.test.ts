@@ -19,7 +19,8 @@ function makeAuditRecord(overrides?: Partial<AuditRecord>): AuditRecord {
   };
 }
 
-const mockSendLogs = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+const mockSendLogs = jest
+  .fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
   .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
 
 function makeLogIngestOptions(overrides?: Partial<LogIngestOptions>): LogIngestOptions {
@@ -120,7 +121,9 @@ describe('LogIngestManager', () => {
     const manager = new LogIngestManager(makeLogIngestOptions());
 
     manager.addAuditRecord(makeAuditRecord({ tool: 'Read', detail: 'Read /a.ts' }));
-    manager.addAuditRecord(makeAuditRecord({ tool: 'Edit', detail: 'Edit /b.ts', action: 'FileEdit' }));
+    manager.addAuditRecord(
+      makeAuditRecord({ tool: 'Edit', detail: 'Edit /b.ts', action: 'FileEdit' }),
+    );
 
     manager.start();
     await manager.stop();

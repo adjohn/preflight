@@ -25,7 +25,7 @@ function makeTask(overrides?: Partial<AiCodingTask>): AiCodingTask {
     testsPassed: 4,
     buildRun: 1,
     buildPassed: 1,
-    estimatedCostUsd: 0.50,
+    estimatedCostUsd: 0.5,
     tokensUsed: 5000,
     askedUserQuestions: 0,
     subAgentsSpawned: 0,
@@ -83,12 +83,14 @@ describe('Poor task', () => {
       askedUserQuestions: 8,
     });
 
-    const antiPatterns: AntiPattern[] = [{
-      type: 'thrashing',
-      file: '/a.ts',
-      iterations: 5,
-      suggestion: 'Consider reading the test output more carefully',
-    }];
+    const antiPatterns: AntiPattern[] = [
+      {
+        type: 'thrashing',
+        file: '/a.ts',
+        iterations: 5,
+        suggestion: 'Consider reading the test output more carefully',
+      },
+    ];
 
     const result = scorer.computeScore(task, antiPatterns);
 
@@ -138,12 +140,14 @@ describe('Thrash iterations', () => {
   it('3 thrash iterations → first-attempt quality = 0.0', () => {
     const scorer = new EfficiencyScorer();
 
-    const antiPatterns: AntiPattern[] = [{
-      type: 'thrashing',
-      file: '/a.ts',
-      iterations: 3,
-      suggestion: '',
-    }];
+    const antiPatterns: AntiPattern[] = [
+      {
+        type: 'thrashing',
+        file: '/a.ts',
+        iterations: 3,
+        suggestion: '',
+      },
+    ];
 
     const result = scorer.computeScore(makeTask(), antiPatterns);
 
@@ -153,12 +157,14 @@ describe('Thrash iterations', () => {
   it('1 thrash iteration → first-attempt quality = 0.667', () => {
     const scorer = new EfficiencyScorer();
 
-    const antiPatterns: AntiPattern[] = [{
-      type: 'thrashing',
-      file: '/a.ts',
-      iterations: 1,
-      suggestion: '',
-    }];
+    const antiPatterns: AntiPattern[] = [
+      {
+        type: 'thrashing',
+        file: '/a.ts',
+        iterations: 1,
+        suggestion: '',
+      },
+    ];
 
     const result = scorer.computeScore(makeTask(), antiPatterns);
 
@@ -305,7 +311,7 @@ describe('Session-wide rolling average', () => {
       makeTask({ taskId: 't2', linesChanged: 30, durationMs: 60_000 }), // speed=0.5
       makeTask({ taskId: 't3', linesChanged: 12, durationMs: 60_000 }), // speed=0.2
       makeTask({ taskId: 't4', linesChanged: 45, durationMs: 60_000 }), // speed=0.75
-      makeTask({ taskId: 't5', linesChanged: 6, durationMs: 60_000 }),  // speed=0.1
+      makeTask({ taskId: 't5', linesChanged: 6, durationMs: 60_000 }), // speed=0.1
     ];
 
     for (const task of tasks) {
@@ -352,7 +358,7 @@ describe('emitMetrics()', () => {
     // 2 tasks × 5 metrics each = 10
     expect(recorded).toHaveLength(10);
 
-    const names = new Set(recorded.map(r => r.name));
+    const names = new Set(recorded.map((r) => r.name));
     expect(names).toContain('ai.efficiency.score');
     expect(names).toContain('ai.efficiency.speed');
     expect(names).toContain('ai.efficiency.correctness');
@@ -409,7 +415,7 @@ describe('getScores() and reset()', () => {
 
     const scores = scorer.getScores();
     expect(scores).toHaveLength(3);
-    expect(scores.map(s => s.taskId)).toEqual(['t1', 't2', 't3']);
+    expect(scores.map((s) => s.taskId)).toEqual(['t1', 't2', 't3']);
   });
 
   it('reset clears all scores', () => {
@@ -449,7 +455,7 @@ describe('updateScore()', () => {
     scorer.updateScore(makeTask({ taskId: 't2' }));
 
     expect(scorer.getScores()).toHaveLength(2);
-    expect(scorer.getScores().map(s => s.taskId)).toEqual(['t1', 't2']);
+    expect(scorer.getScores().map((s) => s.taskId)).toEqual(['t1', 't2']);
   });
 
   it('computeScore replaces an existing preview entry from updateScore, not duplicates it', () => {
@@ -557,14 +563,22 @@ describe('scores cap (MAX_SCORES = 1000)', () => {
     scorer.computeScore(makeTask({ taskId: 't2' }));
 
     const recorded1: string[] = [];
-    const agg1 = { record(name: string) { recorded1.push(name); } } as unknown as import('../shared/index.js').MetricAggregator;
+    const agg1 = {
+      record(name: string) {
+        recorded1.push(name);
+      },
+    } as unknown as import('../shared/index.js').MetricAggregator;
     scorer.emitMetrics(agg1);
     expect(recorded1).toHaveLength(10); // 2 tasks × 5 metrics
 
     scorer.computeScore(makeTask({ taskId: 't3' }));
 
     const recorded2: string[] = [];
-    const agg2 = { record(name: string) { recorded2.push(name); } } as unknown as import('../shared/index.js').MetricAggregator;
+    const agg2 = {
+      record(name: string) {
+        recorded2.push(name);
+      },
+    } as unknown as import('../shared/index.js').MetricAggregator;
     scorer.emitMetrics(agg2);
     expect(recorded2).toHaveLength(5); // only t3
   });
@@ -581,7 +595,11 @@ describe('scores cap (MAX_SCORES = 1000)', () => {
     scorer.computeScore(makeTask({ taskId: 't2' }));
 
     const recorded: string[] = [];
-    const agg2 = { record(name: string) { recorded.push(name); } } as unknown as import('../shared/index.js').MetricAggregator;
+    const agg2 = {
+      record(name: string) {
+        recorded.push(name);
+      },
+    } as unknown as import('../shared/index.js').MetricAggregator;
     scorer.emitMetrics(agg2);
     expect(recorded).toHaveLength(5); // only t2, not t1 again
   });

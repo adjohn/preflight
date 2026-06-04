@@ -77,13 +77,13 @@ describe('buildCostForecast', () => {
     const MS_UNTIL_END_OF_DAY = 23 * 3_600_000 + 59 * 60_000 + 59_000 + 999 - NOON_OFFSET_MS;
 
     const cases: Array<{ label: string; date: string; daysRemaining: number }> = [
-      { label: 'Monday',    date: '2024-01-01', daysRemaining: 6 },
-      { label: 'Tuesday',   date: '2024-01-02', daysRemaining: 5 },
+      { label: 'Monday', date: '2024-01-01', daysRemaining: 6 },
+      { label: 'Tuesday', date: '2024-01-02', daysRemaining: 5 },
       { label: 'Wednesday', date: '2024-01-03', daysRemaining: 4 },
-      { label: 'Thursday',  date: '2024-01-04', daysRemaining: 3 },
-      { label: 'Friday',    date: '2024-01-05', daysRemaining: 2 },
-      { label: 'Saturday',  date: '2024-01-06', daysRemaining: 1 },
-      { label: 'Sunday',    date: '2024-01-07', daysRemaining: 0 },
+      { label: 'Thursday', date: '2024-01-04', daysRemaining: 3 },
+      { label: 'Friday', date: '2024-01-05', daysRemaining: 2 },
+      { label: 'Saturday', date: '2024-01-06', daysRemaining: 1 },
+      { label: 'Sunday', date: '2024-01-07', daysRemaining: 0 },
     ];
 
     for (const { label, date, daysRemaining } of cases) {

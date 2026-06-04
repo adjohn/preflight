@@ -81,7 +81,8 @@ describe('SessionSpan', () => {
   });
 
   test('getContext returns active context when span is not started', () => {
-    const { context } = jest.requireActual<typeof import('@opentelemetry/api')>('@opentelemetry/api');
+    const { context } =
+      jest.requireActual<typeof import('@opentelemetry/api')>('@opentelemetry/api');
     const session = new SessionSpan('test-session-id', 'test-developer');
 
     const ctx = session.getContext();

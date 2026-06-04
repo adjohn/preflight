@@ -47,23 +47,23 @@ nr-ai-observe update
 
 ### Useful commands
 
-| Command | What it does |
-|---------|--------------|
-| `npm run build` | Build TypeScript (`tsc --build`) and chmod the CLI binaries |
-| `npm run build:clean` | Remove build output |
-| `npm test` | Run the full Jest suite (`maxWorkers: 1`) |
-| `npm run lint` | ESLint over `src/` |
-| `npm run format` | Prettier write |
-| `npm run format:check` | Prettier check (no writes) |
-| `npm run sync:shared` | Pull latest source from `../nr-ai-typescript-shared` into `src/shared/` (warns on dirty upstream) |
-| `npm run deploy:dashboard` | Deploy the default NR dashboard |
-| `npm run deploy:dashboard:all` | Deploy every pre-built dashboard |
-| `npm run deploy:dashboard:update` | Sync every pre-built dashboard in place (preserves GUID/URL) |
-| `npm run deploy:dashboard:teardown` | Delete every pre-built dashboard (matches by name; missing = skipped) |
-| `npm run deploy:alerts` | Deploy the alert policy + conditions to NR |
-| `npm run deploy:alerts:update` | Sync conditions on the existing alert policy in place |
-| `npm run deploy:alerts:teardown` | Delete the alert policy and all its conditions |
-| `npm run backfill:sessions` | Backfill local session JSON files from NR event history |
+| Command                             | What it does                                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `npm run build`                     | Build TypeScript (`tsc --build`) and chmod the CLI binaries                                       |
+| `npm run build:clean`               | Remove build output                                                                               |
+| `npm test`                          | Run the full Jest suite (`maxWorkers: 1`)                                                         |
+| `npm run lint`                      | ESLint over `src/`                                                                                |
+| `npm run format`                    | Prettier write                                                                                    |
+| `npm run format:check`              | Prettier check (no writes)                                                                        |
+| `npm run sync:shared`               | Pull latest source from `../nr-ai-typescript-shared` into `src/shared/` (warns on dirty upstream) |
+| `npm run deploy:dashboard`          | Deploy the default NR dashboard                                                                   |
+| `npm run deploy:dashboard:all`      | Deploy every pre-built dashboard                                                                  |
+| `npm run deploy:dashboard:update`   | Sync every pre-built dashboard in place (preserves GUID/URL)                                      |
+| `npm run deploy:dashboard:teardown` | Delete every pre-built dashboard (matches by name; missing = skipped)                             |
+| `npm run deploy:alerts`             | Deploy the alert policy + conditions to NR                                                        |
+| `npm run deploy:alerts:update`      | Sync conditions on the existing alert policy in place                                             |
+| `npm run deploy:alerts:teardown`    | Delete the alert policy and all its conditions                                                    |
+| `npm run backfill:sessions`         | Backfill local session JSON files from NR event history                                           |
 
 To run a single test file:
 
@@ -167,10 +167,11 @@ Events and metrics are buffered in memory and flushed to New Relic on a timer. E
 ### Metric Trackers
 
 All trackers follow the same pattern:
+
 ```typescript
-tracker.recordToolCall(record);    // feed data in
-tracker.getMetrics();               // read state out
-tracker.reset(sessionId);           // clear for new session
+tracker.recordToolCall(record); // feed data in
+tracker.getMetrics(); // read state out
+tracker.reset(sessionId); // clear for new session
 ```
 
 Each tracker has a corresponding test file with factory helpers.
@@ -271,6 +272,7 @@ export NEW_RELIC_AI_DIGEST_SCHEDULE="0 9 * * 1" # Cron: Mon 9am (default)
 ```
 
 Or use the MCP tool:
+
 ```
 nr_observe_subscribe_digest(webhookUrl: "https://hooks.slack.com/services/...")
 ```
@@ -285,11 +287,11 @@ export OTEL_EXPORTER_OTLP_HEADERS="api-key=your-license-key"    # Comma-separate
 export NEW_RELIC_AI_TRANSPORT=both   # 'nr-events-api' (default), 'otlp', or 'both'
 ```
 
-| Transport mode | Behavior |
-|----------------|----------|
-| `nr-events-api` | NR Events API + Metric API only (default) |
-| `otlp` | OTLP/HTTP only — requires `OTEL_EXPORTER_OTLP_ENDPOINT` |
-| `both` | Both transports simultaneously (concurrent export) |
+| Transport mode  | Behavior                                                |
+| --------------- | ------------------------------------------------------- |
+| `nr-events-api` | NR Events API + Metric API only (default)               |
+| `otlp`          | OTLP/HTTP only — requires `OTEL_EXPORTER_OTLP_ENDPOINT` |
+| `both`          | Both transports simultaneously (concurrent export)      |
 
 New Relic OTLP endpoints: US `https://otlp.nr-data.net`, EU `https://otlp.eu01.nr-data.net`.
 
@@ -325,10 +327,12 @@ Point your application's OTel SDK at `http://localhost:4318` and its spans/metri
 ### Logging
 
 Every module creates a scoped logger:
+
 ```typescript
 import { createLogger } from '../shared/index.js';
 const logger = createLogger('my-module');
 ```
+
 Logger writes to **stderr** as JSON. Never write to stdout — it's reserved for the MCP stdio transport.
 
 ### Error Handling
@@ -416,15 +420,15 @@ See [SECURITY.md](./SECURITY.md) for the full guidelines, code examples, and a c
 
 The MCP server automatically detects and supports multiple AI coding platforms:
 
-| Platform | Setup | Notes |
-|----------|-------|-------|
-| **Claude Code** | Built-in | Default platform; install hook via `nr-ai-observe install` |
-| **Cursor** | Env var: `NEW_RELIC_AI_PLATFORM=cursor` | Auto-detected if Cursor config present |
-| **Windsurf** | Env var: `NEW_RELIC_AI_PLATFORM=windsurf` | Auto-detected if Windsurf config present |
-| **GitHub Copilot** | Env var: `NEW_RELIC_AI_PLATFORM=copilot` | Requires manual hook setup |
-| **Zed** | Env var: `NEW_RELIC_AI_PLATFORM=zed` | Auto-detected from Zed config directory |
-| **Continue.dev** | Env var: `NEW_RELIC_AI_PLATFORM=continue` | Auto-detected from Continue config |
-| **Amazon Q Developer** | Env var: `NEW_RELIC_AI_PLATFORM=amazonq` | Requires AWS IDE plugin setup |
+| Platform               | Setup                                     | Notes                                                      |
+| ---------------------- | ----------------------------------------- | ---------------------------------------------------------- |
+| **Claude Code**        | Built-in                                  | Default platform; install hook via `nr-ai-observe install` |
+| **Cursor**             | Env var: `NEW_RELIC_AI_PLATFORM=cursor`   | Auto-detected if Cursor config present                     |
+| **Windsurf**           | Env var: `NEW_RELIC_AI_PLATFORM=windsurf` | Auto-detected if Windsurf config present                   |
+| **GitHub Copilot**     | Env var: `NEW_RELIC_AI_PLATFORM=copilot`  | Requires manual hook setup                                 |
+| **Zed**                | Env var: `NEW_RELIC_AI_PLATFORM=zed`      | Auto-detected from Zed config directory                    |
+| **Continue.dev**       | Env var: `NEW_RELIC_AI_PLATFORM=continue` | Auto-detected from Continue config                         |
+| **Amazon Q Developer** | Env var: `NEW_RELIC_AI_PLATFORM=amazonq`  | Requires AWS IDE plugin setup                              |
 
 Each platform normalizes tool calls into the shared `AiToolCall` event schema, so dashboards and tools work uniformly across all platforms.
 

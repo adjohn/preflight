@@ -429,9 +429,7 @@
       "type": "NRQL",
       "nrqlQuery": {
         "query": "SELECT uniques(developer) FROM AiToolCall SINCE 90 days ago",
-        "accountIds": [
-          0
-        ]
+        "accountIds": [0]
       },
       "isMultiSelection": false,
       "defaultValues": [],

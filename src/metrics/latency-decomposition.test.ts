@@ -27,12 +27,14 @@ describe('LatencyDecompositionTracker', () => {
 
   it('clamps overhead to zero when components exceed wall clock', () => {
     const tracker = new LatencyDecompositionTracker();
-    const turn = tracker.recordTurn(makeReport({
-      turnStartMs: 0,
-      turnEndMs: 3000,
-      llmApiMs: 2000,
-      toolExecutionMs: 2000,
-    }));
+    const turn = tracker.recordTurn(
+      makeReport({
+        turnStartMs: 0,
+        turnEndMs: 3000,
+        llmApiMs: 2000,
+        toolExecutionMs: 2000,
+      }),
+    );
 
     expect(turn.overheadMs).toBe(0);
   });
@@ -41,12 +43,14 @@ describe('LatencyDecompositionTracker', () => {
     const tracker = new LatencyDecompositionTracker();
 
     for (let i = 0; i < 100; i++) {
-      tracker.recordTurn(makeReport({
-        turnStartMs: 0,
-        turnEndMs: 1000 + i * 10,
-        llmApiMs: 500 + i * 5,
-        toolExecutionMs: 200 + i * 2,
-      }));
+      tracker.recordTurn(
+        makeReport({
+          turnStartMs: 0,
+          turnEndMs: 1000 + i * 10,
+          llmApiMs: 500 + i * 5,
+          toolExecutionMs: 200 + i * 2,
+        }),
+      );
     }
 
     const metrics = tracker.getMetrics();
@@ -70,12 +74,14 @@ describe('LatencyDecompositionTracker', () => {
 
     // All turns with same timing: 60% LLM, 30% tool, 10% overhead
     for (let i = 0; i < 10; i++) {
-      tracker.recordTurn(makeReport({
-        turnStartMs: 0,
-        turnEndMs: 1000,
-        llmApiMs: 600,
-        toolExecutionMs: 300,
-      }));
+      tracker.recordTurn(
+        makeReport({
+          turnStartMs: 0,
+          turnEndMs: 1000,
+          llmApiMs: 600,
+          toolExecutionMs: 300,
+        }),
+      );
     }
 
     const metrics = tracker.getMetrics();
@@ -115,22 +121,26 @@ describe('LatencyDecompositionTracker', () => {
 
     // Fill with low-latency turns
     for (let i = 0; i < 10; i++) {
-      tracker.recordTurn(makeReport({
-        turnStartMs: 0,
-        turnEndMs: 100,
-        llmApiMs: 50,
-        toolExecutionMs: 30,
-      }));
+      tracker.recordTurn(
+        makeReport({
+          turnStartMs: 0,
+          turnEndMs: 100,
+          llmApiMs: 50,
+          toolExecutionMs: 30,
+        }),
+      );
     }
 
     // Now push high-latency turns (should evict old ones)
     for (let i = 0; i < 10; i++) {
-      tracker.recordTurn(makeReport({
-        turnStartMs: 0,
-        turnEndMs: 10000,
-        llmApiMs: 8000,
-        toolExecutionMs: 1000,
-      }));
+      tracker.recordTurn(
+        makeReport({
+          turnStartMs: 0,
+          turnEndMs: 10000,
+          llmApiMs: 8000,
+          toolExecutionMs: 1000,
+        }),
+      );
     }
 
     const metrics = tracker.getMetrics();
@@ -147,7 +157,10 @@ describe('LatencyDecompositionTracker', () => {
     tracker.emitMetrics(aggregator as never);
     expect(aggregator.record).toHaveBeenCalledWith('ai.latency.llm_api.p50', expect.any(Number));
     expect(aggregator.record).toHaveBeenCalledWith('ai.latency.llm_api.p95', expect.any(Number));
-    expect(aggregator.record).toHaveBeenCalledWith('ai.latency.tool_execution.p50', expect.any(Number));
+    expect(aggregator.record).toHaveBeenCalledWith(
+      'ai.latency.tool_execution.p50',
+      expect.any(Number),
+    );
     expect(aggregator.record).toHaveBeenCalledWith('ai.latency.overhead.p50', expect.any(Number));
   });
 });

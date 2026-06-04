@@ -36,11 +36,7 @@ const HOP_BY_HOP_HEADERS = new Set([
 export class ByteCountTransform extends Transform {
   bytes = 0;
 
-  override _transform(
-    chunk: Buffer,
-    _encoding: BufferEncoding,
-    callback: TransformCallback,
-  ): void {
+  override _transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback): void {
     this.bytes += chunk.length;
     callback(null, chunk);
   }
@@ -78,11 +74,7 @@ export class HttpUpstream implements ProxyUpstream {
     logger.debug(`HTTP upstream "${this.name}" disconnected`);
   }
 
-  async forward(
-    req: IncomingMessage,
-    res: ServerResponse,
-    body: Buffer,
-  ): Promise<ForwardResult> {
+  async forward(req: IncomingMessage, res: ServerResponse, body: Buffer): Promise<ForwardResult> {
     const requestFn = this.url.protocol === 'https:' ? httpsRequest : httpRequest;
 
     // Re-validate URL against SSRF rules immediately before fetch to prevent DNS rebinding
@@ -117,7 +109,10 @@ export class HttpUpstream implements ProxyUpstream {
           const upstreamLatencyMs = performance.now() - start;
           const statusCode = upstreamRes.statusCode ?? 502;
 
-          const mediaType = (upstreamRes.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+          const mediaType = (upstreamRes.headers['content-type'] ?? '')
+            .split(';')[0]
+            .trim()
+            .toLowerCase();
           const isStreaming = mediaType === 'text/event-stream';
 
           // Copy response headers, skipping hop-by-hop headers
@@ -152,9 +147,7 @@ export class HttpUpstream implements ProxyUpstream {
               resolveSSE();
             });
 
-            upstreamRes
-              .pipe(counter)
-              .pipe(res);
+            upstreamRes.pipe(counter).pipe(res);
 
             upstreamRes.on('end', resolveSSE);
 
@@ -208,7 +201,9 @@ export class HttpUpstream implements ProxyUpstream {
       );
 
       upstreamReq.on('timeout', () => {
-        upstreamReq.destroy(new Error(`Upstream "${this.name}" timed out after ${this.timeoutMs}ms`));
+        upstreamReq.destroy(
+          new Error(`Upstream "${this.name}" timed out after ${this.timeoutMs}ms`),
+        );
       });
 
       upstreamReq.on('error', (err) => {

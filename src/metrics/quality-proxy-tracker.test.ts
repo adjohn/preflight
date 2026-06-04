@@ -18,7 +18,9 @@ function makeRecord(overrides: Partial<ToolCallRecord> = {}): ToolCallRecord {
   };
 }
 
-beforeEach(() => { idCounter = 0; });
+beforeEach(() => {
+  idCounter = 0;
+});
 
 describe('QualityProxyTracker', () => {
   it('tracks successful edits as diff_applied_clean', () => {
@@ -72,11 +74,15 @@ describe('QualityProxyTracker', () => {
 
     // First 5 turns: all good
     for (let i = 0; i < 5; i++) {
-      tracker.recordToolCall(makeRecord({ toolName: 'Edit', filePath: `/f${i}.ts`, success: true }));
+      tracker.recordToolCall(
+        makeRecord({ toolName: 'Edit', filePath: `/f${i}.ts`, success: true }),
+      );
     }
     // Next 5 turns: all bad
     for (let i = 0; i < 5; i++) {
-      tracker.recordToolCall(makeRecord({ toolName: 'Edit', filePath: `/g${i}.ts`, success: false }));
+      tracker.recordToolCall(
+        makeRecord({ toolName: 'Edit', filePath: `/g${i}.ts`, success: false }),
+      );
     }
 
     const metrics = tracker.getMetrics();
@@ -90,10 +96,14 @@ describe('QualityProxyTracker', () => {
 
     // 9 good turns followed by 9 bad turns (3 buckets each)
     for (let i = 0; i < 9; i++) {
-      tracker.recordToolCall(makeRecord({ toolName: 'Edit', filePath: `/good${i}.ts`, success: true }));
+      tracker.recordToolCall(
+        makeRecord({ toolName: 'Edit', filePath: `/good${i}.ts`, success: true }),
+      );
     }
     for (let i = 0; i < 9; i++) {
-      tracker.recordToolCall(makeRecord({ toolName: 'Edit', filePath: `/bad${i}.ts`, success: false }));
+      tracker.recordToolCall(
+        makeRecord({ toolName: 'Edit', filePath: `/bad${i}.ts`, success: false }),
+      );
     }
 
     const metrics = tracker.getMetrics();
@@ -105,7 +115,9 @@ describe('QualityProxyTracker', () => {
 
     // All good across all buckets
     for (let i = 0; i < 15; i++) {
-      tracker.recordToolCall(makeRecord({ toolName: 'Edit', filePath: `/f${i}.ts`, success: true }));
+      tracker.recordToolCall(
+        makeRecord({ toolName: 'Edit', filePath: `/f${i}.ts`, success: true }),
+      );
     }
 
     const metrics = tracker.getMetrics();
@@ -131,17 +143,32 @@ describe('QualityProxyTracker', () => {
     tracker.recordToolCall(makeRecord({ toolName: 'Bash', success: true, isTestCommand: true }));
 
     tracker.emitMetrics(aggregator as never);
-    expect(aggregator.record).toHaveBeenCalledWith('ai.quality.diff_apply_rate', expect.any(Number));
+    expect(aggregator.record).toHaveBeenCalledWith(
+      'ai.quality.diff_apply_rate',
+      expect.any(Number),
+    );
     expect(aggregator.record).toHaveBeenCalledWith('ai.quality.test_pass_rate', expect.any(Number));
-    expect(aggregator.record).toHaveBeenCalledWith('ai.quality.backtrack_count', expect.any(Number));
-    expect(aggregator.record).toHaveBeenCalledWith('ai.quality.self_correction_count', expect.any(Number));
+    expect(aggregator.record).toHaveBeenCalledWith(
+      'ai.quality.backtrack_count',
+      expect.any(Number),
+    );
+    expect(aggregator.record).toHaveBeenCalledWith(
+      'ai.quality.self_correction_count',
+      expect.any(Number),
+    );
   });
 
   it('emitMetrics skips null rates when no data', () => {
     const aggregator = { record: jest.fn() };
     const tracker = new QualityProxyTracker();
     tracker.emitMetrics(aggregator as never);
-    expect(aggregator.record).not.toHaveBeenCalledWith('ai.quality.diff_apply_rate', expect.anything());
-    expect(aggregator.record).not.toHaveBeenCalledWith('ai.quality.test_pass_rate', expect.anything());
+    expect(aggregator.record).not.toHaveBeenCalledWith(
+      'ai.quality.diff_apply_rate',
+      expect.anything(),
+    );
+    expect(aggregator.record).not.toHaveBeenCalledWith(
+      'ai.quality.test_pass_rate',
+      expect.anything(),
+    );
   });
 });

@@ -72,9 +72,17 @@ describe('CostPerOutcomeAnalyzer', () => {
       testsRun: 2,
       testsPassed: 1,
       toolCalls: [
-        makeToolCall({ toolName: 'Bash', isTestCommand: true, success: false } as Partial<ToolCallRecord>),
+        makeToolCall({
+          toolName: 'Bash',
+          isTestCommand: true,
+          success: false,
+        } as Partial<ToolCallRecord>),
         makeToolCall({ toolName: 'Edit', filePath: '/src/utils.ts' } as Partial<ToolCallRecord>),
-        makeToolCall({ toolName: 'Bash', isTestCommand: true, success: true } as Partial<ToolCallRecord>),
+        makeToolCall({
+          toolName: 'Bash',
+          isTestCommand: true,
+          success: true,
+        } as Partial<ToolCallRecord>),
       ],
     });
 
@@ -89,9 +97,17 @@ describe('CostPerOutcomeAnalyzer', () => {
       testsRun: 2,
       testsPassed: 1,
       toolCalls: [
-        makeToolCall({ toolName: 'Bash', isTestCommand: true, success: false } as Partial<ToolCallRecord>),
+        makeToolCall({
+          toolName: 'Bash',
+          isTestCommand: true,
+          success: false,
+        } as Partial<ToolCallRecord>),
         makeToolCall({ toolName: 'Write', filePath: '/src/utils.ts' } as Partial<ToolCallRecord>),
-        makeToolCall({ toolName: 'Bash', isTestCommand: true, success: true } as Partial<ToolCallRecord>),
+        makeToolCall({
+          toolName: 'Bash',
+          isTestCommand: true,
+          success: true,
+        } as Partial<ToolCallRecord>),
       ],
     });
 
@@ -104,11 +120,23 @@ describe('CostPerOutcomeAnalyzer', () => {
     const task = makeTask({
       filesModified: ['/src/utils.ts'],
       toolCalls: [
-        makeToolCall({ toolName: 'Bash', isTestCommand: true, success: false } as Partial<ToolCallRecord>),
+        makeToolCall({
+          toolName: 'Bash',
+          isTestCommand: true,
+          success: false,
+        } as Partial<ToolCallRecord>),
         makeToolCall({ toolName: 'Edit', filePath: '/src/utils.ts' } as Partial<ToolCallRecord>),
-        makeToolCall({ toolName: 'Bash', isTestCommand: true, success: false } as Partial<ToolCallRecord>),
+        makeToolCall({
+          toolName: 'Bash',
+          isTestCommand: true,
+          success: false,
+        } as Partial<ToolCallRecord>),
         makeToolCall({ toolName: 'Edit', filePath: '/src/utils.ts' } as Partial<ToolCallRecord>),
-        makeToolCall({ toolName: 'Bash', isTestCommand: true, success: true } as Partial<ToolCallRecord>),
+        makeToolCall({
+          toolName: 'Bash',
+          isTestCommand: true,
+          success: true,
+        } as Partial<ToolCallRecord>),
       ],
     });
 
@@ -125,8 +153,14 @@ describe('CostPerOutcomeAnalyzer', () => {
     const task = makeTask({
       filesModified: ['/src/new-feature.ts', '/src/new-feature.test.ts', '/src/types.ts'],
       toolCalls: [
-        makeToolCall({ toolName: 'Write', filePath: '/src/new-feature.ts' } as Partial<ToolCallRecord>),
-        makeToolCall({ toolName: 'Write', filePath: '/src/new-feature.test.ts' } as Partial<ToolCallRecord>),
+        makeToolCall({
+          toolName: 'Write',
+          filePath: '/src/new-feature.ts',
+        } as Partial<ToolCallRecord>),
+        makeToolCall({
+          toolName: 'Write',
+          filePath: '/src/new-feature.test.ts',
+        } as Partial<ToolCallRecord>),
         makeToolCall({ toolName: 'Write', filePath: '/src/types.ts' } as Partial<ToolCallRecord>),
       ],
     });
@@ -149,7 +183,11 @@ describe('CostPerOutcomeAnalyzer', () => {
         makeToolCall({ toolName: 'Read', filePath: '/src/utils.ts' } as Partial<ToolCallRecord>),
         makeToolCall({ toolName: 'Edit', filePath: '/src/utils.ts' } as Partial<ToolCallRecord>),
         makeToolCall({ toolName: 'Edit', filePath: '/src/helpers.ts' } as Partial<ToolCallRecord>),
-        makeToolCall({ toolName: 'Bash', isTestCommand: true, success: true } as Partial<ToolCallRecord>),
+        makeToolCall({
+          toolName: 'Bash',
+          isTestCommand: true,
+          success: true,
+        } as Partial<ToolCallRecord>),
       ],
     });
 
@@ -232,9 +270,17 @@ describe('CostPerOutcomeAnalyzer', () => {
       testsPassed: 0,
       toolCalls: [
         makeToolCall({ toolName: 'Edit', filePath: '/src/broken.ts' } as Partial<ToolCallRecord>),
-        makeToolCall({ toolName: 'Bash', isTestCommand: true, success: false } as Partial<ToolCallRecord>),
+        makeToolCall({
+          toolName: 'Bash',
+          isTestCommand: true,
+          success: false,
+        } as Partial<ToolCallRecord>),
         makeToolCall({ toolName: 'Edit', filePath: '/src/broken.ts' } as Partial<ToolCallRecord>),
-        makeToolCall({ toolName: 'Bash', isTestCommand: true, success: false } as Partial<ToolCallRecord>),
+        makeToolCall({
+          toolName: 'Bash',
+          isTestCommand: true,
+          success: false,
+        } as Partial<ToolCallRecord>),
       ],
     });
 
@@ -252,34 +298,55 @@ describe('CostPerOutcomeAnalyzer', () => {
 
     // 3 bug_fix tasks @ $2 each
     for (let i = 0; i < 3; i++) {
-      tasks.push(makeTask({
-        estimatedCostUsd: 2,
-        toolCalls: [
-          makeToolCall({ toolName: 'Bash', isTestCommand: true, success: false } as Partial<ToolCallRecord>),
-          makeToolCall({ toolName: 'Edit' }),
-          makeToolCall({ toolName: 'Bash', isTestCommand: true, success: true } as Partial<ToolCallRecord>),
-        ],
-      }));
+      tasks.push(
+        makeTask({
+          estimatedCostUsd: 2,
+          toolCalls: [
+            makeToolCall({
+              toolName: 'Bash',
+              isTestCommand: true,
+              success: false,
+            } as Partial<ToolCallRecord>),
+            makeToolCall({ toolName: 'Edit' }),
+            makeToolCall({
+              toolName: 'Bash',
+              isTestCommand: true,
+              success: true,
+            } as Partial<ToolCallRecord>),
+          ],
+        }),
+      );
     }
 
     // 4 feature tasks @ $5 each
     for (let i = 0; i < 4; i++) {
-      tasks.push(makeTask({
-        estimatedCostUsd: 5,
-        toolCalls: [
-          makeToolCall({ toolName: 'Write', filePath: `/src/feat-${i}.ts` } as Partial<ToolCallRecord>),
-        ],
-      }));
+      tasks.push(
+        makeTask({
+          estimatedCostUsd: 5,
+          toolCalls: [
+            makeToolCall({
+              toolName: 'Write',
+              filePath: `/src/feat-${i}.ts`,
+            } as Partial<ToolCallRecord>),
+          ],
+        }),
+      );
     }
 
     // 3 failed_attempt tasks @ $3 each
     for (let i = 0; i < 3; i++) {
-      tasks.push(makeTask({
-        estimatedCostUsd: 3,
-        toolCalls: [
-          makeToolCall({ toolName: 'Bash', isTestCommand: true, success: false } as Partial<ToolCallRecord>),
-        ],
-      }));
+      tasks.push(
+        makeTask({
+          estimatedCostUsd: 3,
+          toolCalls: [
+            makeToolCall({
+              toolName: 'Bash',
+              isTestCommand: true,
+              success: false,
+            } as Partial<ToolCallRecord>),
+          ],
+        }),
+      );
     }
 
     const attribution = analyzer.attributeCosts(tasks);
@@ -304,14 +371,24 @@ describe('CostPerOutcomeAnalyzer', () => {
     // 5 bug fixes at $2 each = $10 total AI cost
     const tasks: AiCodingTask[] = [];
     for (let i = 0; i < 5; i++) {
-      tasks.push(makeTask({
-        estimatedCostUsd: 2,
-        toolCalls: [
-          makeToolCall({ toolName: 'Bash', isTestCommand: true, success: false } as Partial<ToolCallRecord>),
-          makeToolCall({ toolName: 'Edit' }),
-          makeToolCall({ toolName: 'Bash', isTestCommand: true, success: true } as Partial<ToolCallRecord>),
-        ],
-      }));
+      tasks.push(
+        makeTask({
+          estimatedCostUsd: 2,
+          toolCalls: [
+            makeToolCall({
+              toolName: 'Bash',
+              isTestCommand: true,
+              success: false,
+            } as Partial<ToolCallRecord>),
+            makeToolCall({ toolName: 'Edit' }),
+            makeToolCall({
+              toolName: 'Bash',
+              isTestCommand: true,
+              success: true,
+            } as Partial<ToolCallRecord>),
+          ],
+        }),
+      );
     }
 
     const attribution = analyzer.attributeCosts(tasks);
@@ -373,17 +450,23 @@ describe('CostPerOutcomeAnalyzer', () => {
       // 2 features
       makeTask({
         estimatedCostUsd: 4,
-        toolCalls: [makeToolCall({ toolName: 'Write', filePath: '/a.ts' } as Partial<ToolCallRecord>)],
+        toolCalls: [
+          makeToolCall({ toolName: 'Write', filePath: '/a.ts' } as Partial<ToolCallRecord>),
+        ],
       }),
       makeTask({
         estimatedCostUsd: 6,
-        toolCalls: [makeToolCall({ toolName: 'Write', filePath: '/b.ts' } as Partial<ToolCallRecord>)],
+        toolCalls: [
+          makeToolCall({ toolName: 'Write', filePath: '/b.ts' } as Partial<ToolCallRecord>),
+        ],
       }),
       // 1 documentation
       makeTask({
         estimatedCostUsd: 1,
         filesModified: ['/README.md'],
-        toolCalls: [makeToolCall({ toolName: 'Edit', filePath: '/README.md' } as Partial<ToolCallRecord>)],
+        toolCalls: [
+          makeToolCall({ toolName: 'Edit', filePath: '/README.md' } as Partial<ToolCallRecord>),
+        ],
       }),
     ];
 
@@ -412,9 +495,17 @@ describe('CostPerOutcomeAnalyzer', () => {
       makeTask({
         estimatedCostUsd: 3,
         toolCalls: [
-          makeToolCall({ toolName: 'Bash', isTestCommand: true, success: false } as Partial<ToolCallRecord>),
+          makeToolCall({
+            toolName: 'Bash',
+            isTestCommand: true,
+            success: false,
+          } as Partial<ToolCallRecord>),
           makeToolCall({ toolName: 'Edit' }),
-          makeToolCall({ toolName: 'Bash', isTestCommand: true, success: true } as Partial<ToolCallRecord>),
+          makeToolCall({
+            toolName: 'Bash',
+            isTestCommand: true,
+            success: true,
+          } as Partial<ToolCallRecord>),
         ],
       }),
       makeTask({
@@ -425,7 +516,11 @@ describe('CostPerOutcomeAnalyzer', () => {
       }),
     ];
 
-    const recorded: Array<{ name: string; value: number; attrs?: Record<string, string | number> }> = [];
+    const recorded: Array<{
+      name: string;
+      value: number;
+      attrs?: Record<string, string | number>;
+    }> = [];
     const aggregator = {
       record(name: string, value: number, attrs?: Record<string, string | number>) {
         recorded.push({ name, value, attrs });

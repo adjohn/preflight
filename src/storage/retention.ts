@@ -25,7 +25,10 @@ export function purgeOldSessions(storagePath: string, retainDays: number): numbe
       if (stat.mtimeMs < cutoffMs) {
         unlinkSync(fullPath);
         deletedCount++;
-        logger.debug('Purged old session file', { file, ageDays: Math.floor((Date.now() - stat.mtimeMs) / 86_400_000) });
+        logger.debug('Purged old session file', {
+          file,
+          ageDays: Math.floor((Date.now() - stat.mtimeMs) / 86_400_000),
+        });
       }
     } catch (err) {
       logger.warn('Failed to check/delete session file', { file, error: String(err) });

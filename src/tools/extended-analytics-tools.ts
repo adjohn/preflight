@@ -102,22 +102,28 @@ export const API_FAILURES_TOOL = {
 // Handlers
 // ---------------------------------------------------------------------------
 
-export function handleGetRetryAlerts(
-  tracker: RetryDetector,
-): { content: Array<{ type: 'text'; text: string }> } {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }] };
+export function handleGetRetryAlerts(tracker: RetryDetector): {
+  content: Array<{ type: 'text'; text: string }>;
+} {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }],
+  };
 }
 
-export function handleGetContextComposition(
-  tracker: ContextCompositionTracker,
-): { content: Array<{ type: 'text'; text: string }> } {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }] };
+export function handleGetContextComposition(tracker: ContextCompositionTracker): {
+  content: Array<{ type: 'text'; text: string }>;
+} {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }],
+  };
 }
 
-export function handleGetLatencyDecomposition(
-  tracker: LatencyDecompositionTracker,
-): { content: Array<{ type: 'text'; text: string }> } {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }] };
+export function handleGetLatencyDecomposition(tracker: LatencyDecompositionTracker): {
+  content: Array<{ type: 'text'; text: string }>;
+} {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }],
+  };
 }
 
 export function handleGetDecisionTree(
@@ -126,15 +132,21 @@ export function handleGetDecisionTree(
 ): { content: Array<{ type: 'text'; text: string }> } {
   if (postMortem) {
     const branches = tracker.getPostMortem();
-    return { content: [{ type: 'text' as const, text: JSON.stringify({ postMortem: branches }, null, 2) }] };
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify({ postMortem: branches }, null, 2) }],
+    };
   }
-  return { content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }] };
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }],
+  };
 }
 
-export function handleGetInstructionDrift(
-  tracker: InstructionDriftTracker,
-): { content: Array<{ type: 'text'; text: string }> } {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }] };
+export function handleGetInstructionDrift(tracker: InstructionDriftTracker): {
+  content: Array<{ type: 'text'; text: string }>;
+} {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }],
+  };
 }
 
 export function handleGetToolSelectionScore(
@@ -145,14 +157,18 @@ export function handleGetToolSelectionScore(
   return { content: [{ type: 'text' as const, text: JSON.stringify(metrics, null, 2) }] };
 }
 
-export function handleGetQualityProxy(
-  tracker: QualityProxyTracker,
-): { content: Array<{ type: 'text'; text: string }> } {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }] };
+export function handleGetQualityProxy(tracker: QualityProxyTracker): {
+  content: Array<{ type: 'text'; text: string }>;
+} {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }],
+  };
 }
 
-export function handleGetApiFailures(
-  tracker: ApiFailureTracker,
-): { content: Array<{ type: 'text'; text: string }> } {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }] };
+export function handleGetApiFailures(tracker: ApiFailureTracker): {
+  content: Array<{ type: 'text'; text: string }>;
+} {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }],
+  };
 }

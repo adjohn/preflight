@@ -3,8 +3,22 @@
  * metrics, then ships them via the shared HarvestScheduler.
  */
 
-import type { NrEventData, NrMetric, NrLogEntry, TransportOptions, TransportResult } from '../shared/index.js';
-import { HarvestScheduler, MetricAggregator, sendEvents, sendMetrics, OtlpTransport, OtlpEventBridge, createLogger } from '../shared/index.js';
+import type {
+  NrEventData,
+  NrMetric,
+  NrLogEntry,
+  TransportOptions,
+  TransportResult,
+} from '../shared/index.js';
+import {
+  HarvestScheduler,
+  MetricAggregator,
+  sendEvents,
+  sendMetrics,
+  OtlpTransport,
+  OtlpEventBridge,
+  createLogger,
+} from '../shared/index.js';
 
 const logger = createLogger('nr-ingest');
 import { redactSensitive } from '../config.js';
@@ -137,7 +151,14 @@ const REDACT_FIELD_KEYS = new Set([
  */
 export function toolCallToNrEvent(
   record: ToolCallRecord,
-  attrs: { developer: string; appName: string; sessionTraceId?: string; teamId?: string | null; projectId?: string | null; orgId?: string | null },
+  attrs: {
+    developer: string;
+    appName: string;
+    sessionTraceId?: string;
+    teamId?: string | null;
+    projectId?: string | null;
+    orgId?: string | null;
+  },
 ): NrEventData {
   const event: NrEventData = {
     eventType: 'AiToolCall',
@@ -199,7 +220,14 @@ export function isProxyToolCall(record: ToolCallRecord): record is ProxyToolCall
  */
 export function proxyToolCallToNrEvent(
   record: ProxyToolCallRecord,
-  attrs: { developer: string; appName: string; sessionTraceId?: string; teamId?: string | null; projectId?: string | null; orgId?: string | null },
+  attrs: {
+    developer: string;
+    appName: string;
+    sessionTraceId?: string;
+    teamId?: string | null;
+    projectId?: string | null;
+    orgId?: string | null;
+  },
 ): NrEventData {
   const event: NrEventData = {
     eventType: 'AiMcpToolCall',
@@ -232,7 +260,13 @@ export function proxyToolCallToNrEvent(
  */
 export function proxyRequestToNrEvent(
   record: ProxyRequestRecord,
-  attrs: { developer: string; appName: string; teamId?: string | null; projectId?: string | null; orgId?: string | null },
+  attrs: {
+    developer: string;
+    appName: string;
+    teamId?: string | null;
+    projectId?: string | null;
+    orgId?: string | null;
+  },
 ): NrEventData {
   const event: NrEventData = {
     eventType: 'AiProxyRequest',
@@ -264,11 +298,17 @@ export function proxyRequestToNrEvent(
  */
 export function codingTaskToNrEvent(
   task: AiCodingTask,
-  attrs: { developer: string; appName: string; sessionTraceId?: string; teamId?: string | null; projectId?: string | null; orgId?: string | null },
+  attrs: {
+    developer: string;
+    appName: string;
+    sessionTraceId?: string;
+    teamId?: string | null;
+    projectId?: string | null;
+    orgId?: string | null;
+  },
 ): NrEventData {
   const firstRecord = task.toolCalls[0];
-  const platform =
-    typeof firstRecord?.platform === 'string' ? firstRecord.platform : 'claude-code';
+  const platform = typeof firstRecord?.platform === 'string' ? firstRecord.platform : 'claude-code';
 
   const event: NrEventData = {
     eventType: 'AiCodingTask',
@@ -313,7 +353,16 @@ export function codingTaskToNrEvent(
  */
 export function antiPatternToNrEvent(
   pattern: AntiPattern,
-  attrs: { developer: string; appName: string; sessionId?: string; platform?: string; taskId: string; teamId?: string | null; projectId?: string | null; orgId?: string | null },
+  attrs: {
+    developer: string;
+    appName: string;
+    sessionId?: string;
+    platform?: string;
+    taskId: string;
+    teamId?: string | null;
+    projectId?: string | null;
+    orgId?: string | null;
+  },
 ): NrEventData {
   const event: NrEventData = {
     eventType: 'AiAntiPattern',
@@ -427,7 +476,10 @@ export class NrIngestManager {
     const classifyingEventsFn: SendEventsFn = async (events, licenseKey, opts) => {
       const result = await rawSendEventsFn(events, licenseKey, opts);
       if (!result.success && result.statusCode !== null && isNonRetryable4xx(result.statusCode)) {
-        logger.warn('Dropping non-retryable event batch', { statusCode: result.statusCode, batchSize: events.length });
+        logger.warn('Dropping non-retryable event batch', {
+          statusCode: result.statusCode,
+          batchSize: events.length,
+        });
         return { ...result, success: true };
       }
       return result;
@@ -437,7 +489,10 @@ export class NrIngestManager {
     const classifyingMetricsFn: SendMetricsFn = async (metrics, licenseKey, opts) => {
       const result = await rawSendMetricsFn(metrics, licenseKey, opts);
       if (!result.success && result.statusCode !== null && isNonRetryable4xx(result.statusCode)) {
-        logger.warn('Dropping non-retryable metric batch', { statusCode: result.statusCode, batchSize: metrics.length });
+        logger.warn('Dropping non-retryable metric batch', {
+          statusCode: result.statusCode,
+          batchSize: metrics.length,
+        });
         return { ...result, success: true };
       }
       return result;
@@ -478,7 +533,9 @@ export class NrIngestManager {
     const server = record.serverName;
     this.scheduler.recordMetric('ai.mcp.proxy_request_count', 1, { server, method: record.method });
     if (record.durationMs != null) {
-      this.scheduler.recordMetric('ai.mcp.proxy_request_duration_ms', record.durationMs, { server });
+      this.scheduler.recordMetric('ai.mcp.proxy_request_duration_ms', record.durationMs, {
+        server,
+      });
     }
 
     // Aggregate into proxy metrics tracker
@@ -505,11 +562,23 @@ export class NrIngestManager {
     if (this.projectId) teamDims.project_id = this.projectId;
     if (this.orgId) teamDims.org_id = this.orgId;
 
-    this.scheduler.recordMetric('ai.tool.call_count', 1, sessionId != null ? { tool, session_id: sessionId, ...teamDims } : { tool, ...teamDims });
+    this.scheduler.recordMetric(
+      'ai.tool.call_count',
+      1,
+      sessionId != null ? { tool, session_id: sessionId, ...teamDims } : { tool, ...teamDims },
+    );
     if (record.durationMs != null) {
-      this.scheduler.recordMetric('ai.tool.duration_ms', record.durationMs, sessionId != null ? { tool, session_id: sessionId, ...teamDims } : { tool, ...teamDims });
+      this.scheduler.recordMetric(
+        'ai.tool.duration_ms',
+        record.durationMs,
+        sessionId != null ? { tool, session_id: sessionId, ...teamDims } : { tool, ...teamDims },
+      );
     }
-    this.scheduler.recordMetric('ai.tool.success', record.success ? 1 : 0, sessionId != null ? { tool, session_id: sessionId, ...teamDims } : { tool, ...teamDims });
+    this.scheduler.recordMetric(
+      'ai.tool.success',
+      record.success ? 1 : 0,
+      sessionId != null ? { tool, session_id: sessionId, ...teamDims } : { tool, ...teamDims },
+    );
 
     // If this is a proxied tool call, also emit AiMcpToolCall event and aggregate
     if (isProxyToolCall(record)) {
@@ -533,17 +602,21 @@ export class NrIngestManager {
       (isProxyToolCall(record)
         ? this.auditTrail.recordProxyCall(record)
         : this.auditTrail.recordToolCall(record));
-    this.scheduler.addEvent(auditRecordToNrEvent(finalAuditRecord, {
-      teamId: this.teamId,
-      projectId: this.projectId,
-      orgId: this.orgId,
-    }));
-    if (finalAuditRecord.securityAlert) {
-      this.scheduler.addEvent(securityAlertToNrEvent(finalAuditRecord, {
+    this.scheduler.addEvent(
+      auditRecordToNrEvent(finalAuditRecord, {
         teamId: this.teamId,
         projectId: this.projectId,
         orgId: this.orgId,
-      }));
+      }),
+    );
+    if (finalAuditRecord.securityAlert) {
+      this.scheduler.addEvent(
+        securityAlertToNrEvent(finalAuditRecord, {
+          teamId: this.teamId,
+          projectId: this.projectId,
+          orgId: this.orgId,
+        }),
+      );
     }
     // Queue audit log entry for NR Logs API
     this.logIngest.addAuditRecord(finalAuditRecord);
@@ -674,17 +747,25 @@ export class NrIngestManager {
     // Emit aggregated proxy metrics
     const proxyMetrics = this.proxyMetrics.getMetrics();
     for (const [server, stats] of Object.entries(proxyMetrics.perServer)) {
-      this.scheduler.recordMetric('ai.mcp.server_call_count', stats.callCount, { server, ...teamAttrs });
+      this.scheduler.recordMetric('ai.mcp.server_call_count', stats.callCount, {
+        server,
+        ...teamAttrs,
+      });
       if (stats.latencyMs.count > 0) {
         const avg = stats.latencyMs.sum / stats.latencyMs.count;
         this.scheduler.recordMetric('ai.mcp.server_latency_ms', avg, { server, ...teamAttrs });
       }
       if (stats.errorRate > 0) {
-        this.scheduler.recordMetric('ai.mcp.server_error_rate', stats.errorRate, { server, ...teamAttrs });
+        this.scheduler.recordMetric('ai.mcp.server_error_rate', stats.errorRate, {
+          server,
+          ...teamAttrs,
+        });
       }
     }
     if (proxyMetrics.avgProxyOverheadMs > 0) {
-      this.scheduler.recordMetric('ai.mcp.proxy_overhead_ms', proxyMetrics.avgProxyOverheadMs, { ...teamAttrs });
+      this.scheduler.recordMetric('ai.mcp.proxy_overhead_ms', proxyMetrics.avgProxyOverheadMs, {
+        ...teamAttrs,
+      });
     }
     for (const entry of proxyMetrics.toolPopularity) {
       this.scheduler.recordMetric('ai.mcp.tool_popularity', entry.count, {

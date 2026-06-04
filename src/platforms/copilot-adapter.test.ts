@@ -6,8 +6,10 @@ let stderrSpy: ReturnType<typeof jest.spyOn>;
 const savedEnv: Record<string, string | undefined> = {};
 
 const ENV_KEYS = [
-  'NR_AI_COPILOT_OBSERVER', 'MCP_CLIENT',
-  'VSCODE_VERSION', 'COPILOT_EXTENSION_VERSION',
+  'NR_AI_COPILOT_OBSERVER',
+  'MCP_CLIENT',
+  'VSCODE_VERSION',
+  'COPILOT_EXTENSION_VERSION',
 ];
 
 beforeEach(() => {

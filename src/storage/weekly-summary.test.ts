@@ -69,12 +69,17 @@ describe('aggregateSessions prototype-pollution resistance (N-06)', () => {
     const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
 
     const { start } = getWeekDateRange('2026-W16');
-    store.saveSession(makeSummary({
-      sessionId: 'proto-sess',
-      startTime: start.getTime() + 1000,
-      // keys that would shadow Object.prototype on a regular {} accumulator
-      toolBreakdown: { '__proto__': 1, constructor: 2, Read: 5 } as unknown as Record<string, number>,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'proto-sess',
+        startTime: start.getTime() + 1000,
+        // keys that would shadow Object.prototype on a regular {} accumulator
+        toolBreakdown: { __proto__: 1, constructor: 2, Read: 5 } as unknown as Record<
+          string,
+          number
+        >,
+      }),
+    );
 
     const summary = generator.generate('2026-W16');
 
@@ -95,18 +100,20 @@ describe('WeeklySummaryGenerator', () => {
     const baseTime = start.getTime();
 
     for (let i = 0; i < 5; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `s${i}`,
-        startTime: baseTime + i * 3_600_000, // spread across the week
-        estimatedCostUsd: 0.10,
-        toolCallCount: 10,
-        taskCount: 2,
-        testRunCount: 3,
-        testPassCount: 2,
-        efficiencyScore: 0.80,
-        toolBreakdown: { Read: 4, Edit: 3, Bash: 3 },
-        antiPatterns: [{ type: 'thrashing', count: 1 }],
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `s${i}`,
+          startTime: baseTime + i * 3_600_000, // spread across the week
+          estimatedCostUsd: 0.1,
+          toolCallCount: 10,
+          taskCount: 2,
+          testRunCount: 3,
+          testPassCount: 2,
+          efficiencyScore: 0.8,
+          toolBreakdown: { Read: 4, Edit: 3, Bash: 3 },
+          antiPatterns: [{ type: 'thrashing', count: 1 }],
+        }),
+      );
     }
 
     const summary = generator.generate('2026-W16');
@@ -132,32 +139,38 @@ describe('WeeklySummaryGenerator', () => {
     const baseTime = start.getTime();
 
     // Alice: 2 sessions
-    store.saveSession(makeSummary({
-      sessionId: 'alice-1',
-      developer: 'alice',
-      startTime: baseTime + 1000,
-      estimatedCostUsd: 0.10,
-      toolCallCount: 8,
-      taskCount: 1,
-    }));
-    store.saveSession(makeSummary({
-      sessionId: 'alice-2',
-      developer: 'alice',
-      startTime: baseTime + 2000,
-      estimatedCostUsd: 0.20,
-      toolCallCount: 12,
-      taskCount: 2,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'alice-1',
+        developer: 'alice',
+        startTime: baseTime + 1000,
+        estimatedCostUsd: 0.1,
+        toolCallCount: 8,
+        taskCount: 1,
+      }),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 'alice-2',
+        developer: 'alice',
+        startTime: baseTime + 2000,
+        estimatedCostUsd: 0.2,
+        toolCallCount: 12,
+        taskCount: 2,
+      }),
+    );
 
     // Bob: 1 session
-    store.saveSession(makeSummary({
-      sessionId: 'bob-1',
-      developer: 'bob',
-      startTime: baseTime + 3000,
-      estimatedCostUsd: 0.15,
-      toolCallCount: 6,
-      taskCount: 1,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'bob-1',
+        developer: 'bob',
+        startTime: baseTime + 3000,
+        estimatedCostUsd: 0.15,
+        toolCallCount: 6,
+        taskCount: 1,
+      }),
+    );
 
     const summary = generator.generate('2026-W16');
 
@@ -208,10 +221,12 @@ describe('WeeklySummaryGenerator', () => {
     const lastWeekId = getIsoWeekId(lastWeekDate);
     const { start } = getWeekDateRange(lastWeekId);
 
-    store.saveSession(makeSummary({
-      sessionId: 'last-week-sess',
-      startTime: start.getTime() + 3_600_000,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'last-week-sess',
+        startTime: start.getTime() + 3_600_000,
+      }),
+    );
 
     const result = generator.checkAndGenerateLastWeek();
 
@@ -243,10 +258,12 @@ describe('WeeklySummaryGenerator', () => {
     // Create summaries for W15 and W16
     for (const weekId of ['2026-W15', '2026-W16']) {
       const { start } = getWeekDateRange(weekId);
-      store.saveSession(makeSummary({
-        sessionId: `sess-${weekId}`,
-        startTime: start.getTime() + 1000,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `sess-${weekId}`,
+          startTime: start.getTime() + 1000,
+        }),
+      );
       generator.generate(weekId);
     }
 

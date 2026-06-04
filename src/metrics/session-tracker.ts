@@ -206,9 +206,8 @@ export class SessionTracker {
       bashExitCodes[String(code)] = count;
     }
 
-    const overallSuccessRate = this.toolCallCount > 0
-      ? this.successCount / this.toolCallCount
-      : null;
+    const overallSuccessRate =
+      this.toolCallCount > 0 ? this.successCount / this.toolCallCount : null;
 
     return {
       sessionId: this.sessionId,

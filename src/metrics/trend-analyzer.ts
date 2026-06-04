@@ -247,7 +247,8 @@ export class TrendAnalyzer {
       weekA,
       weekB,
       efficiencyDelta: round((effB ?? 0) - (effA ?? 0), 3),
-      efficiencyPctChange: effA === null && effB === null ? null : percentChange(effA ?? 0, effB ?? 0),
+      efficiencyPctChange:
+        effA === null && effB === null ? null : percentChange(effA ?? 0, effB ?? 0),
       costDelta: round(aggB.cost - aggA.cost, 4),
       costPctChange: percentChange(aggA.cost, aggB.cost),
       taskSuccessDelta: round(aggB.taskSuccess - aggA.taskSuccess, 3),
@@ -285,12 +286,8 @@ export class TrendAnalyzer {
   detectModelMigrationImpact(modelA: string, modelB: string): ModelComparison {
     const allSessions = this.sessionStore.loadAllSessions();
 
-    const sessionsA = allSessions.filter(
-      (s) => s.model !== null && s.model.includes(modelA),
-    );
-    const sessionsB = allSessions.filter(
-      (s) => s.model !== null && s.model.includes(modelB),
-    );
+    const sessionsA = allSessions.filter((s) => s.model !== null && s.model.includes(modelA));
+    const sessionsB = allSessions.filter((s) => s.model !== null && s.model.includes(modelB));
 
     const aggA = aggregateWeek(sessionsA);
     const aggB = aggregateWeek(sessionsB);

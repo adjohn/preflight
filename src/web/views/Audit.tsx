@@ -117,10 +117,7 @@ export function Audit(): JSX.Element {
                 </tr>
               )}
               {visibleSlice.map((r) => (
-                <tr
-                  key={`${r.ts}-${r.tool}-${r.target}`}
-                  className="border-t border-bg-line"
-                >
+                <tr key={`${r.ts}-${r.tool}-${r.target}`} className="border-t border-bg-line">
                   <td className="p-2 tabular-nums">
                     {new Date(r.ts).toLocaleString(undefined, {
                       month: 'short',

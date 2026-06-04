@@ -177,9 +177,8 @@ export function handleGetSessionStats(sessionTracker: SessionTracker, sessionTra
     totalDurationSum += stats.sum;
     totalDurationCount += stats.count;
   }
-  const avgToolDurationMs = totalDurationCount > 0
-    ? Math.round(totalDurationSum / totalDurationCount)
-    : 0;
+  const avgToolDurationMs =
+    totalDurationCount > 0 ? Math.round(totalDurationSum / totalDurationCount) : 0;
 
   const stats = {
     session_trace_id: sessionTraceId ?? null,
@@ -201,10 +200,7 @@ export function handleGetSessionStats(sessionTracker: SessionTracker, sessionTra
   };
 }
 
-export function handleGetSessionTimeline(
-  sessionTracker: SessionTracker,
-  lastN: number = 20,
-) {
+export function handleGetSessionTimeline(sessionTracker: SessionTracker, lastN: number = 20) {
   const metrics = sessionTracker.getMetrics();
   const entries = metrics.toolCallTimeline.slice(-lastN);
 
@@ -228,17 +224,23 @@ export function handleHealth(options: {
   const nowMs = Date.now();
   const startMs = options.sessionStartMs ?? nowMs;
   return {
-    content: [{
-      type: 'text' as const,
-      text: JSON.stringify({
-        status: 'ok',
-        version: VERSION,
-        developer: options.developer ?? 'unknown',
-        session_id: options.sessionId ?? null,
-        connected_at: new Date(startMs).toISOString(),
-        uptime_seconds: Math.round((nowMs - startMs) / 1000),
-      }, null, 2),
-    }],
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            status: 'ok',
+            version: VERSION,
+            developer: options.developer ?? 'unknown',
+            session_id: options.sessionId ?? null,
+            connected_at: new Date(startMs).toISOString(),
+            uptime_seconds: Math.round((nowMs - startMs) / 1000),
+          },
+          null,
+          2,
+        ),
+      },
+    ],
   };
 }
 
@@ -311,17 +313,11 @@ const FeedbackSchema = z.object({
 /**
  * @deprecated Use `registerTools()` instead. Kept for backward compatibility.
  */
-export function registerSessionTools(
-  server: Server,
-  sessionTracker: SessionTracker,
-): void {
+export function registerSessionTools(server: Server, sessionTracker: SessionTracker): void {
   registerTools(server, { sessionTracker });
 }
 
-export function registerTools(
-  server: Server,
-  options: ToolRegistrationOptions,
-): void {
+export function registerTools(server: Server, options: ToolRegistrationOptions): void {
   const {
     sessionTracker,
     costTracker,
@@ -354,7 +350,7 @@ export function registerTools(
   } = options;
 
   // Build combined tool list
-  const tools: typeof SESSION_STATS_TOOL[] = [HEALTH_TOOL];
+  const tools: (typeof SESSION_STATS_TOOL)[] = [HEALTH_TOOL];
   if (sessionTracker) {
     tools.push(SESSION_STATS_TOOL, SESSION_TIMELINE_TOOL);
   }
@@ -458,456 +454,671 @@ export function registerTools(
     const { name, arguments: args } = request.params;
 
     try {
-    switch (name) {
-      case 'nr_observe_health': {
-        return handleHealth({
-          sessionStartMs,
-          developer: options.developer,
-          sessionId: sessionTracker?.getMetrics().sessionId,
-        });
-      }
-
-      case 'nr_observe_get_session_stats': {
-        if (!sessionTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'SessionTracker not available' }) }],
-            isError: true,
-          };
+      switch (name) {
+        case 'nr_observe_health': {
+          return handleHealth({
+            sessionStartMs,
+            developer: options.developer,
+            sessionId: sessionTracker?.getMetrics().sessionId,
+          });
         }
-        const result = handleGetSessionStats(sessionTracker, sessionTraceId);
-        const stats = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              identity: {
-                developer: options.developer ?? 'unknown',
-                teamId: options.teamId ?? null,
-                projectId: options.projectId ?? null,
+
+        case 'nr_observe_get_session_stats': {
+          if (!sessionTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'SessionTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const result = handleGetSessionStats(sessionTracker, sessionTraceId);
+          const stats = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify(
+                  {
+                    identity: {
+                      developer: options.developer ?? 'unknown',
+                      teamId: options.teamId ?? null,
+                      projectId: options.projectId ?? null,
+                    },
+                    ...stats,
+                  },
+                  null,
+                  2,
+                ),
               },
-              ...stats,
-            }, null, 2),
-          }],
-        };
-      }
+            ],
+          };
+        }
 
-      case 'nr_observe_get_session_timeline': {
-        if (!sessionTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'SessionTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_session_timeline': {
+          if (!sessionTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'SessionTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const lastN = (args as Record<string, unknown> | undefined)?.last_n;
+          return handleGetSessionTimeline(sessionTracker, typeof lastN === 'number' ? lastN : 20);
         }
-        const lastN = (args as Record<string, unknown> | undefined)?.last_n;
-        return handleGetSessionTimeline(
-          sessionTracker,
-          typeof lastN === 'number' ? lastN : 20,
-        );
-      }
 
-      case 'nr_observe_report_tokens': {
-        if (!costTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'CostTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_report_tokens': {
+          if (!costTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'CostTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          try {
+            const tokenReport = TokenReportSchema.parse(args);
+            return handleReportTokens(costTracker, tokenReport, modelUsageTracker);
+          } catch (err) {
+            const message =
+              err instanceof z.ZodError
+                ? err.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+                : String(err);
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: `Invalid token report: ${message}` }),
+                },
+              ],
+              isError: true,
+            };
+          }
         }
-        try {
-          const tokenReport = TokenReportSchema.parse(args);
-          return handleReportTokens(costTracker, tokenReport, modelUsageTracker);
-        } catch (err) {
-          const message = err instanceof z.ZodError
-            ? err.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
-            : String(err);
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: `Invalid token report: ${message}` }) }],
-            isError: true,
-          };
-        }
-      }
 
-      case 'nr_observe_get_cost_breakdown': {
-        if (!costTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'CostTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_cost_breakdown': {
+          if (!costTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'CostTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetCostBreakdown(costTracker, taskDetector);
         }
-        return handleGetCostBreakdown(costTracker, taskDetector);
-      }
 
-      case 'nr_observe_get_budget_status': {
-        if (!budgetTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'BudgetTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_budget_status': {
+          if (!budgetTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'BudgetTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetBudgetStatus(budgetTracker);
         }
-        return handleGetBudgetStatus(budgetTracker);
-      }
 
-      case 'nr_observe_get_cost_forecast': {
-        if (!costTracker || sessionStartMs === undefined) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'CostTracker or sessionStartMs not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_cost_forecast': {
+          if (!costTracker || sessionStartMs === undefined) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'CostTracker or sessionStartMs not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetCostForecast(costTracker, sessionStartMs);
         }
-        return handleGetCostForecast(costTracker, sessionStartMs);
-      }
 
-      case 'nr_observe_get_workflow_trace': {
-        if (!taskDetector) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'TaskDetector not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_workflow_trace': {
+          if (!taskDetector) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'TaskDetector not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const taskId = (args as Record<string, unknown> | undefined)?.task_id as
+            | string
+            | undefined;
+          return handleGetWorkflowTrace(
+            taskDetector,
+            antiPatternDetector,
+            efficiencyScorer,
+            taskId,
+          );
         }
-        const taskId = (args as Record<string, unknown> | undefined)?.task_id as string | undefined;
-        return handleGetWorkflowTrace(taskDetector, antiPatternDetector, efficiencyScorer, taskId);
-      }
 
-      case 'nr_observe_get_anti_patterns': {
-        if (!antiPatternDetector || !taskDetector) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'AntiPatternDetector or TaskDetector not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_anti_patterns': {
+          if (!antiPatternDetector || !taskDetector) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({
+                    error: 'AntiPatternDetector or TaskDetector not available',
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetAntiPatterns(taskDetector, antiPatternDetector);
         }
-        return handleGetAntiPatterns(taskDetector, antiPatternDetector);
-      }
 
-      case 'nr_observe_get_efficiency_score': {
-        if (!efficiencyScorer) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'EfficiencyScorer not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_efficiency_score': {
+          if (!efficiencyScorer) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'EfficiencyScorer not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetEfficiencyScore(efficiencyScorer, taskDetector, antiPatternDetector);
         }
-        return handleGetEfficiencyScore(efficiencyScorer, taskDetector, antiPatternDetector);
-      }
 
-      case 'nr_observe_report_feedback': {
-        if (!feedbackCollector) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'FeedbackCollector not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_report_feedback': {
+          if (!feedbackCollector) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'FeedbackCollector not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          try {
+            const feedbackArgs = FeedbackSchema.parse(args);
+            return handleReportFeedback(feedbackCollector, feedbackArgs);
+          } catch (err) {
+            const message =
+              err instanceof z.ZodError
+                ? err.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+                : String(err);
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: `Invalid feedback: ${message}` }),
+                },
+              ],
+              isError: true,
+            };
+          }
         }
-        try {
-          const feedbackArgs = FeedbackSchema.parse(args);
-          return handleReportFeedback(feedbackCollector, feedbackArgs);
-        } catch (err) {
-          const message = err instanceof z.ZodError
-            ? err.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
-            : String(err);
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: `Invalid feedback: ${message}` }) }],
-            isError: true,
-          };
-        }
-      }
 
-      case 'nr_observe_get_session_history': {
-        if (!sessionStore) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'SessionStore not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_session_history': {
+          if (!sessionStore) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'SessionStore not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const historyArgs = (args ?? {}) as Record<string, unknown>;
+          return handleGetSessionHistory(sessionStore, {
+            since: historyArgs.since as string | undefined,
+            developer: historyArgs.developer as string | undefined,
+            limit: historyArgs.limit as number | undefined,
+          });
         }
-        const historyArgs = (args ?? {}) as Record<string, unknown>;
-        return handleGetSessionHistory(sessionStore, {
-          since: historyArgs.since as string | undefined,
-          developer: historyArgs.developer as string | undefined,
-          limit: historyArgs.limit as number | undefined,
-        });
-      }
 
-      case 'nr_observe_get_weekly_summary': {
-        if (!weeklySummaryGenerator) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'WeeklySummaryGenerator not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_weekly_summary': {
+          if (!weeklySummaryGenerator) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'WeeklySummaryGenerator not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const weekArgs = (args ?? {}) as Record<string, unknown>;
+          return handleGetWeeklySummary(weeklySummaryGenerator, {
+            week: weekArgs.week as string | undefined,
+          });
         }
-        const weekArgs = (args ?? {}) as Record<string, unknown>;
-        return handleGetWeeklySummary(weeklySummaryGenerator, {
-          week: weekArgs.week as string | undefined,
-        });
-      }
 
-      case 'nr_observe_get_trends': {
-        if (!trendAnalyzer) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'TrendAnalyzer not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_trends': {
+          if (!trendAnalyzer) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'TrendAnalyzer not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const trendArgs = (args ?? {}) as Record<string, unknown>;
+          return handleGetTrends(trendAnalyzer, {
+            metric: trendArgs.metric as string | undefined,
+            developer: trendArgs.developer as string | undefined,
+            weeks: trendArgs.weeks as number | undefined,
+          });
         }
-        const trendArgs = (args ?? {}) as Record<string, unknown>;
-        return handleGetTrends(trendAnalyzer, {
-          metric: trendArgs.metric as string | undefined,
-          developer: trendArgs.developer as string | undefined,
-          weeks: trendArgs.weeks as number | undefined,
-        });
-      }
 
-      case 'nr_observe_get_collaboration_profile': {
-        if (!collaborationProfiler) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'CollaborationProfiler not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_collaboration_profile': {
+          if (!collaborationProfiler) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'CollaborationProfiler not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const profileArgs = (args ?? {}) as Record<string, unknown>;
+          return handleGetCollaborationProfile(collaborationProfiler, {
+            developer: profileArgs.developer as string | undefined,
+          });
         }
-        const profileArgs = (args ?? {}) as Record<string, unknown>;
-        return handleGetCollaborationProfile(collaborationProfiler, {
-          developer: profileArgs.developer as string | undefined,
-        });
-      }
 
-      case 'nr_observe_get_claudemd_impact': {
-        if (!claudeMdTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ClaudeMdTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_claudemd_impact': {
+          if (!claudeMdTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'ClaudeMdTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetClaudeMdImpact(claudeMdTracker);
         }
-        return handleGetClaudeMdImpact(claudeMdTracker);
-      }
 
-      case 'nr_observe_get_cost_per_outcome': {
-        if (!costPerOutcomeAnalyzer || !taskDetector) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'CostPerOutcomeAnalyzer or TaskDetector not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_cost_per_outcome': {
+          if (!costPerOutcomeAnalyzer || !taskDetector) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({
+                    error: 'CostPerOutcomeAnalyzer or TaskDetector not available',
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const costArgs = (args ?? {}) as Record<string, unknown>;
+          return handleGetCostPerOutcome(costPerOutcomeAnalyzer, taskDetector, {
+            since: costArgs.since as string | undefined,
+          });
         }
-        const costArgs = (args ?? {}) as Record<string, unknown>;
-        return handleGetCostPerOutcome(costPerOutcomeAnalyzer, taskDetector, {
-          since: costArgs.since as string | undefined,
-        });
-      }
 
-      case 'nr_observe_get_recommendations': {
-        if (!recommendationEngine) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'RecommendationEngine not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_recommendations': {
+          if (!recommendationEngine) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'RecommendationEngine not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const recArgs = (args ?? {}) as Record<string, unknown>;
+          return handleGetRecommendations(recommendationEngine, {
+            developer: recArgs.developer as string | undefined,
+            topN: recArgs.topN as number | undefined,
+          });
         }
-        const recArgs = (args ?? {}) as Record<string, unknown>;
-        return handleGetRecommendations(recommendationEngine, {
-          developer: recArgs.developer as string | undefined,
-          topN: recArgs.topN as number | undefined,
-        });
-      }
 
-      case 'nr_observe_get_platform_comparison': {
-        if (!sessionStore) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'SessionStore not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_platform_comparison': {
+          if (!sessionStore) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'SessionStore not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const pcArgs = (args ?? {}) as Record<string, unknown>;
+          return handleGetPlatformComparison(sessionStore, {
+            metric: pcArgs.metric as string | undefined,
+            weeks: pcArgs.weeks as number | undefined,
+          });
         }
-        const pcArgs = (args ?? {}) as Record<string, unknown>;
-        return handleGetPlatformComparison(sessionStore, {
-          metric: pcArgs.metric as string | undefined,
-          weeks: pcArgs.weeks as number | undefined,
-        });
-      }
 
-      case 'nr_observe_get_team_summary': {
-        if (!options.teamId || !options.nrApiKey) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'teamId or nrApiKey not configured' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_team_summary': {
+          if (!options.teamId || !options.nrApiKey) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'teamId or nrApiKey not configured' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const summaryArgs = (args ?? {}) as Record<string, unknown>;
+          return handleGetTeamSummary({
+            teamId: options.teamId,
+            accountId: options.accountId ?? '',
+            nrApiKey: options.nrApiKey,
+            collectorHost: options.collectorHost,
+            since: summaryArgs.since as string | undefined,
+          });
         }
-        const summaryArgs = (args ?? {}) as Record<string, unknown>;
-        return handleGetTeamSummary({
-          teamId: options.teamId,
-          accountId: options.accountId ?? '',
-          nrApiKey: options.nrApiKey,
-          collectorHost: options.collectorHost,
-          since: summaryArgs.since as string | undefined,
-        });
-      }
 
-      case 'nr_observe_subscribe_digest': {
-        if (!options.configFilePath) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'configFilePath not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_subscribe_digest': {
+          if (!options.configFilePath) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'configFilePath not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const digestArgs = (args ?? {}) as Record<string, unknown>;
+          return handleSubscribeDigest(
+            typeof digestArgs.webhookUrl === 'string' ? digestArgs.webhookUrl : '',
+            options.configFilePath,
+          );
         }
-        const digestArgs = (args ?? {}) as Record<string, unknown>;
-        return handleSubscribeDigest(
-          typeof digestArgs.webhookUrl === 'string' ? digestArgs.webhookUrl : '',
-          options.configFilePath,
-        );
-      }
 
-      case 'nr_observe_unsubscribe_digest': {
-        if (!options.configFilePath) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'configFilePath not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_unsubscribe_digest': {
+          if (!options.configFilePath) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'configFilePath not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleUnsubscribeDigest(options.configFilePath);
         }
-        return handleUnsubscribeDigest(options.configFilePath);
-      }
 
-      case 'nr_observe_send_digest': {
-        if (!options.configFilePath || !weeklySummaryGenerator) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'configFilePath or WeeklySummaryGenerator not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_send_digest': {
+          if (!options.configFilePath || !weeklySummaryGenerator) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({
+                    error: 'configFilePath or WeeklySummaryGenerator not available',
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleSendDigest(weeklySummaryGenerator, options.configFilePath);
         }
-        return handleSendDigest(weeklySummaryGenerator, options.configFilePath);
-      }
 
-      case 'nr_observe_get_personal_insights': {
-        if (!weeklySummaryGenerator || !options.developer) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'WeeklySummaryGenerator or developer not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_personal_insights': {
+          if (!weeklySummaryGenerator || !options.developer) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({
+                    error: 'WeeklySummaryGenerator or developer not available',
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetPersonalInsights(weeklySummaryGenerator, options.developer);
         }
-        return handleGetPersonalInsights(weeklySummaryGenerator, options.developer);
-      }
 
-      case 'nr_observe_get_context_efficiency': {
-        if (!contextWindowTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ContextWindowTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_context_efficiency': {
+          if (!contextWindowTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'ContextWindowTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetContextEfficiency(contextWindowTracker);
         }
-        return handleGetContextEfficiency(contextWindowTracker);
-      }
 
-      case 'nr_observe_get_latency_percentiles': {
-        if (!latencyTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'LatencyTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_latency_percentiles': {
+          if (!latencyTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'LatencyTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetLatencyPercentiles(latencyTracker);
         }
-        return handleGetLatencyPercentiles(latencyTracker);
-      }
 
-      case 'nr_observe_get_task_completion_rate': {
-        if (!taskCompletionTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'TaskCompletionTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_task_completion_rate': {
+          if (!taskCompletionTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'TaskCompletionTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetTaskCompletionRate(taskCompletionTracker, taskDetector);
         }
-        return handleGetTaskCompletionRate(taskCompletionTracker, taskDetector);
-      }
 
-      case 'nr_observe_get_model_usage': {
-        if (!modelUsageTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ModelUsageTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_model_usage': {
+          if (!modelUsageTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'ModelUsageTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetModelUsage(modelUsageTracker);
         }
-        return handleGetModelUsage(modelUsageTracker);
-      }
 
-      case 'nr_observe_get_retry_alerts': {
-        if (!retryDetector) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'RetryDetector not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_retry_alerts': {
+          if (!retryDetector) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'RetryDetector not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetRetryAlerts(retryDetector);
         }
-        return handleGetRetryAlerts(retryDetector);
-      }
 
-      case 'nr_observe_get_context_composition': {
-        if (!contextCompositionTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ContextCompositionTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_context_composition': {
+          if (!contextCompositionTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'ContextCompositionTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetContextComposition(contextCompositionTracker);
         }
-        return handleGetContextComposition(contextCompositionTracker);
-      }
 
-      case 'nr_observe_get_latency_decomposition': {
-        if (!latencyDecompositionTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'LatencyDecompositionTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_latency_decomposition': {
+          if (!latencyDecompositionTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'LatencyDecompositionTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetLatencyDecomposition(latencyDecompositionTracker);
         }
-        return handleGetLatencyDecomposition(latencyDecompositionTracker);
-      }
 
-      case 'nr_observe_get_decision_tree': {
-        if (!decisionTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'DecisionTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_decision_tree': {
+          if (!decisionTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'DecisionTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          const dtArgs = (args ?? {}) as Record<string, unknown>;
+          return handleGetDecisionTree(decisionTracker, dtArgs.post_mortem === true);
         }
-        const dtArgs = (args ?? {}) as Record<string, unknown>;
-        return handleGetDecisionTree(decisionTracker, dtArgs.post_mortem === true);
-      }
 
-      case 'nr_observe_get_instruction_drift': {
-        if (!instructionDriftTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'InstructionDriftTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_instruction_drift': {
+          if (!instructionDriftTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'InstructionDriftTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetInstructionDrift(instructionDriftTracker);
         }
-        return handleGetInstructionDrift(instructionDriftTracker);
-      }
 
-      case 'nr_observe_get_tool_selection_score': {
-        if (!toolSelectionScorer || !options.toolCallBuffer) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ToolSelectionScorer or toolCallBuffer not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_tool_selection_score': {
+          if (!toolSelectionScorer || !options.toolCallBuffer) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({
+                    error: 'ToolSelectionScorer or toolCallBuffer not available',
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetToolSelectionScore(
+            toolSelectionScorer,
+            options.toolCallBuffer.getRecords(),
+          );
         }
-        return handleGetToolSelectionScore(toolSelectionScorer, options.toolCallBuffer.getRecords());
-      }
 
-      case 'nr_observe_get_quality_proxy': {
-        if (!qualityProxyTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'QualityProxyTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_quality_proxy': {
+          if (!qualityProxyTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'QualityProxyTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetQualityProxy(qualityProxyTracker);
         }
-        return handleGetQualityProxy(qualityProxyTracker);
-      }
 
-      case 'nr_observe_get_api_failures': {
-        if (!apiFailureTracker) {
-          return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ApiFailureTracker not available' }) }],
-            isError: true,
-          };
+        case 'nr_observe_get_api_failures': {
+          if (!apiFailureTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'ApiFailureTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetApiFailures(apiFailureTracker);
         }
-        return handleGetApiFailures(apiFailureTracker);
-      }
 
-      default:
-        throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
-    }
-  } catch (err) {
+        default:
+          throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
+      }
+    } catch (err) {
       if (err instanceof McpError) throw err;
       logger.error('Tool handler threw unexpectedly', {
         tool: name,
         error: err instanceof Error ? err.message : String(err),
       });
       return {
-        content: [{ type: 'text', text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }) }],
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+          },
+        ],
         isError: true,
       };
     }

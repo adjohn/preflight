@@ -35,7 +35,7 @@ npx jest -- src/shared/harvest/harvest-scheduler.test.ts
 **Rules:**
 
 1. **Never edit files under `src/shared/` in this repo.** Any change here will be wiped out on the next sync. Make the change in the upstream `nr-ai-typescript-shared` repo, then run `npm run sync:shared` here to pull it in and commit the regenerated tree.
-2. **Only code shared between this MCP server and `nr-ai-typescript-agent` belongs in `nr-ai-typescript-shared`.** If a piece of code is consumed by exactly one of those two repos, it does not belong in shared — keep it local to the consuming repo. Examples of code that *does* belong: transport clients for NR Events / Metrics / Logs APIs, OTLP transport, event schemas and serialization, harvest scheduler, token extraction, pricing tables, logger, error classification.
+2. **Only code shared between this MCP server and `nr-ai-typescript-agent` belongs in `nr-ai-typescript-shared`.** If a piece of code is consumed by exactly one of those two repos, it does not belong in shared — keep it local to the consuming repo. Examples of code that _does_ belong: transport clients for NR Events / Metrics / Logs APIs, OTLP transport, event schemas and serialization, harvest scheduler, token extraction, pricing tables, logger, error classification.
 3. **If you need to add a new shared module:** add it in `nr-ai-typescript-shared`, verify both this repo and `nr-ai-typescript-agent` will consume it, then sync into both. Don't introduce a shared file here first and "promote" it later.
 
 If you find yourself wanting to edit `src/shared/` directly to fix a bug or add a feature, stop and switch to the upstream repo instead.
@@ -172,18 +172,21 @@ Claude Code
 ## TypeScript Conventions
 
 ### Module System
+
 - ESM throughout (`"type": "module"` in `package.json`)
 - `NodeNext` module resolution
 - All internal imports use `.js` extensions (required for ESM)
 - Strict mode enabled
 
 ### Type Patterns
+
 - `interface` for public API contracts and tracker return types
 - `type` for unions, intersections, and local aliases
 - `readonly` on all interface fields for immutable data shapes
 - `Record<string, T>` for dynamic key maps (tool breakdowns, exit code maps)
 
 ### Naming
+
 - Files: `kebab-case.ts` (e.g., `session-tracker.ts`, `cost-tracker.test.ts`)
 - Classes: `PascalCase` (e.g., `SessionTracker`, `HookEventProcessor`)
 - Interfaces: `PascalCase` (e.g., `McpServerConfig`, `FullSessionSummary`)
@@ -192,6 +195,7 @@ Claude Code
 - Test helpers: `camelCase` with `make` prefix (e.g., `makeRecord`, `makeSummary`, `makeManager`)
 
 ### Import Order
+
 1. Node.js builtins (`node:fs`, `node:path`, `node:crypto`)
 2. External packages (`@modelcontextprotocol/sdk`, `zod`, `commander`)
 3. Blank line
@@ -199,11 +203,14 @@ Claude Code
 5. Local imports (`./types.js`, `../metrics/session-tracker.js`)
 
 ### Logger Pattern
+
 Every module creates a scoped logger at module level:
+
 ```typescript
 import { createLogger } from '../shared/index.js';
 const logger = createLogger('module-name');
 ```
+
 Logger writes to stderr as JSON. Never write to stdout (reserved for MCP stdio transport).
 
 ## Metric Tracker Pattern
@@ -213,13 +220,14 @@ All 12 metric trackers in `src/metrics/` follow the same shape:
 ```typescript
 class XxxTracker {
   constructor(options?: XxxOptions);
-  recordToolCall(record: ToolCallRecord): void;  // or similar input method
-  getMetrics(): XxxMetrics;                       // returns current state
-  reset(sessionId: string): void;                 // clears state for new session
+  recordToolCall(record: ToolCallRecord): void; // or similar input method
+  getMetrics(): XxxMetrics; // returns current state
+  reset(sessionId: string): void; // clears state for new session
 }
 ```
 
 Each tracker:
+
 - Receives `ToolCallRecord` objects from the event processor
 - Maintains internal state (maps, counters, arrays)
 - Exposes a `getMetrics()` method returning a typed snapshot
@@ -228,6 +236,7 @@ Each tracker:
 ## MCP Tool Registration
 
 Tools are registered in `src/tools/session-stats.ts` via `registerTools()`, which receives all tracker instances and calls `server.tool()` for each MCP tool. Each tool handler:
+
 1. Reads current state from the relevant tracker(s) via `getMetrics()`
 2. Formats the result as a text content block
 3. Returns `{ content: [{ type: 'text', text: JSON.stringify(result) }] }`
@@ -237,29 +246,34 @@ Tools are conditionally registered based on available dependencies (e.g., cross-
 ### MCP Tools (36 total)
 
 **Session Tools:**
+
 - `nr_observe_get_session_stats` — current session metrics
 - `nr_observe_get_session_timeline` — recent tool calls with timestamps
 - `nr_observe_get_efficiency_score` — composite efficiency scoring
 - `nr_observe_health` — server health check: version, uptime, session ID
 
 **Cost and Budget Tools:**
+
 - `nr_observe_report_tokens` — self-reported token usage with per-model cost calculation
 - `nr_observe_get_cost_breakdown` — cost by tool type and model
 - `nr_observe_get_cost_forecast` — project future spend
 - `nr_observe_get_budget_status` — current spend vs. budget caps
 
 **Workflow and Anti-Pattern Tools:**
+
 - `nr_observe_get_anti_patterns` — detected thrashing, re-reads, blind edits, stuck loops
 - `nr_observe_get_workflow_trace` — ordered sequence of recent tool calls
 - `nr_observe_report_feedback` — record user quality feedback (`good`/`bad`/`neutral`) for a task
 
 **Analytics Tools:**
+
 - `nr_observe_get_context_efficiency` — context window waste (repeated reads)
 - `nr_observe_get_latency_percentiles` — p50/p95/p99 per tool type
 - `nr_observe_get_task_completion_rate` — task lifecycle (completed vs. abandoned)
 - `nr_observe_get_model_usage` — cost-efficiency per AI model
 
 **Extended Analytics Tools:**
+
 - `nr_observe_get_retry_alerts` — thrashing/retry detection alerts in a sliding window
 - `nr_observe_get_context_composition` — per-turn token breakdown by category with fill % and dominance alerts
 - `nr_observe_get_latency_decomposition` — LLM API vs tool execution vs overhead time split with p50/p95
@@ -270,6 +284,7 @@ Tools are conditionally registered based on available dependencies (e.g., cross-
 - `nr_observe_get_api_failures` — per-model reliability scorecards, tokens lost, throttle alerts, MTTR
 
 **Cross-Session Tools (require SessionStore + WeeklySummaryGenerator):**
+
 - `nr_observe_get_session_history` — paginated past-session list with summary metrics
 - `nr_observe_get_weekly_summary` — aggregated metrics across the week
 - `nr_observe_get_trends` — weekly metric trends (efficiency, cost, task success)
@@ -282,6 +297,7 @@ Tools are conditionally registered based on available dependencies (e.g., cross-
 - `nr_observe_get_platform_comparison` — side-by-side platform metrics
 
 **Digest and Subscription Tools:**
+
 - `nr_observe_subscribe_digest` — register webhook for weekly summaries
 - `nr_observe_unsubscribe_digest` — disable digest delivery
 - `nr_observe_send_digest` — generate and POST the current week's digest immediately
@@ -295,64 +311,67 @@ Config loading priority: **CLI > environment variables > config file > defaults*
 The config file path defaults to `~/.nr-ai-observe/config.json` or can be passed via `--config`.
 
 Key config interfaces:
+
 - `McpServerConfig` in `src/config.ts`
 - `AgentConfig` in `src/shared/config.ts`
 
 ### New Configuration Fields (Phases 6–10)
 
-| Field | Env Var | Type | Purpose |
-|-------|---------|------|---------|
-| `developer` | `NEW_RELIC_AI_MCP_DEVELOPER` | string | Developer identifier on all NR events. Normalised to lowercase with underscores via `normalizeDeveloperName()`. Falls back to `$USER` → `$USERNAME` → `git config user.name` → `'unknown'` when unset. |
-| `sessionBudgetUsd` | `NEW_RELIC_AI_SESSION_BUDGET_USD` | number | Session spend limit (USD) |
-| `dailyBudgetUsd` | `NEW_RELIC_AI_DAILY_BUDGET_USD` | number | Daily spend limit (USD) |
-| `weeklyBudgetUsd` | `NEW_RELIC_AI_WEEKLY_BUDGET_USD` | number | Weekly spend limit (USD) |
-| `teamId` | `NEW_RELIC_AI_TEAM_ID` | string | Team identifier for aggregation |
-| `projectId` | `NEW_RELIC_AI_PROJECT_ID` | string | Project identifier (auto-derived from git) |
-| `orgId` | `NEW_RELIC_AI_ORG_ID` | string | Organization identifier |
-| `nrApiKey` | `NEW_RELIC_API_KEY` | string | User API key (NRAK-...) for team summary NerdGraph queries |
-| `digestWebhookUrl` | `NEW_RELIC_AI_DIGEST_WEBHOOK_URL` | string | Slack/HTTP webhook for weekly digest |
-| `digestSchedule` | `NEW_RELIC_AI_DIGEST_SCHEDULE` | string | Cron expression for digest delivery |
-| `retainSessionsDays` | `NEW_RELIC_AI_RETAIN_SESSIONS_DAYS` | number | Auto-purge sessions older than N days |
-| `otlpEndpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | string \| null | OTLP/HTTP endpoint URL (e.g. `https://otlp.nr-data.net` for NR US). When set, enables OTLP export. |
-| `otlpHeaders` | `OTEL_EXPORTER_OTLP_HEADERS` | Record\<string, string\> | Auth headers for OTLP endpoint. Env var uses comma-separated `key=value` pairs. |
-| `transport` | `NEW_RELIC_AI_TRANSPORT` | `'nr-events-api' \| 'otlp' \| 'both'` | `nr-events-api` (default): NR APIs only. `otlp`: OTLP only. `both`: concurrent. |
-| `otlpReceiverEnabled` | `NR_AI_OTLP_RECEIVER_ENABLED` | boolean | Enable a local OTLP/HTTP receiver in proxy mode. |
-| `otlpReceiverPort` | `NR_AI_OTLP_RECEIVER_PORT` | number | Port for the local OTLP/HTTP receiver. Default `4318`. |
-| `otlpForwardEndpoint` | `NR_AI_OTLP_FORWARD_ENDPOINT` | string \| null | Where the receiver forwards enriched payloads. Defaults to NR US OTLP when `licenseKey` is set; `null` to receive and enrich only. |
-| `otlpForwardHeaders` | `NR_AI_OTLP_FORWARD_HEADERS` | Record\<string, string\> | HTTP headers added to every forwarded OTLP request. Defaults to `{ 'api-key': licenseKey }`. |
+| Field                 | Env Var                             | Type                                  | Purpose                                                                                                                                                                                                |
+| --------------------- | ----------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `developer`           | `NEW_RELIC_AI_MCP_DEVELOPER`        | string                                | Developer identifier on all NR events. Normalised to lowercase with underscores via `normalizeDeveloperName()`. Falls back to `$USER` → `$USERNAME` → `git config user.name` → `'unknown'` when unset. |
+| `sessionBudgetUsd`    | `NEW_RELIC_AI_SESSION_BUDGET_USD`   | number                                | Session spend limit (USD)                                                                                                                                                                              |
+| `dailyBudgetUsd`      | `NEW_RELIC_AI_DAILY_BUDGET_USD`     | number                                | Daily spend limit (USD)                                                                                                                                                                                |
+| `weeklyBudgetUsd`     | `NEW_RELIC_AI_WEEKLY_BUDGET_USD`    | number                                | Weekly spend limit (USD)                                                                                                                                                                               |
+| `teamId`              | `NEW_RELIC_AI_TEAM_ID`              | string                                | Team identifier for aggregation                                                                                                                                                                        |
+| `projectId`           | `NEW_RELIC_AI_PROJECT_ID`           | string                                | Project identifier (auto-derived from git)                                                                                                                                                             |
+| `orgId`               | `NEW_RELIC_AI_ORG_ID`               | string                                | Organization identifier                                                                                                                                                                                |
+| `nrApiKey`            | `NEW_RELIC_API_KEY`                 | string                                | User API key (NRAK-...) for team summary NerdGraph queries                                                                                                                                             |
+| `digestWebhookUrl`    | `NEW_RELIC_AI_DIGEST_WEBHOOK_URL`   | string                                | Slack/HTTP webhook for weekly digest                                                                                                                                                                   |
+| `digestSchedule`      | `NEW_RELIC_AI_DIGEST_SCHEDULE`      | string                                | Cron expression for digest delivery                                                                                                                                                                    |
+| `retainSessionsDays`  | `NEW_RELIC_AI_RETAIN_SESSIONS_DAYS` | number                                | Auto-purge sessions older than N days                                                                                                                                                                  |
+| `otlpEndpoint`        | `OTEL_EXPORTER_OTLP_ENDPOINT`       | string \| null                        | OTLP/HTTP endpoint URL (e.g. `https://otlp.nr-data.net` for NR US). When set, enables OTLP export.                                                                                                     |
+| `otlpHeaders`         | `OTEL_EXPORTER_OTLP_HEADERS`        | Record\<string, string\>              | Auth headers for OTLP endpoint. Env var uses comma-separated `key=value` pairs.                                                                                                                        |
+| `transport`           | `NEW_RELIC_AI_TRANSPORT`            | `'nr-events-api' \| 'otlp' \| 'both'` | `nr-events-api` (default): NR APIs only. `otlp`: OTLP only. `both`: concurrent.                                                                                                                        |
+| `otlpReceiverEnabled` | `NR_AI_OTLP_RECEIVER_ENABLED`       | boolean                               | Enable a local OTLP/HTTP receiver in proxy mode.                                                                                                                                                       |
+| `otlpReceiverPort`    | `NR_AI_OTLP_RECEIVER_PORT`          | number                                | Port for the local OTLP/HTTP receiver. Default `4318`.                                                                                                                                                 |
+| `otlpForwardEndpoint` | `NR_AI_OTLP_FORWARD_ENDPOINT`       | string \| null                        | Where the receiver forwards enriched payloads. Defaults to NR US OTLP when `licenseKey` is set; `null` to receive and enrich only.                                                                     |
+| `otlpForwardHeaders`  | `NR_AI_OTLP_FORWARD_HEADERS`        | Record\<string, string\>              | HTTP headers added to every forwarded OTLP request. Defaults to `{ 'api-key': licenseKey }`.                                                                                                           |
 
 ### New Event Types
 
-| Event Type | Emitted By | Use Case |
-|-----------|-----------|----------|
+| Event Type        | Emitted By      | Use Case                                  |
+| ----------------- | --------------- | ----------------------------------------- |
 | `AiBudgetWarning` | `BudgetTracker` | Budget threshold crossed (50%, 80%, 100%) |
 
 ### Enhanced Events
 
 All MCP server events (`AiToolCall`, `AiCodingTask`, `AiAntiPattern`, `AiMcpToolCall`, `AiProxyRequest`, `AiAuditEvent`) now include team attribution fields:
+
 - `team_id` — team identifier (from config)
 - `project_id` — project identifier (auto-derived or configured)
 - `org_id` — organization identifier (from config)
 
 ### Phase 4 SDK Agent Events
 
-*(Emitted by `nr-ai-agent`, now in the `nr-ai-typescript-agent` repo.)*
+_(Emitted by `nr-ai-agent`, now in the `nr-ai-typescript-agent` repo.)_
 
 Emitted by `nr-ai-agent` from the intelligence modules (Phases 4.1–4.7):
 
-| Event Type | Emitted By | Cadence | Use Case |
-|-----------|-----------|---------|----------|
-| `AiCostGrowthAlert` | `CostForecaster` | On threshold | Monthly cost growth rate exceeded configured threshold |
-| `AiCostForecastAlert` | `CostForecaster` | On threshold | Projected monthly cost exceeds configured budget |
-| `AiExperimentSummary` | `ExperimentTracker` | Every 6 hours | Per-experiment results snapshot with per-variant stats |
-| `AiExperimentConclusion` | `ExperimentTracker` | On conclusion | Winner declared or end date reached — fires once per experiment |
-| `AiRecommendation` | `RecommendationEngine` | Every 5 minutes | Automated optimization recommendations (cache, model, context) |
+| Event Type               | Emitted By             | Cadence         | Use Case                                                        |
+| ------------------------ | ---------------------- | --------------- | --------------------------------------------------------------- |
+| `AiCostGrowthAlert`      | `CostForecaster`       | On threshold    | Monthly cost growth rate exceeded configured threshold          |
+| `AiCostForecastAlert`    | `CostForecaster`       | On threshold    | Projected monthly cost exceeds configured budget                |
+| `AiExperimentSummary`    | `ExperimentTracker`    | Every 6 hours   | Per-experiment results snapshot with per-variant stats          |
+| `AiExperimentConclusion` | `ExperimentTracker`    | On conclusion   | Winner declared or end date reached — fires once per experiment |
+| `AiRecommendation`       | `RecommendationEngine` | Every 5 minutes | Automated optimization recommendations (cache, model, context)  |
 
 ### Provider Support
 
-*(Now in the `nr-ai-typescript-agent` repo.)*
+_(Now in the `nr-ai-typescript-agent` repo.)_
 
 SDK agent wrappers now support 6 AI providers:
+
 - `anthropic` — Anthropic Claude models
 - `google` — Google Gemini models
 - `openai` — OpenAI GPT/o1/o3 models
@@ -364,17 +383,18 @@ SDK agent wrappers now support 6 AI providers:
 
 All local persistence lives under `~/.nr-ai-observe/` by default:
 
-| Path | Format | Purpose |
-|------|--------|---------|
-| `buffer.jsonl` | JSONL | Hook event buffer (written by collector, drained by processor) |
-| `sessions/` | JSON files | Session summaries (`YYYY-MM-DD_sessionId.json`) |
-| `weekly_summaries/` | JSON files | Cross-session weekly aggregations |
+| Path                | Format     | Purpose                                                        |
+| ------------------- | ---------- | -------------------------------------------------------------- |
+| `buffer.jsonl`      | JSONL      | Hook event buffer (written by collector, drained by processor) |
+| `sessions/`         | JSON files | Session summaries (`YYYY-MM-DD_sessionId.json`)                |
+| `weekly_summaries/` | JSON files | Cross-session weekly aggregations                              |
 
 `LocalStore` handles atomic buffer operations (append, drain with rename-then-read pattern).
 
 ## Harvest and Ingestion
 
 `HarvestScheduler` (in `src/shared/harvest/`) manages periodic flush of events and metrics to New Relic:
+
 - Events flush every 5 seconds (configurable)
 - Metrics flush every 60 seconds (configurable)
 - Failed batches are re-queued with bounded retry buffers

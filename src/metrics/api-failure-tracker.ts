@@ -99,7 +99,8 @@ export class ApiFailureTracker {
 
   constructor(options?: ApiFailureTrackerOptions) {
     this.throttleThreshold = options?.throttleAlertThreshold ?? DEFAULT_THROTTLE_THRESHOLD;
-    this.throttleWindowMinutes = options?.throttleAlertWindowMinutes ?? DEFAULT_THROTTLE_WINDOW_MINUTES;
+    this.throttleWindowMinutes =
+      options?.throttleAlertWindowMinutes ?? DEFAULT_THROTTLE_WINDOW_MINUTES;
     this.maxEvents = options?.maxEvents ?? DEFAULT_MAX_EVENTS;
     this.costPerTokenUsd = options?.costPerTokenUsd ?? DEFAULT_COST_PER_TOKEN_USD;
     this.onThrottleAlert = options?.onThrottleAlert ?? null;
@@ -176,9 +177,10 @@ export class ApiFailureTracker {
       }
     }
 
-    const meanRecovery = recoveryTimes.length > 0
-      ? Math.round(recoveryTimes.reduce((a, b) => a + b, 0) / recoveryTimes.length)
-      : null;
+    const meanRecovery =
+      recoveryTimes.length > 0
+        ? Math.round(recoveryTimes.reduce((a, b) => a + b, 0) / recoveryTimes.length)
+        : null;
 
     return {
       totalFailures: this.events.length,
@@ -231,10 +233,7 @@ export class ApiFailureTracker {
     const now = Date.now();
 
     const recentThrottles = this.events.filter(
-      (e) =>
-        e.model === model &&
-        e.errorType === 'rate_limit' &&
-        now - e.timestamp <= windowMs,
+      (e) => e.model === model && e.errorType === 'rate_limit' && now - e.timestamp <= windowMs,
     );
 
     if (recentThrottles.length >= this.throttleThreshold) {
@@ -290,19 +289,21 @@ export class ApiFailureTracker {
         model,
         totalRequests: totalModelRequests,
         failureCount: modelEvents.length,
-        failureRate: totalModelRequests > 0
-          ? Math.round((modelEvents.length / totalModelRequests) * 1000) / 1000
-          : 0,
+        failureRate:
+          totalModelRequests > 0
+            ? Math.round((modelEvents.length / totalModelRequests) * 1000) / 1000
+            : 0,
         throttleCount: throttles.length,
-        throttleFrequency: totalModelRequests > 0
-          ? Math.round((throttles.length / totalModelRequests) * 1000) / 1000
-          : 0,
-        meanRecoveryMs: recoveryTimes.length > 0
-          ? Math.round(recoveryTimes.reduce((a, b) => a + b, 0) / recoveryTimes.length)
-          : null,
-        p95LatencyMs: sortedLatencies.length > 0
-          ? (computePercentile(sortedLatencies, 0.95) ?? null)
-          : null,
+        throttleFrequency:
+          totalModelRequests > 0
+            ? Math.round((throttles.length / totalModelRequests) * 1000) / 1000
+            : 0,
+        meanRecoveryMs:
+          recoveryTimes.length > 0
+            ? Math.round(recoveryTimes.reduce((a, b) => a + b, 0) / recoveryTimes.length)
+            : null,
+        p95LatencyMs:
+          sortedLatencies.length > 0 ? (computePercentile(sortedLatencies, 0.95) ?? null) : null,
         tokensLost,
         estimatedCostLostUsd: Math.round(tokensLost * this.costPerTokenUsd * 10000) / 10000,
       };

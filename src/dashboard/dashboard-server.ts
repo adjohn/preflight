@@ -33,8 +33,12 @@ export class DashboardServer {
   private server: HttpServer | undefined;
   private readonly startedAt = Date.now();
   private readonly routes = new Map<string, RouteHandler>();
-  private readonly staticHandler: ((req: IncomingMessage, res: ServerResponse) => Promise<void>) | undefined;
-  private readonly apiHandler: ((req: IncomingMessage, res: ServerResponse) => Promise<void>) | undefined;
+  private readonly staticHandler:
+    | ((req: IncomingMessage, res: ServerResponse) => Promise<void>)
+    | undefined;
+  private readonly apiHandler:
+    | ((req: IncomingMessage, res: ServerResponse) => Promise<void>)
+    | undefined;
   // SSE responses are long-lived and would block server.close() forever.
   // Track them so stop() can force-end each one before awaiting close.
   private readonly activeSseResponses = new Set<ServerResponse>();
@@ -100,7 +104,9 @@ export class DashboardServer {
 
   async start(): Promise<AddressInfo> {
     return await new Promise((resolve, reject) => {
-      const server = createServer((req, res) => { void this.handle(req, res); });
+      const server = createServer((req, res) => {
+        void this.handle(req, res);
+      });
       // Reject the start() promise on any pre-listen error (e.g. EADDRINUSE).
       // Once listen() succeeds, swap in a permanent error logger so post-start
       // errors aren't silently swallowed by the resolved promise. See F-011.
@@ -166,7 +172,12 @@ export class DashboardServer {
       }
       return;
     }
-    if (req.method === 'GET' && pathname.startsWith('/api/') && pathname !== '/api/health' && this.apiHandler) {
+    if (
+      req.method === 'GET' &&
+      pathname.startsWith('/api/') &&
+      pathname !== '/api/health' &&
+      this.apiHandler
+    ) {
       try {
         await this.apiHandler(req, res);
       } catch (err) {
@@ -206,7 +217,9 @@ export class DashboardServer {
       return ipv6 === '::1' || ipv6 === '0:0:0:0:0:0:0:1';
     }
     const firstColon = hostHeader.indexOf(':');
-    const hostOnly = (firstColon === -1 ? hostHeader : hostHeader.slice(0, firstColon)).toLowerCase();
+    const hostOnly = (
+      firstColon === -1 ? hostHeader : hostHeader.slice(0, firstColon)
+    ).toLowerCase();
     // Reject non-numeric port suffixes — `Host: 127.0.0.1:abc.evil.com` would
     // otherwise pass with hostOnly='127.0.0.1'. See F-012.
     if (firstColon !== -1) {

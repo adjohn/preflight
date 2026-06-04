@@ -142,9 +142,9 @@ describe('loadConfig', () => {
   });
 
   it('throws when accountId is non-numeric', () => {
-    expect(() =>
-      loadConfig({ licenseKey: 'key', appName: 'app', accountId: 'abc' }),
-    ).toThrow('NEW_RELIC_ACCOUNT_ID must be 1–12 decimal digits');
+    expect(() => loadConfig({ licenseKey: 'key', appName: 'app', accountId: 'abc' })).toThrow(
+      'NEW_RELIC_ACCOUNT_ID must be 1–12 decimal digits',
+    );
   });
 
   it('throws when accountId exceeds 12 digits', () => {

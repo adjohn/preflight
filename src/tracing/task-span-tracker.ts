@@ -9,12 +9,16 @@ export class TaskSpanTracker {
 
   openTask(taskId: string, label: string, parentContext: ReturnType<typeof context.active>): void {
     if (this.activeTasks.has(taskId)) return;
-    const span = getMcpTracer().startSpan(`ai.task ${label}`, {
-      attributes: {
-        'ai.task.id': taskId,
-        'ai.task.label': label,
+    const span = getMcpTracer().startSpan(
+      `ai.task ${label}`,
+      {
+        attributes: {
+          'ai.task.id': taskId,
+          'ai.task.label': label,
+        },
       },
-    }, parentContext);
+      parentContext,
+    );
     this.activeTasks.set(taskId, span);
     logger.debug('Task span opened', { taskId, label });
   }
@@ -29,7 +33,10 @@ export class TaskSpanTracker {
     logger.debug('Task span closed', { taskId });
   }
 
-  getContext(taskId: string | null, fallback: ReturnType<typeof context.active>): ReturnType<typeof context.active> {
+  getContext(
+    taskId: string | null,
+    fallback: ReturnType<typeof context.active>,
+  ): ReturnType<typeof context.active> {
     if (!taskId) return fallback;
     const span = this.activeTasks.get(taskId);
     if (!span) return fallback;
@@ -38,7 +45,10 @@ export class TaskSpanTracker {
 
   closeAll(): void {
     for (const [taskId, span] of this.activeTasks) {
-      span.setStatus({ code: SpanStatusCode.ERROR, message: 'session ended with task in progress' });
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: 'session ended with task in progress',
+      });
       span.end();
       logger.debug('Force-closed task span', { taskId });
     }

@@ -103,7 +103,7 @@ describe('calculateCost', () => {
 
     // Verify a warning was logged
     expect(stderrSpy).toHaveBeenCalled();
-    const logOutput = stderrSpy.mock.calls.map(c => c[0]).join('');
+    const logOutput = stderrSpy.mock.calls.map((c) => c[0]).join('');
     expect(logOutput).toContain('Unknown model');
 
     stderrSpy.mockRestore();
@@ -301,7 +301,7 @@ describe('custom pricing file', () => {
 
     const result = loadCustomPricing('/etc/passwd');
     expect(result).toBeNull();
-    const output = stderrSpy.mock.calls.map(c => c[0]).join('');
+    const output = stderrSpy.mock.calls.map((c) => c[0]).join('');
     expect(output).toContain('.json extension');
 
     stderrSpy.mockRestore();
@@ -312,7 +312,7 @@ describe('custom pricing file', () => {
 
     const result = loadCustomPricing(join(tmpDir, 'pricing.txt'));
     expect(result).toBeNull();
-    const output = stderrSpy.mock.calls.map(c => c[0]).join('');
+    const output = stderrSpy.mock.calls.map((c) => c[0]).join('');
     expect(output).toContain('.json extension');
 
     stderrSpy.mockRestore();
@@ -320,7 +320,12 @@ describe('custom pricing file', () => {
 
   it('accepts a .JSON extension (case-insensitive)', () => {
     const customFile = join(tmpDir, 'pricing.JSON');
-    writeFileSync(customFile, JSON.stringify({ 'test-model': { inputPerMTok: 1, outputPerMTok: 2, contextWindow: 100000 } }));
+    writeFileSync(
+      customFile,
+      JSON.stringify({
+        'test-model': { inputPerMTok: 1, outputPerMTok: 2, contextWindow: 100000 },
+      }),
+    );
     const result = loadCustomPricing(customFile);
     expect(result).not.toBeNull();
     expect(result!['test-model'].inputPerMTok).toBe(1);
@@ -330,7 +335,7 @@ describe('custom pricing file', () => {
     const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     loadCustomPricing('nonexistent-relative.json');
-    const output = stderrSpy.mock.calls.map(c => c[0]).join('');
+    const output = stderrSpy.mock.calls.map((c) => c[0]).join('');
     // The logged path should be absolute (starts with /)
     expect(output).toMatch(/\/.*nonexistent-relative\.json/);
 
@@ -342,10 +347,13 @@ describe('custom pricing file', () => {
     const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     const customFile = join(tmpDir, 'custom-pricing.json');
-    writeFileSync(customFile, JSON.stringify({
-      'bad-model': { inputPerMTok: -999, outputPerMTok: 5, contextWindow: 100_000 },
-      'good-model': { inputPerMTok: 1, outputPerMTok: 2, contextWindow: 100_000 },
-    }));
+    writeFileSync(
+      customFile,
+      JSON.stringify({
+        'bad-model': { inputPerMTok: -999, outputPerMTok: 5, contextWindow: 100_000 },
+        'good-model': { inputPerMTok: 1, outputPerMTok: 2, contextWindow: 100_000 },
+      }),
+    );
 
     const result = loadCustomPricing(customFile);
     expect(result).not.toBeNull();
@@ -353,7 +361,7 @@ describe('custom pricing file', () => {
     expect(result!['good-model']).toBeDefined();
     expect(result!['good-model'].inputPerMTok).toBe(1);
 
-    const output = stderrSpy.mock.calls.map(c => c[0]).join('');
+    const output = stderrSpy.mock.calls.map((c) => c[0]).join('');
     expect(output).toContain('invalid inputPerMTok');
     stderrSpy.mockRestore();
   });
@@ -362,15 +370,18 @@ describe('custom pricing file', () => {
     const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     const customFile = join(tmpDir, 'custom-pricing.json');
-    writeFileSync(customFile, JSON.stringify({
-      'exploit-model': { inputPerMTok: 1, outputPerMTok: 'EXPLOIT', contextWindow: 100_000 },
-    }));
+    writeFileSync(
+      customFile,
+      JSON.stringify({
+        'exploit-model': { inputPerMTok: 1, outputPerMTok: 'EXPLOIT', contextWindow: 100_000 },
+      }),
+    );
 
     const result = loadCustomPricing(customFile);
     expect(result).not.toBeNull();
     expect(result!['exploit-model']).toBeUndefined();
 
-    const output = stderrSpy.mock.calls.map(c => c[0]).join('');
+    const output = stderrSpy.mock.calls.map((c) => c[0]).join('');
     expect(output).toContain('invalid outputPerMTok');
     stderrSpy.mockRestore();
   });
@@ -395,10 +406,13 @@ describe('custom pricing file', () => {
     const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     const customFile = join(tmpDir, 'custom-pricing.json');
-    writeFileSync(customFile, JSON.stringify({
-      'no-ctx': { inputPerMTok: 1, outputPerMTok: 2 },
-      'zero-ctx': { inputPerMTok: 1, outputPerMTok: 2, contextWindow: 0 },
-    }));
+    writeFileSync(
+      customFile,
+      JSON.stringify({
+        'no-ctx': { inputPerMTok: 1, outputPerMTok: 2 },
+        'zero-ctx': { inputPerMTok: 1, outputPerMTok: 2, contextWindow: 0 },
+      }),
+    );
 
     const result = loadCustomPricing(customFile);
     expect(result!['no-ctx']).toBeUndefined();
@@ -410,38 +424,44 @@ describe('custom pricing file', () => {
     const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     const customFile = join(tmpDir, 'custom-pricing.json');
-    writeFileSync(customFile, JSON.stringify({
-      'bad-optional': {
-        inputPerMTok: 1,
-        outputPerMTok: 2,
-        contextWindow: 100_000,
-        cacheReadPerMTok: -1,
-      },
-    }));
+    writeFileSync(
+      customFile,
+      JSON.stringify({
+        'bad-optional': {
+          inputPerMTok: 1,
+          outputPerMTok: 2,
+          contextWindow: 100_000,
+          cacheReadPerMTok: -1,
+        },
+      }),
+    );
 
     const result = loadCustomPricing(customFile);
     expect(result!['bad-optional']).toBeUndefined();
-    const output = stderrSpy.mock.calls.map(c => c[0]).join('');
+    const output = stderrSpy.mock.calls.map((c) => c[0]).join('');
     expect(output).toContain('invalid cacheReadPerMTok');
     stderrSpy.mockRestore();
   });
 
   it('accepts valid entries with all optional fields present', () => {
     const customFile = join(tmpDir, 'custom-pricing.json');
-    writeFileSync(customFile, JSON.stringify({
-      'full-model': {
-        inputPerMTok: 1,
-        outputPerMTok: 2,
-        thinkingPerMTok: 3,
-        cacheReadPerMTok: 0.5,
-        cacheCreationPerMTok: 1.5,
-        contextWindow: 200_000,
-        tierThreshold: 128_000,
-        tierInputPerMTok: 2,
-        tierOutputPerMTok: 4,
-        tierThinkingPerMTok: 6,
-      },
-    }));
+    writeFileSync(
+      customFile,
+      JSON.stringify({
+        'full-model': {
+          inputPerMTok: 1,
+          outputPerMTok: 2,
+          thinkingPerMTok: 3,
+          cacheReadPerMTok: 0.5,
+          cacheCreationPerMTok: 1.5,
+          contextWindow: 200_000,
+          tierThreshold: 128_000,
+          tierInputPerMTok: 2,
+          tierOutputPerMTok: 4,
+          tierThinkingPerMTok: 6,
+        },
+      }),
+    );
 
     const result = loadCustomPricing(customFile);
     expect(result).not.toBeNull();
@@ -465,7 +485,7 @@ describe('custom pricing file', () => {
 
     // Verify a warning was logged
     expect(stderrSpy).toHaveBeenCalled();
-    const logOutput = stderrSpy.mock.calls.map(c => c[0]).join('');
+    const logOutput = stderrSpy.mock.calls.map((c) => c[0]).join('');
     expect(logOutput).toContain('Failed to load custom pricing file');
 
     stderrSpy.mockRestore();

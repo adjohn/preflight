@@ -1,6 +1,11 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { StdioUpstream, sanitizeEnv, validateCommand, DANGEROUS_ENV_KEYS } from './upstream-stdio.js';
+import {
+  StdioUpstream,
+  sanitizeEnv,
+  validateCommand,
+  DANGEROUS_ENV_KEYS,
+} from './upstream-stdio.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,8 +38,12 @@ function makeFakeResponse(): {
   const headers: Record<string, string | string[]> = {};
 
   const res = {
-    get headersSent() { return _headersSent; },
-    get writableEnded() { return _writableEnded; },
+    get headersSent() {
+      return _headersSent;
+    },
+    get writableEnded() {
+      return _writableEnded;
+    },
     setHeader(key: string, value: string | string[]) {
       headers[key.toLowerCase()] = value;
       return res;
@@ -70,9 +79,9 @@ function makeFakeResponse(): {
 
 describe('StdioUpstream', () => {
   it('throws if config has no command', () => {
-    expect(
-      () => new StdioUpstream({ name: 'test', transportType: 'stdio' }),
-    ).toThrow('requires a command');
+    expect(() => new StdioUpstream({ name: 'test', transportType: 'stdio' })).toThrow(
+      'requires a command',
+    );
   });
 
   it('stores name and transportType', () => {
@@ -127,11 +136,7 @@ describe('StdioUpstream.forward() without connect', () => {
 
     const { res, getStatus, getBody } = makeFakeResponse();
 
-    const result = await upstream.forward(
-      makeFakeRequest(),
-      res,
-      Buffer.from('not json'),
-    );
+    const result = await upstream.forward(makeFakeRequest(), res, Buffer.from('not json'));
 
     expect(result.statusCode).toBe(400);
     expect(getStatus()).toBe(400);
@@ -204,12 +209,14 @@ describe('StdioUpstream.forward() with mock client', () => {
     });
 
     const { res, getBody } = makeFakeResponse();
-    const body = Buffer.from(JSON.stringify({
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'tools/call',
-      params: { name: 'test_tool', arguments: { query: 'test' } },
-    }));
+    const body = Buffer.from(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: 'test_tool', arguments: { query: 'test' } },
+      }),
+    );
 
     const result = await upstream.forward(makeFakeRequest(), res, body);
 
@@ -222,7 +229,9 @@ describe('StdioUpstream.forward() with mock client', () => {
   it('dispatches resources/list and returns result', async () => {
     const mockResources = { resources: [{ name: 'test', uri: 'test://resource' }] };
     const upstream = makeUpstreamWithMockClient({
-      listResources: jest.fn<() => Promise<typeof mockResources>>().mockResolvedValue(mockResources),
+      listResources: jest
+        .fn<() => Promise<typeof mockResources>>()
+        .mockResolvedValue(mockResources),
     });
 
     const { res, getBody } = makeFakeResponse();
@@ -240,12 +249,14 @@ describe('StdioUpstream.forward() with mock client', () => {
     });
 
     const { res, getBody } = makeFakeResponse();
-    const body = Buffer.from(JSON.stringify({
-      jsonrpc: '2.0',
-      id: 4,
-      method: 'resources/read',
-      params: { uri: 'test://resource' },
-    }));
+    const body = Buffer.from(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 4,
+        method: 'resources/read',
+        params: { uri: 'test://resource' },
+      }),
+    );
 
     await upstream.forward(makeFakeRequest(), res, body);
     const parsed = JSON.parse(getBody());
@@ -277,12 +288,14 @@ describe('StdioUpstream.forward() with mock client', () => {
     });
 
     const { res, getBody } = makeFakeResponse();
-    const body = Buffer.from(JSON.stringify({
-      jsonrpc: '2.0',
-      id: 6,
-      method: 'custom/method',
-      params: { foo: 'bar' },
-    }));
+    const body = Buffer.from(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 6,
+        method: 'custom/method',
+        params: { foo: 'bar' },
+      }),
+    );
 
     const result = await upstream.forward(makeFakeRequest(), res, body);
     expect(result.statusCode).toBe(200);
@@ -334,7 +347,11 @@ describe('StdioUpstream.disconnect()', () => {
   it('force-kills the process and resolves if client.close() hangs past timeout', async () => {
     jest.useFakeTimers();
 
-    const upstream = new StdioUpstream({ name: 'hanging', command: 'node', transportType: 'stdio' });
+    const upstream = new StdioUpstream({
+      name: 'hanging',
+      command: 'node',
+      transportType: 'stdio',
+    });
 
     // client.close() never resolves — simulates a hung upstream
     const mockClose = jest.fn<() => Promise<void>>().mockReturnValue(new Promise(() => {}));
@@ -433,7 +450,9 @@ describe('validateCommand', () => {
   it('throws for bare command names when allowBareCommand is false', () => {
     expect(() => validateCommand('test', 'node', false)).toThrow('must be an absolute path');
     expect(() => validateCommand('test', 'python3', false)).toThrow('must be an absolute path');
-    expect(() => validateCommand('test', './relative/path', false)).toThrow('must be an absolute path');
+    expect(() => validateCommand('test', './relative/path', false)).toThrow(
+      'must be an absolute path',
+    );
   });
 
   it('does not throw for absolute paths', () => {

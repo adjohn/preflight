@@ -1,5 +1,12 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { toolCallToNrEvent, codingTaskToNrEvent, antiPatternToNrEvent, proxyToolCallToNrEvent, NrIngestManager, isProxyToolCall } from './nr-ingest.js';
+import {
+  toolCallToNrEvent,
+  codingTaskToNrEvent,
+  antiPatternToNrEvent,
+  proxyToolCallToNrEvent,
+  NrIngestManager,
+  isProxyToolCall,
+} from './nr-ingest.js';
 import type { NrIngestOptions } from './nr-ingest.js';
 import type { ToolCallRecord } from '../storage/types.js';
 import type { ProxyToolCallRecord } from '../proxy/types.js';
@@ -68,11 +75,14 @@ function makeTask(overrides?: Partial<AiCodingTask>): AiCodingTask {
   };
 }
 
-const mockSendEvents = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+const mockSendEvents = jest
+  .fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
   .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
-const mockSendMetrics = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+const mockSendMetrics = jest
+  .fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
   .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
-const mockSendLogs = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+const mockSendLogs = jest
+  .fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
   .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
 
 function makeIngestOptions(overrides?: Partial<NrIngestOptions>): NrIngestOptions {
@@ -306,16 +316,20 @@ describe('NrIngestManager', () => {
 
       // Event was flushed (AiToolCall + AiAuditEvent per tool call)
       expect(mockSendEvents).toHaveBeenCalled();
-      const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+      const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
       expect(sentEvents).toHaveLength(2);
-      const toolCallEvent = sentEvents.find(e => e.eventType === 'AiToolCall')!;
+      const toolCallEvent = sentEvents.find((e) => e.eventType === 'AiToolCall')!;
       expect(toolCallEvent.tool).toBe('Edit');
       expect(toolCallEvent.duration_ms).toBe(120);
 
       // Metrics were flushed
       expect(mockSendMetrics).toHaveBeenCalled();
-      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
-      const metricNames = sentMetrics.map(m => m.name);
+      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
+      const metricNames = sentMetrics.map((m) => m.name);
       expect(metricNames).toContain('ai.tool.call_count.count');
       expect(metricNames).toContain('ai.tool.duration_ms.count');
       expect(metricNames).toContain('ai.tool.success.count');
@@ -334,10 +348,12 @@ describe('NrIngestManager', () => {
       const manager = new NrIngestManager(makeIngestOptions());
 
       manager.start();
-      const intervalIdAfterFirst = (manager as unknown as { sessionGaugeIntervalId: unknown }).sessionGaugeIntervalId;
+      const intervalIdAfterFirst = (manager as unknown as { sessionGaugeIntervalId: unknown })
+        .sessionGaugeIntervalId;
 
       manager.start(); // second call — should be a no-op
-      const intervalIdAfterSecond = (manager as unknown as { sessionGaugeIntervalId: unknown }).sessionGaugeIntervalId;
+      const intervalIdAfterSecond = (manager as unknown as { sessionGaugeIntervalId: unknown })
+        .sessionGaugeIntervalId;
 
       expect(intervalIdAfterSecond).toBe(intervalIdAfterFirst);
 
@@ -354,10 +370,12 @@ describe('NrIngestManager', () => {
       await manager.stop();
 
       expect(mockSendEvents).toHaveBeenCalled();
-      const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+      const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
       // 2 AiToolCall + 2 AiAuditEvent = 4 events
       expect(sentEvents).toHaveLength(4);
-      const toolCallEvents = sentEvents.filter(e => e.eventType === 'AiToolCall');
+      const toolCallEvents = sentEvents.filter((e) => e.eventType === 'AiToolCall');
       expect(toolCallEvents).toHaveLength(2);
       expect(toolCallEvents[0]!.tool).toBe('Read');
       expect(toolCallEvents[1]!.tool).toBe('Bash');
@@ -376,8 +394,10 @@ describe('NrIngestManager', () => {
       await manager.stop();
 
       expect(mockSendMetrics).toHaveBeenCalled();
-      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
-      const metricNames = sentMetrics.map(m => m.name);
+      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
+      const metricNames = sentMetrics.map((m) => m.name);
 
       expect(metricNames).toContain('ai.session.duration_ms.count');
       expect(metricNames).toContain('ai.session.unique_files_read.count');
@@ -395,7 +415,8 @@ describe('NrIngestManager', () => {
 
       // At this point running=false. Calling emitSessionGauges should be a no-op.
       const recordMetricSpy = jest.spyOn(
-        (manager as unknown as { scheduler: { recordMetric: (...args: unknown[]) => void } }).scheduler,
+        (manager as unknown as { scheduler: { recordMetric: (...args: unknown[]) => void } })
+          .scheduler,
         'recordMetric',
       );
 
@@ -415,8 +436,10 @@ describe('NrIngestManager', () => {
       await manager.stop();
 
       expect(mockSendMetrics).toHaveBeenCalled();
-      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
-      const metricNames = sentMetrics.map(m => m.name);
+      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
+      const metricNames = sentMetrics.map((m) => m.name);
       expect(metricNames).toContain('ai.session.duration_ms.count');
       expect(metricNames).toContain('ai.session.unique_files_read.count');
     });
@@ -449,15 +472,18 @@ describe('NrIngestManager', () => {
     });
 
     it('HTTP 400 — batch is dropped without re-queuing', async () => {
-      const localSendEvents = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+      const localSendEvents = jest
+        .fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
         .mockResolvedValueOnce({ success: false, statusCode: 400, retryCount: 0 })
         .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
 
-      const manager = new NrIngestManager(makeIngestOptions({
-        sendEventsFn: localSendEvents,
-        eventHarvestIntervalMs: 5_000,
-        logHarvestIntervalMs: 100_000,
-      }));
+      const manager = new NrIngestManager(
+        makeIngestOptions({
+          sendEventsFn: localSendEvents,
+          eventHarvestIntervalMs: 5_000,
+          logHarvestIntervalMs: 100_000,
+        }),
+      );
       manager.ingestToolCall(makeRecord());
       manager.start();
 
@@ -472,15 +498,18 @@ describe('NrIngestManager', () => {
     });
 
     it('HTTP 403 — batch is dropped without re-queuing', async () => {
-      const localSendEvents = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+      const localSendEvents = jest
+        .fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
         .mockResolvedValueOnce({ success: false, statusCode: 403, retryCount: 0 })
         .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
 
-      const manager = new NrIngestManager(makeIngestOptions({
-        sendEventsFn: localSendEvents,
-        eventHarvestIntervalMs: 5_000,
-        logHarvestIntervalMs: 100_000,
-      }));
+      const manager = new NrIngestManager(
+        makeIngestOptions({
+          sendEventsFn: localSendEvents,
+          eventHarvestIntervalMs: 5_000,
+          logHarvestIntervalMs: 100_000,
+        }),
+      );
       manager.ingestToolCall(makeRecord());
       manager.start();
 
@@ -492,15 +521,18 @@ describe('NrIngestManager', () => {
     });
 
     it('HTTP 429 — batch is re-queued and delivered on next harvest', async () => {
-      const localSendEvents = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+      const localSendEvents = jest
+        .fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
         .mockResolvedValueOnce({ success: false, statusCode: 429, retryCount: 3 })
         .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
 
-      const manager = new NrIngestManager(makeIngestOptions({
-        sendEventsFn: localSendEvents,
-        eventHarvestIntervalMs: 5_000,
-        logHarvestIntervalMs: 100_000,
-      }));
+      const manager = new NrIngestManager(
+        makeIngestOptions({
+          sendEventsFn: localSendEvents,
+          eventHarvestIntervalMs: 5_000,
+          logHarvestIntervalMs: 100_000,
+        }),
+      );
       manager.ingestToolCall(makeRecord());
       manager.start();
 
@@ -514,15 +546,18 @@ describe('NrIngestManager', () => {
     });
 
     it('HTTP 503 — batch is re-queued and delivered on next harvest', async () => {
-      const localSendEvents = jest.fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
+      const localSendEvents = jest
+        .fn<() => Promise<{ success: boolean; statusCode: number; retryCount: number }>>()
         .mockResolvedValueOnce({ success: false, statusCode: 503, retryCount: 3 })
         .mockResolvedValue({ success: true, statusCode: 200, retryCount: 0 });
 
-      const manager = new NrIngestManager(makeIngestOptions({
-        sendEventsFn: localSendEvents,
-        eventHarvestIntervalMs: 5_000,
-        logHarvestIntervalMs: 100_000,
-      }));
+      const manager = new NrIngestManager(
+        makeIngestOptions({
+          sendEventsFn: localSendEvents,
+          eventHarvestIntervalMs: 5_000,
+          logHarvestIntervalMs: 100_000,
+        }),
+      );
       manager.ingestToolCall(makeRecord());
       manager.start();
 
@@ -635,8 +670,10 @@ describe('NrIngestManager.ingestCodingTask()', () => {
     await manager.stop();
 
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
-    const taskEvent = sentEvents.find(e => e.eventType === 'AiCodingTask');
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const taskEvent = sentEvents.find((e) => e.eventType === 'AiCodingTask');
     expect(taskEvent).toBeDefined();
     expect(taskEvent!.task_id).toBe('task-001');
     expect(taskEvent!.estimated_cost_usd).toBe(0.004);
@@ -650,8 +687,10 @@ describe('NrIngestManager.ingestCodingTask()', () => {
     manager.start();
     await manager.stop();
 
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
-    const eventTypes = sentEvents.map(e => e.eventType);
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const eventTypes = sentEvents.map((e) => e.eventType);
     expect(eventTypes).toContain('AiToolCall');
     expect(eventTypes).toContain('AiCodingTask');
   });
@@ -803,8 +842,10 @@ describe('NrIngestManager.ingestAntiPattern()', () => {
     await manager.stop();
 
     expect(mockSendEvents).toHaveBeenCalled();
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
-    const patternEvent = sentEvents.find(e => e.eventType === 'AiAntiPattern');
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const patternEvent = sentEvents.find((e) => e.eventType === 'AiAntiPattern');
     expect(patternEvent).toBeDefined();
     expect(patternEvent!.type).toBe('stuck_loop');
     expect(patternEvent!.task_id).toBe('task-001');
@@ -818,8 +859,10 @@ describe('NrIngestManager.ingestAntiPattern()', () => {
     manager.start();
     await manager.stop();
 
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
-    const patternEvents = sentEvents.filter(e => e.eventType === 'AiAntiPattern');
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const patternEvents = sentEvents.filter((e) => e.eventType === 'AiAntiPattern');
     expect(patternEvents).toHaveLength(0);
   });
 
@@ -832,10 +875,12 @@ describe('NrIngestManager.ingestAntiPattern()', () => {
     manager.start();
     await manager.stop();
 
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
-    const patternEvents = sentEvents.filter(e => e.eventType === 'AiAntiPattern');
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const patternEvents = sentEvents.filter((e) => e.eventType === 'AiAntiPattern');
     expect(patternEvents).toHaveLength(2);
-    const types = patternEvents.map(e => e.type);
+    const types = patternEvents.map((e) => e.type);
     expect(types).toContain('thrashing');
     expect(types).toContain('re_reading');
   });
@@ -908,8 +953,10 @@ describe('session trace ID propagation', () => {
     manager.start();
     await manager.stop();
 
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
-    const toolCallEvent = sentEvents.find(e => e.eventType === 'AiToolCall');
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const toolCallEvent = sentEvents.find((e) => e.eventType === 'AiToolCall');
     expect(toolCallEvent?.session_id).toBe(TRACE_ID);
   });
 
@@ -922,8 +969,10 @@ describe('session trace ID propagation', () => {
     manager.start();
     await manager.stop();
 
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
-    const patternEvent = sentEvents.find(e => e.eventType === 'AiAntiPattern');
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const patternEvent = sentEvents.find((e) => e.eventType === 'AiAntiPattern');
     expect(patternEvent?.session_id).toBe(TRACE_ID);
   });
 
@@ -999,8 +1048,10 @@ describe('session trace ID propagation', () => {
     manager.start();
     await manager.stop();
 
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
-    const budgetEvent = sentEvents.find(e => e.eventType === 'AiBudgetWarning');
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const budgetEvent = sentEvents.find((e) => e.eventType === 'AiBudgetWarning');
     expect(budgetEvent?.session_id).toBe(TRACE_ID);
   });
 
@@ -1016,8 +1067,10 @@ describe('session trace ID propagation', () => {
     manager.start();
     await manager.stop();
 
-    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
-    const budgetEvent = sentEvents.find(e => e.eventType === 'AiBudgetWarning');
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const budgetEvent = sentEvents.find((e) => e.eventType === 'AiBudgetWarning');
     expect(budgetEvent?.session_id).toBeUndefined();
   });
 

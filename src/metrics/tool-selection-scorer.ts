@@ -45,9 +45,18 @@ const DEFAULT_WORST_OFFENDER_COUNT = 10;
 // a confirmation or result, not raw data to be consumed by later tool calls.
 // Penalizing these for "unused output" is nonsensical.
 const TERMINAL_OUTPUT_TOOLS = new Set([
-  'Edit', 'Write', 'Agent', 'NotebookEdit', 'Bash',
-  'TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet',
-  'SendMessage', 'EnterPlanMode', 'ExitPlanMode',
+  'Edit',
+  'Write',
+  'Agent',
+  'NotebookEdit',
+  'Bash',
+  'TaskCreate',
+  'TaskUpdate',
+  'TaskList',
+  'TaskGet',
+  'SendMessage',
+  'EnterPlanMode',
+  'ExitPlanMode',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -63,9 +72,11 @@ export class ToolSelectionScorer {
 
   constructor(options?: ToolSelectionScorerOptions) {
     this.redundantReadPenalty = options?.redundantReadPenalty ?? DEFAULT_REDUNDANT_READ_PENALTY;
-    this.repeatedFailurePenalty = options?.repeatedFailurePenalty ?? DEFAULT_REPEATED_FAILURE_PENALTY;
+    this.repeatedFailurePenalty =
+      options?.repeatedFailurePenalty ?? DEFAULT_REPEATED_FAILURE_PENALTY;
     this.unusedOutputPenalty = options?.unusedOutputPenalty ?? DEFAULT_UNUSED_OUTPUT_PENALTY;
-    this.unusedOutputSizeThreshold = options?.unusedOutputSizeThreshold ?? DEFAULT_UNUSED_OUTPUT_SIZE_THRESHOLD;
+    this.unusedOutputSizeThreshold =
+      options?.unusedOutputSizeThreshold ?? DEFAULT_UNUSED_OUTPUT_SIZE_THRESHOLD;
     this.worstOffenderCount = options?.worstOffenderCount ?? DEFAULT_WORST_OFFENDER_COUNT;
   }
 
@@ -142,8 +153,7 @@ export class ToolSelectionScorer {
         let editBetween = false;
         for (let j = prevIdx + 1; j < currIdx; j++) {
           const tc = toolCalls[j];
-          if ((tc.toolName === 'Edit' || tc.toolName === 'Write') &&
-              tc.filePath === file) {
+          if ((tc.toolName === 'Edit' || tc.toolName === 'Write') && tc.filePath === file) {
             editBetween = true;
             break;
           }
@@ -227,8 +237,10 @@ export class ToolSelectionScorer {
       const filePath = sourceCall.filePath as string | undefined;
       if (filePath) {
         for (const call of subsequentCalls) {
-          if ((call.toolName === 'Edit' || call.toolName === 'Write') &&
-              call.filePath === filePath) {
+          if (
+            (call.toolName === 'Edit' || call.toolName === 'Write') &&
+            call.filePath === filePath
+          ) {
             return true;
           }
         }

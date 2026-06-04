@@ -54,8 +54,12 @@ export interface NrObserveConfig {
 
 export function generateHookEntries(): HookEntries {
   return {
-    PreToolUse: [{ matcher: HOOK_MATCHER, hooks: [{ type: 'command', command: HOOK_COMMAND_PRE }] }],
-    PostToolUse: [{ matcher: HOOK_MATCHER, hooks: [{ type: 'command', command: HOOK_COMMAND_POST }] }],
+    PreToolUse: [
+      { matcher: HOOK_MATCHER, hooks: [{ type: 'command', command: HOOK_COMMAND_PRE }] },
+    ],
+    PostToolUse: [
+      { matcher: HOOK_MATCHER, hooks: [{ type: 'command', command: HOOK_COMMAND_POST }] },
+    ],
   };
 }
 
@@ -132,17 +136,25 @@ function filterNrObserveEntries(entries: unknown[]): unknown[] {
 // ---------------------------------------------------------------------------
 
 const HookCommandSchema = z.object({ type: z.string(), command: z.string() }).passthrough();
-const HookEntrySchema = z.object({ matcher: z.string(), hooks: z.array(HookCommandSchema) }).passthrough();
-const HooksFieldSchema = z.object({
-  PreToolUse: z.array(HookEntrySchema).optional(),
-  PostToolUse: z.array(HookEntrySchema).optional(),
-}).passthrough();
+const HookEntrySchema = z
+  .object({ matcher: z.string(), hooks: z.array(HookCommandSchema) })
+  .passthrough();
+const HooksFieldSchema = z
+  .object({
+    PreToolUse: z.array(HookEntrySchema).optional(),
+    PostToolUse: z.array(HookEntrySchema).optional(),
+  })
+  .passthrough();
 const SettingsSchema = z.object({ hooks: HooksFieldSchema.optional() }).passthrough();
 
-const McpServerEntrySchema = z.object({ command: z.string(), args: z.array(z.string()) }).passthrough();
-const McpConfigSchema = z.object({
-  mcpServers: z.record(z.string(), McpServerEntrySchema).optional(),
-}).passthrough();
+const McpServerEntrySchema = z
+  .object({ command: z.string(), args: z.array(z.string()) })
+  .passthrough();
+const McpConfigSchema = z
+  .object({
+    mcpServers: z.record(z.string(), McpServerEntrySchema).optional(),
+  })
+  .passthrough();
 
 // ---------------------------------------------------------------------------
 // mergeSettings

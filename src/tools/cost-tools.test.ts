@@ -112,7 +112,9 @@ describe('handleReportTokens()', () => {
 
     const metrics = tracker.getMetrics();
     // totalTokens should be input + output + thinking only (not cache)
-    expect(metrics.totalInputTokens + metrics.totalOutputTokens + metrics.totalThinkingTokens).toBe(1_700);
+    expect(metrics.totalInputTokens + metrics.totalOutputTokens + metrics.totalThinkingTokens).toBe(
+      1_700,
+    );
     // Cache tokens are still tracked individually for accurate cost calculation
     expect(metrics.totalCacheReadTokens).toBe(3_000);
     expect(metrics.totalCacheCreationTokens).toBe(400);
@@ -146,7 +148,11 @@ describe('handleReportTokens()', () => {
 
     it('clamps token counts above 10_000_000 to 10_000_000', () => {
       const tracker = new CostTracker();
-      handleReportTokens(tracker, { input_tokens: 999_999_999, output_tokens: 500_000_000, model: 'x' });
+      handleReportTokens(tracker, {
+        input_tokens: 999_999_999,
+        output_tokens: 500_000_000,
+        model: 'x',
+      });
       const metrics = tracker.getMetrics();
       expect(metrics.totalInputTokens).toBe(10_000_000);
       expect(metrics.totalOutputTokens).toBe(10_000_000);
@@ -171,7 +177,11 @@ describe('handleReportTokens()', () => {
     it('truncates model string longer than 256 chars', () => {
       const tracker = new CostTracker();
       const longModel = 'a'.repeat(300);
-      const result = handleReportTokens(tracker, { input_tokens: 100, output_tokens: 50, model: longModel });
+      const result = handleReportTokens(tracker, {
+        input_tokens: 100,
+        output_tokens: 50,
+        model: longModel,
+      });
       const body = JSON.parse(result.content[0].text);
       expect(body.model.length).toBe(256);
     });

@@ -174,9 +174,19 @@ describe('DEFAULT_PRICING_TABLE', () => {
 
     it('all OpenAI entries have required fields', () => {
       const openaiModels = [
-        'gpt-4o', 'gpt-4o-mini', 'gpt-4o-2024-11-20', 'gpt-4o-2024-08-06',
-        'gpt-4o-mini-2024-07-18', 'o1', 'o1-mini', 'o1-preview',
-        'o3', 'o3-mini', 'o4-mini', 'gpt-4-turbo', 'gpt-3.5-turbo',
+        'gpt-4o',
+        'gpt-4o-mini',
+        'gpt-4o-2024-11-20',
+        'gpt-4o-2024-08-06',
+        'gpt-4o-mini-2024-07-18',
+        'o1',
+        'o1-mini',
+        'o1-preview',
+        'o3',
+        'o3-mini',
+        'o4-mini',
+        'gpt-4-turbo',
+        'gpt-3.5-turbo',
       ];
       for (const model of openaiModels) {
         const p = DEFAULT_PRICING_TABLE[model];

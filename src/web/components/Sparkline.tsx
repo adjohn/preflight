@@ -29,12 +29,7 @@ export function Sparkline({
     ? { role: 'img' as const, 'aria-label': describeSparkline(ariaLabel, values) }
     : { 'aria-hidden': true as const };
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className="w-full"
-      height={height}
-      {...a11yProps}
-    >
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" height={height} {...a11yProps}>
       <polyline fill="none" stroke={stroke} strokeWidth={1.5} points={points} />
     </svg>
   );

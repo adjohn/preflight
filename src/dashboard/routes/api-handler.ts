@@ -72,7 +72,10 @@ export interface ApiHandlerDeps {
     loadTodaySessions: () => unknown[];
     listSessions: (opts?: { since?: Date; developer?: string }) => unknown[];
     loadSession: (id: string) => unknown | null;
-    loadAllSessions?: (opts?: { since?: Date; developer?: string }) => readonly SessionLikeForCostOutcome[];
+    loadAllSessions?: (opts?: {
+      since?: Date;
+      developer?: string;
+    }) => readonly SessionLikeForCostOutcome[];
   };
   readonly costTracker?: { getMetrics: () => { sessionTotalCostUsd?: number | null } };
   readonly costForecast?: () => unknown;
@@ -140,7 +143,12 @@ function buildReplayResponse(sessionId: string, deps: ApiHandlerDeps): unknown |
     if (session && Array.isArray(session['timeline'])) {
       const timeline = session['timeline'] as ReplayTimelineEntry[];
       const analysis = analyzeReplayTimeline(timeline);
-      return { sessionId, timeline, segments: analysis.segments, worstSegment: analysis.worstSegment };
+      return {
+        sessionId,
+        timeline,
+        segments: analysis.segments,
+        worstSegment: analysis.worstSegment,
+      };
     }
   }
 
@@ -159,14 +167,21 @@ function buildReplayResponse(sessionId: string, deps: ApiHandlerDeps): unknown |
       allCalls.sort((a, b) => a.timestamp - b.timestamp);
       const timeline = allCalls.map(toolCallToTimelineEntry);
       const analysis = analyzeReplayTimeline(timeline);
-      return { sessionId, timeline, segments: analysis.segments, worstSegment: analysis.worstSegment };
+      return {
+        sessionId,
+        timeline,
+        segments: analysis.segments,
+        worstSegment: analysis.worstSegment,
+      };
     }
   }
 
   return null;
 }
 
-export function createApiHandler(deps: ApiHandlerDeps): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+export function createApiHandler(
+  deps: ApiHandlerDeps,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   const routes = new Map<string, RouteFn>();
 
   routes.set('GET /api/session/current', (_req, res) => {
@@ -247,7 +262,11 @@ export function createApiHandler(deps: ApiHandlerDeps): (req: IncomingMessage, r
     if (!Number.isNaN(parsed)) {
       count = Math.min(Math.max(parsed, 1), 52);
     }
-    try { deps.weeklySummaryGenerator.generate(getIsoWeekId(new Date())); } catch { /* best-effort */ }
+    try {
+      deps.weeklySummaryGenerator.generate(getIsoWeekId(new Date()));
+    } catch {
+      /* best-effort */
+    }
     jsonOk(res, deps.weeklySummaryGenerator.loadRecentWeeks(count));
   });
 
@@ -262,7 +281,8 @@ export function createApiHandler(deps: ApiHandlerDeps): (req: IncomingMessage, r
   });
 
   routes.set('GET /api/cost-per-outcome', (req, res) => {
-    if (!deps.sessionStore?.loadAllSessions) return unavailable(res, 'sessionStore.loadAllSessions');
+    if (!deps.sessionStore?.loadAllSessions)
+      return unavailable(res, 'sessionStore.loadAllSessions');
     const url = new URL(req.url ?? '/', 'http://localhost');
     const daysStr = url.searchParams.get('days') ?? '';
     let days = 30;
@@ -352,7 +372,10 @@ export function createApiHandler(deps: ApiHandlerDeps): (req: IncomingMessage, r
         if (live.sessionId === sessionId) {
           const costUsd = deps.costTracker?.getMetrics().sessionTotalCostUsd ?? null;
           const antiPatterns = deps.antiPatternDetector
-            ? (deps.antiPatternDetector.getCurrentPatterns() as Array<{ type: string; count: number }>)
+            ? (deps.antiPatternDetector.getCurrentPatterns() as Array<{
+                type: string;
+                count: number;
+              }>)
             : [];
           jsonOk(res, {
             sessionId: live.sessionId,

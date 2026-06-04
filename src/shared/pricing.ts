@@ -66,30 +66,58 @@ function validatePricingEntry(model: string, entry: unknown): ModelPricing | nul
   const e = entry as Record<string, unknown>;
 
   if (!isFiniteNonNegative(e.inputPerMTok)) {
-    logger.warn('Custom pricing entry has invalid inputPerMTok — skipped', { model, value: e.inputPerMTok });
+    logger.warn('Custom pricing entry has invalid inputPerMTok — skipped', {
+      model,
+      value: e.inputPerMTok,
+    });
     return null;
   }
   if (!isFiniteNonNegative(e.outputPerMTok)) {
-    logger.warn('Custom pricing entry has invalid outputPerMTok — skipped', { model, value: e.outputPerMTok });
+    logger.warn('Custom pricing entry has invalid outputPerMTok — skipped', {
+      model,
+      value: e.outputPerMTok,
+    });
     return null;
   }
-  if (typeof e.contextWindow !== 'number' || !Number.isFinite(e.contextWindow) || e.contextWindow <= 0) {
-    logger.warn('Custom pricing entry has invalid contextWindow — skipped', { model, value: e.contextWindow });
+  if (
+    typeof e.contextWindow !== 'number' ||
+    !Number.isFinite(e.contextWindow) ||
+    e.contextWindow <= 0
+  ) {
+    logger.warn('Custom pricing entry has invalid contextWindow — skipped', {
+      model,
+      value: e.contextWindow,
+    });
     return null;
   }
 
   const optionalRateFields = [
-    'thinkingPerMTok', 'cacheReadPerMTok', 'cacheCreationPerMTok',
-    'tierInputPerMTok', 'tierOutputPerMTok', 'tierThinkingPerMTok',
+    'thinkingPerMTok',
+    'cacheReadPerMTok',
+    'cacheCreationPerMTok',
+    'tierInputPerMTok',
+    'tierOutputPerMTok',
+    'tierThinkingPerMTok',
   ] as const;
   for (const field of optionalRateFields) {
     if (e[field] !== undefined && !isFiniteNonNegative(e[field])) {
-      logger.warn(`Custom pricing entry has invalid ${field} — skipped`, { model, value: e[field] });
+      logger.warn(`Custom pricing entry has invalid ${field} — skipped`, {
+        model,
+        value: e[field],
+      });
       return null;
     }
   }
-  if (e.tierThreshold !== undefined && (typeof e.tierThreshold !== 'number' || !Number.isFinite(e.tierThreshold) || e.tierThreshold <= 0)) {
-    logger.warn('Custom pricing entry has invalid tierThreshold — skipped', { model, value: e.tierThreshold });
+  if (
+    e.tierThreshold !== undefined &&
+    (typeof e.tierThreshold !== 'number' ||
+      !Number.isFinite(e.tierThreshold) ||
+      e.tierThreshold <= 0)
+  ) {
+    logger.warn('Custom pricing entry has invalid tierThreshold — skipped', {
+      model,
+      value: e.tierThreshold,
+    });
     return null;
   }
 
@@ -233,20 +261,22 @@ export function calculateCost(model: string, usage: TokenUsage): CostBreakdown {
   }
 
   // Determine whether tiered pricing applies
-  const useTier =
-    pricing.tierThreshold !== undefined && usage.inputTokens > pricing.tierThreshold;
+  const useTier = pricing.tierThreshold !== undefined && usage.inputTokens > pricing.tierThreshold;
 
-  const inputRate = useTier && pricing.tierInputPerMTok !== undefined
-    ? pricing.tierInputPerMTok
-    : pricing.inputPerMTok;
+  const inputRate =
+    useTier && pricing.tierInputPerMTok !== undefined
+      ? pricing.tierInputPerMTok
+      : pricing.inputPerMTok;
 
-  const outputRate = useTier && pricing.tierOutputPerMTok !== undefined
-    ? pricing.tierOutputPerMTok
-    : pricing.outputPerMTok;
+  const outputRate =
+    useTier && pricing.tierOutputPerMTok !== undefined
+      ? pricing.tierOutputPerMTok
+      : pricing.outputPerMTok;
 
-  const thinkingRate = useTier && pricing.tierThinkingPerMTok !== undefined
-    ? pricing.tierThinkingPerMTok
-    : (pricing.thinkingPerMTok ?? 0);
+  const thinkingRate =
+    useTier && pricing.tierThinkingPerMTok !== undefined
+      ? pricing.tierThinkingPerMTok
+      : (pricing.thinkingPerMTok ?? 0);
 
   const cacheReadRate = pricing.cacheReadPerMTok ?? 0;
   const cacheCreationRate = pricing.cacheCreationPerMTok ?? 0;
@@ -260,10 +290,7 @@ export function calculateCost(model: string, usage: TokenUsage): CostBreakdown {
   const totalUsd = inputUsd + outputUsd + thinkingUsd + cacheReadUsd + cacheCreationUsd;
 
   // Savings: what those cache-read tokens would have cost at the full input rate
-  const savingsFromCacheUsd = tokensToUsd(
-    usage.cacheReadTokens,
-    inputRate - cacheReadRate,
-  );
+  const savingsFromCacheUsd = tokensToUsd(usage.cacheReadTokens, inputRate - cacheReadRate);
 
   return {
     inputUsd,

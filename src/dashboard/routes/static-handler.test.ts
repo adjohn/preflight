@@ -4,7 +4,13 @@ import { join, resolve } from 'node:path';
 import { createStaticHandler } from './static-handler.js';
 import { IncomingMessage, ServerResponse } from 'node:http';
 
-function makeReqRes(url: string): { req: IncomingMessage; res: ServerResponse; chunks: Buffer[]; status: () => number; headers: () => Record<string, string> } {
+function makeReqRes(url: string): {
+  req: IncomingMessage;
+  res: ServerResponse;
+  chunks: Buffer[];
+  status: () => number;
+  headers: () => Record<string, string>;
+} {
   const chunks: Buffer[] = [];
   let status = 0;
   const headers: Record<string, string> = {};
@@ -14,7 +20,9 @@ function makeReqRes(url: string): { req: IncomingMessage; res: ServerResponse; c
       status = s;
       if (h) Object.assign(headers, h);
     },
-    setHeader: (k: string, v: string) => { headers[k.toLowerCase()] = v; },
+    setHeader: (k: string, v: string) => {
+      headers[k.toLowerCase()] = v;
+    },
     end: (chunk?: Buffer | string) => {
       if (chunk) chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
     },

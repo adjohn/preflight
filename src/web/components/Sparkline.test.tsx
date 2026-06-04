@@ -29,9 +29,7 @@ describe('Sparkline', () => {
   });
 
   it('exposes role=img and a descriptive aria-label when a label is provided', () => {
-    const { container } = render(
-      <Sparkline values={[10, 20, 30, 40]} ariaLabel="Latency ms" />,
-    );
+    const { container } = render(<Sparkline values={[10, 20, 30, 40]} ariaLabel="Latency ms" />);
     const svg = container.querySelector('svg')!;
     expect(svg.getAttribute('role')).toBe('img');
     const label = svg.getAttribute('aria-label')!;

@@ -6,7 +6,13 @@ const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
   stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
-  for (const key of ['AMAZON_Q_SESSION_ID', 'Q_DEVELOPER_SESSION', 'AWS_CODEWHISPERER_SESSION', 'AMAZON_Q_VERSION', 'MCP_CLIENT']) {
+  for (const key of [
+    'AMAZON_Q_SESSION_ID',
+    'Q_DEVELOPER_SESSION',
+    'AWS_CODEWHISPERER_SESSION',
+    'AMAZON_Q_VERSION',
+    'MCP_CLIENT',
+  ]) {
     savedEnv[key] = process.env[key];
     delete process.env[key];
   }
@@ -29,7 +35,11 @@ describe('AmazonQAdapter', () => {
 
   describe('normalizeToolCall', () => {
     it('maps "fs_read" to "Read"', () => {
-      const normalized = adapter.normalizeToolCall({ tool: 'fs_read', timestamp: 2000, success: true });
+      const normalized = adapter.normalizeToolCall({
+        tool: 'fs_read',
+        timestamp: 2000,
+        success: true,
+      });
       expect(normalized.toolName).toBe('Read');
       expect(normalized.platformToolName).toBe('fs_read');
       expect(normalized.platform).toBe('amazon-q');

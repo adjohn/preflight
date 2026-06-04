@@ -144,8 +144,14 @@ export class CollaborationProfiler {
       deltas: {
         specificity: round(profile.dimensions.specificity - baseline.dimensions.specificity, 3),
         autonomy: round(profile.dimensions.autonomy - baseline.dimensions.autonomy, 3),
-        correctionRate: round(profile.dimensions.correctionRate - baseline.dimensions.correctionRate, 3),
-        taskComplexity: round(profile.dimensions.taskComplexity - baseline.dimensions.taskComplexity, 3),
+        correctionRate: round(
+          profile.dimensions.correctionRate - baseline.dimensions.correctionRate,
+          3,
+        ),
+        taskComplexity: round(
+          profile.dimensions.taskComplexity - baseline.dimensions.taskComplexity,
+          3,
+        ),
       },
     };
   }
@@ -254,9 +260,9 @@ function computeTaskComplexity(
   const avgAgents = totalAgentSpawns / totalTasks;
 
   // Normalize each component against reasonable baselines
-  const filesComponent = avgFiles / 20;        // 20 files per task = max
+  const filesComponent = avgFiles / 20; // 20 files per task = max
   const toolCallsComponent = avgToolCalls / 50; // 50 tool calls per task = max
-  const agentsComponent = avgAgents / 3;        // 3 agents per task = max
+  const agentsComponent = avgAgents / 3; // 3 agents per task = max
 
   const composite = (filesComponent + toolCallsComponent + agentsComponent) / 3;
   return clamp(round(composite, 3), 0, 1);

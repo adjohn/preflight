@@ -115,28 +115,16 @@ export interface RateLimitInfo {
 }
 
 const HEADER_MAP: Array<[keyof RateLimitInfo, string[]]> = [
-  [
-    'tokensRemaining',
-    ['anthropic-ratelimit-tokens-remaining', 'x-ratelimit-remaining-tokens'],
-  ],
+  ['tokensRemaining', ['anthropic-ratelimit-tokens-remaining', 'x-ratelimit-remaining-tokens']],
   [
     'requestsRemaining',
     ['anthropic-ratelimit-requests-remaining', 'x-ratelimit-remaining-requests'],
   ],
-  [
-    'tokensReset',
-    ['anthropic-ratelimit-tokens-reset', 'x-ratelimit-reset-tokens'],
-  ],
-  [
-    'requestsReset',
-    ['anthropic-ratelimit-requests-reset', 'x-ratelimit-reset-requests'],
-  ],
+  ['tokensReset', ['anthropic-ratelimit-tokens-reset', 'x-ratelimit-reset-tokens']],
+  ['requestsReset', ['anthropic-ratelimit-requests-reset', 'x-ratelimit-reset-requests']],
 ];
 
-function readHeader(
-  headers: unknown,
-  names: string[],
-): string | null {
+function readHeader(headers: unknown, names: string[]): string | null {
   if (headers == null || typeof headers !== 'object') return null;
 
   // Response-like: headers.get(name)

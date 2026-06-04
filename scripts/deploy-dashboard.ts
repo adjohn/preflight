@@ -140,7 +140,11 @@ function injectAccountId(dashboard: DashboardJson, accountId: number): Dashboard
   return copy;
 }
 
-async function nerdgraphRequest<T>(apiKey: string, query: string, variables: Record<string, unknown>): Promise<T> {
+async function nerdgraphRequest<T>(
+  apiKey: string,
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<T> {
   const response = await fetch(NERDGRAPH_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'API-Key': apiKey },
@@ -153,9 +157,15 @@ async function nerdgraphRequest<T>(apiKey: string, query: string, variables: Rec
   return response.json() as Promise<T>;
 }
 
-async function findDashboardGuid(apiKey: string, accountId: number, name: string): Promise<string | null> {
+async function findDashboardGuid(
+  apiKey: string,
+  accountId: number,
+  name: string,
+): Promise<string | null> {
   const result = await nerdgraphRequest<{
-    data?: { actor?: { entitySearch?: { results?: { entities?: Array<{ guid: string; name: string }> } } } };
+    data?: {
+      actor?: { entitySearch?: { results?: { entities?: Array<{ guid: string; name: string }> } } };
+    };
   }>(apiKey, FIND_DASHBOARD_QUERY, {
     query: `type = 'DASHBOARD' AND name = '${name.replace(/'/g, "\\'")}' AND accountId = ${accountId}`,
   });
@@ -246,7 +256,9 @@ async function updateDashboard(
 
   const guid = await findDashboardGuid(apiKey, accountId, dashboard.name);
   if (!guid) {
-    console.error(`  ✗ No existing dashboard found with name "${dashboard.name}". Use deploy (without --update) to create it.`);
+    console.error(
+      `  ✗ No existing dashboard found with name "${dashboard.name}". Use deploy (without --update) to create it.`,
+    );
     process.exit(1);
   }
   console.log(`  Found GUID: ${guid}`);
@@ -354,17 +366,15 @@ async function main(): Promise<void> {
 
   // Parse --developer <name>
   const developerFlagIndex = args.indexOf('--developer');
-  const developerOverride: string | null = developerFlagIndex !== -1
-    ? (args[developerFlagIndex + 1] ?? null)
-    : null;
+  const developerOverride: string | null =
+    developerFlagIndex !== -1 ? (args[developerFlagIndex + 1] ?? null) : null;
 
   // Drop flags and the value that follows --developer. Guard with
   // developerFlagIndex !== -1 so that when the flag is absent we don't drop
   // args[0] (developerFlagIndex + 1 would be 0, the positional filename).
   const fileArgs = args.filter(
     (_a: string, i: number) =>
-      !args[i].startsWith('--') &&
-      (developerFlagIndex === -1 || i !== developerFlagIndex + 1),
+      !args[i].startsWith('--') && (developerFlagIndex === -1 || i !== developerFlagIndex + 1),
   );
 
   const accountIdStr = process.env.NEW_RELIC_ACCOUNT_ID;
@@ -402,7 +412,9 @@ async function main(): Promise<void> {
 
   const apiKey = process.env.NEW_RELIC_API_KEY;
   if (!apiKey) {
-    console.error('Error: NEW_RELIC_API_KEY environment variable is required (User API key, not license key)');
+    console.error(
+      'Error: NEW_RELIC_API_KEY environment variable is required (User API key, not license key)',
+    );
     console.error('       To print JSON for UI import instead, use --print (no API key needed)');
     process.exit(1);
   }

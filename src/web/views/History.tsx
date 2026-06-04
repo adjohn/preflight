@@ -252,7 +252,9 @@ export function History(): JSX.Element {
                       <td className="py-1 text-right tabular-nums">
                         {m.avgEfficiency !== null ? `${Math.round(m.avgEfficiency * 100)}%` : '—'}
                       </td>
-                      <td className={`py-1 text-right tabular-nums ${m.flagged ? 'text-accent-amber' : ''}`}>
+                      <td
+                        className={`py-1 text-right tabular-nums ${m.flagged ? 'text-accent-amber' : ''}`}
+                      >
                         {m.avgSuccessRate !== null ? `${Math.round(m.avgSuccessRate * 100)}%` : '—'}
                       </td>
                       <td className="py-1 text-right tabular-nums">
@@ -309,13 +311,7 @@ export function History(): JSX.Element {
   );
 }
 
-function Panel({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}): JSX.Element {
+function Panel({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
   return (
     <div className="bg-bg-panel border border-bg-line rounded p-3">
       <div className="text-[10px] text-ink-muted uppercase tracking-wider mb-2">{title}</div>
@@ -406,9 +402,7 @@ export function buildOutcomeData(
     .sort((a, b) => b.totalCost - a.totalCost);
 }
 
-export function buildAntiPatternSeries(
-  weeks: WeeklyRow[],
-): Array<{ week: string; count: number }> {
+export function buildAntiPatternSeries(weeks: WeeklyRow[]): Array<{ week: string; count: number }> {
   const out: Array<{ week: string; count: number }> = [];
   for (const w of weeks) {
     const counts = w.antiPatternCounts ?? {};
@@ -432,13 +426,34 @@ export interface ModelPerformanceRow {
 const FLAGGED_SUCCESS_THRESHOLD = 0.85;
 
 export function aggregateModelPerformance(rows: SessionRow[]): ModelPerformanceRow[] {
-  const byModel = new Map<string, { sessions: number; effSum: number; effCount: number; successSum: number; successCount: number; costSum: number; costCount: number; lowSuccessSessions: number }>();
+  const byModel = new Map<
+    string,
+    {
+      sessions: number;
+      effSum: number;
+      effCount: number;
+      successSum: number;
+      successCount: number;
+      costSum: number;
+      costCount: number;
+      lowSuccessSessions: number;
+    }
+  >();
 
   for (const r of rows) {
     const model = r.model ?? 'unknown';
     let entry = byModel.get(model);
     if (!entry) {
-      entry = { sessions: 0, effSum: 0, effCount: 0, successSum: 0, successCount: 0, costSum: 0, costCount: 0, lowSuccessSessions: 0 };
+      entry = {
+        sessions: 0,
+        effSum: 0,
+        effCount: 0,
+        successSum: 0,
+        successCount: 0,
+        costSum: 0,
+        costCount: 0,
+        lowSuccessSessions: 0,
+      };
       byModel.set(model, entry);
     }
     entry.sessions++;
@@ -474,9 +489,7 @@ export function aggregateModelPerformance(rows: SessionRow[]): ModelPerformanceR
   return result.sort((a, b) => b.sessions - a.sessions);
 }
 
-export function aggregateToolUsage(
-  rows: SessionRow[],
-): Array<{ tool: string; count: number }> {
+export function aggregateToolUsage(rows: SessionRow[]): Array<{ tool: string; count: number }> {
   const totals = new Map<string, number>();
   for (const r of rows) {
     if (!r.toolBreakdown) continue;

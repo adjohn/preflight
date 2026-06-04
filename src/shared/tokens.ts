@@ -58,7 +58,8 @@ export function extractAnthropicTokens(response: AnthropicResponse): TokenUsage 
     thinkingTokens,
     cacheReadTokens,
     cacheCreationTokens,
-    totalTokens: inputTokens + outputTokens + thinkingTokens + cacheReadTokens + cacheCreationTokens,
+    totalTokens:
+      inputTokens + outputTokens + thinkingTokens + cacheReadTokens + cacheCreationTokens,
   };
 }
 

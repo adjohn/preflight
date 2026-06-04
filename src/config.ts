@@ -102,66 +102,79 @@ const DEFAULT_REDACTION_PATTERNS: RegExp[] = [
   /\b(?:vercel_|heroku_|dd_|pk_)[A-Za-z0-9_-]{20,}\b/gi,
 ];
 
-const ConfigFileSchema = z.object({
-  licenseKey: z.string().optional(),
-  accountId: z.string().optional(),
-  appName: z.string().optional(),
-  developer: z.string().optional(),
-  teamId: z.string().nullable().optional(),
-  projectId: z.string().nullable().optional(),
-  orgId: z.string().nullable().optional(),
-  model: z.string().optional(),
-  enabled: z.boolean().optional(),
-  highSecurity: z.boolean().optional(),
-  recordContent: z.boolean().optional(),
-  storagePath: z.string().optional(),
-  hookBufferPath: z.string().optional(),
-  harvestEventsMs: z.number().optional(),
-  harvestMetricsMs: z.number().optional(),
-  sessionBudgetUsd: z.number().nullable().optional(),
-  dailyBudgetUsd: z.number().nullable().optional(),
-  weeklyBudgetUsd: z.number().nullable().optional(),
-  port: z.number().optional(),
-  logLevel: z.enum(['debug', 'info', 'warn', 'error']).optional(),
-  collectorHost: z.string().nullable().optional(),
-  proxyUpstreams: z.array(z.unknown()).optional(),
-  nrApiKey: z.string().nullable().optional(),
-  digestWebhookUrl: z.string().nullable().optional(),
-  digestSchedule: z.string().optional(),
-  retainSessionsDays: z.number().nullable().optional(),
-  otlpEndpoint: z.string().nullable().optional(),
-  otlpHeaders: z.record(z.string(), z.string()).optional(),
-  transport: z.enum(['nr-events-api', 'otlp', 'both']).optional(),
-  mode: z.enum(['cloud', 'local', 'both']).optional(),
-  otlpReceiverEnabled: z.boolean().optional(),
-  otlpReceiverPort: z.number().optional(),
-  otlpReceiverBindAddress: z.string().optional(),
-  otlpForwardEndpoint: z.string().nullable().optional(),
-  otlpForwardHeaders: z.record(z.string(), z.string()).optional(),
-  alerts: z.object({
-    personal: z.object({
-      dailyCostUsd: z.number().optional(),
-      sessionCostUsd: z.number().optional(),
-      efficiencyScoreMin: z.number().optional(),
-      stuckLoopCountMax: z.number().optional(),
-      antiPatternCountMax: z.number().optional(),
-    }).optional(),
+const ConfigFileSchema = z
+  .object({
+    licenseKey: z.string().optional(),
+    accountId: z.string().optional(),
+    appName: z.string().optional(),
+    developer: z.string().optional(),
+    teamId: z.string().nullable().optional(),
+    projectId: z.string().nullable().optional(),
+    orgId: z.string().nullable().optional(),
+    model: z.string().optional(),
     enabled: z.boolean().optional(),
-    evaluationIntervalSeconds: z.number().int().min(5).max(300).optional(),
-    osNotifications: z.boolean().optional(),
-    logRetentionMb: z.number().min(1).max(1024).optional(),
-    rulesPath: z.string().nullable().optional(),
-  }).optional(),
-  dashboard: z.object({
-    port: z.number().int().min(1).max(65535).optional(),
-    host: z.string().optional(),
-    openOnStart: z.boolean().optional(),
-  }).optional(),
-}).strict();
+    highSecurity: z.boolean().optional(),
+    recordContent: z.boolean().optional(),
+    storagePath: z.string().optional(),
+    hookBufferPath: z.string().optional(),
+    harvestEventsMs: z.number().optional(),
+    harvestMetricsMs: z.number().optional(),
+    sessionBudgetUsd: z.number().nullable().optional(),
+    dailyBudgetUsd: z.number().nullable().optional(),
+    weeklyBudgetUsd: z.number().nullable().optional(),
+    port: z.number().optional(),
+    logLevel: z.enum(['debug', 'info', 'warn', 'error']).optional(),
+    collectorHost: z.string().nullable().optional(),
+    proxyUpstreams: z.array(z.unknown()).optional(),
+    nrApiKey: z.string().nullable().optional(),
+    digestWebhookUrl: z.string().nullable().optional(),
+    digestSchedule: z.string().optional(),
+    retainSessionsDays: z.number().nullable().optional(),
+    otlpEndpoint: z.string().nullable().optional(),
+    otlpHeaders: z.record(z.string(), z.string()).optional(),
+    transport: z.enum(['nr-events-api', 'otlp', 'both']).optional(),
+    mode: z.enum(['cloud', 'local', 'both']).optional(),
+    otlpReceiverEnabled: z.boolean().optional(),
+    otlpReceiverPort: z.number().optional(),
+    otlpReceiverBindAddress: z.string().optional(),
+    otlpForwardEndpoint: z.string().nullable().optional(),
+    otlpForwardHeaders: z.record(z.string(), z.string()).optional(),
+    alerts: z
+      .object({
+        personal: z
+          .object({
+            dailyCostUsd: z.number().optional(),
+            sessionCostUsd: z.number().optional(),
+            efficiencyScoreMin: z.number().optional(),
+            stuckLoopCountMax: z.number().optional(),
+            antiPatternCountMax: z.number().optional(),
+          })
+          .optional(),
+        enabled: z.boolean().optional(),
+        evaluationIntervalSeconds: z.number().int().min(5).max(300).optional(),
+        osNotifications: z.boolean().optional(),
+        logRetentionMb: z.number().min(1).max(1024).optional(),
+        rulesPath: z.string().nullable().optional(),
+      })
+      .optional(),
+    dashboard: z
+      .object({
+        port: z.number().int().min(1).max(65535).optional(),
+        host: z.string().optional(),
+        openOnStart: z.boolean().optional(),
+      })
+      .optional(),
+  })
+  .strict();
 
 // N-07: strip control chars and truncate before the value reaches any NR event field or log
 export function sanitizeDeveloper(raw: string): string {
-  return raw.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 128) || 'unknown';
+  return (
+    raw
+      .replace(/[\x00-\x1f\x7f]/g, '')
+      .trim()
+      .slice(0, 128) || 'unknown'
+  );
 }
 
 /**
@@ -169,19 +182,23 @@ export function sanitizeDeveloper(raw: string): string {
  * "John Doe" → "john_doe", "my.user@host" → "my_user_host"
  */
 export function normalizeDeveloperName(raw: string): string {
-  return raw
-    .replace(/[\x00-\x1f\x7f]/g, '')  // strip control chars
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '_')     // collapse non-alphanumeric runs to _
-    .replace(/^_+|_+$/g, '')           // strip leading/trailing underscores
-    .slice(0, 64)
-    || 'unknown';
+  return (
+    raw
+      .replace(/[\x00-\x1f\x7f]/g, '') // strip control chars
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '_') // collapse non-alphanumeric runs to _
+      .replace(/^_+|_+$/g, '') // strip leading/trailing underscores
+      .slice(0, 64) || 'unknown'
+  );
 }
 
 function sanitizeOrgField(value: string | null | undefined): string | null {
   if (!value) return null;
-  const sanitized = value.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 128);
+  const sanitized = value
+    .replace(/[\x00-\x1f\x7f]/g, '')
+    .trim()
+    .slice(0, 128);
   return sanitized || null;
 }
 
@@ -189,7 +206,9 @@ function inferDeveloper(): string {
   if (process.env.USER) return sanitizeDeveloper(process.env.USER);
   if (process.env.USERNAME) return sanitizeDeveloper(process.env.USERNAME);
   try {
-    return sanitizeDeveloper(execSync('git config user.name', { encoding: 'utf-8', timeout: 2000 }).trim());
+    return sanitizeDeveloper(
+      execSync('git config user.name', { encoding: 'utf-8', timeout: 2000 }).trim(),
+    );
   } catch {
     return 'unknown';
   }
@@ -218,7 +237,11 @@ function envBool(key: string, defaultValue: boolean): boolean {
   return defaultValue;
 }
 
-function envInt(key: string, defaultValue: number, bounds?: { min?: number; max?: number }): number {
+function envInt(
+  key: string,
+  defaultValue: number,
+  bounds?: { min?: number; max?: number },
+): number {
   const val = process.env[key];
   if (val === undefined) return defaultValue;
   const parsed = parseInt(val, 10);
@@ -254,10 +277,12 @@ function loadConfigFile(filePath: string): Record<string, unknown> {
   }
   const validation = ConfigFileSchema.safeParse(parsed);
   if (!validation.success) {
-    const issues = validation.error.issues.map((issue) => {
-      const path = issue.path.join('.');
-      return `${path || 'root'}: ${issue.message}`;
-    }).join('; ');
+    const issues = validation.error.issues
+      .map((issue) => {
+        const path = issue.path.join('.');
+        return `${path || 'root'}: ${issue.message}`;
+      })
+      .join('; ');
     logger.error('Config file validation failed', {
       filePath,
       issues,
@@ -318,10 +343,10 @@ function parseOtlpHeaders(headerString: string | undefined): Record<string, stri
 function validateRulesPath(rawPath: string, storagePath: string): string {
   const fallback = resolve(storagePath, 'alerts', 'rules.json');
   if (!rawPath.toLowerCase().endsWith('.json')) {
-    logger.warn(
-      'alerts.rulesPath does not end in .json — falling back to default',
-      { rawPath, fallback },
-    );
+    logger.warn('alerts.rulesPath does not end in .json — falling back to default', {
+      rawPath,
+      fallback,
+    });
     return fallback;
   }
   const resolved = resolve(rawPath);
@@ -330,10 +355,12 @@ function validateRulesPath(rawPath: string, storagePath: string): string {
   // `/foo/barbaz`.
   const prefix = storageResolved.endsWith('/') ? storageResolved : storageResolved + '/';
   if (resolved !== storageResolved && !resolved.startsWith(prefix)) {
-    logger.warn(
-      'alerts.rulesPath resolves outside storagePath — falling back to default',
-      { rawPath, resolved, storagePath: storageResolved, fallback },
-    );
+    logger.warn('alerts.rulesPath resolves outside storagePath — falling back to default', {
+      rawPath,
+      resolved,
+      storagePath: storageResolved,
+      fallback,
+    });
     return fallback;
   }
   return resolved;
@@ -354,7 +381,10 @@ function parseProxyUpstreams(
       } else {
         const valid = parsed.filter((u: unknown) => {
           if (isValidUpstream(u)) return true;
-          logger.warn('Skipping invalid proxy upstream entry (missing name, transportType, or url/command)', { entry: u });
+          logger.warn(
+            'Skipping invalid proxy upstream entry (missing name, transportType, or url/command)',
+            { entry: u },
+          );
           return false;
         });
         return valid as UpstreamConfig[];
@@ -367,7 +397,10 @@ function parseProxyUpstreams(
   if (Array.isArray(fileValue)) {
     const valid = fileValue.filter((u: unknown) => {
       if (isValidUpstream(u)) return true;
-      logger.warn('Skipping invalid proxy upstream entry (missing name, transportType, or url/command)', { entry: u });
+      logger.warn(
+        'Skipping invalid proxy upstream entry (missing name, transportType, or url/command)',
+        { entry: u },
+      );
       return false;
     });
     return valid as UpstreamConfig[];
@@ -387,14 +420,10 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
     typeof v === 'string' && (VALID_MODES as readonly string[]).includes(v);
   const envMode = process.env.NR_AI_MODE;
   if (envMode !== undefined && envMode !== '' && !isValidMode(envMode)) {
-    throw new Error(
-      `Invalid NR_AI_MODE='${envMode}'. Must be one of: ${VALID_MODES.join(', ')}.`,
-    );
+    throw new Error(`Invalid NR_AI_MODE='${envMode}'. Must be one of: ${VALID_MODES.join(', ')}.`);
   }
   const mode: Mode =
-    (isValidMode(envMode) ? envMode : undefined) ??
-    (file.mode as Mode | undefined) ??
-    'cloud';
+    (isValidMode(envMode) ? envMode : undefined) ?? (file.mode as Mode | undefined) ?? 'cloud';
 
   // --- licenseKey: CLI has no flag for this, so env > file ---
   const licenseKeyRaw =
@@ -405,7 +434,7 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       `Missing required configuration: licenseKey (mode='${mode}'). ` +
         'Set the NEW_RELIC_LICENSE_KEY environment variable or add "licenseKey" to ' +
         configFilePath +
-        ', or switch to mode=\'local\' to skip cloud transport.',
+        ", or switch to mode='local' to skip cloud transport.",
     );
   }
   // In local mode, undefined if licenseKey is missing (NR transport won't be used)
@@ -420,7 +449,7 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       `Missing required configuration: accountId (mode='${mode}'). ` +
         'Set the NEW_RELIC_ACCOUNT_ID environment variable or add "accountId" to ' +
         configFilePath +
-        ', or switch to mode=\'local\' to skip cloud transport.',
+        ", or switch to mode='local' to skip cloud transport.",
     );
   }
   if (accountIdRaw && !/^\d{1,12}$/.test(accountIdRaw)) {
@@ -457,34 +486,36 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
 
     developer: normalizeDeveloperName(
       process.env.NEW_RELIC_AI_MCP_DEVELOPER ??
-      (typeof file.developer === 'string' ? file.developer : inferDeveloper()),
+        (typeof file.developer === 'string' ? file.developer : inferDeveloper()),
     ),
 
     teamId: sanitizeOrgField(
-      process.env.NEW_RELIC_AI_TEAM_ID ??
-      (typeof file.teamId === 'string' ? file.teamId : null),
+      process.env.NEW_RELIC_AI_TEAM_ID ?? (typeof file.teamId === 'string' ? file.teamId : null),
     ),
 
     projectId: sanitizeOrgField(
       process.env.NEW_RELIC_AI_PROJECT_ID ??
-      (typeof file.projectId === 'string' ? file.projectId : inferProjectId()),
+        (typeof file.projectId === 'string' ? file.projectId : inferProjectId()),
     ),
 
     orgId: sanitizeOrgField(
-      process.env.NEW_RELIC_AI_ORG_ID ??
-      (typeof file.orgId === 'string' ? file.orgId : null),
+      process.env.NEW_RELIC_AI_ORG_ID ?? (typeof file.orgId === 'string' ? file.orgId : null),
     ),
 
-    enabled:
-      envBool('NEW_RELIC_AI_MCP_ENABLED', typeof file.enabled === 'boolean' ? file.enabled : true),
+    enabled: envBool(
+      'NEW_RELIC_AI_MCP_ENABLED',
+      typeof file.enabled === 'boolean' ? file.enabled : true,
+    ),
 
     highSecurity,
 
     // N-10: highSecurity forces recordContent off regardless of other settings
-    recordContent: highSecurity ? false : envBool(
-      'NEW_RELIC_AI_MCP_RECORD_CONTENT',
-      typeof file.recordContent === 'boolean' ? file.recordContent : false,
-    ),
+    recordContent: highSecurity
+      ? false
+      : envBool(
+          'NEW_RELIC_AI_MCP_RECORD_CONTENT',
+          typeof file.recordContent === 'boolean' ? file.recordContent : false,
+        ),
 
     redactionPatterns: DEFAULT_REDACTION_PATTERNS,
 
@@ -511,35 +542,47 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
 
     sessionBudgetUsd: (() => {
       const raw = process.env.NEW_RELIC_AI_SESSION_BUDGET_USD;
-      if (raw) { const v = parseFloat(raw); if (Number.isFinite(v) && v > 0) return v; }
+      if (raw) {
+        const v = parseFloat(raw);
+        if (Number.isFinite(v) && v > 0) return v;
+      }
       return typeof file.sessionBudgetUsd === 'number' ? file.sessionBudgetUsd : null;
     })(),
 
     dailyBudgetUsd: (() => {
       const raw = process.env.NEW_RELIC_AI_DAILY_BUDGET_USD;
-      if (raw) { const v = parseFloat(raw); if (Number.isFinite(v) && v > 0) return v; }
+      if (raw) {
+        const v = parseFloat(raw);
+        if (Number.isFinite(v) && v > 0) return v;
+      }
       return typeof file.dailyBudgetUsd === 'number' ? file.dailyBudgetUsd : null;
     })(),
 
     weeklyBudgetUsd: (() => {
       const raw = process.env.NEW_RELIC_AI_WEEKLY_BUDGET_USD;
-      if (raw) { const v = parseFloat(raw); if (Number.isFinite(v) && v > 0) return v; }
+      if (raw) {
+        const v = parseFloat(raw);
+        if (Number.isFinite(v) && v > 0) return v;
+      }
       return typeof file.weeklyBudgetUsd === 'number' ? file.weeklyBudgetUsd : null;
     })(),
 
-    port: cliOptions?.port ?? envInt(
-      'NEW_RELIC_AI_MCP_PORT',
-      typeof file.port === 'number' ? file.port : 9847,
-      { min: 1, max: 65535 },
-    ),
+    port:
+      cliOptions?.port ??
+      envInt('NEW_RELIC_AI_MCP_PORT', typeof file.port === 'number' ? file.port : 9847, {
+        min: 1,
+        max: 65535,
+      }),
 
-    logLevel: cliOptions?.logLevel ?? envLogLevel(
-      'NEW_RELIC_AI_MCP_LOG_LEVEL',
-      typeof file.logLevel === 'string' &&
-        ['debug', 'info', 'warn', 'error'].includes(file.logLevel)
-        ? (file.logLevel as LogLevel)
-        : 'info',
-    ),
+    logLevel:
+      cliOptions?.logLevel ??
+      envLogLevel(
+        'NEW_RELIC_AI_MCP_LOG_LEVEL',
+        typeof file.logLevel === 'string' &&
+          ['debug', 'info', 'warn', 'error'].includes(file.logLevel)
+          ? (file.logLevel as LogLevel)
+          : 'info',
+      ),
 
     collectorHost: resolveCollectorHost(
       licenseKey,
@@ -553,8 +596,7 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
     ),
 
     nrApiKey:
-      process.env.NEW_RELIC_API_KEY ??
-      (typeof file.nrApiKey === 'string' ? file.nrApiKey : null),
+      process.env.NEW_RELIC_API_KEY ?? (typeof file.nrApiKey === 'string' ? file.nrApiKey : null),
 
     digestWebhookUrl:
       process.env.NEW_RELIC_AI_DIGEST_WEBHOOK_URL ??
@@ -585,13 +627,15 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
         : {};
     })(),
 
-    transport: (
-      process.env.NEW_RELIC_AI_TRANSPORT === 'otlp' ? 'otlp'
-      : process.env.NEW_RELIC_AI_TRANSPORT === 'both' ? 'both'
-      : typeof file.transport === 'string' && (file.transport === 'otlp' || file.transport === 'both')
-      ? file.transport
-      : 'nr-events-api'
-    ),
+    transport:
+      process.env.NEW_RELIC_AI_TRANSPORT === 'otlp'
+        ? 'otlp'
+        : process.env.NEW_RELIC_AI_TRANSPORT === 'both'
+          ? 'both'
+          : typeof file.transport === 'string' &&
+              (file.transport === 'otlp' || file.transport === 'both')
+            ? file.transport
+            : 'nr-events-api',
 
     mode,
 
@@ -622,18 +666,26 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       // at a self-hosted collector); we just don't synthesize a NR default for them.
       const defaultEndpoint =
         mode !== 'local' && licenseKey !== undefined ? 'https://otlp.nr-data.net' : null;
-      const endpoint = envVal !== undefined ? (envVal || null) : (
-        typeof file.otlpForwardEndpoint === 'string' ? (file.otlpForwardEndpoint || null) : defaultEndpoint
-      );
+      const endpoint =
+        envVal !== undefined
+          ? envVal || null
+          : typeof file.otlpForwardEndpoint === 'string'
+            ? file.otlpForwardEndpoint || null
+            : defaultEndpoint;
       if (endpoint === null) return null;
       try {
         const url = new URL(endpoint);
         if (url.protocol === 'https:') return endpoint;
         if (url.protocol === 'http:') {
-          logger.warn('OTLP forward endpoint uses http:// instead of https:// — TLS not enabled', { endpoint });
+          logger.warn('OTLP forward endpoint uses http:// instead of https:// — TLS not enabled', {
+            endpoint,
+          });
           return endpoint;
         }
-        logger.warn('OTLP forward endpoint has unexpected protocol', { endpoint, protocol: url.protocol });
+        logger.warn('OTLP forward endpoint has unexpected protocol', {
+          endpoint,
+          protocol: url.protocol,
+        });
         return endpoint;
       } catch (_err) {
         logger.error('OTLP forward endpoint is not a valid URL', { endpoint });
@@ -654,24 +706,44 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
     })(),
 
     personalAlertThresholds: (() => {
-      const fileThresholds = typeof file.alerts === 'object' && file.alerts !== null
-        ? (file.alerts as Record<string, unknown>).personal
-        : undefined;
+      const fileThresholds =
+        typeof file.alerts === 'object' && file.alerts !== null
+          ? (file.alerts as Record<string, unknown>).personal
+          : undefined;
       if (typeof fileThresholds !== 'object' || fileThresholds === null) {
         return DEFAULT_PERSONAL_THRESHOLDS;
       }
       const t = fileThresholds as Record<string, unknown>;
       return {
-        dailyCostUsd:         typeof t.dailyCostUsd === 'number'        ? t.dailyCostUsd        : DEFAULT_PERSONAL_THRESHOLDS.dailyCostUsd,
-        sessionCostUsd:       typeof t.sessionCostUsd === 'number'      ? t.sessionCostUsd      : DEFAULT_PERSONAL_THRESHOLDS.sessionCostUsd,
-        efficiencyScoreMin:   typeof t.efficiencyScoreMin === 'number'  ? t.efficiencyScoreMin  : DEFAULT_PERSONAL_THRESHOLDS.efficiencyScoreMin,
-        stuckLoopCountMax:    typeof t.stuckLoopCountMax === 'number'   ? t.stuckLoopCountMax   : DEFAULT_PERSONAL_THRESHOLDS.stuckLoopCountMax,
-        antiPatternCountMax:  typeof t.antiPatternCountMax === 'number' ? t.antiPatternCountMax : DEFAULT_PERSONAL_THRESHOLDS.antiPatternCountMax,
+        dailyCostUsd:
+          typeof t.dailyCostUsd === 'number'
+            ? t.dailyCostUsd
+            : DEFAULT_PERSONAL_THRESHOLDS.dailyCostUsd,
+        sessionCostUsd:
+          typeof t.sessionCostUsd === 'number'
+            ? t.sessionCostUsd
+            : DEFAULT_PERSONAL_THRESHOLDS.sessionCostUsd,
+        efficiencyScoreMin:
+          typeof t.efficiencyScoreMin === 'number'
+            ? t.efficiencyScoreMin
+            : DEFAULT_PERSONAL_THRESHOLDS.efficiencyScoreMin,
+        stuckLoopCountMax:
+          typeof t.stuckLoopCountMax === 'number'
+            ? t.stuckLoopCountMax
+            : DEFAULT_PERSONAL_THRESHOLDS.stuckLoopCountMax,
+        antiPatternCountMax:
+          typeof t.antiPatternCountMax === 'number'
+            ? t.antiPatternCountMax
+            : DEFAULT_PERSONAL_THRESHOLDS.antiPatternCountMax,
       };
     })(),
 
     dashboard: (() => {
-      const dashboardFile = (file.dashboard ?? {}) as { port?: number; host?: string; openOnStart?: boolean };
+      const dashboardFile = (file.dashboard ?? {}) as {
+        port?: number;
+        host?: string;
+        openOnStart?: boolean;
+      };
       const dashboardPortRaw = process.env.NR_AI_DASHBOARD_PORT
         ? parseInt(process.env.NR_AI_DASHBOARD_PORT, 10)
         : dashboardFile.port;
@@ -679,13 +751,16 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       // which is essential for parallel test runs and useful when the user
       // wants to avoid hard-coding a port. Negative or out-of-range values
       // still fall back to the default 7777.
-      const dashboardPort = Number.isFinite(dashboardPortRaw) && dashboardPortRaw! >= 0 && dashboardPortRaw! <= 65535
-        ? dashboardPortRaw!
-        : 7777;
+      const dashboardPort =
+        Number.isFinite(dashboardPortRaw) && dashboardPortRaw! >= 0 && dashboardPortRaw! <= 65535
+          ? dashboardPortRaw!
+          : 7777;
       const requestedHost = process.env.NR_AI_DASHBOARD_HOST ?? dashboardFile.host ?? '127.0.0.1';
       let dashboardHost = '127.0.0.1';
       if (requestedHost !== '127.0.0.1' && requestedHost !== 'localhost') {
-        logger.warn(`dashboard.host '${requestedHost}' is non-loopback; v1 only supports loopback. Forcing 127.0.0.1.`);
+        logger.warn(
+          `dashboard.host '${requestedHost}' is non-loopback; v1 only supports loopback. Forcing 127.0.0.1.`,
+        );
       } else {
         dashboardHost = requestedHost === 'localhost' ? '127.0.0.1' : requestedHost;
       }
@@ -705,47 +780,45 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       // `personalAlertThresholds` (above) — they share the `alerts` key in
       // the file schema for backwards compatibility, but expose different
       // fields. `enabled` defaults to true outside of cloud-only mode.
-      const alertsFile = (typeof file.alerts === 'object' && file.alerts !== null
-        ? file.alerts as Record<string, unknown>
-        : {});
+      const alertsFile =
+        typeof file.alerts === 'object' && file.alerts !== null
+          ? (file.alerts as Record<string, unknown>)
+          : {};
       const fileEnabled = typeof alertsFile.enabled === 'boolean' ? alertsFile.enabled : undefined;
-      const fileInterval = typeof alertsFile.evaluationIntervalSeconds === 'number'
-        ? alertsFile.evaluationIntervalSeconds
-        : undefined;
-      const fileOsNotifications = typeof alertsFile.osNotifications === 'boolean'
-        ? alertsFile.osNotifications
-        : undefined;
-      const fileLogRetention = typeof alertsFile.logRetentionMb === 'number'
-        ? alertsFile.logRetentionMb
-        : undefined;
-      const fileRulesPath = typeof alertsFile.rulesPath === 'string'
-        ? alertsFile.rulesPath
-        : undefined;
+      const fileInterval =
+        typeof alertsFile.evaluationIntervalSeconds === 'number'
+          ? alertsFile.evaluationIntervalSeconds
+          : undefined;
+      const fileOsNotifications =
+        typeof alertsFile.osNotifications === 'boolean' ? alertsFile.osNotifications : undefined;
+      const fileLogRetention =
+        typeof alertsFile.logRetentionMb === 'number' ? alertsFile.logRetentionMb : undefined;
+      const fileRulesPath =
+        typeof alertsFile.rulesPath === 'string' ? alertsFile.rulesPath : undefined;
 
       const enabledDefault = mode !== 'cloud';
       const enabled = envBool('NR_AI_ALERTS_ENABLED', fileEnabled ?? enabledDefault);
 
-      const intervalSeconds = envInt(
-        'NR_AI_ALERTS_INTERVAL_SECONDS',
-        fileInterval ?? 30,
-        { min: 5, max: 300 },
-      );
+      const intervalSeconds = envInt('NR_AI_ALERTS_INTERVAL_SECONDS', fileInterval ?? 30, {
+        min: 5,
+        max: 300,
+      });
 
       const osNotifications = envBool(
         'NR_AI_ALERTS_OS_NOTIFICATIONS',
         fileOsNotifications ?? false,
       );
 
-      const logRetentionMb = envInt(
-        'NR_AI_ALERTS_LOG_RETENTION_MB',
-        fileLogRetention ?? 10,
-        { min: 1, max: 1024 },
-      );
+      const logRetentionMb = envInt('NR_AI_ALERTS_LOG_RETENTION_MB', fileLogRetention ?? 10, {
+        min: 1,
+        max: 1024,
+      });
 
       const envRulesPath = process.env.NR_AI_ALERTS_RULES_PATH;
-      const rawRulesPath = envRulesPath !== undefined && envRulesPath !== ''
-        ? envRulesPath
-        : (fileRulesPath ?? resolve(storagePath, 'alerts', 'rules.json'));
+      const rawRulesPath =
+        envRulesPath !== undefined && envRulesPath !== ''
+          ? envRulesPath
+          : (fileRulesPath ?? resolve(storagePath, 'alerts', 'rules.json'));
       // Defensive validation: rulesPath is read from user config, so reject
       // values that don't end in .json or that resolve outside storagePath.
       // Prevents accidental fs.watch handles on system files like /etc/hosts

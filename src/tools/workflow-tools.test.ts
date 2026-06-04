@@ -55,7 +55,14 @@ describe('handleGetCostBreakdown()', () => {
     // Task 1: start task, report tokens during task, then close
     taskDetector.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/a.ts' }));
     costTracker.recordTokenUsage(
-      { inputTokens: 10000, outputTokens: 2000, thinkingTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 12000 },
+      {
+        inputTokens: 10000,
+        outputTokens: 2000,
+        thinkingTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        totalTokens: 12000,
+      },
       'claude-sonnet-4',
     );
     taskDetector.recordToolCall(makeRecord({ toolName: 'AskUserQuestion' }));
@@ -63,7 +70,14 @@ describe('handleGetCostBreakdown()', () => {
     // Task 2: start task, report tokens during task, then close
     taskDetector.recordToolCall(makeRecord({ toolName: 'Edit', filePath: '/b.ts' }));
     costTracker.recordTokenUsage(
-      { inputTokens: 5000, outputTokens: 1000, thinkingTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 6000 },
+      {
+        inputTokens: 5000,
+        outputTokens: 1000,
+        thinkingTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        totalTokens: 6000,
+      },
       'claude-sonnet-4',
     );
     taskDetector.recordToolCall(makeRecord({ toolName: 'AskUserQuestion' }));
@@ -94,7 +108,7 @@ describe('handleGetCostBreakdown()', () => {
     const result = handleGetCostBreakdown(costTracker, taskDetector);
     const body = JSON.parse(result.content[0].text);
 
-    const completedIds = taskDetector.getCompletedTasks().map(t => t.taskId);
+    const completedIds = taskDetector.getCompletedTasks().map((t) => t.taskId);
     const resultIds = body.by_task.map((t: { task_id: string }) => t.task_id);
 
     expect(resultIds).toEqual(completedIds);
@@ -116,7 +130,14 @@ describe('handleGetCostBreakdown()', () => {
     const costTracker = new CostTracker();
 
     costTracker.recordTokenUsage(
-      { inputTokens: 1000, outputTokens: 500, thinkingTokens: 0, cacheReadTokens: 200, cacheCreationTokens: 300, totalTokens: 2000 },
+      {
+        inputTokens: 1000,
+        outputTokens: 500,
+        thinkingTokens: 0,
+        cacheReadTokens: 200,
+        cacheCreationTokens: 300,
+        totalTokens: 2000,
+      },
       'claude-sonnet-4',
     );
 
@@ -136,9 +157,15 @@ describe('handleGetWorkflowTrace()', () => {
   it('returns tool calls in correct sequence for the specified task', () => {
     const taskDetector = new TaskDetector();
 
-    taskDetector.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/a.ts', durationMs: 32 }));
-    taskDetector.recordToolCall(makeRecord({ toolName: 'Edit', filePath: '/a.ts', durationMs: 18 }));
-    taskDetector.recordToolCall(makeRecord({ toolName: 'Bash', command: 'npm test', durationMs: 4800, exitCode: 0 }));
+    taskDetector.recordToolCall(
+      makeRecord({ toolName: 'Read', filePath: '/a.ts', durationMs: 32 }),
+    );
+    taskDetector.recordToolCall(
+      makeRecord({ toolName: 'Edit', filePath: '/a.ts', durationMs: 18 }),
+    );
+    taskDetector.recordToolCall(
+      makeRecord({ toolName: 'Bash', command: 'npm test', durationMs: 4800, exitCode: 0 }),
+    );
     taskDetector.recordToolCall(makeRecord({ toolName: 'AskUserQuestion' }));
 
     const taskId = taskDetector.getCompletedTasks()[0].taskId;
@@ -148,7 +175,13 @@ describe('handleGetWorkflowTrace()', () => {
     expect(body.task_id).toBe(taskId);
     expect(body.tool_calls).toHaveLength(4);
     expect(body.tool_calls[0]).toEqual(
-      expect.objectContaining({ seq: 1, tool: 'Read', target: '/a.ts', duration_ms: 32, success: true }),
+      expect.objectContaining({
+        seq: 1,
+        tool: 'Read',
+        target: '/a.ts',
+        duration_ms: 32,
+        success: true,
+      }),
     );
     expect(body.tool_calls[1]).toEqual(
       expect.objectContaining({ seq: 2, tool: 'Edit', target: '/a.ts' }),
@@ -235,7 +268,9 @@ describe('handleGetAntiPatterns()', () => {
     // Thrashing pattern
     for (let i = 0; i < 3; i++) {
       taskDetector.recordToolCall(makeRecord({ toolName: 'Edit', filePath: '/auth.ts' }));
-      taskDetector.recordToolCall(makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }));
+      taskDetector.recordToolCall(
+        makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
+      );
     }
     taskDetector.recordToolCall(makeRecord({ toolName: 'AskUserQuestion' }));
 
@@ -270,18 +305,50 @@ describe('handleGetEfficiencyScore()', () => {
     const scorer = new EfficiencyScorer();
 
     scorer.computeScore({
-      taskId: 't1', startTime: 1000, endTime: 61000, durationMs: 60000,
-      toolCallCount: 10, toolCallsByType: {}, filesRead: [], filesModified: [],
-      linesChanged: 50, linesAdded: 50, linesRemoved: 0, bashCommandsRun: 1, testsRun: 4, testsPassed: 4,
-      buildRun: 0, buildPassed: 0, estimatedCostUsd: null, tokensUsed: 0,
-      askedUserQuestions: 0, subAgentsSpawned: 0, toolCalls: [],
+      taskId: 't1',
+      startTime: 1000,
+      endTime: 61000,
+      durationMs: 60000,
+      toolCallCount: 10,
+      toolCallsByType: {},
+      filesRead: [],
+      filesModified: [],
+      linesChanged: 50,
+      linesAdded: 50,
+      linesRemoved: 0,
+      bashCommandsRun: 1,
+      testsRun: 4,
+      testsPassed: 4,
+      buildRun: 0,
+      buildPassed: 0,
+      estimatedCostUsd: null,
+      tokensUsed: 0,
+      askedUserQuestions: 0,
+      subAgentsSpawned: 0,
+      toolCalls: [],
     });
     scorer.computeScore({
-      taskId: 't2', startTime: 1000, endTime: 61000, durationMs: 60000,
-      toolCallCount: 10, toolCallsByType: {}, filesRead: [], filesModified: [],
-      linesChanged: 30, linesAdded: 30, linesRemoved: 0, bashCommandsRun: 1, testsRun: 4, testsPassed: 2,
-      buildRun: 0, buildPassed: 0, estimatedCostUsd: null, tokensUsed: 0,
-      askedUserQuestions: 0, subAgentsSpawned: 0, toolCalls: [],
+      taskId: 't2',
+      startTime: 1000,
+      endTime: 61000,
+      durationMs: 60000,
+      toolCallCount: 10,
+      toolCallsByType: {},
+      filesRead: [],
+      filesModified: [],
+      linesChanged: 30,
+      linesAdded: 30,
+      linesRemoved: 0,
+      bashCommandsRun: 1,
+      testsRun: 4,
+      testsPassed: 2,
+      buildRun: 0,
+      buildPassed: 0,
+      estimatedCostUsd: null,
+      tokensUsed: 0,
+      askedUserQuestions: 0,
+      subAgentsSpawned: 0,
+      toolCalls: [],
     });
 
     const result = handleGetEfficiencyScore(scorer);
@@ -352,29 +419,77 @@ describe('handleGetEfficiencyScore()', () => {
 
     // Score active task first (inserted at index 0), endTime = 1000
     scorer.computeScore({
-      taskId: 'active', startTime: 0, endTime: 1000, durationMs: 1000,
-      toolCallCount: 5, toolCallsByType: {}, filesRead: [], filesModified: [],
-      linesChanged: 10, linesAdded: 10, linesRemoved: 0, bashCommandsRun: 0, testsRun: 0, testsPassed: 0,
-      buildRun: 0, buildPassed: 0, estimatedCostUsd: null, tokensUsed: 0,
-      askedUserQuestions: 0, subAgentsSpawned: 0, toolCalls: [],
+      taskId: 'active',
+      startTime: 0,
+      endTime: 1000,
+      durationMs: 1000,
+      toolCallCount: 5,
+      toolCallsByType: {},
+      filesRead: [],
+      filesModified: [],
+      linesChanged: 10,
+      linesAdded: 10,
+      linesRemoved: 0,
+      bashCommandsRun: 0,
+      testsRun: 0,
+      testsPassed: 0,
+      buildRun: 0,
+      buildPassed: 0,
+      estimatedCostUsd: null,
+      tokensUsed: 0,
+      askedUserQuestions: 0,
+      subAgentsSpawned: 0,
+      toolCalls: [],
     });
 
     // Score a completed task second (inserted at index 1), endTime = 500 (earlier)
     scorer.computeScore({
-      taskId: 'completed', startTime: 0, endTime: 500, durationMs: 500,
-      toolCallCount: 3, toolCallsByType: {}, filesRead: [], filesModified: [],
-      linesChanged: 5, linesAdded: 5, linesRemoved: 0, bashCommandsRun: 0, testsRun: 0, testsPassed: 0,
-      buildRun: 0, buildPassed: 0, estimatedCostUsd: null, tokensUsed: 0,
-      askedUserQuestions: 0, subAgentsSpawned: 0, toolCalls: [],
+      taskId: 'completed',
+      startTime: 0,
+      endTime: 500,
+      durationMs: 500,
+      toolCallCount: 3,
+      toolCallsByType: {},
+      filesRead: [],
+      filesModified: [],
+      linesChanged: 5,
+      linesAdded: 5,
+      linesRemoved: 0,
+      bashCommandsRun: 0,
+      testsRun: 0,
+      testsPassed: 0,
+      buildRun: 0,
+      buildPassed: 0,
+      estimatedCostUsd: null,
+      tokensUsed: 0,
+      askedUserQuestions: 0,
+      subAgentsSpawned: 0,
+      toolCalls: [],
     });
 
     // Update the active task with a newer timestamp (endTime = 2000, more recent than both)
     scorer.updateScore({
-      taskId: 'active', startTime: 0, endTime: 2000, durationMs: 2000,
-      toolCallCount: 8, toolCallsByType: {}, filesRead: [], filesModified: [],
-      linesChanged: 20, linesAdded: 20, linesRemoved: 0, bashCommandsRun: 1, testsRun: 1, testsPassed: 1,
-      buildRun: 0, buildPassed: 0, estimatedCostUsd: null, tokensUsed: 0,
-      askedUserQuestions: 0, subAgentsSpawned: 0, toolCalls: [],
+      taskId: 'active',
+      startTime: 0,
+      endTime: 2000,
+      durationMs: 2000,
+      toolCallCount: 8,
+      toolCallsByType: {},
+      filesRead: [],
+      filesModified: [],
+      linesChanged: 20,
+      linesAdded: 20,
+      linesRemoved: 0,
+      bashCommandsRun: 1,
+      testsRun: 1,
+      testsPassed: 1,
+      buildRun: 0,
+      buildPassed: 0,
+      estimatedCostUsd: null,
+      tokensUsed: 0,
+      askedUserQuestions: 0,
+      subAgentsSpawned: 0,
+      toolCalls: [],
     });
 
     // scores array is [active(ts=2000, idx=0), completed(ts=500, idx=1)]
@@ -396,7 +511,11 @@ describe('handleReportFeedback()', () => {
   it('records feedback with quality: good', () => {
     const collector = new FeedbackCollector();
 
-    const result = handleReportFeedback(collector, { quality: 'good', notes: 'Fast work', task_id: 'task-1' });
+    const result = handleReportFeedback(collector, {
+      quality: 'good',
+      notes: 'Fast work',
+      task_id: 'task-1',
+    });
     const body = JSON.parse(result.content[0].text);
 
     expect(body.recorded).toBe(true);
@@ -474,7 +593,8 @@ describe('FeedbackCollector.emitMetrics()', () => {
     collector.record({ quality: 'good' });
     collector.record({ quality: 'bad' });
 
-    const recorded: Array<{ name: string; value: number; attrs: Record<string, string | number> }> = [];
+    const recorded: Array<{ name: string; value: number; attrs: Record<string, string | number> }> =
+      [];
     const aggregator = {
       record(name: string, value: number, attrs: Record<string, string | number> = {}) {
         recorded.push({ name, value, attrs });
@@ -484,7 +604,11 @@ describe('FeedbackCollector.emitMetrics()', () => {
     collector.emitMetrics(aggregator);
 
     expect(recorded).toHaveLength(2);
-    expect(recorded[0]).toEqual({ name: 'ai.feedback.count', value: 1, attrs: { quality: 'good' } });
+    expect(recorded[0]).toEqual({
+      name: 'ai.feedback.count',
+      value: 1,
+      attrs: { quality: 'good' },
+    });
     expect(recorded[1]).toEqual({ name: 'ai.feedback.count', value: 1, attrs: { quality: 'bad' } });
   });
 });
@@ -523,10 +647,7 @@ describe('MCP protocol integration — Phase 2 tools', () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     client = new Client({ name: 'test-client', version: '1.0.0' });
 
-    await Promise.all([
-      server.server.connect(serverTransport),
-      client.connect(clientTransport),
-    ]);
+    await Promise.all([server.server.connect(serverTransport), client.connect(clientTransport)]);
   });
 
   afterEach(async () => {
@@ -537,7 +658,7 @@ describe('MCP protocol integration — Phase 2 tools', () => {
 
   it('tools/list includes all Phase 2 tools with correct schemas', async () => {
     const result = await client.listTools();
-    const names = result.tools.map(t => t.name);
+    const names = result.tools.map((t) => t.name);
 
     expect(names).toContain('nr_observe_report_tokens');
     expect(names).toContain('nr_observe_get_cost_breakdown');
@@ -553,16 +674,25 @@ describe('MCP protocol integration — Phase 2 tools', () => {
   });
 
   it('calling tools when no data exists returns empty/zero results', async () => {
-    const costResult = await client.callTool({ name: 'nr_observe_get_cost_breakdown', arguments: {} });
+    const costResult = await client.callTool({
+      name: 'nr_observe_get_cost_breakdown',
+      arguments: {},
+    });
     const costBody = JSON.parse((costResult.content as Array<{ text: string }>)[0].text);
     expect(costBody.total_usd).toBe(0);
     expect(costBody.by_task).toEqual([]);
 
-    const antiResult = await client.callTool({ name: 'nr_observe_get_anti_patterns', arguments: {} });
+    const antiResult = await client.callTool({
+      name: 'nr_observe_get_anti_patterns',
+      arguments: {},
+    });
     const antiBody = JSON.parse((antiResult.content as Array<{ text: string }>)[0].text);
     expect(antiBody).toEqual([]);
 
-    const effResult = await client.callTool({ name: 'nr_observe_get_efficiency_score', arguments: {} });
+    const effResult = await client.callTool({
+      name: 'nr_observe_get_efficiency_score',
+      arguments: {},
+    });
     const effBody = JSON.parse((effResult.content as Array<{ text: string }>)[0].text);
     expect(effBody.latest).toBeNull();
     expect(effBody.session_average).toBeNull();

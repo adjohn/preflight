@@ -35,8 +35,7 @@ export const fetchPersonalCoach = (): Promise<unknown> => getJson<unknown>('/api
 export const fetchRecentAlerts = (): Promise<unknown> => getJson<unknown>('/api/alerts/recent');
 export const fetchSessionReplay = (id: string): Promise<unknown> =>
   getJson<unknown>(`/api/sessions/${encodeURIComponent(id)}/replay`);
-export const fetchQualityProxy = (): Promise<unknown> =>
-  getJson<unknown>('/api/quality-proxy');
+export const fetchQualityProxy = (): Promise<unknown> => getJson<unknown>('/api/quality-proxy');
 export const fetchToolSelectionScore = (): Promise<unknown> =>
   getJson<unknown>('/api/tool-selection-score');
 

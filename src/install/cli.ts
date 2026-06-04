@@ -7,7 +7,16 @@
 
 import { Command } from 'commander';
 import { execSync, execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync, unlinkSync, copyFileSync, realpathSync } from 'node:fs';
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  renameSync,
+  unlinkSync,
+  copyFileSync,
+  realpathSync,
+} from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import {
@@ -19,6 +28,12 @@ import {
   detectMcpConfigPath,
   generateNrConfig,
 } from './install-helper.js';
+import {
+  installSchedule,
+  removeSchedule,
+  getScheduleStatus,
+  resolveBinaryPath,
+} from './schedule.js';
 
 const NR_CONFIG_DIR = resolve(homedir(), '.nr-ai-observe');
 const NR_CONFIG_PATH = resolve(NR_CONFIG_DIR, 'config.json');
@@ -111,7 +126,9 @@ function findRepoRoot(): string | null {
 function handleUpdate(): void {
   const repoRoot = findRepoRoot();
   if (!repoRoot) {
-    print('✗ Could not locate the repo root. Run this command from within the cloned repo or after npm link.');
+    print(
+      '✗ Could not locate the repo root. Run this command from within the cloned repo or after npm link.',
+    );
     process.exit(1);
   }
 
@@ -130,10 +147,73 @@ function handleUpdate(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Schedule handler
+// ---------------------------------------------------------------------------
+
+function handleSchedule(options: { time?: string; disable?: boolean }): void {
+  if (process.platform !== 'darwin') {
+    print('Auto-update scheduling is only supported on macOS.');
+    process.exit(1);
+  }
+
+  if (options.disable) {
+    const wasInstalled = getScheduleStatus().installed;
+    removeSchedule();
+    print(wasInstalled ? '✓ Auto-update schedule removed.' : 'No schedule was installed.');
+    return;
+  }
+
+  if (options.time !== undefined) {
+    const match = options.time.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) {
+      print(`Invalid time format "${options.time}". Use HH:MM (e.g. 08:00).`);
+      process.exit(1);
+    }
+    const hour = parseInt(match[1], 10);
+    const minute = parseInt(match[2], 10);
+    if (hour > 23 || minute > 59) {
+      print(`Invalid time "${options.time}": hour must be 0–23, minute 0–59.`);
+      process.exit(1);
+    }
+    const binaryPath = resolveBinaryPath();
+    if (!binaryPath) {
+      print(
+        '✗ nr-ai-observe not found on PATH. Fix PATH then run: nr-ai-observe schedule --time HH:MM',
+      );
+      process.exit(1);
+    }
+    installSchedule(binaryPath, hour, minute);
+    const hh = String(hour).padStart(2, '0');
+    const mm = String(minute).padStart(2, '0');
+    print(`✓ Daily auto-update scheduled for ${hh}:${mm}.`);
+    print(`  Log: ${homedir()}/.nr-ai-observe/update.log`);
+    return;
+  }
+
+  // No flags — show status.
+  const status = getScheduleStatus();
+  if (status.installed) {
+    const hh = String(status.hour ?? 0).padStart(2, '0');
+    const mm = String(status.minute ?? 0).padStart(2, '0');
+    print(`Auto-update schedule: ${hh}:${mm} daily`);
+    print(`  Binary: ${status.binaryPath ?? 'unknown'}`);
+    print('  To change: nr-ai-observe schedule --time HH:MM');
+    print('  To remove: nr-ai-observe schedule --disable');
+  } else {
+    print('No auto-update schedule installed.');
+    print('  To enable: nr-ai-observe schedule --time 08:00');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Install handler
 // ---------------------------------------------------------------------------
 
-function handleInstall(options: { licenseKey?: string; accountId?: string; project?: boolean }): void {
+function handleInstall(options: {
+  licenseKey?: string;
+  accountId?: string;
+  project?: boolean;
+}): void {
   const scope = options.project ? 'project' : 'user';
 
   // Hooks go in settings.json
@@ -211,6 +291,10 @@ function handleUninstall(options: { project?: boolean }): void {
   }
 
   print('\nRestart Claude Code for changes to take effect.\n');
+
+  const scheduleWasInstalled = getScheduleStatus().installed;
+  removeSchedule();
+  if (scheduleWasInstalled) print('✓ Auto-update schedule removed');
 }
 
 // ---------------------------------------------------------------------------
@@ -237,7 +321,9 @@ export function createInstallProgram(): Command {
 
   program
     .command('setup')
-    .description('Interactive first-run setup: configure New Relic keys, install hooks, and deploy dashboards')
+    .description(
+      'Interactive first-run setup: configure New Relic keys, install hooks, and deploy dashboards',
+    )
     .action(async () => {
       const { runSetupWizard } = await import('./setup-wizard.js');
       await runSetupWizard();
@@ -247,6 +333,13 @@ export function createInstallProgram(): Command {
     .command('update')
     .description('Pull the latest changes and rebuild (git pull + npm run build)')
     .action(handleUpdate);
+
+  program
+    .command('schedule')
+    .description('Configure daily auto-updates via launchd (macOS only)')
+    .option('--time <HH:MM>', 'Set the daily update time (24-hour format, e.g. 08:00)')
+    .option('--disable', 'Remove the auto-update schedule')
+    .action(handleSchedule);
 
   return program;
 }

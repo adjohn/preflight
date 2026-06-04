@@ -101,9 +101,7 @@ export class RecommendationEngine {
     }
 
     // Sort by priority
-    deduped.sort(
-      (a, b) => (PRIORITY_ORDER[a.priority] ?? 2) - (PRIORITY_ORDER[b.priority] ?? 2),
-    );
+    deduped.sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 2) - (PRIORITY_ORDER[b.priority] ?? 2));
 
     if (options?.topN != null && options.topN > 0) {
       return deduped.slice(0, options.topN);
@@ -127,24 +125,28 @@ export class RecommendationEngine {
     // High team-wide correction rate
     const teamCorrectionPct = round((1 - baseline.dimensions.correctionRate) * 100, 0);
     if (teamCorrectionPct > 30) {
-      recs.push(makeRec(
-        'efficiency',
-        'high',
-        'High team correction rate',
-        'The team average correction rate is high. Consider improving initial prompt context across the team.',
-        `Team correction rate: ${teamCorrectionPct}%`,
-      ));
+      recs.push(
+        makeRec(
+          'efficiency',
+          'high',
+          'High team correction rate',
+          'The team average correction rate is high. Consider improving initial prompt context across the team.',
+          `Team correction rate: ${teamCorrectionPct}%`,
+        ),
+      );
     }
 
     // Low team autonomy
     if (baseline.dimensions.autonomy < 0.5) {
-      recs.push(makeRec(
-        'prompt_engineering',
-        'medium',
-        'Low team autonomy',
-        'The team has low autonomy scores. Consider team-wide adoption of /plan mode for complex tasks.',
-        `Team autonomy: ${round(baseline.dimensions.autonomy, 2)}`,
-      ));
+      recs.push(
+        makeRec(
+          'prompt_engineering',
+          'medium',
+          'Low team autonomy',
+          'The team has low autonomy scores. Consider team-wide adoption of /plan mode for complex tasks.',
+          `Team autonomy: ${round(baseline.dimensions.autonomy, 2)}`,
+        ),
+      );
     }
 
     return recs;
@@ -153,11 +155,7 @@ export class RecommendationEngine {
   /**
    * Emit recommendation metrics to New Relic.
    */
-  emitMetrics(
-    aggregator: MetricAggregator,
-    developer: string,
-    options?: { since?: Date },
-  ): void {
+  emitMetrics(aggregator: MetricAggregator, developer: string, options?: { since?: Date }): void {
     const recs = this.generateAllRecommendations(developer, options);
 
     for (const rec of recs) {
@@ -194,25 +192,29 @@ export class RecommendationEngine {
     // High waste ratio
     if (attribution.wasteRatio > 0.2) {
       const wastePct = round(attribution.wasteRatio * 100, 0);
-      recs.push(makeRec(
-        'cost_optimization',
-        'high',
-        'High failed attempt ratio',
-        'Failed attempts represent a significant portion of spend. Consider breaking complex tasks into smaller steps.',
-        `Failed attempts: ${wastePct}% of total cost ($${round(attribution.costPerFailedAttempt, 2)} avg per failed attempt)`,
-        `Reducing failed attempts by half could save ~$${round(attribution.costPerFailedAttempt * (attribution.outcomeDistribution['failed_attempt']?.count ?? 0) / 2, 2)}`,
-      ));
+      recs.push(
+        makeRec(
+          'cost_optimization',
+          'high',
+          'High failed attempt ratio',
+          'Failed attempts represent a significant portion of spend. Consider breaking complex tasks into smaller steps.',
+          `Failed attempts: ${wastePct}% of total cost ($${round(attribution.costPerFailedAttempt, 2)} avg per failed attempt)`,
+          `Reducing failed attempts by half could save ~$${round((attribution.costPerFailedAttempt * (attribution.outcomeDistribution['failed_attempt']?.count ?? 0)) / 2, 2)}`,
+        ),
+      );
     }
 
     // Expensive investigations
     if (attribution.costPerInvestigation > 2) {
-      recs.push(makeRec(
-        'cost_optimization',
-        'medium',
-        'Expensive investigation tasks',
-        'Investigation tasks cost more than expected. Consider using Grep/Glob before asking AI to explore.',
-        `Investigation tasks cost $${round(attribution.costPerInvestigation, 2)} avg`,
-      ));
+      recs.push(
+        makeRec(
+          'cost_optimization',
+          'medium',
+          'Expensive investigation tasks',
+          'Investigation tasks cost more than expected. Consider using Grep/Glob before asking AI to explore.',
+          `Investigation tasks cost $${round(attribution.costPerInvestigation, 2)} avg`,
+        ),
+      );
     }
 
     return recs;
@@ -236,13 +238,15 @@ export class RecommendationEngine {
 
       if (drop > 0.1) {
         const dropPct = round(drop * 100, 0);
-        recs.push(makeRec(
-          'efficiency',
-          'high',
-          'Efficiency score dropped',
-          `Your efficiency score dropped ${dropPct}% from ${previous.week} to ${latest.week}. Check for increased anti-patterns.`,
-          `Efficiency: ${round(previous.value, 2)} → ${round(latest.value, 2)}`,
-        ));
+        recs.push(
+          makeRec(
+            'efficiency',
+            'high',
+            'Efficiency score dropped',
+            `Your efficiency score dropped ${dropPct}% from ${previous.week} to ${latest.week}. Check for increased anti-patterns.`,
+            `Efficiency: ${round(previous.value, 2)} → ${round(latest.value, 2)}`,
+          ),
+        );
       }
     }
 
@@ -253,10 +257,7 @@ export class RecommendationEngine {
     developer: string,
     options?: { since?: Date },
   ): Recommendation[] {
-    const promptRecs = this.promptFeedbackEngine.generatePromptRecommendations(
-      developer,
-      options,
-    );
+    const promptRecs = this.promptFeedbackEngine.generatePromptRecommendations(developer, options);
 
     return promptRecs.map((pr) =>
       makeRec(
@@ -279,23 +280,27 @@ export class RecommendationEngine {
       const impact = this.claudeMdTracker.computeImpact(latestChange.timestamp);
 
       if (impact.verdict.startsWith('Negative')) {
-        recs.push(makeRec(
-          'claudemd',
-          'high',
-          'Negative CLAUDE.md impact',
-          'Recent CLAUDE.md change degraded metrics. Consider reverting or refining the changes.',
-          `${impact.verdict}. Efficiency delta: ${impact.deltas.efficiencyScore.percentChange ?? 'N/A'}%`,
-        ));
+        recs.push(
+          makeRec(
+            'claudemd',
+            'high',
+            'Negative CLAUDE.md impact',
+            'Recent CLAUDE.md change degraded metrics. Consider reverting or refining the changes.',
+            `${impact.verdict}. Efficiency delta: ${impact.deltas.efficiencyScore.percentChange ?? 'N/A'}%`,
+          ),
+        );
       }
 
       if (impact.contextTokensForClaudeMd !== null && impact.contextTokensForClaudeMd > 3000) {
-        recs.push(makeRec(
-          'claudemd',
-          'medium',
-          'Large CLAUDE.md context cost',
-          `CLAUDE.md consumes ~${impact.contextTokensForClaudeMd} tokens per turn. Consider condensing rarely-used sections.`,
-          `${impact.contextTokensForClaudeMd} tokens/turn`,
-        ));
+        recs.push(
+          makeRec(
+            'claudemd',
+            'medium',
+            'Large CLAUDE.md context cost',
+            `CLAUDE.md consumes ~${impact.contextTokensForClaudeMd} tokens per turn. Consider condensing rarely-used sections.`,
+            `${impact.contextTokensForClaudeMd} tokens/turn`,
+          ),
+        );
       }
     }
 
@@ -310,10 +315,7 @@ export class RecommendationEngine {
 
     if (models.size >= 2) {
       const modelArr = [...models];
-      const comparison = this.trendAnalyzer.detectModelMigrationImpact(
-        modelArr[0]!,
-        modelArr[1]!,
-      );
+      const comparison = this.trendAnalyzer.detectModelMigrationImpact(modelArr[0]!, modelArr[1]!);
 
       if (
         comparison.modelASessionCount >= 2 &&
@@ -329,13 +331,15 @@ export class RecommendationEngine {
         const actualRatio = costRatio > 1 ? costRatio : 1 / costRatio;
         if (actualRatio > 2 && effDiff < 15) {
           const cheaper = costRatio > 1 ? modelArr[1] : modelArr[0];
-          recs.push(makeRec(
-            'model_selection',
-            'medium',
-            'Cost-inefficient model usage',
-            `One model costs ${actualRatio}x more but only improves efficiency by ${effDiff}%. Consider using ${cheaper} for routine tasks.`,
-            `${modelArr[0]}: $${round(comparison.modelACost, 2)}/session, ${modelArr[1]}: $${round(comparison.modelBCost, 2)}/session`,
-          ));
+          recs.push(
+            makeRec(
+              'model_selection',
+              'medium',
+              'Cost-inefficient model usage',
+              `One model costs ${actualRatio}x more but only improves efficiency by ${effDiff}%. Consider using ${cheaper} for routine tasks.`,
+              `${modelArr[0]}: $${round(comparison.modelACost, 2)}/session, ${modelArr[1]}: $${round(comparison.modelBCost, 2)}/session`,
+            ),
+          );
         }
       }
     }
@@ -356,10 +360,7 @@ function makeRec(
   evidence: string,
   estimatedSavings?: string,
 ): Recommendation {
-  const hash = createHash('sha256')
-    .update(`${category}:${title}`)
-    .digest('hex')
-    .slice(0, 12);
+  const hash = createHash('sha256').update(`${category}:${title}`).digest('hex').slice(0, 12);
 
   return {
     id: `rec-${category}-${hash}`,

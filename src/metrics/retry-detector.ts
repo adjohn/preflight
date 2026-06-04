@@ -217,9 +217,20 @@ export class RetryDetector {
   }
 
   private serializeInput(record: ToolCallRecord): string {
-    const { id: _id, sessionId: _s, timestamp: _t, durationMs: _d, success: _su,
-      errorType: _e, error: _er, inputSizeBytes: _is, outputSizeBytes: _os,
-      inputHash: _ih, toolUseId: _tu, ...rest } = record;
+    const {
+      id: _id,
+      sessionId: _s,
+      timestamp: _t,
+      durationMs: _d,
+      success: _su,
+      errorType: _e,
+      error: _er,
+      inputSizeBytes: _is,
+      outputSizeBytes: _os,
+      inputHash: _ih,
+      toolUseId: _tu,
+      ...rest
+    } = record;
     try {
       return JSON.stringify(rest, null, 0);
     } catch {

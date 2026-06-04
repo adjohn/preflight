@@ -171,18 +171,23 @@ export class InstructionDriftTracker {
       stats.push({
         promptHash: hash,
         sessionCount: sessions.length,
-        avgSuccessRate: successRates.length > 0
-          ? Math.round((successRates.reduce((a, b) => a + b, 0) / successRates.length) * 1000) / 1000
-          : null,
+        avgSuccessRate:
+          successRates.length > 0
+            ? Math.round((successRates.reduce((a, b) => a + b, 0) / successRates.length) * 1000) /
+              1000
+            : null,
         avgTokensPerSession: Math.round(
           sessions.reduce((s, r) => s + r.totalTokens, 0) / sessions.length,
         ),
-        avgThrashingIncidents: Math.round(
-          (sessions.reduce((s, r) => s + r.thrashingIncidents, 0) / sessions.length) * 100,
-        ) / 100,
-        avgEfficiency: efficiencies.length > 0
-          ? Math.round((efficiencies.reduce((a, b) => a + b, 0) / efficiencies.length) * 1000) / 1000
-          : null,
+        avgThrashingIncidents:
+          Math.round(
+            (sessions.reduce((s, r) => s + r.thrashingIncidents, 0) / sessions.length) * 100,
+          ) / 100,
+        avgEfficiency:
+          efficiencies.length > 0
+            ? Math.round((efficiencies.reduce((a, b) => a + b, 0) / efficiencies.length) * 1000) /
+              1000
+            : null,
         firstSeen: Math.min(...sessions.map((s) => s.timestamp)),
         lastSeen: Math.max(...sessions.map((s) => s.timestamp)),
       });
@@ -224,14 +229,16 @@ export class InstructionDriftTracker {
       return;
     }
 
-    const successDelta = fromAvg.successRate !== null && toAvg.successRate !== null
-      ? toAvg.successRate - fromAvg.successRate
-      : null;
+    const successDelta =
+      fromAvg.successRate !== null && toAvg.successRate !== null
+        ? toAvg.successRate - fromAvg.successRate
+        : null;
     const tokensDelta = toAvg.tokens - fromAvg.tokens;
     const thrashingDelta = toAvg.thrashing - fromAvg.thrashing;
-    const efficiencyDelta = fromAvg.efficiency !== null && toAvg.efficiency !== null
-      ? toAvg.efficiency - fromAvg.efficiency
-      : null;
+    const efficiencyDelta =
+      fromAvg.efficiency !== null && toAvg.efficiency !== null
+        ? toAvg.efficiency - fromAvg.efficiency
+        : null;
 
     let verdict: DriftCorrelation['verdict'] = 'neutral';
     if (successDelta !== null) {

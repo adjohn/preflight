@@ -29,9 +29,11 @@ Conventions observed across waves 1–4:
 > **What shipped:**
 >
 > **1. {{FEATURE_1_TITLE}}** — {{FEATURE_1_DESCRIPTION. 2-4 sentences. If there's a code or config snippet that makes the feature concrete, embed it inline:}}
+>
 > ```
 > {{optional code/config block}}
 > ```
+>
 > {{Continue prose if needed — explain the *why* (what problem it solves) not just the *what*.}}
 >
 > **2. {{FEATURE_2_TITLE}}** — {{FEATURE_2_DESCRIPTION}}
@@ -39,9 +41,11 @@ Conventions observed across waves 1–4:
 > **3. {{FEATURE_3_TITLE}}** — {{FEATURE_3_DESCRIPTION}}
 >
 > **4. {{FEATURE_4_TITLE}}** — {{FEATURE_4_DESCRIPTION. The last (or most interesting) feature is often the "hero" — give it slightly more space and a sample of its output if it's user-facing:}}
+>
 > ```
 > {{optional sample output}}
 > ```
+>
 > {{Closing thought on why this one matters.}}
 >
 > **All {{FEATURE_COUNT}} features are in one PR. Build is green, {{TEST_COUNT}}+ tests, lint clean.**

@@ -115,7 +115,7 @@ describe('CostTracker', () => {
 
       expect(Object.keys(metrics.costByModel)).toHaveLength(2);
       expect(metrics.costByModel['claude-sonnet-4']).toBeCloseTo(0.12, 4);
-      expect(metrics.costByModel['claude-opus-4']).toBeCloseTo(0.30, 4);
+      expect(metrics.costByModel['claude-opus-4']).toBeCloseTo(0.3, 4);
       // Total should equal sum of models
       expect(metrics.sessionTotalCostUsd).toBeCloseTo(0.42, 4);
     });
@@ -135,9 +135,9 @@ describe('CostTracker', () => {
       const breakdown = tracker.recordTokenUsage(usage, 'claude-sonnet-4');
 
       // claude-sonnet-4: thinking=$15/MTok, cacheRead=$0.3/MTok, cacheCreation=$3.75/MTok
-      expect(breakdown.thinkingUsd).toBeCloseTo(2_000 * 15 / 1_000_000, 6);
-      expect(breakdown.cacheReadUsd).toBeCloseTo(3_000 * 0.3 / 1_000_000, 6);
-      expect(breakdown.cacheCreationUsd).toBeCloseTo(500 * 3.75 / 1_000_000, 6);
+      expect(breakdown.thinkingUsd).toBeCloseTo((2_000 * 15) / 1_000_000, 6);
+      expect(breakdown.cacheReadUsd).toBeCloseTo((3_000 * 0.3) / 1_000_000, 6);
+      expect(breakdown.cacheCreationUsd).toBeCloseTo((500 * 3.75) / 1_000_000, 6);
 
       const metrics = tracker.getMetrics();
       expect(metrics.totalThinkingTokens).toBe(2_000);
@@ -163,7 +163,7 @@ describe('CostTracker', () => {
 
       const metrics = tracker.getMetrics();
       expect(metrics.latestCostBreakdown).not.toBeNull();
-      expect(metrics.latestCostBreakdown!.inputUsd).toBeCloseTo(1_000 * 3 / 1_000_000, 6);
+      expect(metrics.latestCostBreakdown!.inputUsd).toBeCloseTo((1_000 * 3) / 1_000_000, 6);
     });
   });
 
@@ -269,7 +269,7 @@ describe('CostTracker', () => {
       tracker.recordTokenUsage(usage, 'claude-sonnet-4');
 
       const metrics = tracker.getMetrics();
-      expect(metrics.costPerFileModified).toBeCloseTo(0.50, 2);
+      expect(metrics.costPerFileModified).toBeCloseTo(0.5, 2);
     });
 
     it('returns null when no files written', () => {
@@ -368,8 +368,8 @@ describe('CostTracker', () => {
         makeUsage({ inputTokens: 1_000_000, cacheReadTokens: 1_000_000, totalTokens: 1_000_000 }),
         'claude-sonnet-4',
       );
-      expect(breakdown.inputUsd).toBeCloseTo(3.00, 6);
-      expect(breakdown.cacheReadUsd).toBeCloseTo(0.30, 6);
+      expect(breakdown.inputUsd).toBeCloseTo(3.0, 6);
+      expect(breakdown.cacheReadUsd).toBeCloseTo(0.3, 6);
       // Ratio: cache-read is exactly 10% of input for the same token count
       expect(breakdown.cacheReadUsd).toBeCloseTo(breakdown.inputUsd * 0.1, 6);
     });
@@ -378,10 +378,14 @@ describe('CostTracker', () => {
       const tracker = new CostTracker();
       // 1M input ($3.00/MTok → $3.00) + 1M cache-creation ($3.75/MTok → $3.75)
       const breakdown = tracker.recordTokenUsage(
-        makeUsage({ inputTokens: 1_000_000, cacheCreationTokens: 1_000_000, totalTokens: 1_000_000 }),
+        makeUsage({
+          inputTokens: 1_000_000,
+          cacheCreationTokens: 1_000_000,
+          totalTokens: 1_000_000,
+        }),
         'claude-sonnet-4',
       );
-      expect(breakdown.inputUsd).toBeCloseTo(3.00, 6);
+      expect(breakdown.inputUsd).toBeCloseTo(3.0, 6);
       expect(breakdown.cacheCreationUsd).toBeCloseTo(3.75, 6);
       // Ratio: cache-creation is 1.25× the input rate
       expect(breakdown.cacheCreationUsd).toBeCloseTo(breakdown.inputUsd * 1.25, 6);
@@ -409,7 +413,7 @@ describe('CostTracker', () => {
       const metrics = tracker.getMetrics();
       expect(Object.keys(metrics.costByModel)).toHaveLength(3);
       expect(metrics.costByModel['claude-sonnet-4']).toBeCloseTo(0.06, 4);
-      expect(metrics.costByModel['claude-opus-4']).toBeCloseTo(0.30, 4);
+      expect(metrics.costByModel['claude-opus-4']).toBeCloseTo(0.3, 4);
       expect(metrics.costByModel['claude-haiku-4-5']).toBeCloseTo(0.02, 4);
       // Session total equals the sum of per-model costs
       const modelSum = Object.values(metrics.costByModel).reduce((a, b) => a + b, 0);

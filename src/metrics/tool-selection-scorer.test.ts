@@ -20,7 +20,9 @@ function makeRecord(overrides: Partial<ToolCallRecord> = {}): ToolCallRecord {
   };
 }
 
-beforeEach(() => { idCounter = 0; });
+beforeEach(() => {
+  idCounter = 0;
+});
 
 describe('ToolSelectionScorer', () => {
   it('returns perfect score for empty session', () => {
@@ -75,8 +77,18 @@ describe('ToolSelectionScorer', () => {
     const scorer = new ToolSelectionScorer({ unusedOutputSizeThreshold: 1000 });
     const calls = [
       // Read produces large output but file is never Edit'd or referenced
-      makeRecord({ toolName: 'Read', filePath: '/unused.ts', outputSizeBytes: 5000, inputSizeBytes: 100 }),
-      makeRecord({ toolName: 'Read', filePath: '/other.ts', outputSizeBytes: 100, inputSizeBytes: 50 }),
+      makeRecord({
+        toolName: 'Read',
+        filePath: '/unused.ts',
+        outputSizeBytes: 5000,
+        inputSizeBytes: 100,
+      }),
+      makeRecord({
+        toolName: 'Read',
+        filePath: '/other.ts',
+        outputSizeBytes: 100,
+        inputSizeBytes: 50,
+      }),
     ];
 
     const metrics = scorer.scoreSession(calls);
@@ -100,7 +112,12 @@ describe('ToolSelectionScorer', () => {
   it('does not penalize large Read output when file is subsequently edited', () => {
     const scorer = new ToolSelectionScorer({ unusedOutputSizeThreshold: 1000 });
     const calls = [
-      makeRecord({ toolName: 'Read', filePath: '/fix.ts', outputSizeBytes: 5000, inputSizeBytes: 100 }),
+      makeRecord({
+        toolName: 'Read',
+        filePath: '/fix.ts',
+        outputSizeBytes: 5000,
+        inputSizeBytes: 100,
+      }),
       makeRecord({ toolName: 'Edit', inputSizeBytes: 2000, filePath: '/fix.ts' }),
     ];
 
@@ -170,9 +187,7 @@ describe('ToolSelectionScorer', () => {
 
   it('does not penalize failed calls even with large output', () => {
     const scorer = new ToolSelectionScorer({ unusedOutputSizeThreshold: 1000 });
-    const calls = [
-      makeRecord({ toolName: 'Bash', success: false, outputSizeBytes: 5000 }),
-    ];
+    const calls = [makeRecord({ toolName: 'Bash', success: false, outputSizeBytes: 5000 })];
 
     const metrics = scorer.scoreSession(calls);
     expect(metrics.unusedOutputCount).toBe(0);

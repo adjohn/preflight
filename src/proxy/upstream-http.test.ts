@@ -1,5 +1,11 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { createServer, request as nodeRequest, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
+import {
+  createServer,
+  request as nodeRequest,
+  type IncomingMessage,
+  type ServerResponse,
+  type Server,
+} from 'node:http';
 import { performance } from 'node:perf_hooks';
 import { HttpUpstream, ByteCountTransform } from './upstream-http.js';
 import type { UpstreamConfig } from './types.js';
@@ -49,10 +55,12 @@ function makeConfig(port: number, overrides?: Partial<UpstreamConfig>): Upstream
 }
 
 /** Create a fake IncomingMessage-like object for testing. */
-function makeFakeRequest(options: {
-  method?: string;
-  headers?: Record<string, string>;
-} = {}): IncomingMessage {
+function makeFakeRequest(
+  options: {
+    method?: string;
+    headers?: Record<string, string>;
+  } = {},
+): IncomingMessage {
   const { method = 'POST', headers = {} } = options;
   return {
     method,
@@ -160,9 +168,9 @@ describe('ByteCountTransform', () => {
 
 describe('HttpUpstream', () => {
   it('throws if config has no url', () => {
-    expect(
-      () => new HttpUpstream({ name: 'test', transportType: 'http' }),
-    ).toThrow('requires a url');
+    expect(() => new HttpUpstream({ name: 'test', transportType: 'http' })).toThrow(
+      'requires a url',
+    );
   });
 
   it('stores name and transportType', () => {
@@ -220,51 +228,73 @@ describe('HttpUpstream', () => {
     ];
 
     it.each(ssrfCases)('blocks %s (%s)', (_label, url) => {
-      expect(
-        () => new HttpUpstream({ name: 'test', url, transportType: 'http' }),
-      ).toThrow();
+      expect(() => new HttpUpstream({ name: 'test', url, transportType: 'http' })).toThrow();
     });
 
     it('allows public HTTPS URLs', () => {
       expect(
-        () => new HttpUpstream({ name: 'test', url: 'https://my-mcp-server.example.com', transportType: 'http' }),
+        () =>
+          new HttpUpstream({
+            name: 'test',
+            url: 'https://my-mcp-server.example.com',
+            transportType: 'http',
+          }),
       ).not.toThrow();
     });
 
     it('allows public HTTP URLs', () => {
       expect(
-        () => new HttpUpstream({ name: 'test', url: 'http://my-mcp-server.example.com:3000', transportType: 'http' }),
+        () =>
+          new HttpUpstream({
+            name: 'test',
+            url: 'http://my-mcp-server.example.com:3000',
+            transportType: 'http',
+          }),
       ).not.toThrow();
     });
 
     it('blocks hex-normalized IPv4-mapped loopback (::ffff:7f00:1)', () => {
       expect(
-        () => new HttpUpstream({ name: 'test', url: 'http://[::ffff:7f00:1]/', transportType: 'http' }),
+        () =>
+          new HttpUpstream({ name: 'test', url: 'http://[::ffff:7f00:1]/', transportType: 'http' }),
       ).toThrow();
     });
 
     it('blocks hex-normalized IPv4-mapped RFC-1918 10.x (::ffff:a00:1)', () => {
       expect(
-        () => new HttpUpstream({ name: 'test', url: 'http://[::ffff:a00:1]/', transportType: 'http' }),
+        () =>
+          new HttpUpstream({ name: 'test', url: 'http://[::ffff:a00:1]/', transportType: 'http' }),
       ).toThrow();
     });
 
     it('blocks hex-normalized IPv4-mapped RFC-1918 192.168.x (::ffff:c0a8:101)', () => {
       expect(
-        () => new HttpUpstream({ name: 'test', url: 'http://[::ffff:c0a8:101]/', transportType: 'http' }),
+        () =>
+          new HttpUpstream({
+            name: 'test',
+            url: 'http://[::ffff:c0a8:101]/',
+            transportType: 'http',
+          }),
       ).toThrow();
     });
 
     it('allows private hosts when allowPrivateHosts is set', () => {
       expect(
-        () => new HttpUpstream({ name: 'test', url: 'http://127.0.0.1:3000', transportType: 'http', allowPrivateHosts: true }),
+        () =>
+          new HttpUpstream({
+            name: 'test',
+            url: 'http://127.0.0.1:3000',
+            transportType: 'http',
+            allowPrivateHosts: true,
+          }),
       ).not.toThrow();
     });
 
     describe('numeric IP encoding bypasses (F-122)', () => {
       it('blocks decimal encoding of loopback (2130706433 = 127.0.0.1)', () => {
         expect(
-          () => new HttpUpstream({ name: 'test', url: 'http://2130706433/', transportType: 'http' }),
+          () =>
+            new HttpUpstream({ name: 'test', url: 'http://2130706433/', transportType: 'http' }),
         ).toThrow();
       });
 
@@ -276,19 +306,22 @@ describe('HttpUpstream', () => {
 
       it('blocks octal encoding of loopback (0177.0.0.1)', () => {
         expect(
-          () => new HttpUpstream({ name: 'test', url: 'http://0177.0.0.1/', transportType: 'http' }),
+          () =>
+            new HttpUpstream({ name: 'test', url: 'http://0177.0.0.1/', transportType: 'http' }),
         ).toThrow();
       });
 
       it('blocks octal encoding of RFC-1918 192.168.1.1 (0300.0250.0.1)', () => {
         expect(
-          () => new HttpUpstream({ name: 'test', url: 'http://0300.0250.0.1/', transportType: 'http' }),
+          () =>
+            new HttpUpstream({ name: 'test', url: 'http://0300.0250.0.1/', transportType: 'http' }),
         ).toThrow();
       });
 
       it('blocks hex encoding of loopback (0x7f.0.0.1)', () => {
         expect(
-          () => new HttpUpstream({ name: 'test', url: 'http://0x7f.0.0.1/', transportType: 'http' }),
+          () =>
+            new HttpUpstream({ name: 'test', url: 'http://0x7f.0.0.1/', transportType: 'http' }),
         ).toThrow();
       });
 
@@ -300,13 +333,19 @@ describe('HttpUpstream', () => {
 
       it('blocks mixed decimal/hex encoding (127.0x0.0.1)', () => {
         expect(
-          () => new HttpUpstream({ name: 'test', url: 'http://127.0x0.0.1/', transportType: 'http' }),
+          () =>
+            new HttpUpstream({ name: 'test', url: 'http://127.0x0.0.1/', transportType: 'http' }),
         ).toThrow();
       });
 
       it('allows public URLs with numeric-looking suffixes that are not IPs', () => {
         expect(
-          () => new HttpUpstream({ name: 'test', url: 'http://server-12345.example.com/', transportType: 'http' }),
+          () =>
+            new HttpUpstream({
+              name: 'test',
+              url: 'http://server-12345.example.com/',
+              transportType: 'http',
+            }),
         ).not.toThrow();
       });
     });
@@ -332,9 +371,7 @@ describe('HttpUpstream', () => {
       ];
 
       it.each(blockedBoundaries)('blocks %s', (_label, url) => {
-        expect(
-          () => new HttpUpstream({ name: 'test', url, transportType: 'http' }),
-        ).toThrow();
+        expect(() => new HttpUpstream({ name: 'test', url, transportType: 'http' })).toThrow();
       });
 
       const allowedBoundaries: Array<[string, string]> = [
@@ -348,9 +385,7 @@ describe('HttpUpstream', () => {
       ];
 
       it.each(allowedBoundaries)('allows %s', (_label, url) => {
-        expect(
-          () => new HttpUpstream({ name: 'test', url, transportType: 'http' }),
-        ).not.toThrow();
+        expect(() => new HttpUpstream({ name: 'test', url, transportType: 'http' })).not.toThrow();
       });
     });
 
@@ -361,28 +396,48 @@ describe('HttpUpstream', () => {
         // This test documents the invariant: validateSsrfUrl must use url.hostname not url.host to prevent bypass.
         // Example: http://public.example.com@127.0.0.1/ should be rejected based on 127.0.0.1, not the userinfo part.
         expect(
-          () => new HttpUpstream({ name: 'test', url: 'http://public.example.com@127.0.0.1/', transportType: 'http' }),
+          () =>
+            new HttpUpstream({
+              name: 'test',
+              url: 'http://public.example.com@127.0.0.1/',
+              transportType: 'http',
+            }),
         ).toThrow();
       });
 
       it('rejects private IP addresses even when userinfo is present', () => {
         // Validates that userinfo doesn't interfere with private IP detection
         expect(
-          () => new HttpUpstream({ name: 'test', url: 'http://attacker@127.0.0.1/', transportType: 'http' }),
+          () =>
+            new HttpUpstream({
+              name: 'test',
+              url: 'http://attacker@127.0.0.1/',
+              transportType: 'http',
+            }),
         ).toThrow();
       });
 
       it('rejects loopback localhost even when userinfo is present', () => {
         // Validates that userinfo doesn't interfere with localhost detection
         expect(
-          () => new HttpUpstream({ name: 'test', url: 'http://admin@localhost/', transportType: 'http' }),
+          () =>
+            new HttpUpstream({
+              name: 'test',
+              url: 'http://admin@localhost/',
+              transportType: 'http',
+            }),
         ).toThrow();
       });
 
       it('allows public hostnames even when userinfo is present', () => {
         // Validates that userinfo doesn't interfere with public hostname validation
         expect(
-          () => new HttpUpstream({ name: 'test', url: 'http://user:pass@my-mcp-server.example.com/', transportType: 'http' }),
+          () =>
+            new HttpUpstream({
+              name: 'test',
+              url: 'http://user:pass@my-mcp-server.example.com/',
+              transportType: 'http',
+            }),
         ).not.toThrow();
       });
     });
@@ -442,12 +497,12 @@ describe('HttpUpstream.forward()', () => {
     const upstream = new HttpUpstream(makeConfig(port));
     const fakeReq = makeFakeRequest({
       headers: {
-        'authorization': 'Bearer secret-token',
+        authorization: 'Bearer secret-token',
         'mcp-session-id': 'sess-123',
         'x-custom': 'value',
         'content-type': 'application/json',
         // This header should NOT be forwarded
-        'host': 'localhost',
+        host: 'localhost',
       },
     });
     const fakeRes = makeFakeResponse();
@@ -461,7 +516,11 @@ describe('HttpUpstream.forward()', () => {
   });
 
   it('propagates error from upstream (500) with same status and body', async () => {
-    const errorBody = JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Internal error' } });
+    const errorBody = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32603, message: 'Internal error' },
+    });
 
     ({ server: mockServer, port } = await createMockServer((_req, res) => {
       _req.on('data', () => {});
@@ -475,7 +534,11 @@ describe('HttpUpstream.forward()', () => {
     const fakeReq = makeFakeRequest();
     const fakeRes = makeFakeResponse();
 
-    const result = await upstream.forward(fakeReq, fakeRes as unknown as ServerResponse, Buffer.from('{}'));
+    const result = await upstream.forward(
+      fakeReq,
+      fakeRes as unknown as ServerResponse,
+      Buffer.from('{}'),
+    );
 
     expect(result.statusCode).toBe(500);
     expect(Buffer.concat(fakeRes._body).toString()).toBe(errorBody);
@@ -518,7 +581,8 @@ describe('HttpUpstream.forward()', () => {
             const chunks: Buffer[] = [];
             res.on('data', (chunk: Buffer) => chunks.push(chunk));
             res.on('end', () => {
-              const result = (proxyServer as unknown as Record<string, unknown>)._result as import('./types.js').ForwardResult;
+              const result = (proxyServer as unknown as Record<string, unknown>)
+                ._result as import('./types.js').ForwardResult;
               proxyServer.close(() => {
                 resolve({
                   result,
@@ -553,7 +617,11 @@ describe('HttpUpstream.forward()', () => {
     const fakeReq = makeFakeRequest();
     const fakeRes = makeFakeResponse();
 
-    const result = await upstream.forward(fakeReq, fakeRes as unknown as ServerResponse, Buffer.from('{}'));
+    const result = await upstream.forward(
+      fakeReq,
+      fakeRes as unknown as ServerResponse,
+      Buffer.from('{}'),
+    );
     expect(result.upstreamLatencyMs).toBeGreaterThan(0);
     expect(result.upstreamLatencyMs).toBeLessThan(5000);
   });
@@ -574,9 +642,19 @@ describe('HttpUpstream.forward()', () => {
     const fakeReq = makeFakeRequest();
     const fakeRes = makeFakeResponse();
     let socketDestroyed = false;
-    Object.assign(fakeRes, { socket: { destroy() { socketDestroyed = true; } } });
+    Object.assign(fakeRes, {
+      socket: {
+        destroy() {
+          socketDestroyed = true;
+        },
+      },
+    });
 
-    const result = await upstream.forward(fakeReq, fakeRes as unknown as ServerResponse, Buffer.from('{}'));
+    const result = await upstream.forward(
+      fakeReq,
+      fakeRes as unknown as ServerResponse,
+      Buffer.from('{}'),
+    );
 
     expect(socketDestroyed).toBe(true);
     expect(result.responseSizeBytes).toBeGreaterThan(0);
@@ -630,7 +708,7 @@ describe('HttpUpstream.forward()', () => {
         res.writeHead(200, {
           'content-type': 'application/json',
           'transfer-encoding': 'chunked',
-          'connection': 'keep-alive',
+          connection: 'keep-alive',
           'keep-alive': 'timeout=5',
           'x-custom-header': 'should-pass',
         });
@@ -684,7 +762,11 @@ describe('HttpUpstream.forward()', () => {
     const fakeReq = makeFakeRequest();
     const fakeRes = makeFakeResponse();
 
-    const result = await upstream.forward(fakeReq, fakeRes as unknown as ServerResponse, Buffer.from('{}'));
+    const result = await upstream.forward(
+      fakeReq,
+      fakeRes as unknown as ServerResponse,
+      Buffer.from('{}'),
+    );
 
     expect(result.statusCode).toBe(502);
     expect(result.isStreaming).toBe(false);
@@ -701,7 +783,11 @@ describe('HttpUpstream.forward()', () => {
     const fakeReq = makeFakeRequest();
     const fakeRes = makeFakeResponse();
 
-    const result = await upstream.forward(fakeReq, fakeRes as unknown as ServerResponse, Buffer.from('{}'));
+    const result = await upstream.forward(
+      fakeReq,
+      fakeRes as unknown as ServerResponse,
+      Buffer.from('{}'),
+    );
 
     expect(result.statusCode).toBe(502);
     expect(result.isStreaming).toBe(false);
@@ -722,7 +808,11 @@ describe('HttpUpstream.forward()', () => {
     const fakeReq = makeFakeRequest();
     const fakeRes = makeFakeResponse();
 
-    const result = await upstream.forward(fakeReq, fakeRes as unknown as ServerResponse, Buffer.from('{}'));
+    const result = await upstream.forward(
+      fakeReq,
+      fakeRes as unknown as ServerResponse,
+      Buffer.from('{}'),
+    );
 
     expect(result.statusCode).toBe(502);
     expect(fakeRes._statusCode).toBe(502);
@@ -756,7 +846,11 @@ describe('HttpUpstream.forward()', () => {
     const fakeRes = makeFakeResponse();
     Object.assign(fakeRes, { socket: { destroy() {} } });
 
-    const result = await upstream.forward(fakeReq, fakeRes as unknown as ServerResponse, Buffer.from('{}'));
+    const result = await upstream.forward(
+      fakeReq,
+      fakeRes as unknown as ServerResponse,
+      Buffer.from('{}'),
+    );
     expect(result.isStreaming).toBe(true);
   });
 
@@ -764,7 +858,9 @@ describe('HttpUpstream.forward()', () => {
     ({ server: mockServer, port } = await createMockServer((_req, res) => {
       _req.on('data', () => {});
       _req.on('end', () => {
-        res.writeHead(200, { 'content-type': 'application/json; description="not-text/event-stream"' });
+        res.writeHead(200, {
+          'content-type': 'application/json; description="not-text/event-stream"',
+        });
         res.end('{"ok":true}');
       });
     }));
@@ -773,7 +869,11 @@ describe('HttpUpstream.forward()', () => {
     const fakeReq = makeFakeRequest();
     const fakeRes = makeFakeResponse();
 
-    const result = await upstream.forward(fakeReq, fakeRes as unknown as ServerResponse, Buffer.from('{}'));
+    const result = await upstream.forward(
+      fakeReq,
+      fakeRes as unknown as ServerResponse,
+      Buffer.from('{}'),
+    );
     expect(result.isStreaming).toBe(false);
   });
 
@@ -835,7 +935,11 @@ describe('HttpUpstream.forward()', () => {
       const fakeReq = makeFakeRequest();
       const fakeRes = makeFakeResponse();
 
-      const result = await upstream.forward(fakeReq, fakeRes as unknown as ServerResponse, Buffer.from('{}'));
+      const result = await upstream.forward(
+        fakeReq,
+        fakeRes as unknown as ServerResponse,
+        Buffer.from('{}'),
+      );
 
       expect(result.statusCode).toBe(200);
       expect(result.isStreaming).toBe(false);
@@ -848,9 +952,9 @@ describe('HttpUpstream.forward()', () => {
         transportType: 'http',
         allowPrivateHosts: false,
       });
-      expect((upstreamNoPrivate as unknown as { allowPrivateHosts: boolean }).allowPrivateHosts).toBe(
-        false,
-      );
+      expect(
+        (upstreamNoPrivate as unknown as { allowPrivateHosts: boolean }).allowPrivateHosts,
+      ).toBe(false);
 
       const upstreamWithPrivate = new HttpUpstream({
         name: 'with-private',
@@ -858,9 +962,9 @@ describe('HttpUpstream.forward()', () => {
         transportType: 'http',
         allowPrivateHosts: true,
       });
-      expect((upstreamWithPrivate as unknown as { allowPrivateHosts: boolean }).allowPrivateHosts).toBe(
-        true,
-      );
+      expect(
+        (upstreamWithPrivate as unknown as { allowPrivateHosts: boolean }).allowPrivateHosts,
+      ).toBe(true);
     });
 
     it('defaults allowPrivateHosts to false when not specified', () => {
@@ -891,7 +995,11 @@ describe('HttpUpstream.forward()', () => {
       // which will either fail to connect (port 80/443) or timeout.
       // The important thing is that re-validation in forward() doesn't skip
       // the SSRF check for the hostname.
-      const result = await upstream.forward(fakeReq, fakeRes as unknown as ServerResponse, Buffer.from('{}'));
+      const result = await upstream.forward(
+        fakeReq,
+        fakeRes as unknown as ServerResponse,
+        Buffer.from('{}'),
+      );
 
       // Should return 502 (unreachable) not because of SSRF, but because DNS fails
       // or connection refused. The re-validation in forward() should complete

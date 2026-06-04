@@ -12,7 +12,17 @@
  *   - Config via env vars only (no file reads for config)
  */
 
-import { readFileSync, readSync, writeFileSync, openSync, closeSync, mkdirSync, existsSync, constants as fsConstants, statSync } from 'node:fs';
+import {
+  readFileSync,
+  readSync,
+  writeFileSync,
+  openSync,
+  closeSync,
+  mkdirSync,
+  existsSync,
+  constants as fsConstants,
+  statSync,
+} from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -130,9 +140,7 @@ function getClaudeHome(): string {
 
 function getTranscriptPath(cwd: string | undefined, sessionId: string | undefined): string | null {
   if (!sessionId) return null;
-  const projectDir = cwd
-    ? cwd.replace(/\//g, '-')
-    : process.env.PWD?.replace(/\//g, '-');
+  const projectDir = cwd ? cwd.replace(/\//g, '-') : process.env.PWD?.replace(/\//g, '-');
   if (!projectDir) return null;
   return resolve(getClaudeHome(), 'projects', projectDir, `${sessionId}.jsonl`);
 }
@@ -241,7 +249,11 @@ function collectTranscriptTokens(data: { cwd?: string; session_id?: string }): v
     }
 
     const line = JSON.stringify(tokenEvent) + '\n';
-    const fd = openSync(bufferPath, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_APPEND, 0o600);
+    const fd = openSync(
+      bufferPath,
+      fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_APPEND,
+      0o600,
+    );
     try {
       writeFileSync(fd, line);
     } finally {
@@ -308,7 +320,8 @@ function extractInputMeta(toolName: string, input: unknown): Record<string, unkn
       if (typeof obj.command === 'string') meta.command = obj.command;
       if (typeof obj.description === 'string') meta.description = obj.description;
       if (typeof obj.timeout === 'number') meta.timeout = obj.timeout;
-      if (typeof obj.run_in_background === 'boolean') meta.run_in_background = obj.run_in_background;
+      if (typeof obj.run_in_background === 'boolean')
+        meta.run_in_background = obj.run_in_background;
       break;
     case 'Grep':
       if (typeof obj.pattern === 'string') meta.pattern = obj.pattern;
@@ -323,7 +336,8 @@ function extractInputMeta(toolName: string, input: unknown): Record<string, unkn
       if (typeof obj.description === 'string') meta.description = obj.description;
       if (typeof obj.subagent_type === 'string') meta.subagent_type = obj.subagent_type;
       if (typeof obj.prompt === 'string') meta.promptLength = obj.prompt.length;
-      if (typeof obj.run_in_background === 'boolean') meta.run_in_background = obj.run_in_background;
+      if (typeof obj.run_in_background === 'boolean')
+        meta.run_in_background = obj.run_in_background;
       break;
     case 'AskUserQuestion':
       if (Array.isArray(obj.questions)) meta.questions = new Array(obj.questions.length);
@@ -387,9 +401,8 @@ function processHook(raw: string): void {
     if (inputMeta !== undefined) event.toolInput = inputMeta;
 
     if (recordContent && data.tool_input !== undefined) {
-      const content = typeof data.tool_input === 'string'
-        ? data.tool_input
-        : JSON.stringify(data.tool_input);
+      const content =
+        typeof data.tool_input === 'string' ? data.tool_input : JSON.stringify(data.tool_input);
       event.inputContent = redact(truncate(content, maxContentLen));
     }
   } else if (eventName === 'PostToolUse') {
@@ -410,9 +423,10 @@ function processHook(raw: string): void {
     if (outputMeta !== undefined) event.toolOutput = outputMeta;
 
     if (recordContent && data.tool_response !== undefined) {
-      const content = typeof data.tool_response === 'string'
-        ? data.tool_response
-        : JSON.stringify(data.tool_response);
+      const content =
+        typeof data.tool_response === 'string'
+          ? data.tool_response
+          : JSON.stringify(data.tool_response);
       event.outputContent = redact(truncate(content, maxContentLen));
     }
   } else if (eventName === 'PostToolUseFailure') {
@@ -456,7 +470,11 @@ function processHook(raw: string): void {
       line = JSON.stringify(event) + '\n';
     }
 
-    const fd = openSync(bufferPath, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_APPEND, 0o600);
+    const fd = openSync(
+      bufferPath,
+      fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_APPEND,
+      0o600,
+    );
     try {
       writeFileSync(fd, line);
     } finally {
@@ -478,7 +496,17 @@ function processHook(raw: string): void {
 }
 
 // Exported for testing
-export { processHook, redact, hashInput, sizeOf, truncate, getRecordContent, collectTranscriptTokens, readLastAssistantUsage, getTranscriptPath };
+export {
+  processHook,
+  redact,
+  hashInput,
+  sizeOf,
+  truncate,
+  getRecordContent,
+  collectTranscriptTokens,
+  readLastAssistantUsage,
+  getTranscriptPath,
+};
 
 // ---------------------------------------------------------------------------
 // Entry point — only when run directly (not when imported by the MCP server)
@@ -487,13 +515,24 @@ export { processHook, redact, hashInput, sizeOf, truncate, getRecordContent, col
 import { realpathSync } from 'node:fs';
 
 const _resolvedScript = (() => {
-  try { return realpathSync(process.argv[1]); } catch { return process.argv[1]; }
+  try {
+    return realpathSync(process.argv[1]);
+  } catch {
+    return process.argv[1];
+  }
 })();
-const _isDirectExecution = _resolvedScript != null && /collector-script\.[jt]s$/.test(_resolvedScript);
+const _isDirectExecution =
+  _resolvedScript != null && /collector-script\.[jt]s$/.test(_resolvedScript);
 
 if (_isDirectExecution) {
   const _subcommand = process.argv[2];
-  if (_subcommand === 'install' || _subcommand === 'uninstall' || _subcommand === 'setup' || _subcommand === 'update' || (_subcommand !== undefined && _subcommand.startsWith('-'))) {
+  if (
+    _subcommand === 'install' ||
+    _subcommand === 'uninstall' ||
+    _subcommand === 'setup' ||
+    _subcommand === 'update' ||
+    (_subcommand !== undefined && _subcommand.startsWith('-'))
+  ) {
     // Dynamic import keeps the hook path lightweight — commander and friends
     // are only loaded when the user explicitly runs install/uninstall/setup.
     import('../install/cli.js')

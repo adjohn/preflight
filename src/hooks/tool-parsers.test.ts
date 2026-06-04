@@ -216,7 +216,9 @@ describe('parseToolSpecificFields', () => {
 
       expect(fields.agentDescription).toBe('Search for auth code');
       expect(fields.subagentType).toBe('Explore');
-      expect(fields.promptLength).toBe('Find all authentication-related files in the codebase'.length);
+      expect(fields.promptLength).toBe(
+        'Find all authentication-related files in the codebase'.length,
+      );
     });
 
     it('extracts runInBackground flag', () => {

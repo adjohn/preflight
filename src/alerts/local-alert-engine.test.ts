@@ -74,9 +74,7 @@ describe('LocalAlertEngine — budget rules', () => {
 
     const events = engine.evaluate(
       makeSnapshot({
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       1700000000000,
     );
@@ -101,9 +99,7 @@ describe('LocalAlertEngine — budget rules', () => {
     engine.loadRules([makeBudgetRule({ id: 'daily', type: 'budget.daily' })]);
     const events = engine.evaluate(
       makeSnapshot({
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       1700000000000,
     );
@@ -115,9 +111,7 @@ describe('LocalAlertEngine — budget rules', () => {
     engine.loadRules([makeBudgetRule({ threshold: 100 })]);
     const events = engine.evaluate(
       makeSnapshot({
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       1700000000000,
     );
@@ -128,9 +122,7 @@ describe('LocalAlertEngine — budget rules', () => {
     const engine = new LocalAlertEngine();
     engine.loadRules([makeBudgetRule({ deduplicateSeconds: 1 })]);
     const snap = makeSnapshot({
-      budgetThresholds: [
-        { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-      ],
+      budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
     });
     const t = 1700000000000;
     expect(engine.evaluate(snap, t)).toHaveLength(1);
@@ -148,9 +140,7 @@ describe('LocalAlertEngine — budget rules', () => {
     // 80% threshold arrives first
     let events = engine.evaluate(
       makeSnapshot({
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       t,
     );
@@ -160,9 +150,7 @@ describe('LocalAlertEngine — budget rules', () => {
     // (period, level), but the 100% rule is its own rule.)
     events = engine.evaluate(
       makeSnapshot({
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 100, spentUsd: 5.2, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 100, spentUsd: 5.2, budgetUsd: 5 }],
       }),
       t + 1000,
     );
@@ -178,9 +166,7 @@ describe('LocalAlertEngine — budget rules', () => {
     ]);
     const events = engine.evaluate(
       makeSnapshot({
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       1700000000000,
     );
@@ -193,9 +179,7 @@ describe('LocalAlertEngine — budget rules', () => {
     engine.loadRules([makeBudgetRule({ enabled: false })]);
     const events = engine.evaluate(
       makeSnapshot({
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       1700000000000,
     );
@@ -215,9 +199,7 @@ describe('LocalAlertEngine — budget rules', () => {
     });
     const events = engine.evaluate(
       makeSnapshot({
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       1700000000000,
     );
@@ -236,9 +218,7 @@ describe('LocalAlertEngine — budget rules', () => {
     let events = engine.evaluate(
       makeSnapshot({
         cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 },
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       t0,
     );
@@ -265,17 +245,12 @@ describe('LocalAlertEngine — budget rules', () => {
     engine.evaluate(
       makeSnapshot({
         cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 },
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       t0,
     );
     // Session resets → cleared.
-    engine.evaluate(
-      makeSnapshot({ cost: { sessionUsd: 0, todayUsd: 0, weekUsd: 0 } }),
-      t0 + 1000,
-    );
+    engine.evaluate(makeSnapshot({ cost: { sessionUsd: 0, todayUsd: 0, weekUsd: 0 } }), t0 + 1000);
     // Subsequent tick with no threshold breach should produce no events.
     const events = engine.evaluate(
       makeSnapshot({ cost: { sessionUsd: 0, todayUsd: 0, weekUsd: 0 } }),
@@ -297,9 +272,7 @@ describe('LocalAlertEngine — budget rules', () => {
     let events = engine.evaluate(
       makeSnapshot({
         cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 },
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       t0,
     );
@@ -331,9 +304,7 @@ describe('LocalAlertEngine — budget rules', () => {
     engine.evaluate(
       makeSnapshot({
         cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 },
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       t0,
     );
@@ -359,9 +330,7 @@ describe('LocalAlertEngine — clock + state housekeeping', () => {
     engine.loadRules([makeBudgetRule({ id: 'rule-a' })]);
     engine.evaluate(
       makeSnapshot({
-        budgetThresholds: [
-          { period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 },
-        ],
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
       }),
       1700000000000,
     );
@@ -464,14 +433,9 @@ describe('LocalAlertEngine — efficiency.below rule', () => {
     const engine = new LocalAlertEngine();
     engine.loadRules([makeEffRule()]);
     const t0 = 1700000000000;
+    expect(engine.evaluate(makeSnapshot({ efficiency: { score: 0.2 } }), t0)).toEqual([]);
     expect(
-      engine.evaluate(makeSnapshot({ efficiency: { score: 0.2 } }), t0),
-    ).toEqual([]);
-    expect(
-      engine.evaluate(
-        makeSnapshot({ efficiency: { score: 0.2 } }),
-        t0 + 5 * 60 * 1000,
-      ),
+      engine.evaluate(makeSnapshot({ efficiency: { score: 0.2 } }), t0 + 5 * 60 * 1000),
     ).toEqual([]);
   });
 
@@ -494,34 +458,22 @@ describe('LocalAlertEngine — efficiency.below rule', () => {
     const t0 = 1700000000000;
     engine.evaluate(makeSnapshot({ efficiency: { score: 0.2 } }), t0);
     // Score recovers — resets firstBelowAt
-    engine.evaluate(
-      makeSnapshot({ efficiency: { score: 0.5 } }),
-      t0 + 10 * 60 * 1000,
-    );
+    engine.evaluate(makeSnapshot({ efficiency: { score: 0.5 } }), t0 + 10 * 60 * 1000);
     // Score drops again — sustained window starts fresh, won't fire yet.
     expect(
-      engine.evaluate(
-        makeSnapshot({ efficiency: { score: 0.2 } }),
-        t0 + 20 * 60 * 1000,
-      ),
+      engine.evaluate(makeSnapshot({ efficiency: { score: 0.2 } }), t0 + 20 * 60 * 1000),
     ).toEqual([]);
     expect(
-      engine.evaluate(
-        makeSnapshot({ efficiency: { score: 0.2 } }),
-        t0 + 30 * 60 * 1000,
-      ),
+      engine.evaluate(makeSnapshot({ efficiency: { score: 0.2 } }), t0 + 30 * 60 * 1000),
     ).toEqual([]);
   });
 
   it('skips evaluation entirely when efficiency score is null', () => {
     const engine = new LocalAlertEngine();
     engine.loadRules([makeEffRule()]);
-    expect(
-      engine.evaluate(
-        makeSnapshot({ efficiency: { score: null } }),
-        1700000000000,
-      ),
-    ).toEqual([]);
+    expect(engine.evaluate(makeSnapshot({ efficiency: { score: null } }), 1700000000000)).toEqual(
+      [],
+    );
   });
 });
 
@@ -545,9 +497,7 @@ describe('LocalAlertEngine — antipattern.count rule', () => {
 
     const events = engine.evaluate(
       makeSnapshot({
-        antiPatterns: [
-          { type: 'stuck_loop', count: 4, windowMs: 300_000 },
-        ],
+        antiPatterns: [{ type: 'stuck_loop', count: 4, windowMs: 300_000 }],
       }),
       1700000000000,
     );
@@ -575,9 +525,7 @@ describe('LocalAlertEngine — antipattern.count rule', () => {
     expect(
       engine.evaluate(
         makeSnapshot({
-          antiPatterns: [
-            { type: 'stuck_loop', count: 4, windowMs: 60_000 },
-          ],
+          antiPatterns: [{ type: 'stuck_loop', count: 4, windowMs: 60_000 }],
         }),
         1700000000000,
       ),
@@ -685,9 +633,7 @@ describe('LocalAlertEngine — latency.percentile rule', () => {
     engine.loadRules([rule]);
     const events = engine.evaluate(
       makeSnapshot({
-        latency: [
-          { tool: 'Bash', p50Ms: 100, p95Ms: 800, p99Ms: 1500 },
-        ],
+        latency: [{ tool: 'Bash', p50Ms: 100, p95Ms: 800, p99Ms: 1500 }],
       }),
       1700000000000,
     );
@@ -715,9 +661,7 @@ describe('LocalAlertEngine — tool.failure rule', () => {
     engine.loadRules([rule]);
     const events = engine.evaluate(
       makeSnapshot({
-        toolFailures: [
-          { tool: 'Bash', failurePct: 33, windowMs: 300_000 },
-        ],
+        toolFailures: [{ tool: 'Bash', failurePct: 33, windowMs: 300_000 }],
       }),
       1700000000000,
     );
@@ -804,14 +748,8 @@ describe('LocalAlertEngine — deduplication', () => {
     const engine = new LocalAlertEngine();
     engine.loadRules([makeRule()]);
     const t0 = 1700000000000;
-    engine.evaluate(
-      makeSnapshot({ cost: { sessionUsd: 10, todayUsd: 0, weekUsd: 0 } }),
-      t0,
-    );
-    engine.evaluate(
-      makeSnapshot({ cost: { sessionUsd: 1, todayUsd: 0, weekUsd: 0 } }),
-      t0 + 1000,
-    );
+    engine.evaluate(makeSnapshot({ cost: { sessionUsd: 10, todayUsd: 0, weekUsd: 0 } }), t0);
+    engine.evaluate(makeSnapshot({ cost: { sessionUsd: 1, todayUsd: 0, weekUsd: 0 } }), t0 + 1000);
     // 70 s after clear — past dedupe — should fire again.
     const events = engine.evaluate(
       makeSnapshot({ cost: { sessionUsd: 10, todayUsd: 0, weekUsd: 0 } }),
@@ -984,16 +922,10 @@ describe('LocalAlertEngine — OS notifications', () => {
     engine.loadRules([makeCostRule(['banner', 'os'])]);
     const t = 1700000000000;
     // Fire first (one notification expected)
-    engine.evaluate(
-      makeSnapshot({ cost: { sessionUsd: 10, todayUsd: 0, weekUsd: 0 } }),
-      t,
-    );
+    engine.evaluate(makeSnapshot({ cost: { sessionUsd: 10, todayUsd: 0, weekUsd: 0 } }), t);
     expect(calls).toHaveLength(1);
     // Clear — no additional notification
-    engine.evaluate(
-      makeSnapshot({ cost: { sessionUsd: 0, todayUsd: 0, weekUsd: 0 } }),
-      t + 1000,
-    );
+    engine.evaluate(makeSnapshot({ cost: { sessionUsd: 0, todayUsd: 0, weekUsd: 0 } }), t + 1000);
     expect(calls).toHaveLength(1);
   });
 

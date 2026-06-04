@@ -2,7 +2,12 @@ import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadMcpConfig, redactSensitive, sanitizeDeveloper, normalizeDeveloperName } from './config.js';
+import {
+  loadMcpConfig,
+  redactSensitive,
+  sanitizeDeveloper,
+  normalizeDeveloperName,
+} from './config.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let savedEnv: NodeJS.ProcessEnv;
@@ -319,11 +324,14 @@ describe('loadMcpConfig()', () => {
 
   it('throws on invalid config file schema (F-036)', () => {
     const path = resolve(tmpDir, 'bad-schema.json');
-    writeFileSync(path, JSON.stringify({
-      sessionBudgetUsd: 'not-a-number', // should be number
-      licenseKey: 'test-key',
-      accountId: '12345',
-    }));
+    writeFileSync(
+      path,
+      JSON.stringify({
+        sessionBudgetUsd: 'not-a-number', // should be number
+        licenseKey: 'test-key',
+        accountId: '12345',
+      }),
+    );
     process.env.NEW_RELIC_LICENSE_KEY = 'ignored';
     process.env.NEW_RELIC_ACCOUNT_ID = '12345';
     expect(() => loadMcpConfig({ config: path })).toThrow(/Config file validation failed/);
@@ -334,11 +342,14 @@ describe('loadMcpConfig()', () => {
 
   it('rejects unknown fields in config file (F-036)', () => {
     const path = resolve(tmpDir, 'unknown-fields.json');
-    writeFileSync(path, JSON.stringify({
-      licenseKey: 'test-key',
-      accountId: '12345',
-      unknownField: 'should-fail',
-    }));
+    writeFileSync(
+      path,
+      JSON.stringify({
+        licenseKey: 'test-key',
+        accountId: '12345',
+        unknownField: 'should-fail',
+      }),
+    );
     process.env.NEW_RELIC_LICENSE_KEY = 'ignored';
     process.env.NEW_RELIC_ACCOUNT_ID = '12345';
     expect(() => loadMcpConfig({ config: path })).toThrow(/Config file validation failed/);
@@ -348,14 +359,17 @@ describe('loadMcpConfig()', () => {
     process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
     process.env.NEW_RELIC_ACCOUNT_ID = '12345';
     const path = resolve(tmpDir, 'valid-numeric.json');
-    writeFileSync(path, JSON.stringify({
-      sessionBudgetUsd: 10.5,
-      dailyBudgetUsd: 50,
-      weeklyBudgetUsd: 300,
-      port: 9847,
-      harvestEventsMs: 5000,
-      harvestMetricsMs: 60000,
-    }));
+    writeFileSync(
+      path,
+      JSON.stringify({
+        sessionBudgetUsd: 10.5,
+        dailyBudgetUsd: 50,
+        weeklyBudgetUsd: 300,
+        port: 9847,
+        harvestEventsMs: 5000,
+        harvestMetricsMs: 60000,
+      }),
+    );
     const config = loadMcpConfig({ config: path });
     expect(config.sessionBudgetUsd).toBe(10.5);
     expect(config.dailyBudgetUsd).toBe(50);
@@ -408,10 +422,14 @@ describe('loadMcpConfig()', () => {
   it('proxyUpstreams from env var overrides config file', () => {
     process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
     process.env.NEW_RELIC_ACCOUNT_ID = '12345';
-    const envUpstreams = [{ name: 'env-server', url: 'http://localhost:4000', transportType: 'http' }];
+    const envUpstreams = [
+      { name: 'env-server', url: 'http://localhost:4000', transportType: 'http' },
+    ];
     process.env.NEW_RELIC_AI_MCP_PROXY_UPSTREAMS = JSON.stringify(envUpstreams);
     const configPath = writeConfigFile({
-      proxyUpstreams: [{ name: 'file-server', url: 'http://localhost:3000', transportType: 'http' }],
+      proxyUpstreams: [
+        { name: 'file-server', url: 'http://localhost:3000', transportType: 'http' },
+      ],
     });
     const config = loadMcpConfig({ config: configPath });
     expect(config.proxyUpstreams).toEqual(envUpstreams);
@@ -431,7 +449,9 @@ describe('loadMcpConfig()', () => {
     process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
     process.env.NEW_RELIC_ACCOUNT_ID = '12345';
     process.env.NEW_RELIC_AI_MCP_PROXY_UPSTREAMS = JSON.stringify({ name: 'forgot-brackets' });
-    const upstreams = [{ name: 'file-server', url: 'http://localhost:3001', transportType: 'http' }];
+    const upstreams = [
+      { name: 'file-server', url: 'http://localhost:3001', transportType: 'http' },
+    ];
     const configPath = writeConfigFile({ proxyUpstreams: upstreams });
     const config = loadMcpConfig({ config: configPath });
     expect(config.proxyUpstreams).toEqual(upstreams);
@@ -646,7 +666,8 @@ describe('redactSensitive()', () => {
   });
 
   it('redacts PEM private keys', () => {
-    const input = 'data -----BEGIN RSA PRIVATE KEY-----\nMIIE...base64...\n-----END RSA PRIVATE KEY----- end';
+    const input =
+      'data -----BEGIN RSA PRIVATE KEY-----\nMIIE...base64...\n-----END RSA PRIVATE KEY----- end';
     const result = redactSensitive(input);
     expect(result).not.toContain('MIIE');
     expect(result).toContain('[REDACTED]');
@@ -679,21 +700,24 @@ describe('redactSensitive()', () => {
   });
 
   it('redacts Azure SAS token with sv parameter', () => {
-    const input = 'url: https://storage.blob.core.windows.net/container/blob?sv=2021-06-08&ss=bfqt&srt=sco&sig=abcdef123456';
+    const input =
+      'url: https://storage.blob.core.windows.net/container/blob?sv=2021-06-08&ss=bfqt&srt=sco&sig=abcdef123456';
     const result = redactSensitive(input);
     expect(result).not.toContain('sv=2021-06-08');
     expect(result).not.toContain('sig=abcdef123456');
   });
 
   it('redacts Azure SAS token with se parameter', () => {
-    const input = 'url: https://storage.blob.core.windows.net?se=2021-12-31T23:59:59Z&sig=token123456789';
+    const input =
+      'url: https://storage.blob.core.windows.net?se=2021-12-31T23:59:59Z&sig=token123456789';
     const result = redactSensitive(input);
     expect(result).not.toContain('se=2021-12-31T23:59:59Z');
     expect(result).not.toContain('sig=token123456789');
   });
 
   it('redacts Azure SAS token with sp parameter', () => {
-    const input = 'url: https://storage.blob.core.windows.net/blob?sp=racwd&sig=secrettoken123456789';
+    const input =
+      'url: https://storage.blob.core.windows.net/blob?sp=racwd&sig=secrettoken123456789';
     const result = redactSensitive(input);
     expect(result).not.toContain('sp=racwd');
     expect(result).not.toContain('sig=secrettoken123456789');
@@ -759,7 +783,8 @@ describe('redactSensitive()', () => {
   });
 
   it('redacts bare JWT tokens', () => {
-    const input = 'token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+    const input =
+      'token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
     const result = redactSensitive(input);
     expect(result).not.toContain('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9');
     expect(result).toContain('[REDACTED]');
@@ -1425,9 +1450,7 @@ describe('alerts config (Phase 4 task 25)', () => {
 
   it('rejects file evaluationIntervalSeconds outside the bounds at validation time', () => {
     const configPath = writeConfigFile({ alerts: { evaluationIntervalSeconds: 9000 } });
-    expect(() => loadMcpConfig({ config: configPath })).toThrow(
-      /Config file validation failed/,
-    );
+    expect(() => loadMcpConfig({ config: configPath })).toThrow(/Config file validation failed/);
   });
 
   it('reads osNotifications from env var', () => {

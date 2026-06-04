@@ -1,4 +1,13 @@
-import type { AiRequest, AiResponse, AiMessage, AiAgentTaskSummary, AiAntiPattern, AiAgentMessage, AiContextReset, NrEventData } from './types.js';
+import type {
+  AiRequest,
+  AiResponse,
+  AiMessage,
+  AiAgentTaskSummary,
+  AiAntiPattern,
+  AiAgentMessage,
+  AiContextReset,
+  NrEventData,
+} from './types.js';
 
 const PROVIDER_TO_GENAI_SYSTEM: Record<string, string> = {
   anthropic: 'anthropic',
@@ -16,12 +25,12 @@ const METHOD_TO_GENAI_OPERATION: Record<string, string> = {
   'models.generateContentStream': 'generate_content',
   'models.embedContent': 'embeddings',
   'chat.completions.create': 'chat',
-  'converse': 'chat',
+  converse: 'chat',
   'converse-stream': 'chat',
   'chat.complete': 'chat',
   'chat.stream': 'chat',
-  'chat': 'chat',
-  'chatStream': 'chat',
+  chat: 'chat',
+  chatStream: 'chat',
 };
 
 export function aiRequestToNrEvent(event: AiRequest): NrEventData {
@@ -115,8 +124,10 @@ export function aiResponseToNrEvent(event: AiResponse): NrEventData {
   data['gen_ai.usage.output_tokens'] = event.outputTokens;
 
   if (event.thinkingTokens > 0) data['gen_ai.usage.reasoning.output_tokens'] = event.thinkingTokens;
-  if (event.cacheReadTokens > 0) data['gen_ai.usage.cache_read.input_tokens'] = event.cacheReadTokens;
-  if (event.cacheCreationTokens > 0) data['gen_ai.usage.cache_creation.input_tokens'] = event.cacheCreationTokens;
+  if (event.cacheReadTokens > 0)
+    data['gen_ai.usage.cache_read.input_tokens'] = event.cacheReadTokens;
+  if (event.cacheCreationTokens > 0)
+    data['gen_ai.usage.cache_creation.input_tokens'] = event.cacheCreationTokens;
 
   if (event.stopReason !== null) data['gen_ai.response.finish_reason'] = event.stopReason;
 
@@ -164,11 +175,15 @@ export function aiAgentTaskSummaryToNrEvent(event: AiAgentTaskSummary): NrEventD
   };
 
   if (event.totalCostUsd !== null) data['ai.agent.cost_per_task_usd'] = event.totalCostUsd;
-  if (event.delegationCount !== undefined) data['ai.agent.delegation_count'] = event.delegationCount;
+  if (event.delegationCount !== undefined)
+    data['ai.agent.delegation_count'] = event.delegationCount;
   if (event.spawnCount !== undefined) data['ai.agent.spawn_count'] = event.spawnCount;
-  if (event.delegationDepth !== undefined) data['ai.agent.delegation_depth'] = event.delegationDepth;
-  if (event.interAgentMessages !== undefined) data['ai.agent.inter_agent_messages'] = event.interAgentMessages;
-  if (event.delegationOverheadMs !== undefined) data['ai.agent.delegation_overhead_ms'] = event.delegationOverheadMs;
+  if (event.delegationDepth !== undefined)
+    data['ai.agent.delegation_depth'] = event.delegationDepth;
+  if (event.interAgentMessages !== undefined)
+    data['ai.agent.inter_agent_messages'] = event.interAgentMessages;
+  if (event.delegationOverheadMs !== undefined)
+    data['ai.agent.delegation_overhead_ms'] = event.delegationOverheadMs;
 
   for (const [key, value] of Object.entries(event.customAttributes)) {
     data[key] = value;

@@ -30,7 +30,7 @@ function makeTask(overrides?: Partial<AiCodingTask>): AiCodingTask {
     testsPassed: 4,
     buildRun: 1,
     buildPassed: 1,
-    estimatedCostUsd: 0.50,
+    estimatedCostUsd: 0.5,
     tokensUsed: 5000,
     askedUserQuestions: 0,
     subAgentsSpawned: 0,

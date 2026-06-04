@@ -6,7 +6,12 @@ const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
   stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
-  for (const key of ['WINDSURF_SESSION_ID', 'WINDSURF_CONTEXT_ID', 'WINDSURF_VERSION', 'MCP_CLIENT']) {
+  for (const key of [
+    'WINDSURF_SESSION_ID',
+    'WINDSURF_CONTEXT_ID',
+    'WINDSURF_VERSION',
+    'MCP_CLIENT',
+  ]) {
     savedEnv[key] = process.env[key];
     delete process.env[key];
   }

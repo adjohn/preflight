@@ -77,9 +77,7 @@ export interface AlertSnapshotCollectorDeps {
   };
   readonly latencyTracker?: {
     getMetrics(): {
-      byTool: Readonly<
-        Record<string, { p50?: number; p95?: number; p99?: number } | null>
-      >;
+      byTool: Readonly<Record<string, { p50?: number; p95?: number; p99?: number } | null>>;
     };
   };
   readonly sessionTracker?: {
@@ -150,11 +148,7 @@ export class AlertSnapshotCollector {
    * Push a tool call observation onto the rolling buffer. Caller supplies
    * the timestamp (typically `Date.now()` at the time the hook fired).
    */
-  recordToolCall(record: {
-    toolName: string;
-    success: boolean;
-    ts: number;
-  }): void {
+  recordToolCall(record: { toolName: string; success: boolean; ts: number }): void {
     this.toolCallEvents.push({
       tool: record.toolName,
       success: record.success,

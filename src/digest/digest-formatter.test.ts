@@ -23,7 +23,9 @@ function makeWeeklySummary(overrides: Partial<WeeklySummary> = {}): WeeklySummar
 
 describe('formatSlackDigest', () => {
   it('produces a blocks array', () => {
-    const payload = formatSlackDigest(makeWeeklySummary({ totalCostUsd: 1.23, avgEfficiencyScore: 72, sessionCount: 5 }));
+    const payload = formatSlackDigest(
+      makeWeeklySummary({ totalCostUsd: 1.23, avgEfficiencyScore: 72, sessionCount: 5 }),
+    );
     expect(Array.isArray(payload.blocks)).toBe(true);
   });
 
@@ -39,7 +41,9 @@ describe('formatSlackDigest', () => {
   });
 
   it('picks the most frequent anti-pattern', () => {
-    const payload = formatSlackDigest(makeWeeklySummary({ antiPatternCounts: { thrashing: 5, re_read: 2 } }));
+    const payload = formatSlackDigest(
+      makeWeeklySummary({ antiPatternCounts: { thrashing: 5, re_read: 2 } }),
+    );
     expect(JSON.stringify(payload)).toContain('thrashing');
   });
 });

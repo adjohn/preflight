@@ -10,9 +10,7 @@ const BLOCKED_METADATA_FQDNS = new Set([
 ]);
 
 // Cloud metadata service IPs that are not covered by RFC-1918 or link-local blocks.
-const BLOCKED_METADATA_IPS = new Set([
-  '100.100.100.200',
-]);
+const BLOCKED_METADATA_IPS = new Set(['100.100.100.200']);
 
 // Matches loopback, RFC-1918 private ranges, link-local (169.254/16), and
 // IPv4 multicast (224.0.0.0/4, i.e. 224–239.x.x.x).
@@ -29,7 +27,10 @@ function extractIPv4FromMappedIPv6(host: string): string | null {
   const trimmed = host.replace(/[\[\]]/g, '');
 
   // Try decimal form: ::ffff:x.x.x.x
-  const decimalMatch = /^::ffff:((?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))$/i.exec(trimmed);
+  const decimalMatch =
+    /^::ffff:((?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))$/i.exec(
+      trimmed,
+    );
   if (decimalMatch) {
     return decimalMatch[1];
   }
@@ -107,9 +108,7 @@ function canonicalizeNumericIP(host: string): string | null {
 
 export function validateSsrfUrl(label: string, url: URL): void {
   if (!ALLOWED_SCHEMES.has(url.protocol)) {
-    throw new Error(
-      `${label}: scheme "${url.protocol}" is not allowed; use http: or https:`,
-    );
+    throw new Error(`${label}: scheme "${url.protocol}" is not allowed; use http: or https:`);
   }
 
   // Strip trailing dot from hostname to prevent FQDN FQDN bypasses (F-123)
@@ -119,16 +118,12 @@ export function validateSsrfUrl(label: string, url: URL): void {
   // Check cloud metadata service FQDNs (case-insensitive)
   const hostnameLower = hostname.toLowerCase();
   if (BLOCKED_METADATA_FQDNS.has(hostnameLower)) {
-    throw new Error(
-      `${label}: host "${url.hostname}" is a cloud metadata service endpoint`,
-    );
+    throw new Error(`${label}: host "${url.hostname}" is a cloud metadata service endpoint`);
   }
 
   // Check cloud metadata service IPs
   if (BLOCKED_METADATA_IPS.has(hostname)) {
-    throw new Error(
-      `${label}: host "${url.hostname}" is a cloud metadata service endpoint`,
-    );
+    throw new Error(`${label}: host "${url.hostname}" is a cloud metadata service endpoint`);
   }
 
   // Canonicalize and check numeric IP encodings (decimal, octal, hex)
@@ -140,16 +135,12 @@ export function validateSsrfUrl(label: string, url: URL): void {
   }
 
   if (BLOCKED_HOST_RE.test(hostname)) {
-    throw new Error(
-      `${label}: host "${url.hostname}" resolves to a private or loopback address`,
-    );
+    throw new Error(`${label}: host "${url.hostname}" resolves to a private or loopback address`);
   }
 
   // Explicitly check IPv4-mapped IPv6 addresses by extracting and validating the embedded IPv4
   const embeddedIPv4 = extractIPv4FromMappedIPv6(hostname);
   if (embeddedIPv4 && BLOCKED_HOST_RE.test(embeddedIPv4)) {
-    throw new Error(
-      `${label}: host "${url.hostname}" contains a private or loopback IPv4 address`,
-    );
+    throw new Error(`${label}: host "${url.hostname}" contains a private or loopback IPv4 address`);
   }
 }

@@ -16,7 +16,9 @@ describe('DashboardServer', () => {
 
   it('starts on the configured port and 127.0.0.1', async () => {
     server = new DashboardServer({
-      port: 0, host: '127.0.0.1', bus: new LiveEventBus(),
+      port: 0,
+      host: '127.0.0.1',
+      bus: new LiveEventBus(),
     });
     const addr = await server.start();
     expect(addr.address).toBe('127.0.0.1');
@@ -25,7 +27,9 @@ describe('DashboardServer', () => {
 
   it('responds 404 to unknown paths', async () => {
     server = new DashboardServer({
-      port: 0, host: '127.0.0.1', bus: new LiveEventBus(),
+      port: 0,
+      host: '127.0.0.1',
+      bus: new LiveEventBus(),
     });
     const addr = await server.start();
     const res = await fetch(`http://127.0.0.1:${addr.port}/does-not-exist`);
@@ -34,7 +38,9 @@ describe('DashboardServer', () => {
 
   it('responds 200 to GET /api/health with JSON', async () => {
     server = new DashboardServer({
-      port: 0, host: '127.0.0.1', bus: new LiveEventBus(),
+      port: 0,
+      host: '127.0.0.1',
+      bus: new LiveEventBus(),
     });
     const addr = await server.start();
     const res = await fetch(`http://127.0.0.1:${addr.port}/api/health`);
@@ -47,7 +53,9 @@ describe('DashboardServer', () => {
 
   it('includes the package version in /api/health', async () => {
     server = new DashboardServer({
-      port: 0, host: '127.0.0.1', bus: new LiveEventBus(),
+      port: 0,
+      host: '127.0.0.1',
+      bus: new LiveEventBus(),
     });
     const addr = await server.start();
     const res = await fetch(`http://127.0.0.1:${addr.port}/api/health`);
@@ -61,7 +69,9 @@ describe('DashboardServer', () => {
 
   it('stop() closes the server cleanly', async () => {
     server = new DashboardServer({
-      port: 0, host: '127.0.0.1', bus: new LiveEventBus(),
+      port: 0,
+      host: '127.0.0.1',
+      bus: new LiveEventBus(),
     });
     const addr = await server.start();
     await server.stop();
@@ -77,7 +87,9 @@ describe('DashboardServer', () => {
     const blockedPort = (blocker.address() as { port: number }).port;
     try {
       server = new DashboardServer({
-        port: blockedPort, host: '127.0.0.1', bus: new LiveEventBus(),
+        port: blockedPort,
+        host: '127.0.0.1',
+        bus: new LiveEventBus(),
       });
       const err = await server.start().then(
         () => null,
@@ -96,12 +108,12 @@ describe('DashboardServer', () => {
   // and Node didn't re-emit because the once listener consumed the event —
   // production failures were invisible.
   it('logs server errors that fire after start() resolves (F-011 regression)', async () => {
-    const stderrSpy = jest
-      .spyOn(process.stderr, 'write')
-      .mockImplementation(() => true);
+    const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
     try {
       server = new DashboardServer({
-        port: 0, host: '127.0.0.1', bus: new LiveEventBus(),
+        port: 0,
+        host: '127.0.0.1',
+        bus: new LiveEventBus(),
       });
       await server.start();
       // Reach into the private http server to fire a synthetic error.
@@ -109,9 +121,7 @@ describe('DashboardServer', () => {
       inner.emit('error', new Error('after-start boom'));
       // Logger writes JSON to stderr asynchronously via process.nextTick.
       await new Promise((r) => setImmediate(r));
-      const captured = stderrSpy.mock.calls
-        .map((args) => String(args[0]))
-        .join('');
+      const captured = stderrSpy.mock.calls.map((args) => String(args[0])).join('');
       expect(captured).toContain('Dashboard server error after start');
       expect(captured).toContain('after-start boom');
     } finally {
@@ -190,16 +200,19 @@ describe('DashboardServer Host validation', () => {
     server = new DashboardServer({ port: 0, host: '127.0.0.1', bus: new LiveEventBus() });
     const addr = await server.start();
     const status = await new Promise<number>((resolve) => {
-      const req = http.request({
-        hostname: '127.0.0.1',
-        port: addr.port,
-        path: '/api/health',
-        method: 'GET',
-        headers: { host: 'evil.example.com' },
-      }, (res) => {
-        resolve(res.statusCode ?? 500);
-        res.on('data', () => {});
-      });
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: addr.port,
+          path: '/api/health',
+          method: 'GET',
+          headers: { host: 'evil.example.com' },
+        },
+        (res) => {
+          resolve(res.statusCode ?? 500);
+          res.on('data', () => {});
+        },
+      );
       req.end();
     });
     expect(status).toBe(403);
@@ -307,7 +320,9 @@ describe('DashboardServer Host validation', () => {
 
 describe('DashboardServer SSE shutdown', () => {
   let server: DashboardServer;
-  afterEach(async () => { await server?.stop(); });
+  afterEach(async () => {
+    await server?.stop();
+  });
 
   it('stop() resolves promptly even with an open SSE client', async () => {
     server = new DashboardServer({ port: 0, host: '127.0.0.1', bus: new LiveEventBus() });
@@ -316,16 +331,19 @@ describe('DashboardServer SSE shutdown', () => {
     // Open SSE connection. The server-side response is long-lived; without
     // force-ending it, server.close() would hang past any reasonable timeout.
     await new Promise<void>((resolve, reject) => {
-      const req = http.request({
-        hostname: '127.0.0.1',
-        port: addr.port,
-        path: '/sse',
-        method: 'GET',
-      }, (res) => {
-        res.on('data', () => {});
-        if (res.statusCode === 200) resolve();
-        else reject(new Error(`SSE returned ${res.statusCode}`));
-      });
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: addr.port,
+          path: '/sse',
+          method: 'GET',
+        },
+        (res) => {
+          res.on('data', () => {});
+          if (res.statusCode === 200) resolve();
+          else reject(new Error(`SSE returned ${res.statusCode}`));
+        },
+      );
       req.on('error', reject);
       req.end();
     });
@@ -375,7 +393,9 @@ describe('DashboardServer alert wiring', () => {
 
 describe('DashboardServer security headers', () => {
   let server: DashboardServer;
-  afterEach(async () => { await server?.stop(); });
+  afterEach(async () => {
+    await server?.stop();
+  });
 
   it('sets a strict CSP on every response', async () => {
     server = new DashboardServer({ port: 0, host: '127.0.0.1', bus: new LiveEventBus() });

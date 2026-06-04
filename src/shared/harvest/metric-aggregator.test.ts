@@ -22,8 +22,7 @@ describe('MetricAggregator', () => {
 
     const metrics = agg.harvest();
 
-    const findMetric = (suffix: string) =>
-      metrics.find((m) => m.name === `ai.duration.${suffix}`);
+    const findMetric = (suffix: string) => metrics.find((m) => m.name === `ai.duration.${suffix}`);
 
     expect(findMetric('count')!.value).toBe(3);
     expect(findMetric('sum')!.value).toBe(35);

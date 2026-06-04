@@ -1,4 +1,3 @@
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -78,8 +77,11 @@ export class DecisionTracker {
     for (let i = this.branches.length - 1; i >= 0; i--) {
       const branch = this.branches[i];
       if (branch.turnNumber <= turnNumber && branch.nextToolSuccess === null) {
-        (this.branches[i] as { -readonly [K in keyof DecisionBranch]: DecisionBranch[K] }).nextToolSuccess = success;
-        (this.branches[i] as { -readonly [K in keyof DecisionBranch]: DecisionBranch[K] }).outcome = success ? 'success' : 'failure';
+        (
+          this.branches[i] as { -readonly [K in keyof DecisionBranch]: DecisionBranch[K] }
+        ).nextToolSuccess = success;
+        (this.branches[i] as { -readonly [K in keyof DecisionBranch]: DecisionBranch[K] }).outcome =
+          success ? 'success' : 'failure';
         break;
       }
     }
@@ -87,7 +89,9 @@ export class DecisionTracker {
 
   markSessionOutcome(succeeded: boolean): void {
     for (let i = 0; i < this.branches.length; i++) {
-      (this.branches[i] as { -readonly [K in keyof DecisionBranch]: DecisionBranch[K] }).sessionSucceeded = succeeded;
+      (
+        this.branches[i] as { -readonly [K in keyof DecisionBranch]: DecisionBranch[K] }
+      ).sessionSucceeded = succeeded;
     }
   }
 

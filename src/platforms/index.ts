@@ -14,7 +14,11 @@ export { ZedAdapter } from './zed-adapter.js';
 export { ContinueAdapter } from './continue-adapter.js';
 export { AmazonQAdapter } from './amazon-q-adapter.js';
 export { GenericMcpAdapter, validateReportToolCallInput } from './generic-mcp-adapter.js';
-export type { ReportToolCallInput, ReportSessionStartInput, ReportSessionEndInput } from './generic-mcp-adapter.js';
+export type {
+  ReportToolCallInput,
+  ReportSessionStartInput,
+  ReportSessionEndInput,
+} from './generic-mcp-adapter.js';
 export {
   REPORT_TOOL_CALL_TOOL,
   REPORT_SESSION_START_TOOL,

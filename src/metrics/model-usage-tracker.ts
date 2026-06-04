@@ -24,12 +24,7 @@ interface MutableModelStats {
 export class ModelUsageTracker {
   private byModel = new Map<string, MutableModelStats>();
 
-  recordUsage(
-    model: string,
-    inputTokens: number,
-    outputTokens: number,
-    costUsd: number,
-  ): void {
+  recordUsage(model: string, inputTokens: number, outputTokens: number, costUsd: number): void {
     let stats = this.byModel.get(model);
     if (!stats) {
       stats = { requestCount: 0, totalInputTokens: 0, totalOutputTokens: 0, totalCostUsd: 0 };
@@ -50,13 +45,9 @@ export class ModelUsageTracker {
 
     for (const [model, stats] of this.byModel) {
       const costPerOutputToken =
-        stats.totalOutputTokens > 0
-          ? stats.totalCostUsd / stats.totalOutputTokens
-          : null;
+        stats.totalOutputTokens > 0 ? stats.totalCostUsd / stats.totalOutputTokens : null;
       const avgOutputTokensPerRequest =
-        stats.requestCount > 0
-          ? stats.totalOutputTokens / stats.requestCount
-          : null;
+        stats.requestCount > 0 ? stats.totalOutputTokens / stats.requestCount : null;
 
       byModel[model] = {
         requestCount: stats.requestCount,

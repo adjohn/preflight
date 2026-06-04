@@ -1,6 +1,7 @@
 dist/
 coverage/
 node_modules/
+.claude/
 package-lock.json
 *.tsbuildinfo
 *_IDEATION.md

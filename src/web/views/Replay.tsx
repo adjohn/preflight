@@ -83,8 +83,8 @@ export function Replay(): JSX.Element {
       <section className="p-5">
         <h1 className="text-xl font-semibold mb-2">Session Replay</h1>
         <div className="bg-bg-panel border border-bg-line rounded p-4 text-ink-muted text-xs">
-          Replay not available for this session. This session may predate the replay feature
-          or have no recorded tool calls.
+          Replay not available for this session. This session may predate the replay feature or have
+          no recorded tool calls.
         </div>
       </section>
     );
@@ -154,8 +154,12 @@ function SegmentSummary({
       </div>
       {worstSegment && (
         <div className="text-xs text-ink-base mb-2">
-          Worst: <span className="font-semibold">{SEGMENT_LABELS[worstSegment.type] ?? worstSegment.type}</span>
-          {' — '}{worstSegment.iterations}× on{' '}
+          Worst:{' '}
+          <span className="font-semibold">
+            {SEGMENT_LABELS[worstSegment.type] ?? worstSegment.type}
+          </span>
+          {' — '}
+          {worstSegment.iterations}× on{' '}
           <code className="bg-bg-line px-1 rounded text-[11px]">{worstSegment.target}</code>
         </div>
       )}
@@ -250,7 +254,9 @@ function Timeline({
               <span
                 className={
                   'ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium ' +
-                  (seg.severity === 'critical' ? 'bg-accent-red/20 text-accent-red' : 'bg-accent-amber/20 text-accent-amber')
+                  (seg.severity === 'critical'
+                    ? 'bg-accent-red/20 text-accent-red'
+                    : 'bg-accent-amber/20 text-accent-amber')
                 }
               >
                 {SEGMENT_LABELS[seg.type] ?? seg.type}
@@ -280,10 +286,7 @@ function StatusBadge({
   );
 }
 
-function buildSegmentLookup(
-  length: number,
-  segments: Segment[],
-): (Segment | null)[] {
+function buildSegmentLookup(length: number, segments: Segment[]): (Segment | null)[] {
   const lookup: (Segment | null)[] = new Array(length).fill(null);
   for (const seg of segments) {
     for (let i = seg.startIndex; i <= Math.min(seg.endIndex, length - 1); i++) {

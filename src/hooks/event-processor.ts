@@ -187,7 +187,10 @@ export class HookEventProcessor {
     // When toolUseId is present use it directly; otherwise find the oldest pending
     // pre-event with the same tool name (FIFO) so parallel same-tool calls don't
     // collide — the counter in pairingKey() gives each pre-event a unique key.
-    const key = toolUseId ?? this.findOldestPendingKey(event.tool) ?? `${event.tool}:${event.timestamp}:${randomUUID()}`;
+    const key =
+      toolUseId ??
+      this.findOldestPendingKey(event.tool) ??
+      `${event.tool}:${event.timestamp}:${randomUUID()}`;
     const preEvent = this.pending.get(key);
     this.pending.delete(key);
 
@@ -216,11 +219,7 @@ export class HookEventProcessor {
     } else {
       // Orphaned post — no matching pre; use post-event's toolInput if present
       logger.debug('Orphaned post event — no matching pre', { tool: event.tool, key });
-      const toolFields = parseToolSpecificFields(
-        event.tool,
-        event.toolInput,
-        event.toolOutput,
-      );
+      const toolFields = parseToolSpecificFields(event.tool, event.toolInput, event.toolOutput);
       const record: ToolCallRecord = {
         id: randomUUID(),
         sessionId: (event.sessionId as string) ?? null,

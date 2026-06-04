@@ -14,13 +14,25 @@ let stderrSpy: ReturnType<typeof jest.spyOn>;
 const savedEnv: Record<string, string | undefined> = {};
 
 const ENV_KEYS = [
-  'CLAUDE_CODE', 'CLAUDE_CODE_VERSION', 'MCP_CLIENT', 'MCP_CLIENT_NAME',
-  'CURSOR_SESSION_ID', 'CURSOR_TRACE_ID',
-  'WINDSURF_SESSION_ID', 'WINDSURF_CONTEXT_ID',
+  'CLAUDE_CODE',
+  'CLAUDE_CODE_VERSION',
+  'MCP_CLIENT',
+  'MCP_CLIENT_NAME',
+  'CURSOR_SESSION_ID',
+  'CURSOR_TRACE_ID',
+  'WINDSURF_SESSION_ID',
+  'WINDSURF_CONTEXT_ID',
   'NR_AI_COPILOT_OBSERVER',
-  'ZED_SESSION_ID', 'ZED_EXTENSION_API_VERSION', 'ZED_ITEM_ID',
-  'CONTINUE_SESSION_ID', 'CONTINUE_SERVER_HOST', 'CONTINUE_VERSION',
-  'AMAZON_Q_SESSION_ID', 'Q_DEVELOPER_SESSION', 'AWS_CODEWHISPERER_SESSION', 'AMAZON_Q_VERSION',
+  'ZED_SESSION_ID',
+  'ZED_EXTENSION_API_VERSION',
+  'ZED_ITEM_ID',
+  'CONTINUE_SESSION_ID',
+  'CONTINUE_SERVER_HOST',
+  'CONTINUE_VERSION',
+  'AMAZON_Q_SESSION_ID',
+  'Q_DEVELOPER_SESSION',
+  'AWS_CODEWHISPERER_SESSION',
+  'AMAZON_Q_VERSION',
 ];
 
 beforeEach(() => {
@@ -116,10 +128,25 @@ describe('PlatformRegistry', () => {
       const mutableAdapter: PlatformAdapter = {
         platformName: 'mutable',
         async initialize() {},
-        normalizeToolCall() { return { toolName: 'T', platformToolName: 't', platform: 'mutable', timestamp: 0, durationMs: null, success: true }; },
-        getSessionMetadata() { return { platform: 'mutable' }; },
-        getHookInstallInstructions() { return ''; },
-        isSupported() { return isSupported; },
+        normalizeToolCall() {
+          return {
+            toolName: 'T',
+            platformToolName: 't',
+            platform: 'mutable',
+            timestamp: 0,
+            durationMs: null,
+            success: true,
+          };
+        },
+        getSessionMetadata() {
+          return { platform: 'mutable' };
+        },
+        getHookInstallInstructions() {
+          return '';
+        },
+        isSupported() {
+          return isSupported;
+        },
       };
       const registry = new PlatformRegistry();
       registry.register(mutableAdapter);
@@ -280,7 +307,7 @@ describe('createDefaultRegistry', () => {
 
   it('includes zed, continue, and amazon-q adapters', () => {
     const registry = createDefaultRegistry();
-    const names = registry.getRegistered().map(a => a.platformName);
+    const names = registry.getRegistered().map((a) => a.platformName);
     expect(names).toContain('zed');
     expect(names).toContain('continue');
     expect(names).toContain('amazon-q');

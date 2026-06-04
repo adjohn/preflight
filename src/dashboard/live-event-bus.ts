@@ -39,8 +39,8 @@ export type LiveEventMap = {
   'tool-call': ToolCallEvent;
   'cost-update': CostUpdateEvent;
   'anti-pattern': AntiPatternEvent;
-  'heartbeat': HeartbeatEvent;
-  'alert': AlertEvent;
+  heartbeat: HeartbeatEvent;
+  alert: AlertEvent;
 };
 
 export type LiveEventName = keyof LiveEventMap;
@@ -100,17 +100,11 @@ export class LiveEventBus {
   // The seq is the same value stored in the replay buffer, so SSE consumers
   // can use it for frame ids and reconnect-replay filtering without a
   // namespace mismatch. See F-005 in docs/CODE_REVIEW.md.
-  onWithSeq<E extends LiveEventName>(
-    event: E,
-    handler: (entry: SeqEntry<E>) => void,
-  ): void {
+  onWithSeq<E extends LiveEventName>(event: E, handler: (entry: SeqEntry<E>) => void): void {
     this.emitter.on(SEQ_PREFIX + event, handler as (...args: unknown[]) => void);
   }
 
-  offWithSeq<E extends LiveEventName>(
-    event: E,
-    handler: (entry: SeqEntry<E>) => void,
-  ): void {
+  offWithSeq<E extends LiveEventName>(event: E, handler: (entry: SeqEntry<E>) => void): void {
     this.emitter.off(SEQ_PREFIX + event, handler as (...args: unknown[]) => void);
   }
 

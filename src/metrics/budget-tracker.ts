@@ -116,11 +116,7 @@ export class BudgetTracker {
     this.checkPeriod('weekly', this.weeklySpentUsd, this.weeklyBudgetUsd);
   }
 
-  private checkPeriod(
-    period: BudgetPeriod,
-    spent: number,
-    budget: number | null,
-  ): void {
+  private checkPeriod(period: BudgetPeriod, spent: number, budget: number | null): void {
     if (budget === null || budget <= 0) return;
     const pctUsed = (spent / budget) * 100;
     const currentPeriod = this.currentPeriodId(period);
@@ -179,6 +175,6 @@ export class BudgetTracker {
     for (const key of this.firedThresholds.keys()) {
       if (key.startsWith('session_')) this.firedThresholds.delete(key);
     }
-    this.alerts = this.alerts.filter(a => a.period !== 'session');
+    this.alerts = this.alerts.filter((a) => a.period !== 'session');
   }
 }

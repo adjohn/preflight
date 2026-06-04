@@ -153,10 +153,16 @@ export function handleGetWorkflowTrace(
 
   if (!task) {
     return {
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify({ error: 'No matching task found', task_id: taskId ?? null }, null, 2),
-      }],
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(
+            { error: 'No matching task found', task_id: taskId ?? null },
+            null,
+            2,
+          ),
+        },
+      ],
     };
   }
 
@@ -271,9 +277,10 @@ export function handleGetEfficiencyScore(
 
   const avg = efficiencyScorer.getSessionAverage();
   const scores = efficiencyScorer.getScores();
-  const latest = scores.length > 0
-    ? scores.reduce((best, s) => s.timestamp >= best.timestamp ? s : best)
-    : null;
+  const latest =
+    scores.length > 0
+      ? scores.reduce((best, s) => (s.timestamp >= best.timestamp ? s : best))
+      : null;
 
   const result = {
     latest: latest
@@ -306,12 +313,14 @@ export function handleReportFeedback(
 ) {
   if (!VALID_QUALITY_VALUES.has(args.quality)) {
     return {
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify({
-          error: `Invalid quality value: "${args.quality}". Must be one of: good, bad, neutral`,
-        }),
-      }],
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: `Invalid quality value: "${args.quality}". Must be one of: good, bad, neutral`,
+          }),
+        },
+      ],
       isError: true,
     };
   }
@@ -324,18 +333,20 @@ export function handleReportFeedback(
   });
 
   return {
-    content: [{
-      type: 'text' as const,
-      text: JSON.stringify(
-        {
-          recorded: true,
-          quality: record.quality,
-          task_id: record.taskId ?? null,
-          timestamp: record.timestamp,
-        },
-        null,
-        2,
-      ),
-    }],
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            recorded: true,
+            quality: record.quality,
+            task_id: record.taskId ?? null,
+            timestamp: record.timestamp,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
   };
 }

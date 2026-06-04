@@ -51,9 +51,14 @@ describe('handleGetSessionStats()', () => {
   it('returns correct JSON structure after recording 10 tool calls', () => {
     const tracker = new SessionTracker('stats-session');
 
-    for (let i = 0; i < 5; i++) tracker.recordToolCall(makeRecord({ toolName: 'Read', durationMs: 30 }));
-    for (let i = 0; i < 3; i++) tracker.recordToolCall(makeRecord({ toolName: 'Edit', durationMs: 20 }));
-    for (let i = 0; i < 2; i++) tracker.recordToolCall(makeRecord({ toolName: 'Bash', durationMs: 100, success: false, errorType: 'timeout' }));
+    for (let i = 0; i < 5; i++)
+      tracker.recordToolCall(makeRecord({ toolName: 'Read', durationMs: 30 }));
+    for (let i = 0; i < 3; i++)
+      tracker.recordToolCall(makeRecord({ toolName: 'Edit', durationMs: 20 }));
+    for (let i = 0; i < 2; i++)
+      tracker.recordToolCall(
+        makeRecord({ toolName: 'Bash', durationMs: 100, success: false, errorType: 'timeout' }),
+      );
 
     const result = handleGetSessionStats(tracker);
     const stats = JSON.parse(result.content[0].text);
@@ -88,9 +93,7 @@ describe('handleGetSessionStats()', () => {
     expect(stats.unique_files_modified).toBe(metrics.uniqueFilesWritten);
     expect(stats.bash_commands_run).toBe(metrics.bashCommandsRun);
     expect(stats.search_queries).toBe(metrics.searchQueries);
-    expect(stats.avg_tool_duration_ms).toBe(Math.round(
-      (40 + 60 + 30 + 200 + 10) / 5,
-    ));
+    expect(stats.avg_tool_duration_ms).toBe(Math.round((40 + 60 + 30 + 200 + 10) / 5));
   });
 
   it('returns zero avg_tool_duration_ms when no durations recorded', () => {
@@ -142,7 +145,9 @@ describe('handleGetSessionTimeline()', () => {
     const tracker = new SessionTracker('shape-session');
     const ts = 1_700_000_000_000;
 
-    tracker.recordToolCall(makeRecord({ toolName: 'Bash', timestamp: ts, durationMs: 4800, success: false }));
+    tracker.recordToolCall(
+      makeRecord({ toolName: 'Bash', timestamp: ts, durationMs: 4800, success: false }),
+    );
 
     const result = handleGetSessionTimeline(tracker, 1);
     const data = JSON.parse(result.content[0].text);
@@ -221,9 +226,15 @@ describe('MCP protocol integration', () => {
     tracker = new SessionTracker('mcp-session');
 
     // Seed some data
-    tracker.recordToolCall(makeRecord({ toolName: 'Read', durationMs: 30, filePath: '/a.ts', timestamp: 1000 }));
-    tracker.recordToolCall(makeRecord({ toolName: 'Edit', durationMs: 20, filePath: '/a.ts', timestamp: 2000 }));
-    tracker.recordToolCall(makeRecord({ toolName: 'Bash', durationMs: 100, timestamp: 3000, success: false }));
+    tracker.recordToolCall(
+      makeRecord({ toolName: 'Read', durationMs: 30, filePath: '/a.ts', timestamp: 1000 }),
+    );
+    tracker.recordToolCall(
+      makeRecord({ toolName: 'Edit', durationMs: 20, filePath: '/a.ts', timestamp: 2000 }),
+    );
+    tracker.recordToolCall(
+      makeRecord({ toolName: 'Bash', durationMs: 100, timestamp: 3000, success: false }),
+    );
 
     server = createServer({
       name: 'test-mcp',
@@ -234,10 +245,7 @@ describe('MCP protocol integration', () => {
 
     client = new Client({ name: 'test-client', version: '1.0.0' });
 
-    await Promise.all([
-      server.server.connect(serverTransport),
-      client.connect(clientTransport),
-    ]);
+    await Promise.all([server.server.connect(serverTransport), client.connect(clientTransport)]);
   });
 
   afterEach(async () => {
@@ -250,7 +258,7 @@ describe('MCP protocol integration', () => {
 
     expect(result.tools).toHaveLength(3);
 
-    const names = result.tools.map(t => t.name);
+    const names = result.tools.map((t) => t.name);
     expect(names).toContain('nr_observe_health');
     expect(names).toContain('nr_observe_get_session_stats');
     expect(names).toContain('nr_observe_get_session_timeline');
@@ -298,9 +306,7 @@ describe('MCP protocol integration', () => {
   });
 
   it('calling unknown tool returns error', async () => {
-    await expect(
-      client.callTool({ name: 'nonexistent_tool', arguments: {} }),
-    ).rejects.toThrow();
+    await expect(client.callTool({ name: 'nonexistent_tool', arguments: {} })).rejects.toThrow();
   });
 
   it('returns isError content block when a tool handler throws unexpectedly', async () => {
@@ -351,10 +357,7 @@ describe('MCP protocol integration — cost tools', () => {
 
     client = new Client({ name: 'test-client', version: '1.0.0' });
 
-    await Promise.all([
-      server.server.connect(serverTransport),
-      client.connect(clientTransport),
-    ]);
+    await Promise.all([server.server.connect(serverTransport), client.connect(clientTransport)]);
   });
 
   afterEach(async () => {
@@ -365,7 +368,7 @@ describe('MCP protocol integration — cost tools', () => {
   it('tools/list includes nr_observe_report_tokens when costTracker provided', async () => {
     const result = await client.listTools();
 
-    const names = result.tools.map(t => t.name);
+    const names = result.tools.map((t) => t.name);
     expect(names).toContain('nr_observe_report_tokens');
   });
 
@@ -387,7 +390,7 @@ describe('MCP protocol integration — cost tools', () => {
     await Promise.all([bothServer.server.connect(st), bothClient.connect(ct)]);
 
     const result = await bothClient.listTools();
-    const names = result.tools.map(t => t.name);
+    const names = result.tools.map((t) => t.name);
 
     expect(names).toContain('nr_observe_health');
     expect(names).toContain('nr_observe_get_session_stats');
@@ -485,10 +488,7 @@ describe('Server without any trackers', () => {
 
     client = new Client({ name: 'test-client', version: '1.0.0' });
 
-    await Promise.all([
-      server.server.connect(serverTransport),
-      client.connect(clientTransport),
-    ]);
+    await Promise.all([server.server.connect(serverTransport), client.connect(clientTransport)]);
   });
 
   afterEach(async () => {
@@ -519,7 +519,7 @@ describe('Cross-session tool registration', () => {
     await Promise.all([server.server.connect(st), client.connect(ct)]);
 
     const result = await client.listTools();
-    const names = result.tools.map(t => t.name);
+    const names = result.tools.map((t) => t.name);
 
     expect(names).toContain('nr_observe_get_session_history');
     expect(names).toContain('nr_observe_get_platform_comparison');
@@ -552,7 +552,7 @@ describe('Cross-session tool registration', () => {
     await Promise.all([server.server.connect(st), client.connect(ct)]);
 
     const result = await client.listTools();
-    const names = result.tools.map(t => t.name);
+    const names = result.tools.map((t) => t.name);
 
     expect(names).toContain('nr_observe_get_session_history');
     expect(names).toContain('nr_observe_get_platform_comparison');
@@ -579,7 +579,7 @@ describe('Cross-session tool registration', () => {
     await Promise.all([server.server.connect(st), client.connect(ct)]);
 
     const result = await client.listTools();
-    const names = result.tools.map(t => t.name);
+    const names = result.tools.map((t) => t.name);
 
     const crossSessionTools = [
       'nr_observe_get_session_history',
@@ -612,7 +612,7 @@ describe('Cross-session tool registration', () => {
     await Promise.all([server.server.connect(st), client.connect(ct)]);
 
     const result = await client.listTools();
-    const names = result.tools.map(t => t.name);
+    const names = result.tools.map((t) => t.name);
 
     expect(names).not.toContain('nr_observe_get_cost_per_outcome');
 

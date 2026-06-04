@@ -152,7 +152,9 @@ export class ProxyManager {
           // Headers already sent (e.g. mid-SSE stream) — writing JSON would corrupt
           // the stream. N-09: destroy the response (not just the socket) so the
           // writable stream and its pipe chain are fully cleaned up.
-          res.on('error', () => { /* suppress post-destroy write errors */ });
+          res.on('error', () => {
+            /* suppress post-destroy write errors */
+          });
           res.destroy();
         }
       });
@@ -199,9 +201,7 @@ export class ProxyManager {
     }
 
     // Disconnect all upstreams
-    await Promise.allSettled(
-      Array.from(this.upstreams.values()).map((u) => u.disconnect()),
-    );
+    await Promise.allSettled(Array.from(this.upstreams.values()).map((u) => u.disconnect()));
 
     logger.info('Proxy server stopped');
   }
@@ -306,7 +306,9 @@ export class ProxyManager {
   ): void {
     if (!this.onToolCall) return;
 
-    const toolName = (typeof rpc.params?.name === 'string' ? rpc.params.name : 'unknown').slice(0, 256).replace(/[\x00-\x1f\x7f]/g, '');
+    const toolName = (typeof rpc.params?.name === 'string' ? rpc.params.name : 'unknown')
+      .slice(0, 256)
+      .replace(/[\x00-\x1f\x7f]/g, '');
 
     const args =
       typeof rpc.params?.arguments === 'object' && rpc.params.arguments !== null
@@ -396,7 +398,9 @@ function readBody(req: IncomingMessage, timeoutMs: number, maxBytes: number): Pr
     req.on('data', (chunk: Buffer) => {
       totalBytes += chunk.length;
       if (totalBytes > maxBytes) {
-        const err = new Error(`Request body exceeds limit of ${maxBytes} bytes`) as NodeJS.ErrnoException;
+        const err = new Error(
+          `Request body exceeds limit of ${maxBytes} bytes`,
+        ) as NodeJS.ErrnoException;
         err.code = 'BODY_TOO_LARGE';
         settle(() => reject(err));
         return;
@@ -405,7 +409,9 @@ function readBody(req: IncomingMessage, timeoutMs: number, maxBytes: number): Pr
     });
     req.on('end', () => settle(() => resolve(Buffer.concat(chunks))));
     req.on('error', (err) => settle(() => reject(err)));
-    req.on('close', () => settle(() => reject(new Error('Request closed before body was fully read'))));
+    req.on('close', () =>
+      settle(() => reject(new Error('Request closed before body was fully read'))),
+    );
   });
 }
 

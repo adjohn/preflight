@@ -12,9 +12,7 @@ describe('StatusIndicator', () => {
   });
 
   it('uses the matching tone class for each status', () => {
-    const { container, rerender } = render(
-      <StatusIndicator tone="good" label="ok" />,
-    );
+    const { container, rerender } = render(<StatusIndicator tone="good" label="ok" />);
     expect(container.firstElementChild!.className).toContain('text-accent-green');
 
     rerender(<StatusIndicator tone="warn" label="warn" />);
@@ -28,9 +26,7 @@ describe('StatusIndicator', () => {
   });
 
   it('appends caller-supplied className', () => {
-    const { container } = render(
-      <StatusIndicator tone="good" label="ok" className="mt-2" />,
-    );
+    const { container } = render(<StatusIndicator tone="good" label="ok" className="mt-2" />);
     expect(container.firstElementChild!.className).toContain('mt-2');
   });
 });

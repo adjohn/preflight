@@ -54,27 +54,35 @@ export const MODEL_USAGE_TOOL = {
 // Handlers
 // ---------------------------------------------------------------------------
 
-export function handleGetContextEfficiency(
-  tracker: ContextWindowTracker,
-): { content: Array<{ type: 'text'; text: string }> } {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }] };
+export function handleGetContextEfficiency(tracker: ContextWindowTracker): {
+  content: Array<{ type: 'text'; text: string }>;
+} {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }],
+  };
 }
 
-export function handleGetLatencyPercentiles(
-  tracker: LatencyTracker,
-): { content: Array<{ type: 'text'; text: string }> } {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }] };
+export function handleGetLatencyPercentiles(tracker: LatencyTracker): {
+  content: Array<{ type: 'text'; text: string }>;
+} {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }],
+  };
 }
 
 export function handleGetTaskCompletionRate(
   tracker: TaskCompletionTracker,
   _taskDetector?: TaskDetector,
 ): { content: Array<{ type: 'text'; text: string }> } {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }] };
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }],
+  };
 }
 
-export function handleGetModelUsage(
-  tracker: ModelUsageTracker,
-): { content: Array<{ type: 'text'; text: string }> } {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }] };
+export function handleGetModelUsage(tracker: ModelUsageTracker): {
+  content: Array<{ type: 'text'; text: string }>;
+} {
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(tracker.getMetrics(), null, 2) }],
+  };
 }

@@ -55,12 +55,14 @@ export class NrMcpServer {
     });
 
     this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
-      const resources: Array<{ uri: string; name: string; description: string; mimeType: string }> = [];
+      const resources: Array<{ uri: string; name: string; description: string; mimeType: string }> =
+        [];
       if (this.auditTrailManager) {
         resources.push({
           uri: 'nr-observe://session/audit-log',
           name: 'Session Audit Log',
-          description: 'Security audit trail for the current session — all tool calls with classification and alerts',
+          description:
+            'Security audit trail for the current session — all tool calls with classification and alerts',
           mimeType: 'application/json',
         });
       }
@@ -80,10 +82,7 @@ export class NrMcpServer {
           ],
         };
       }
-      throw new McpError(
-        ErrorCode.InvalidRequest,
-        `Unknown resource: ${request.params.uri}`,
-      );
+      throw new McpError(ErrorCode.InvalidRequest, `Unknown resource: ${request.params.uri}`);
     });
   }
 

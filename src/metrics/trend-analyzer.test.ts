@@ -85,11 +85,13 @@ describe('TrendAnalyzer', () => {
     for (let i = 0; i < weeks.length; i++) {
       const { start } = getWeekDateRange(weeks[i]!);
       // Offset by 12h to avoid UTC/local timezone edge cases
-      store.saveSession(makeSummary({
-        sessionId: `s-w${i}`,
-        startTime: start.getTime() + 43_200_000,
-        efficiencyScore: scores[i]!,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `s-w${i}`,
+          startTime: start.getTime() + 43_200_000,
+          efficiencyScore: scores[i]!,
+        }),
+      );
     }
 
     const trends = analyzer.computeTrends();
@@ -105,21 +107,27 @@ describe('TrendAnalyzer', () => {
     const { start } = getWeekDateRange('2026-W16');
 
     // 3 sessions in the same week with different costs
-    store.saveSession(makeSummary({
-      sessionId: 's1',
-      startTime: start.getTime() + 43_200_000,
-      estimatedCostUsd: 0.10,
-    }));
-    store.saveSession(makeSummary({
-      sessionId: 's2',
-      startTime: start.getTime() + 43_201_000,
-      estimatedCostUsd: 0.25,
-    }));
-    store.saveSession(makeSummary({
-      sessionId: 's3',
-      startTime: start.getTime() + 43_202_000,
-      estimatedCostUsd: 0.15,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 's1',
+        startTime: start.getTime() + 43_200_000,
+        estimatedCostUsd: 0.1,
+      }),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 's2',
+        startTime: start.getTime() + 43_201_000,
+        estimatedCostUsd: 0.25,
+      }),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 's3',
+        startTime: start.getTime() + 43_202_000,
+        estimatedCostUsd: 0.15,
+      }),
+    );
 
     const trends = analyzer.computeTrends();
 
@@ -139,28 +147,32 @@ describe('TrendAnalyzer', () => {
     const { start: startB } = getWeekDateRange('2026-W16');
 
     // Week A: efficiency 0.6, cost $0.50, 4 tests run / 3 passed, 20 tool calls / 2 tasks
-    store.saveSession(makeSummary({
-      sessionId: 'a1',
-      startTime: startA.getTime() + 43_200_000,
-      efficiencyScore: 0.6,
-      estimatedCostUsd: 0.50,
-      testRunCount: 4,
-      testPassCount: 3,
-      toolCallCount: 20,
-      taskCount: 2,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'a1',
+        startTime: startA.getTime() + 43_200_000,
+        efficiencyScore: 0.6,
+        estimatedCostUsd: 0.5,
+        testRunCount: 4,
+        testPassCount: 3,
+        toolCallCount: 20,
+        taskCount: 2,
+      }),
+    );
 
     // Week B: efficiency 0.8, cost $0.40, 5 tests run / 5 passed, 15 tool calls / 3 tasks
-    store.saveSession(makeSummary({
-      sessionId: 'b1',
-      startTime: startB.getTime() + 43_200_000,
-      efficiencyScore: 0.8,
-      estimatedCostUsd: 0.40,
-      testRunCount: 5,
-      testPassCount: 5,
-      toolCallCount: 15,
-      taskCount: 3,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'b1',
+        startTime: startB.getTime() + 43_200_000,
+        efficiencyScore: 0.8,
+        estimatedCostUsd: 0.4,
+        testRunCount: 5,
+        testPassCount: 5,
+        toolCallCount: 15,
+        taskCount: 3,
+      }),
+    );
 
     const comparison = analyzer.compareWeeks('2026-W15', '2026-W16');
 
@@ -189,22 +201,26 @@ describe('TrendAnalyzer', () => {
     const { start } = getWeekDateRange('2026-W16');
 
     // Alice: high efficiency
-    store.saveSession(makeSummary({
-      sessionId: 'alice-1',
-      developer: 'alice',
-      startTime: start.getTime() + 43_200_000,
-      efficiencyScore: 0.8,
-      estimatedCostUsd: 0.10,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'alice-1',
+        developer: 'alice',
+        startTime: start.getTime() + 43_200_000,
+        efficiencyScore: 0.8,
+        estimatedCostUsd: 0.1,
+      }),
+    );
 
     // Bob: lower efficiency
-    store.saveSession(makeSummary({
-      sessionId: 'bob-1',
-      developer: 'bob',
-      startTime: start.getTime() + 43_201_000,
-      efficiencyScore: 0.4,
-      estimatedCostUsd: 0.20,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'bob-1',
+        developer: 'bob',
+        startTime: start.getTime() + 43_201_000,
+        efficiencyScore: 0.4,
+        estimatedCostUsd: 0.2,
+      }),
+    );
 
     const comparison = analyzer.compareDeveloperToTeam('alice', '2026-W16');
 
@@ -226,22 +242,26 @@ describe('TrendAnalyzer', () => {
 
     // Opus sessions: expensive, high efficiency
     for (let i = 0; i < 3; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `opus-${i}`,
-        model: 'claude-opus-4-20250514',
-        estimatedCostUsd: 4.0,
-        efficiencyScore: 0.9,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `opus-${i}`,
+          model: 'claude-opus-4-20250514',
+          estimatedCostUsd: 4.0,
+          efficiencyScore: 0.9,
+        }),
+      );
     }
 
     // Sonnet sessions: cheaper, lower efficiency
     for (let i = 0; i < 2; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `sonnet-${i}`,
-        model: 'claude-sonnet-4-20250514',
-        estimatedCostUsd: 2.0,
-        efficiencyScore: 0.7,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `sonnet-${i}`,
+          model: 'claude-sonnet-4-20250514',
+          estimatedCostUsd: 2.0,
+          efficiencyScore: 0.7,
+        }),
+      );
     }
 
     const comparison = analyzer.detectModelMigrationImpact('opus', 'sonnet');
@@ -263,25 +283,29 @@ describe('TrendAnalyzer', () => {
 
     // Previous week (W15)
     const { start: startPrev } = getWeekDateRange('2026-W15');
-    store.saveSession(makeSummary({
-      sessionId: 'prev-1',
-      startTime: startPrev.getTime() + 43_200_000,
-      efficiencyScore: 0.6,
-      estimatedCostUsd: 1.00,
-      testRunCount: 10,
-      testPassCount: 8,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'prev-1',
+        startTime: startPrev.getTime() + 43_200_000,
+        efficiencyScore: 0.6,
+        estimatedCostUsd: 1.0,
+        testRunCount: 10,
+        testPassCount: 8,
+      }),
+    );
 
     // Current week (W16)
     const { start: startCur } = getWeekDateRange('2026-W16');
-    store.saveSession(makeSummary({
-      sessionId: 'cur-1',
-      startTime: startCur.getTime() + 43_200_000,
-      efficiencyScore: 0.72,
-      estimatedCostUsd: 0.84,
-      testRunCount: 10,
-      testPassCount: 9,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'cur-1',
+        startTime: startCur.getTime() + 43_200_000,
+        efficiencyScore: 0.72,
+        estimatedCostUsd: 0.84,
+        testRunCount: 10,
+        testPassCount: 9,
+      }),
+    );
 
     const summary = analyzer.generateWeekSummary('2026-W16');
 
@@ -302,26 +326,34 @@ describe('TrendAnalyzer', () => {
     const analyzer = new TrendAnalyzer({ sessionStore: store });
 
     const { start } = getWeekDateRange('2026-W16');
-    store.saveSession(makeSummary({
-      sessionId: 'emit-alice',
-      developer: 'alice',
-      startTime: start.getTime() + 43_200_000,
-      efficiencyScore: 0.8,
-      estimatedCostUsd: 0.50,
-      testRunCount: 5,
-      testPassCount: 4,
-    }));
-    store.saveSession(makeSummary({
-      sessionId: 'emit-bob',
-      developer: 'bob',
-      startTime: start.getTime() + 43_201_000,
-      efficiencyScore: 0.6,
-      estimatedCostUsd: 0.30,
-      testRunCount: 3,
-      testPassCount: 3,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'emit-alice',
+        developer: 'alice',
+        startTime: start.getTime() + 43_200_000,
+        efficiencyScore: 0.8,
+        estimatedCostUsd: 0.5,
+        testRunCount: 5,
+        testPassCount: 4,
+      }),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 'emit-bob',
+        developer: 'bob',
+        startTime: start.getTime() + 43_201_000,
+        efficiencyScore: 0.6,
+        estimatedCostUsd: 0.3,
+        testRunCount: 3,
+        testPassCount: 3,
+      }),
+    );
 
-    const recorded: Array<{ name: string; value: number; attrs?: Record<string, string | number> }> = [];
+    const recorded: Array<{
+      name: string;
+      value: number;
+      attrs?: Record<string, string | number>;
+    }> = [];
     const aggregator = {
       record(name: string, value: number, attrs?: Record<string, string | number>) {
         recorded.push({ name, value, attrs });
@@ -366,12 +398,12 @@ describe('percentChange', () => {
 describe('significantChange', () => {
   it('detects significant outlier in otherwise stable series', () => {
     // 5 values around 0.7, then a jump to 0.9
-    const values = [0.70, 0.71, 0.69, 0.72, 0.68, 0.90];
+    const values = [0.7, 0.71, 0.69, 0.72, 0.68, 0.9];
     expect(significantChange(values)).toBe(true);
   });
 
   it('does not flag minor variation as significant', () => {
-    const values = [0.70, 0.71, 0.69, 0.72, 0.68, 0.71];
+    const values = [0.7, 0.71, 0.69, 0.72, 0.68, 0.71];
     expect(significantChange(values)).toBe(false);
   });
 });

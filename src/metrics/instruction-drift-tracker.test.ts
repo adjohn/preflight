@@ -51,10 +51,24 @@ describe('InstructionDriftTracker', () => {
   it('tracks multiple prompt variants', () => {
     const tracker = new InstructionDriftTracker({ minSessionsForComparison: 1 });
     tracker.setPrompt('prompt v1');
-    tracker.recordSessionOutcome({ sessionId: 's1', successRate: 0.9, totalTokens: 8000, thrashingIncidents: 0, taskCount: 2, avgEfficiency: 0.8 });
+    tracker.recordSessionOutcome({
+      sessionId: 's1',
+      successRate: 0.9,
+      totalTokens: 8000,
+      thrashingIncidents: 0,
+      taskCount: 2,
+      avgEfficiency: 0.8,
+    });
 
     tracker.setPrompt('prompt v2');
-    tracker.recordSessionOutcome({ sessionId: 's2', successRate: 0.5, totalTokens: 15000, thrashingIncidents: 3, taskCount: 2, avgEfficiency: 0.4 });
+    tracker.recordSessionOutcome({
+      sessionId: 's2',
+      successRate: 0.5,
+      totalTokens: 15000,
+      thrashingIncidents: 3,
+      taskCount: 2,
+      avgEfficiency: 0.4,
+    });
 
     const metrics = tracker.getMetrics();
     expect(metrics.uniquePromptVariants).toBe(2);
@@ -104,12 +118,66 @@ describe('InstructionDriftTracker', () => {
     const badHash = hashPrompt('bad prompt');
 
     tracker.loadRecords([
-      { sessionId: 'g0', promptHash: goodHash, timestamp: 1000, successRate: 0.95, totalTokens: 5000, thrashingIncidents: 0, taskCount: 3, avgEfficiency: 0.85 },
-      { sessionId: 'g1', promptHash: goodHash, timestamp: 2000, successRate: 0.95, totalTokens: 5000, thrashingIncidents: 0, taskCount: 3, avgEfficiency: 0.85 },
-      { sessionId: 'g2', promptHash: goodHash, timestamp: 3000, successRate: 0.95, totalTokens: 5000, thrashingIncidents: 0, taskCount: 3, avgEfficiency: 0.85 },
-      { sessionId: 'b0', promptHash: badHash, timestamp: 4000, successRate: 0.3, totalTokens: 20000, thrashingIncidents: 4, taskCount: 2, avgEfficiency: 0.3 },
-      { sessionId: 'b1', promptHash: badHash, timestamp: 5000, successRate: 0.3, totalTokens: 20000, thrashingIncidents: 4, taskCount: 2, avgEfficiency: 0.3 },
-      { sessionId: 'b2', promptHash: badHash, timestamp: 6000, successRate: 0.3, totalTokens: 20000, thrashingIncidents: 4, taskCount: 2, avgEfficiency: 0.3 },
+      {
+        sessionId: 'g0',
+        promptHash: goodHash,
+        timestamp: 1000,
+        successRate: 0.95,
+        totalTokens: 5000,
+        thrashingIncidents: 0,
+        taskCount: 3,
+        avgEfficiency: 0.85,
+      },
+      {
+        sessionId: 'g1',
+        promptHash: goodHash,
+        timestamp: 2000,
+        successRate: 0.95,
+        totalTokens: 5000,
+        thrashingIncidents: 0,
+        taskCount: 3,
+        avgEfficiency: 0.85,
+      },
+      {
+        sessionId: 'g2',
+        promptHash: goodHash,
+        timestamp: 3000,
+        successRate: 0.95,
+        totalTokens: 5000,
+        thrashingIncidents: 0,
+        taskCount: 3,
+        avgEfficiency: 0.85,
+      },
+      {
+        sessionId: 'b0',
+        promptHash: badHash,
+        timestamp: 4000,
+        successRate: 0.3,
+        totalTokens: 20000,
+        thrashingIncidents: 4,
+        taskCount: 2,
+        avgEfficiency: 0.3,
+      },
+      {
+        sessionId: 'b1',
+        promptHash: badHash,
+        timestamp: 5000,
+        successRate: 0.3,
+        totalTokens: 20000,
+        thrashingIncidents: 4,
+        taskCount: 2,
+        avgEfficiency: 0.3,
+      },
+      {
+        sessionId: 'b2',
+        promptHash: badHash,
+        timestamp: 6000,
+        successRate: 0.3,
+        totalTokens: 20000,
+        thrashingIncidents: 4,
+        taskCount: 2,
+        avgEfficiency: 0.3,
+      },
     ]);
 
     // Set to good first, then transition to bad — triggers correlation
@@ -125,7 +193,14 @@ describe('InstructionDriftTracker', () => {
   it('returns insufficient_data when not enough sessions', () => {
     const tracker = new InstructionDriftTracker({ minSessionsForComparison: 5 });
     tracker.setPrompt('v1');
-    tracker.recordSessionOutcome({ sessionId: 's1', successRate: 0.9, totalTokens: 5000, thrashingIncidents: 0, taskCount: 2, avgEfficiency: 0.8 });
+    tracker.recordSessionOutcome({
+      sessionId: 's1',
+      successRate: 0.9,
+      totalTokens: 5000,
+      thrashingIncidents: 0,
+      taskCount: 2,
+      avgEfficiency: 0.8,
+    });
     tracker.setPrompt('v2');
 
     const metrics = tracker.getMetrics();
@@ -137,7 +212,16 @@ describe('InstructionDriftTracker', () => {
     const hash = hashPrompt('loaded prompt');
     tracker.setPromptHash(hash);
     tracker.loadRecords([
-      { sessionId: 'r1', promptHash: hash, timestamp: 1000, successRate: 0.9, totalTokens: 5000, thrashingIncidents: 0, taskCount: 2, avgEfficiency: 0.8 },
+      {
+        sessionId: 'r1',
+        promptHash: hash,
+        timestamp: 1000,
+        successRate: 0.9,
+        totalTokens: 5000,
+        thrashingIncidents: 0,
+        taskCount: 2,
+        avgEfficiency: 0.8,
+      },
     ]);
 
     expect(tracker.getRecords()).toHaveLength(1);
@@ -147,7 +231,14 @@ describe('InstructionDriftTracker', () => {
   it('reset clears all state', () => {
     const tracker = new InstructionDriftTracker();
     tracker.setPrompt('test');
-    tracker.recordSessionOutcome({ sessionId: 's1', successRate: 0.9, totalTokens: 5000, thrashingIncidents: 0, taskCount: 2, avgEfficiency: 0.8 });
+    tracker.recordSessionOutcome({
+      sessionId: 's1',
+      successRate: 0.9,
+      totalTokens: 5000,
+      thrashingIncidents: 0,
+      taskCount: 2,
+      avgEfficiency: 0.8,
+    });
 
     tracker.reset('new-session');
     const metrics = tracker.getMetrics();

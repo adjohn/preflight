@@ -13,11 +13,14 @@ const conditionFiles = readdirSync(conditionsDir)
   .filter((f) => f.endsWith('.json'))
   .sort();
 
-const conditions: Array<{ file: string; condition: AlertConditionDefinition }> =
-  conditionFiles.map((file) => ({
+const conditions: Array<{ file: string; condition: AlertConditionDefinition }> = conditionFiles.map(
+  (file) => ({
     file,
-    condition: JSON.parse(readFileSync(resolve(conditionsDir, file), 'utf-8')) as AlertConditionDefinition,
-  }));
+    condition: JSON.parse(
+      readFileSync(resolve(conditionsDir, file), 'utf-8'),
+    ) as AlertConditionDefinition,
+  }),
+);
 
 const VALID_EVENT_TYPES = new Set([
   'AiToolCall',

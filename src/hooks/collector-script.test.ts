@@ -3,7 +3,17 @@ import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync, statSync } 
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { processHook, redact, hashInput, sizeOf, truncate, getRecordContent, collectTranscriptTokens, readLastAssistantUsage, getTranscriptPath } from './collector-script.js';
+import {
+  processHook,
+  redact,
+  hashInput,
+  sizeOf,
+  truncate,
+  getRecordContent,
+  collectTranscriptTokens,
+  readLastAssistantUsage,
+  getTranscriptPath,
+} from './collector-script.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let tmpDir: string;
@@ -74,7 +84,7 @@ function readBufferEvents(): Record<string, unknown>[] {
   if (!existsSync(bufferPath)) return [];
   const raw = readFileSync(bufferPath, 'utf-8').trim();
   if (!raw) return [];
-  return raw.split('\n').map(line => JSON.parse(line) as Record<string, unknown>);
+  return raw.split('\n').map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
 describe('collector-script', () => {
@@ -222,9 +232,11 @@ describe('collector-script', () => {
     it('includes redacted input content when recordContent=true (PreToolUse)', () => {
       process.env.NEW_RELIC_AI_MCP_RECORD_CONTENT = 'true';
 
-      processHook(makePreToolUse({
-        tool_input: { file_path: '/tmp/test.ts', content: 'API_KEY = sk-secret123' },
-      }));
+      processHook(
+        makePreToolUse({
+          tool_input: { file_path: '/tmp/test.ts', content: 'API_KEY = sk-secret123' },
+        }),
+      );
 
       const event = readBufferEvents()[0]!;
       expect(event.inputContent).toBeDefined();
@@ -235,9 +247,11 @@ describe('collector-script', () => {
     it('includes redacted output content when recordContent=true (PostToolUse)', () => {
       process.env.NEW_RELIC_AI_MCP_RECORD_CONTENT = 'true';
 
-      processHook(makePostToolUse({
-        tool_response: { content: 'Bearer eyJhbGciOiJIUzI1NiJ9.secret' },
-      }));
+      processHook(
+        makePostToolUse({
+          tool_response: { content: 'Bearer eyJhbGciOiJIUzI1NiJ9.secret' },
+        }),
+      );
 
       const event = readBufferEvents()[0]!;
       expect(event.outputContent).toBeDefined();
@@ -250,9 +264,11 @@ describe('collector-script', () => {
       process.env.NEW_RELIC_AI_MCP_MAX_CONTENT_LENGTH = '50';
 
       const longContent = 'x'.repeat(100_000);
-      processHook(makePostToolUse({
-        tool_response: { data: longContent },
-      }));
+      processHook(
+        makePostToolUse({
+          tool_response: { data: longContent },
+        }),
+      );
 
       const event = readBufferEvents()[0]!;
       const content = event.outputContent as string;
@@ -299,10 +315,12 @@ describe('collector-script', () => {
 
   describe('unknown events', () => {
     it('silently ignores unknown hook event names', () => {
-      processHook(JSON.stringify({
-        hook_event_name: 'SessionStart',
-        session_id: 'sess-001',
-      }));
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'SessionStart',
+          session_id: 'sess-001',
+        }),
+      );
 
       expect(readBufferEvents()).toHaveLength(0);
     });
@@ -506,7 +524,9 @@ describe('collector-script', () => {
         JSON.stringify({ type: 'human', message: { content: 'more' } }),
         JSON.stringify({
           type: 'assistant',
-          message: { usage: { input_tokens: 200, output_tokens: 80, cache_read_input_tokens: 9000 } },
+          message: {
+            usage: { input_tokens: 200, output_tokens: 80, cache_read_input_tokens: 9000 },
+          },
         }),
       ];
       writeFileSync(transcriptPath, lines.join('\n') + '\n');
@@ -527,7 +547,9 @@ describe('collector-script', () => {
       const transcriptPath = resolve(claudeDir, `${sessionId}.jsonl`);
       const transcriptLine = JSON.stringify({
         type: 'assistant',
-        message: { usage: { input_tokens: 500, output_tokens: 100, cache_read_input_tokens: 10000 } },
+        message: {
+          usage: { input_tokens: 500, output_tokens: 100, cache_read_input_tokens: 10000 },
+        },
       });
       writeFileSync(transcriptPath, transcriptLine + '\n');
 
@@ -537,7 +559,7 @@ describe('collector-script', () => {
         collectTranscriptTokens({ cwd: tmpDir, session_id: sessionId });
 
         const events = readBufferEvents();
-        const tokenEvents = events.filter(e => e.mode === 'token');
+        const tokenEvents = events.filter((e) => e.mode === 'token');
         expect(tokenEvents).toHaveLength(1);
         expect(tokenEvents[0]).toMatchObject({
           mode: 'token',
@@ -573,7 +595,7 @@ describe('collector-script', () => {
         collectTranscriptTokens({ cwd: tmpDir, session_id: sessionId });
 
         const events = readBufferEvents();
-        const tokenEvents = events.filter(e => e.mode === 'token');
+        const tokenEvents = events.filter((e) => e.mode === 'token');
         expect(tokenEvents).toHaveLength(1);
       } finally {
         delete process.env.NR_AI_OBSERVE_CLAUDE_HOME;

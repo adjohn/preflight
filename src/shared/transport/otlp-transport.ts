@@ -48,7 +48,12 @@ export class OtlpTransport {
 
     this.meterProvider = new MeterProvider({
       resource,
-      readers: [new PeriodicExportingMetricReader({ exporter: this.metricExporter, exportIntervalMillis: 60_000 })],
+      readers: [
+        new PeriodicExportingMetricReader({
+          exporter: this.metricExporter,
+          exportIntervalMillis: 60_000,
+        }),
+      ],
     });
   }
 
@@ -79,25 +84,34 @@ export class OtlpTransport {
   async exportMetrics(metrics: NrMetric[]): Promise<void> {
     if (metrics.length === 0) return;
     const payload = {
-      resourceMetrics: [{
-        resource: { attributes: [{ key: 'service.name', value: { stringValue: this.appName } }] },
-        scopeMetrics: [{
-          scope: { name: 'nr-ai-observatory' },
-          metrics: metrics.map(m => ({
-            name: m.name,
-            gauge: {
-              dataPoints: [{
-                timeUnixNano: m.timestamp * 1_000_000,
-                asDouble: m.value,
-                attributes: Object.entries(m.attributes ?? {}).map(([key, value]) => ({
-                  key,
-                  value: typeof value === 'number' ? { doubleValue: value } : { stringValue: String(value) },
-                })),
-              }],
+      resourceMetrics: [
+        {
+          resource: { attributes: [{ key: 'service.name', value: { stringValue: this.appName } }] },
+          scopeMetrics: [
+            {
+              scope: { name: 'nr-ai-observatory' },
+              metrics: metrics.map((m) => ({
+                name: m.name,
+                gauge: {
+                  dataPoints: [
+                    {
+                      timeUnixNano: m.timestamp * 1_000_000,
+                      asDouble: m.value,
+                      attributes: Object.entries(m.attributes ?? {}).map(([key, value]) => ({
+                        key,
+                        value:
+                          typeof value === 'number'
+                            ? { doubleValue: value }
+                            : { stringValue: String(value) },
+                      })),
+                    },
+                  ],
+                },
+              })),
             },
-          })),
-        }],
-      }],
+          ],
+        },
+      ],
     };
     try {
       const response = await fetch(`${this.endpoint}/v1/metrics`, {
@@ -109,7 +123,9 @@ export class OtlpTransport {
         logger.warn('OTLP metric export failed', { status: response.status });
       }
     } catch (err) {
-      logger.warn('OTLP metric export error', { error: err instanceof Error ? err.message : String(err) });
+      logger.warn('OTLP metric export error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }

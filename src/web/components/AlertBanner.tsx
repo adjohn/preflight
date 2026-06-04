@@ -67,7 +67,9 @@ export function AlertBanner({ alert, onDismiss }: AlertBannerProps): JSX.Element
       >
         ● {SEVERITY_LABEL[alert.severity]}
       </span>
-      <span id={titleId} className="font-medium text-ink-base shrink-0">{alert.title}</span>
+      <span id={titleId} className="font-medium text-ink-base shrink-0">
+        {alert.title}
+      </span>
       <span className="text-ink-muted truncate">{alert.description}</span>
       <span className="ml-auto shrink-0 text-ink-subtle tabular-nums whitespace-nowrap">
         {formatNumber(alert.value)} / {formatNumber(alert.threshold)}
@@ -83,4 +85,3 @@ export function AlertBanner({ alert, onDismiss }: AlertBannerProps): JSX.Element
     </div>
   );
 }
-

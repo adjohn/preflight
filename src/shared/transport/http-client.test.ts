@@ -29,7 +29,7 @@ function baseOptions(overrides: Partial<HttpSendOptions> = {}): HttpSendOptions 
     body: [{ eventType: 'Test', value: 1 }],
     licenseKey: 'us01xxTESTKEY',
     maxRetries: 3,
-    baseDelayMs: 1,   // fast for tests
+    baseDelayMs: 1, // fast for tests
     maxDelayMs: 10,
     ...overrides,
   };
@@ -58,7 +58,9 @@ describe('resolveRegion', () => {
 
   it('returns staging when collectorHost contains staging', () => {
     expect(resolveRegion('us01xxSOMEKEY', 'staging')).toBe('staging');
-    expect(resolveRegion('us01xxSOMEKEY', 'staging-insights-collector.newrelic.com')).toBe('staging');
+    expect(resolveRegion('us01xxSOMEKEY', 'staging-insights-collector.newrelic.com')).toBe(
+      'staging',
+    );
     expect(resolveRegion('eu01xxSOMEKEY', 'staging')).toBe('staging');
   });
 });

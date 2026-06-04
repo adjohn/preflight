@@ -11,7 +11,13 @@ import type {
  * this adapter only consumes its events.
  */
 export interface CopilotToolCallEvent {
-  readonly type: 'file_edit' | 'file_open' | 'file_create' | 'file_delete' | 'terminal_command' | 'task';
+  readonly type:
+    | 'file_edit'
+    | 'file_open'
+    | 'file_create'
+    | 'file_delete'
+    | 'terminal_command'
+    | 'task';
   readonly timestamp?: number;
   readonly endTimestamp?: number;
   readonly filePath?: string;
@@ -90,7 +96,9 @@ export class CopilotAdapter implements PlatformAdapter {
     return {
       platform: this.platformName,
       ...(process.env.VSCODE_VERSION && { ideVersion: process.env.VSCODE_VERSION }),
-      ...(process.env.COPILOT_EXTENSION_VERSION && { extensionVersion: process.env.COPILOT_EXTENSION_VERSION }),
+      ...(process.env.COPILOT_EXTENSION_VERSION && {
+        extensionVersion: process.env.COPILOT_EXTENSION_VERSION,
+      }),
     };
   }
 
@@ -107,9 +115,6 @@ export class CopilotAdapter implements PlatformAdapter {
   }
 
   isSupported(): boolean {
-    return (
-      process.env.NR_AI_COPILOT_OBSERVER === 'active' ||
-      process.env.MCP_CLIENT === 'copilot'
-    );
+    return process.env.NR_AI_COPILOT_OBSERVER === 'active' || process.env.MCP_CLIENT === 'copilot';
   }
 }

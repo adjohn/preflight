@@ -15,6 +15,7 @@ Check server health and connection status.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "status": "ok",
@@ -43,6 +44,7 @@ Current session metrics snapshot.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "identity": {
@@ -68,6 +70,7 @@ Current session metrics snapshot.
 **Data source:** `SessionTracker`
 
 **How each field is determined:**
+
 - `identity.developer` — resolved developer name from config (normalised by `normalizeDeveloperName()`). Defaults to `"unknown"` when not configured. Use this to confirm at runtime which identity is being attached to NR events.
 - `identity.teamId` / `identity.projectId` — team and project identifiers from config. `null` when not configured. `projectId` is auto-derived from the git remote URL when unset.
 - `session_trace_id` — UUID generated at server startup via `randomUUID()`; threaded through every NR event, metric, and log entry emitted in this session. Use `WHERE session_id = '<value>'` in NRQL to query all telemetry for a single session. `null` if the server was started without trace ID support.
@@ -93,11 +96,12 @@ Ordered list of recent tool calls.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `last_n` | number | 20 | Number of most recent tool calls to return |
+| Parameter | Type   | Default | Description                                |
+| --------- | ------ | ------- | ------------------------------------------ |
+| `last_n`  | number | 20      | Number of most recent tool calls to return |
 
 **Returns:**
+
 ```json
 {
   "timeline": [
@@ -124,16 +128,17 @@ Self-report token usage for cost tracking. Called by Claude Code to report its o
 
 **Parameters:**
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `input_tokens` | number | Yes | Input/prompt token count |
-| `output_tokens` | number | Yes | Output/completion token count |
-| `model` | string | Yes | Model identifier (e.g., `claude-sonnet-4-20250514`) |
-| `thinking_tokens` | number | No | Extended thinking token count |
-| `cache_read_tokens` | number | No | Prompt cache read token count |
-| `cache_creation_tokens` | number | No | Prompt cache creation token count |
+| Parameter               | Type   | Required | Description                                         |
+| ----------------------- | ------ | -------- | --------------------------------------------------- |
+| `input_tokens`          | number | Yes      | Input/prompt token count                            |
+| `output_tokens`         | number | Yes      | Output/completion token count                       |
+| `model`                 | string | Yes      | Model identifier (e.g., `claude-sonnet-4-20250514`) |
+| `thinking_tokens`       | number | No       | Extended thinking token count                       |
+| `cache_read_tokens`     | number | No       | Prompt cache read token count                       |
+| `cache_creation_tokens` | number | No       | Prompt cache creation token count                   |
 
 **Returns:**
+
 ```json
 {
   "recorded": true,
@@ -146,6 +151,7 @@ Self-report token usage for cost tracking. Called by Claude Code to report its o
 **Data source:** `CostTracker`
 
 **How it works:**
+
 1. Constructs a `TokenUsage` object from the reported counts
 2. Calls `CostTracker.recordTokenUsage(usage, model)` which looks up per-token prices from the pricing table (`src/shared/pricing-data.ts`)
 3. Cost breakdown: `inputCost = inputTokens * inputPricePerToken`, similarly for output, thinking, cache read, and cache creation tokens
@@ -165,10 +171,11 @@ Session cost breakdown by task, model, and efficiency.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "total_usd": 0.52,
-  "by_model": { "claude-sonnet-4-20250514": 0.40, "claude-haiku-4-5-20251001": 0.12 },
+  "by_model": { "claude-sonnet-4-20250514": 0.4, "claude-haiku-4-5-20251001": 0.12 },
   "by_task": [{ "task_id": "task-001", "cost_usd": 0.25, "tokens_used": 15000 }],
   "cost_per_line_of_code": 0.003,
   "cost_per_file_modified": 0.065,
@@ -179,6 +186,7 @@ Session cost breakdown by task, model, and efficiency.
 **Data source:** `CostTracker`, `TaskDetector` (optional)
 
 **How each field is determined:**
+
 - `total_usd` — sum of all token cost reports in the session
 - `by_model` — per-model accumulator updated on each `reportTokens` call
 - `by_task` — maps `TaskDetector.getCompletedTasks()` to their `estimatedCostUsd` and `tokensUsed`
@@ -200,11 +208,12 @@ Complete tool call trace for a task with anti-pattern and efficiency analysis.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
+| Parameter | Type   | Default     | Description             |
+| --------- | ------ | ----------- | ----------------------- |
 | `task_id` | string | most recent | ID of the task to trace |
 
 **Returns:**
+
 ```json
 {
   "task_id": "task-001",
@@ -212,7 +221,14 @@ Complete tool call trace for a task with anti-pattern and efficiency analysis.
   "estimated_cost_usd": 0.25,
   "tool_calls": [
     { "seq": 1, "tool": "Read", "target": "/src/index.ts", "duration_ms": 30, "success": true },
-    { "seq": 2, "tool": "Bash", "target": "npm test", "duration_ms": 5000, "success": true, "exit_code": 0 }
+    {
+      "seq": 2,
+      "tool": "Bash",
+      "target": "npm test",
+      "duration_ms": 5000,
+      "success": true,
+      "exit_code": 0
+    }
   ],
   "anti_patterns": [
     { "type": "thrashing", "file": "/src/index.ts", "iterations": 4, "suggestion": "..." }
@@ -224,6 +240,7 @@ Complete tool call trace for a task with anti-pattern and efficiency analysis.
 **Data source:** `TaskDetector`, `AntiPatternDetector` (optional), `EfficiencyScorer` (optional)
 
 **How it works:**
+
 1. Finds the task by ID from `TaskDetector.getCompletedTasks()`, or uses the most recent completed task
 2. Maps each tool call in the task to a sequenced trace entry with `filePath` or `command` as the target
 3. If `AntiPatternDetector` is available, analyzes the task's tool call sequence for anti-patterns
@@ -242,10 +259,21 @@ Detected anti-patterns for the most recent task.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 [
-  { "type": "thrashing", "file": "/src/index.ts", "iterations": 4, "suggestion": "Consider a different approach" },
-  { "type": "re_reading", "file": "/src/config.ts", "read_count": 5, "suggestion": "Cache file contents" }
+  {
+    "type": "thrashing",
+    "file": "/src/index.ts",
+    "iterations": 4,
+    "suggestion": "Consider a different approach"
+  },
+  {
+    "type": "re_reading",
+    "file": "/src/config.ts",
+    "read_count": 5,
+    "suggestion": "Cache file contents"
+  }
 ]
 ```
 
@@ -253,13 +281,13 @@ Detected anti-patterns for the most recent task.
 
 **Detection algorithms (5 pattern types):**
 
-| Pattern | How Detected | Default Threshold |
-|---------|-------------|-------------------|
-| **Thrashing** | Tracks `Edit/Write → Bash(test:FAIL)` cycles on the same file. Counts consecutive failures. Resets on test pass. | 3 consecutive failures |
-| **Re-reading** | Counts `Read` calls per file path. Flags files read more than the threshold. | 3 reads of same file |
-| **Stuck loop** | Detects repeated `Bash` commands with identical arguments. | 3 identical commands |
-| **Blind editing** | Counts consecutive `Edit/Write` calls without an intervening `Read` or test run. | 3 edits without verification |
-| **Over-delegation** | Counts `Agent` tool spawns in a single task. | 3 agent spawns |
+| Pattern             | How Detected                                                                                                     | Default Threshold            |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| **Thrashing**       | Tracks `Edit/Write → Bash(test:FAIL)` cycles on the same file. Counts consecutive failures. Resets on test pass. | 3 consecutive failures       |
+| **Re-reading**      | Counts `Read` calls per file path. Flags files read more than the threshold.                                     | 3 reads of same file         |
+| **Stuck loop**      | Detects repeated `Bash` commands with identical arguments.                                                       | 3 identical commands         |
+| **Blind editing**   | Counts consecutive `Edit/Write` calls without an intervening `Read` or test run.                                 | 3 edits without verification |
+| **Over-delegation** | Counts `Agent` tool spawns in a single task.                                                                     | 3 agent spawns               |
 
 Each detected pattern includes a `suggestion` field with a human-readable recommendation.
 
@@ -276,6 +304,7 @@ Composite efficiency score for the most recent task and session average.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "latest": {
@@ -286,7 +315,12 @@ Composite efficiency score for the most recent task and session average.
   },
   "session_average": {
     "score": 0.78,
-    "components": { "speed": 0.65, "correctness": 0.95, "autonomy": 0.85, "firstAttemptQuality": 0.7 },
+    "components": {
+      "speed": 0.65,
+      "correctness": 0.95,
+      "autonomy": 0.85,
+      "firstAttemptQuality": 0.7
+    },
     "tasks_scored": 5
   }
 }
@@ -296,12 +330,12 @@ Composite efficiency score for the most recent task and session average.
 
 **Scoring algorithm (4 equally-weighted components, each 0–1):**
 
-| Component | Formula | Baseline |
-|-----------|---------|----------|
-| **Speed** | `linesChanged / (durationMs / 1000)` normalized against baseline | 1 line/second = 1.0 |
-| **Correctness** | `testsPassed / testsRun` | 0.5 if no tests were run |
-| **Autonomy** | `1 - (askedUserQuestions / toolCallCount)` | 1.0 if no questions asked |
-| **First-attempt quality** | `1 - (thrashIterations / 3)`, floored at 0 | 1.0 if no thrashing detected |
+| Component                 | Formula                                                          | Baseline                     |
+| ------------------------- | ---------------------------------------------------------------- | ---------------------------- |
+| **Speed**                 | `linesChanged / (durationMs / 1000)` normalized against baseline | 1 line/second = 1.0          |
+| **Correctness**           | `testsPassed / testsRun`                                         | 0.5 if no tests were run     |
+| **Autonomy**              | `1 - (askedUserQuestions / toolCallCount)`                       | 1.0 if no questions asked    |
+| **First-attempt quality** | `1 - (thrashIterations / 3)`, floored at 0                       | 1.0 if no thrashing detected |
 
 Final score = weighted average of all four components, clamped to [0, 1].
 
@@ -319,13 +353,14 @@ Record user quality feedback for a task.
 
 **Parameters:**
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `quality` | string | Yes | `"good"`, `"bad"`, or `"neutral"` |
-| `notes` | string | No | Free-text notes about the task quality |
-| `task_id` | string | No | Task ID to attach feedback to (default: most recent) |
+| Parameter | Type   | Required | Description                                          |
+| --------- | ------ | -------- | ---------------------------------------------------- |
+| `quality` | string | Yes      | `"good"`, `"bad"`, or `"neutral"`                    |
+| `notes`   | string | No       | Free-text notes about the task quality               |
+| `task_id` | string | No       | Task ID to attach feedback to (default: most recent) |
 
 **Returns:**
+
 ```json
 {
   "recorded": true,
@@ -355,13 +390,14 @@ Paginated list of past sessions with summary metrics.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `since` | string | — | ISO date to filter from (e.g., `"2026-04-01"`) |
-| `developer` | string | — | Filter by developer name |
-| `limit` | number | 20 | Maximum sessions to return |
+| Parameter   | Type   | Default | Description                                    |
+| ----------- | ------ | ------- | ---------------------------------------------- |
+| `since`     | string | —       | ISO date to filter from (e.g., `"2026-04-01"`) |
+| `developer` | string | —       | Filter by developer name                       |
+| `limit`     | number | 20      | Maximum sessions to return                     |
 
 **Returns:**
+
 ```json
 {
   "sessions": [
@@ -398,15 +434,16 @@ Weekly aggregate report with per-developer breakdown.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `week` | string | current week | ISO week (e.g., `"2026-W16"`) or `"latest"` |
+| Parameter | Type   | Default      | Description                                 |
+| --------- | ------ | ------------ | ------------------------------------------- |
+| `week`    | string | current week | ISO week (e.g., `"2026-W16"`) or `"latest"` |
 
 **Returns:** JSON object with weekly aggregates including per-developer metrics, total cost, average efficiency, test pass rates, tool call counts, and anti-pattern tallies by type.
 
 **Data source:** `WeeklySummaryGenerator`
 
 **How it works:**
+
 1. Resolves the target week (current ISO week if not specified or `"latest"`)
 2. Loads or generates the weekly summary by aggregating all sessions in that week
 3. Groups metrics by developer
@@ -424,13 +461,14 @@ Metric trends over time, aggregated by ISO week.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `metric` | string | `"efficiency"` | `"efficiency"`, `"cost"`, `"task_success"`, or `"tool_calls"` |
-| `developer` | string | — | Filter by developer name |
-| `weeks` | number | 8 | Number of weeks to include |
+| Parameter   | Type   | Default        | Description                                                   |
+| ----------- | ------ | -------------- | ------------------------------------------------------------- |
+| `metric`    | string | `"efficiency"` | `"efficiency"`, `"cost"`, `"task_success"`, or `"tool_calls"` |
+| `developer` | string | —              | Filter by developer name                                      |
+| `weeks`     | number | 8              | Number of weeks to include                                    |
 
 **Returns:**
+
 ```json
 {
   "metric": "efficiency",
@@ -446,12 +484,12 @@ Metric trends over time, aggregated by ISO week.
 
 **How each metric is aggregated per week:**
 
-| Metric | Aggregation |
-|--------|-------------|
-| `efficiency` | Mean of `efficiencyScore` across sessions in the week |
-| `cost` | Sum of `estimatedCostUsd` across sessions in the week |
+| Metric         | Aggregation                                           |
+| -------------- | ----------------------------------------------------- |
+| `efficiency`   | Mean of `efficiencyScore` across sessions in the week |
+| `cost`         | Sum of `estimatedCostUsd` across sessions in the week |
 | `task_success` | Mean of `taskSuccessRate` across sessions in the week |
-| `tool_calls` | Mean of `toolCallCount` across sessions in the week |
+| `tool_calls`   | Mean of `toolCallCount` across sessions in the week   |
 
 **Requires:** `TrendAnalyzer`
 
@@ -465,16 +503,22 @@ Developer collaboration style profile with team comparison.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
+| Parameter   | Type   | Default     | Description    |
+| ----------- | ------ | ----------- | -------------- |
 | `developer` | string | `"unknown"` | Developer name |
 
 **Returns:**
+
 ```json
 {
   "developer": "alice",
   "classification": "Power User",
-  "dimensions": { "specificity": 0.8, "autonomy": 0.9, "correctionRate": 0.1, "taskComplexity": 0.6 },
+  "dimensions": {
+    "specificity": 0.8,
+    "autonomy": 0.9,
+    "correctionRate": 0.1,
+    "taskComplexity": 0.6
+  },
   "session_count": 25,
   "team_comparison": { "specificity": 0.15, "autonomy": 0.1 }
 }
@@ -484,21 +528,21 @@ Developer collaboration style profile with team comparison.
 
 **Dimension calculations:**
 
-| Dimension | How Computed |
-|-----------|-------------|
-| **Specificity** | Estimated from tool call patterns and file modification specificity |
-| **Autonomy** | `1 - (userCorrections / taskCount)` — how often the developer redirects the AI |
-| **Correction rate** | `corrections / sessionCount` — frequency of course corrections |
-| **Task complexity** | `(toolCallsPerTask * filesModifiedPerTask) / baseline` |
+| Dimension           | How Computed                                                                   |
+| ------------------- | ------------------------------------------------------------------------------ |
+| **Specificity**     | Estimated from tool call patterns and file modification specificity            |
+| **Autonomy**        | `1 - (userCorrections / taskCount)` — how often the developer redirects the AI |
+| **Correction rate** | `corrections / sessionCount` — frequency of course corrections                 |
+| **Task complexity** | `(toolCallsPerTask * filesModifiedPerTask) / baseline`                         |
 
 **Classification rules:**
 
-| Classification | Rule |
-|---------------|------|
-| Power User | specificity > 0.7 AND autonomy > 0.7 |
-| Delegator | specificity < 0.3 AND autonomy > 0.7 |
-| Learning | specificity < 0.3 AND correctionRate > 0.5 |
-| Collaborative | All others |
+| Classification | Rule                                       |
+| -------------- | ------------------------------------------ |
+| Power User     | specificity > 0.7 AND autonomy > 0.7       |
+| Delegator      | specificity < 0.3 AND autonomy > 0.7       |
+| Learning       | specificity < 0.3 AND correctionRate > 0.5 |
+| Collaborative  | All others                                 |
 
 Team comparison shows the delta between this developer's dimensions and the team average.
 
@@ -515,6 +559,7 @@ Before/after impact analysis of the most recent CLAUDE.md change.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "change": { "file": "CLAUDE.md", "type": "modified", "timestamp": "2026-04-21T10:00:00.000Z" },
@@ -529,6 +574,7 @@ Before/after impact analysis of the most recent CLAUDE.md change.
 **Data source:** `ClaudeMdTracker`
 
 **How it works:**
+
 1. Detects CLAUDE.md changes by monitoring Write/Edit tool calls targeting `CLAUDE.md` or `.claude/` files
 2. Partitions sessions into before/after windows around the change timestamp
 3. Computes aggregate metrics for each window (average efficiency, cost, correction rate, tool calls per task, task success rate)
@@ -548,17 +594,18 @@ Cost attribution by outcome type with waste ratio and ROI estimate.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `since` | string | — | ISO date to filter tasks from |
+| Parameter | Type   | Default | Description                   |
+| --------- | ------ | ------- | ----------------------------- |
+| `since`   | string | —       | ISO date to filter tasks from |
 
 **Returns:**
+
 ```json
 {
   "outcome_distribution": {
     "bug_fix": { "count": 3, "totalCost": 0.45, "avgCost": 0.15 },
-    "feature": { "count": 2, "totalCost": 0.80, "avgCost": 0.40 },
-    "failed_attempt": { "count": 1, "totalCost": 0.20, "avgCost": 0.20 }
+    "feature": { "count": 2, "totalCost": 0.8, "avgCost": 0.4 },
+    "failed_attempt": { "count": 1, "totalCost": 0.2, "avgCost": 0.2 }
   },
   "waste_ratio": 0.12,
   "total_cost": 1.65,
@@ -566,7 +613,7 @@ Cost attribution by outcome type with waste ratio and ROI estimate.
   "roi_estimate": {
     "totalAiCost": 1.65,
     "estimatedHoursSaved": 12.5,
-    "estimatedValueUsd": 937.50,
+    "estimatedValueUsd": 937.5,
     "roi": 56718
   }
 }
@@ -576,17 +623,18 @@ Cost attribution by outcome type with waste ratio and ROI estimate.
 
 **Outcome classification (priority order — first match wins):**
 
-| Outcome | Detection Rule |
-|---------|---------------|
-| `failed_attempt` | Tests failed and never recovered within the task |
-| `bug_fix` | Sequence: test FAIL → Edit → test PASS |
-| `feature` | New files created (Write tool calls) |
-| `configuration` | Only config files modified (`.json`, `.yaml`, `.yml`, `.toml`, etc.) |
-| `documentation` | Only `.md` files modified |
-| `investigation` | Mostly Read/Grep/Glob calls with few or no modifications |
-| `refactor` | Default — existing files modified, tests pass |
+| Outcome          | Detection Rule                                                       |
+| ---------------- | -------------------------------------------------------------------- |
+| `failed_attempt` | Tests failed and never recovered within the task                     |
+| `bug_fix`        | Sequence: test FAIL → Edit → test PASS                               |
+| `feature`        | New files created (Write tool calls)                                 |
+| `configuration`  | Only config files modified (`.json`, `.yaml`, `.yml`, `.toml`, etc.) |
+| `documentation`  | Only `.md` files modified                                            |
+| `investigation`  | Mostly Read/Grep/Glob calls with few or no modifications             |
+| `refactor`       | Default — existing files modified, tests pass                        |
 
 **ROI estimation:**
+
 - Hours saved per outcome type: bug_fix=2h, feature=4h, refactor=1.5h, investigation=0.5h, configuration=0.5h, documentation=1h, failed_attempt=0h
 - `estimatedValueUsd = hoursSaved * hourlyRate` (default: $75/hr)
 - `roi = (estimatedValueUsd - totalAiCost) / totalAiCost * 100`
@@ -604,12 +652,13 @@ Personalized optimization recommendations from multiple analyzers.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `developer` | string | `"unknown"` | Developer name |
-| `topN` | number | — | Maximum recommendations to return |
+| Parameter   | Type   | Default     | Description                       |
+| ----------- | ------ | ----------- | --------------------------------- |
+| `developer` | string | `"unknown"` | Developer name                    |
+| `topN`      | number | —           | Maximum recommendations to return |
 
 **Returns:**
+
 ```json
 {
   "recommendations": [
@@ -631,13 +680,13 @@ Personalized optimization recommendations from multiple analyzers.
 
 **Recommendation categories and sources:**
 
-| Category | Source Analyzer | Example |
-|----------|----------------|---------|
-| Cost optimization | `CostPerOutcomeAnalyzer` | "Reduce failed attempts" |
-| Efficiency | `TrendAnalyzer` | "Speed is declining week-over-week" |
-| Prompt engineering | `PromptFeedbackEngine` | "Multi-step tasks improve efficiency" |
-| CLAUDE.md | `ClaudeMdTracker` | "Update CLAUDE.md with task patterns" |
-| Model selection | `TrendAnalyzer` | "Consider switching to a faster model" |
+| Category           | Source Analyzer          | Example                                |
+| ------------------ | ------------------------ | -------------------------------------- |
+| Cost optimization  | `CostPerOutcomeAnalyzer` | "Reduce failed attempts"               |
+| Efficiency         | `TrendAnalyzer`          | "Speed is declining week-over-week"    |
+| Prompt engineering | `PromptFeedbackEngine`   | "Multi-step tasks improve efficiency"  |
+| CLAUDE.md          | `ClaudeMdTracker`        | "Update CLAUDE.md with task patterns"  |
+| Model selection    | `TrendAnalyzer`          | "Consider switching to a faster model" |
 
 Recommendations are deduplicated by ID (hash of title + category), sorted by priority (high > medium > low), and optionally limited to `topN`.
 
@@ -654,25 +703,20 @@ Narrative coaching report comparing this week's personal AI coding metrics again
 **Parameters:** None
 
 **Returns (when ≥ 2 weeks of history exist):**
+
 ```json
 {
   "status": "ok",
   "developer": "alice",
   "generatedAt": 1747526400000,
   "weeksAnalyzed": 4,
-  "highlights": [
-    "Your efficiency score this week (78) is 8 points above your historical average."
-  ],
-  "regressions": [
-    "Cost per session this week ($0.62) is 35% above your average ($0.46)."
-  ],
-  "streaks": [
-    "Efficiency score has improved for 3 consecutive weeks. Keep it up."
-  ],
+  "highlights": ["Your efficiency score this week (78) is 8 points above your historical average."],
+  "regressions": ["Cost per session this week ($0.62) is 35% above your average ($0.46)."],
+  "streaks": ["Efficiency score has improved for 3 consecutive weeks. Keep it up."],
   "topRecommendation": "Review your longest sessions this week and identify which tasks could be broken into smaller, more focused sessions.",
   "thisWeek": {
     "weekId": "2026-W20",
-    "totalCostUsd": 6.20,
+    "totalCostUsd": 6.2,
     "avgCostPerSession": 0.62,
     "avgEfficiencyScore": 78,
     "antiPatternCount": 4,
@@ -687,6 +731,7 @@ Narrative coaching report comparing this week's personal AI coding metrics again
 ```
 
 **Returns (when fewer than 2 weeks exist):**
+
 ```json
 {
   "status": "insufficient_data",
@@ -701,11 +746,11 @@ Narrative coaching report comparing this week's personal AI coding metrics again
 
 **How each section is determined:**
 
-| Section | Trigger |
-|---------|---------|
-| `highlights` | Efficiency ≥ 5 points above baseline; cost-per-session ≥ 15% below baseline; anti-pattern rate ≥ 20% below last week |
-| `regressions` | Efficiency ≥ 5 points below baseline; cost-per-session ≥ 25% above baseline; anti-pattern rate ≥ 25% above baseline (with the dominant pattern named) |
-| `streaks` | ≥ 2 consecutive weeks of efficiency improvement, or ≥ 2 consecutive weeks of cost-per-session reduction (only when 3+ weeks of data exist) |
+| Section             | Trigger                                                                                                                                                                                                              |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `highlights`        | Efficiency ≥ 5 points above baseline; cost-per-session ≥ 15% below baseline; anti-pattern rate ≥ 20% below last week                                                                                                 |
+| `regressions`       | Efficiency ≥ 5 points below baseline; cost-per-session ≥ 25% above baseline; anti-pattern rate ≥ 25% above baseline (with the dominant pattern named)                                                                |
+| `streaks`           | ≥ 2 consecutive weeks of efficiency improvement, or ≥ 2 consecutive weeks of cost-per-session reduction (only when 3+ weeks of data exist)                                                                           |
 | `topRecommendation` | First non-empty match against: anti-pattern spike → cost spike → efficiency drop → first regression. If no regressions: positive reinforcement when efficiency ≥ 70, otherwise a generic "maintain patterns" message |
 
 `baseline` is the mean of each metric across all loaded weeks (up to 8). `topAntiPattern` in the baseline is the pattern that appears most frequently as the per-week top anti-pattern.
@@ -722,12 +767,13 @@ Side-by-side comparison of AI coding platforms on a given metric.
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `metric` | string | `"efficiency"` | `"efficiency"`, `"cost"`, `"task_success"`, `"tool_calls"`, or `"error_rate"` |
-| `weeks` | number | 4 | Number of weeks to include |
+| Parameter | Type   | Default        | Description                                                                   |
+| --------- | ------ | -------------- | ----------------------------------------------------------------------------- |
+| `metric`  | string | `"efficiency"` | `"efficiency"`, `"cost"`, `"task_success"`, `"tool_calls"`, or `"error_rate"` |
+| `weeks`   | number | 4              | Number of weeks to include                                                    |
 
 **Returns:**
+
 ```json
 {
   "metric": "efficiency",
@@ -743,13 +789,13 @@ Side-by-side comparison of AI coding platforms on a given metric.
 
 **How each metric is computed per platform:**
 
-| Metric | Aggregation |
-|--------|-------------|
-| `efficiency` | Mean of `efficiencyScore` across platform's sessions |
-| `cost` | Mean of `estimatedCostUsd` |
-| `task_success` | Mean of `taskSuccessRate` |
-| `tool_calls` | Mean of `toolCallCount` |
-| `error_rate` | Mean of `(1 - taskSuccessRate)` |
+| Metric         | Aggregation                                          |
+| -------------- | ---------------------------------------------------- |
+| `efficiency`   | Mean of `efficiencyScore` across platform's sessions |
+| `cost`         | Mean of `estimatedCostUsd`                           |
+| `task_success` | Mean of `taskSuccessRate`                            |
+| `tool_calls`   | Mean of `toolCallCount`                              |
+| `error_rate`   | Mean of `(1 - taskSuccessRate)`                      |
 
 Sessions are grouped by platform (defaults to `"claude-code"` if not set). Only sessions within the lookback window are included.
 
@@ -768,26 +814,27 @@ Current spend against configured session/daily/weekly budget caps.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "session": {
-    "budgetUsd": 5.00,
+    "budgetUsd": 5.0,
     "spentUsd": 2.15,
     "remainingUsd": 2.85,
     "pctUsed": 43,
     "exceeded": false
   },
   "daily": {
-    "budgetUsd": 10.00,
+    "budgetUsd": 10.0,
     "spentUsd": 4.32,
     "remainingUsd": 5.68,
     "pctUsed": 43,
     "exceeded": false
   },
   "weekly": {
-    "budgetUsd": 50.00,
-    "spentUsd": 18.90,
-    "remainingUsd": 31.10,
+    "budgetUsd": 50.0,
+    "spentUsd": 18.9,
+    "remainingUsd": 31.1,
     "pctUsed": 38,
     "exceeded": false
   }
@@ -797,6 +844,7 @@ Current spend against configured session/daily/weekly budget caps.
 **Data source:** `BudgetTracker`
 
 **How it works:**
+
 - Tracks cumulative spend per period (session, day, week)
 - Compares against thresholds from config: `sessionBudgetUsd`, `dailyBudgetUsd`, `weeklyBudgetUsd`
 - Returns `null` for any budget not configured
@@ -805,6 +853,7 @@ Current spend against configured session/daily/weekly budget caps.
 **Requires:** `BudgetTracker`
 
 **Config fields:**
+
 - `NEW_RELIC_AI_SESSION_BUDGET_USD` — session spend limit in USD
 - `NEW_RELIC_AI_DAILY_BUDGET_USD` — daily spend limit in USD
 - `NEW_RELIC_AI_WEEKLY_BUDGET_USD` — weekly spend limit in USD
@@ -820,6 +869,7 @@ Projects future spend based on current session burn rate.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "current_session": {
@@ -829,9 +879,21 @@ Projects future spend based on current session burn rate.
     "burnRateUsd_per_hour": 0.45
   },
   "projections": {
-    "end_of_session": { "estimatedCostUsd": 0.90, "confidence": "medium", "basis": "Assumes 2-hour session" },
-    "end_of_day": { "estimatedCostUsd": 2.70, "confidence": "low", "basis": "Assumes 6 more hours of coding today" },
-    "end_of_week": { "estimatedCostUsd": 15.75, "confidence": "low", "basis": "Assumes 5 more days at current rate" }
+    "end_of_session": {
+      "estimatedCostUsd": 0.9,
+      "confidence": "medium",
+      "basis": "Assumes 2-hour session"
+    },
+    "end_of_day": {
+      "estimatedCostUsd": 2.7,
+      "confidence": "low",
+      "basis": "Assumes 6 more hours of coding today"
+    },
+    "end_of_week": {
+      "estimatedCostUsd": 15.75,
+      "confidence": "low",
+      "basis": "Assumes 5 more days at current rate"
+    }
   }
 }
 ```
@@ -839,6 +901,7 @@ Projects future spend based on current session burn rate.
 **Data source:** `CostTracker`, `BudgetTracker`, session start time
 
 **How it works:**
+
 1. Computes `burnRateUsd_per_hour = currentCostUsd / elapsedHours`
 2. **End-of-session** projection: assumes typical 2-hour session, medium confidence
 3. **End-of-day** projection: assumes remaining hours until midnight at current burn rate, low confidence
@@ -860,6 +923,7 @@ Context window efficiency: unique vs. repeated file reads.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "uniqueFilesRead": 12,
@@ -877,6 +941,7 @@ Context window efficiency: unique vs. repeated file reads.
 **Data source:** `ContextWindowTracker`
 
 **How it works:**
+
 - Tracks every Read tool call and the file path accessed
 - Counts how many times each file was read
 - `repeatedReadCount` = sum of `(readCount - 1)` for files read > 1 time
@@ -896,6 +961,7 @@ Tool call latency: p50, p95, p99 per tool type.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "global": { "p50": 45, "p95": 280, "p99": 1200 },
@@ -910,6 +976,7 @@ Tool call latency: p50, p95, p99 per tool type.
 **Data source:** `LatencyTracker`
 
 **How it works:**
+
 - Collects `durationMs` from every tool call
 - Computes percentiles globally and per tool type
 - Percentiles indicate typical (p50), slow (p95), and very slow (p99) performance
@@ -928,6 +995,7 @@ Task lifecycle tracking: completed vs. in-progress vs. abandoned.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "detected_tasks": 8,
@@ -943,6 +1011,7 @@ Task lifecycle tracking: completed vs. in-progress vs. abandoned.
 **Data source:** `TaskCompletionTracker`
 
 **How it works:**
+
 - Uses `TaskDetector` output to identify task boundaries
 - Tracks state transitions: new → in-progress → completed (or abandoned if work stops)
 - `completion_rate` = `completed / (completed + abandoned)`
@@ -961,14 +1030,25 @@ Which AI model was used per request and cost-efficiency per model.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "model_distribution": {
-    "claude-sonnet-4-6": { "request_count": 25, "total_cost": 0.42, "avg_cost": 0.017, "efficiency_score": 0.82 },
-    "claude-opus-4-7": { "request_count": 3, "total_cost": 0.18, "avg_cost": 0.060, "efficiency_score": 0.88 }
+    "claude-sonnet-4-6": {
+      "request_count": 25,
+      "total_cost": 0.42,
+      "avg_cost": 0.017,
+      "efficiency_score": 0.82
+    },
+    "claude-opus-4-7": {
+      "request_count": 3,
+      "total_cost": 0.18,
+      "avg_cost": 0.06,
+      "efficiency_score": 0.88
+    }
   },
   "total_requests": 28,
-  "total_cost": 0.60,
+  "total_cost": 0.6,
   "cost_per_request": 0.021
 }
 ```
@@ -976,6 +1056,7 @@ Which AI model was used per request and cost-efficiency per model.
 **Data source:** `ModelUsageTracker`
 
 **How it works:**
+
 - Tracks `model` field from each request (e.g., "claude-sonnet-4-6")
 - Aggregates cost per model
 - Computes `efficiency_score` for each model: `(completedTasks / failedAttempts) / (costPerRequest / averageCostPerRequest)`
@@ -998,6 +1079,7 @@ Thrashing and retry detection alerts within a sliding window.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "alerts": [
@@ -1025,6 +1107,7 @@ Per-turn token breakdown by category with context fill percentage and dominance 
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "currentFillPercent": 62.5,
@@ -1035,9 +1118,7 @@ Per-turn token breakdown by category with context fill percentage and dominance 
     "injectedFiles": 10000
   },
   "turnCount": 12,
-  "thresholdAlerts": [
-    { "fillPercent": 62.5, "threshold": 50, "turnIndex": 11 }
-  ],
+  "thresholdAlerts": [{ "fillPercent": 62.5, "threshold": 50, "turnIndex": 11 }],
   "dominanceAlerts": [],
   "history": []
 }
@@ -1060,13 +1141,14 @@ Time split between LLM API calls, tool execution, and overhead — with p50/p95 
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "turnCount": 8,
   "llmApi": { "p50": 1200, "p95": 3500 },
   "toolExecution": { "p50": 45, "p95": 280 },
   "overhead": { "p50": 12, "p95": 60 },
-  "avgComposition": { "llmApi": 0.70, "toolExecution": 0.25, "overhead": 0.05 },
+  "avgComposition": { "llmApi": 0.7, "toolExecution": 0.25, "overhead": 0.05 },
   "recentTurns": []
 }
 ```
@@ -1087,11 +1169,12 @@ Decision branch analysis with reasoning extraction and failure chain post-mortem
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
+| Parameter     | Type    | Default | Description                                |
+| ------------- | ------- | ------- | ------------------------------------------ |
 | `post_mortem` | boolean | `false` | If true, return only failure-zone branches |
 
 **Returns (full):**
+
 ```json
 {
   "totalBranches": 24,
@@ -1105,11 +1188,10 @@ Decision branch analysis with reasoning extraction and failure chain post-mortem
 ```
 
 **Returns (post_mortem: true):**
+
 ```json
 {
-  "postMortem": [
-    { "index": 3, "reasoning": "...", "action": "Bash", "outcome": "failure" }
-  ]
+  "postMortem": [{ "index": 3, "reasoning": "...", "action": "Bash", "outcome": "failure" }]
 }
 ```
 
@@ -1130,6 +1212,7 @@ CLAUDE.md and system prompt change correlations with session outcomes.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "currentPromptHash": "a1b2c3d4",
@@ -1161,6 +1244,7 @@ Tool selection quality score with penalty breakdown for redundant reads, repeate
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "score": 0.87,
@@ -1193,6 +1277,7 @@ Quality signal tracking: diff apply rate, test pass rate, self-correction count,
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "totalSignals": 18,
@@ -1223,14 +1308,19 @@ API failure tracking: per-model reliability scorecards, tokens lost, throttle al
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "totalFailures": 3,
   "byErrorType": { "rate_limit": 2, "server_error": 1 },
   "byModel": {
     "claude-sonnet-4-6": {
-      "totalRequests": 40, "failureCount": 2, "reliabilityScore": 0.95,
-      "tokensLost": 8000, "estimatedCostLostUsd": 0.024, "meanTimeToRecoveryMs": 4200
+      "totalRequests": 40,
+      "failureCount": 2,
+      "reliabilityScore": 0.95,
+      "tokensLost": 8000,
+      "estimatedCostLostUsd": 0.024,
+      "meanTimeToRecoveryMs": 4200
     }
   },
   "bySessionPhase": { "early": 1, "mid": 2, "late": 0 },
@@ -1260,17 +1350,18 @@ Aggregated AI coding cost and efficiency metrics for all developers in the confi
 
 **Parameters:**
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `since` | string | `"7 days ago"` | Time window (e.g. `"7 days ago"`, `"1 day ago"`) |
+| Parameter | Type   | Default        | Description                                      |
+| --------- | ------ | -------------- | ------------------------------------------------ |
+| `since`   | string | `"7 days ago"` | Time window (e.g. `"7 days ago"`, `"1 day ago"`) |
 
 **Returns:**
+
 ```json
 {
   "teamId": "backend-team",
   "since": "7 days ago",
   "developers": [
-    { "developer": "alice", "costUsd": 4.20, "efficiencyScore": 0.78, "antiPatterns": 3 },
+    { "developer": "alice", "costUsd": 4.2, "efficiencyScore": 0.78, "antiPatterns": 3 },
     { "developer": "bob", "costUsd": 2.15, "efficiencyScore": 0.65, "antiPatterns": 7 }
   ],
   "totals": {
@@ -1283,6 +1374,7 @@ Aggregated AI coding cost and efficiency metrics for all developers in the confi
 **Data source:** New Relic NerdGraph (NRQL queries against `Metric` and `AiAntiPattern` event types)
 
 **How it works:**
+
 1. Runs three parallel NRQL queries against NR via NerdGraph: cost sum, avg efficiency score, and anti-pattern count — all faceted by `developer` and filtered by `team_id`
 2. Merges results by developer name
 3. Returns error message (not stack trace) when `teamId` or `nrApiKey` is not configured
@@ -1290,6 +1382,7 @@ Aggregated AI coding cost and efficiency metrics for all developers in the confi
 **Requires:** `teamId` and `nrApiKey` (`NEW_RELIC_API_KEY`) both configured
 
 **Config fields:**
+
 - `NEW_RELIC_AI_TEAM_ID` — team identifier for aggregation
 - `NEW_RELIC_API_KEY` — User API key (NRAK-...) for NerdGraph queries
 
@@ -1305,11 +1398,12 @@ Register a Slack webhook URL to receive weekly AI coding cost and efficiency sum
 
 **Parameters:**
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `webhookUrl` | string | Yes | Slack incoming webhook URL (must start with `https://hooks.slack.com/`) |
+| Parameter    | Type   | Required | Description                                                             |
+| ------------ | ------ | -------- | ----------------------------------------------------------------------- |
+| `webhookUrl` | string | Yes      | Slack incoming webhook URL (must start with `https://hooks.slack.com/`) |
 
 **Returns:**
+
 ```json
 {
   "ok": true,
@@ -1320,11 +1414,13 @@ Register a Slack webhook URL to receive weekly AI coding cost and efficiency sum
 **Data source:** Config file (`~/.nr-ai-observe/config.json`)
 
 **How it works:**
+
 1. Validates the webhook URL starts with `https://hooks.slack.com/`
 2. Reads the existing config file (or starts with an empty object)
 3. Writes `digestWebhookUrl` to the config file with `0o600` permissions
 
 **Config fields:**
+
 - `NEW_RELIC_AI_DIGEST_WEBHOOK_URL` — Slack incoming webhook endpoint
 - `NEW_RELIC_AI_DIGEST_SCHEDULE` — cron expression for digest delivery (default: `"0 9 * * 1"`)
 
@@ -1341,6 +1437,7 @@ Remove the registered Slack webhook for weekly digests.
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "ok": true,
@@ -1351,6 +1448,7 @@ Remove the registered Slack webhook for weekly digests.
 **Data source:** Config file (`~/.nr-ai-observe/config.json`)
 
 **How it works:**
+
 - Reads the existing config file
 - Deletes `digestWebhookUrl` from the config and writes it back
 
@@ -1367,6 +1465,7 @@ Generate the current weekly AI coding summary and POST it to the configured Slac
 **Parameters:** None
 
 **Returns:**
+
 ```json
 {
   "ok": true,
@@ -1378,6 +1477,7 @@ Generate the current weekly AI coding summary and POST it to the configured Slac
 **Data source:** `WeeklySummaryGenerator` + config file webhook URL
 
 **How it works:**
+
 1. Reads `digestWebhookUrl` from the config file at call time
 2. Generates the current week's summary via `WeeklySummaryGenerator`
 3. Formats a Slack Block Kit payload via `formatSlackDigest()`

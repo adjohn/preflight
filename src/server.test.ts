@@ -46,10 +46,7 @@ describe('MCP protocol via InMemoryTransport', () => {
 
     client = new Client({ name: 'test-client', version: '1.0.0' });
 
-    await Promise.all([
-      server.server.connect(serverTransport),
-      client.connect(clientTransport),
-    ]);
+    await Promise.all([server.server.connect(serverTransport), client.connect(clientTransport)]);
   });
 
   afterEach(async () => {

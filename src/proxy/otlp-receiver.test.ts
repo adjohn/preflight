@@ -165,10 +165,12 @@ describe('handleRequest', () => {
 // ---------------------------------------------------------------------------
 
 describe('forward', () => {
-  const mockFetch = jest.fn<(url: string, init?: RequestInit) => Promise<Response>>().mockResolvedValue({
-    status: 200,
-    text: async () => '{}',
-  } as Response);
+  const mockFetch = jest
+    .fn<(url: string, init?: RequestInit) => Promise<Response>>()
+    .mockResolvedValue({
+      status: 200,
+      text: async () => '{}',
+    } as Response);
 
   beforeEach(() => {
     mockFetch.mockClear();
@@ -233,7 +235,7 @@ describe('forward', () => {
       const port = getBoundPort(receiver);
       await httpRequest(port, 'POST', '/v1/traces', JSON.stringify({ resourceSpans: [] }), {
         'x-custom-header': 'should-not-leak',
-        'authorization': 'Bearer attacker-token',
+        authorization: 'Bearer attacker-token',
       });
       const call = mockFetch.mock.calls[0];
       expect(call).toBeDefined();
@@ -276,45 +278,49 @@ describe('start / stop lifecycle', () => {
 describe('constructor SSRF guard', () => {
   it('throws for a private RFC-1918 forwardEndpoint', () => {
     expect(
-      () => new OtlpReceiver({
-        port: 0,
-        forwardEndpoint: 'http://192.168.1.1/endpoint',
-        forwardHeaders: {},
-        enrichmentAttributes: {},
-      }),
+      () =>
+        new OtlpReceiver({
+          port: 0,
+          forwardEndpoint: 'http://192.168.1.1/endpoint',
+          forwardHeaders: {},
+          enrichmentAttributes: {},
+        }),
     ).toThrow();
   });
 
   it('throws for a loopback forwardEndpoint', () => {
     expect(
-      () => new OtlpReceiver({
-        port: 0,
-        forwardEndpoint: 'http://127.0.0.1:4317',
-        forwardHeaders: {},
-        enrichmentAttributes: {},
-      }),
+      () =>
+        new OtlpReceiver({
+          port: 0,
+          forwardEndpoint: 'http://127.0.0.1:4317',
+          forwardHeaders: {},
+          enrichmentAttributes: {},
+        }),
     ).toThrow();
   });
 
   it('accepts a public forwardEndpoint', () => {
     expect(
-      () => new OtlpReceiver({
-        port: 0,
-        forwardEndpoint: 'https://otlp.nr-data.net',
-        forwardHeaders: {},
-        enrichmentAttributes: {},
-      }),
+      () =>
+        new OtlpReceiver({
+          port: 0,
+          forwardEndpoint: 'https://otlp.nr-data.net',
+          forwardHeaders: {},
+          enrichmentAttributes: {},
+        }),
     ).not.toThrow();
   });
 
   it('accepts null forwardEndpoint without validation', () => {
     expect(
-      () => new OtlpReceiver({
-        port: 0,
-        forwardEndpoint: null,
-        forwardHeaders: {},
-        enrichmentAttributes: {},
-      }),
+      () =>
+        new OtlpReceiver({
+          port: 0,
+          forwardEndpoint: null,
+          forwardHeaders: {},
+          enrichmentAttributes: {},
+        }),
     ).not.toThrow();
   });
 });
@@ -550,7 +556,10 @@ describe('Content-Type validation (F-101)', () => {
   it('returns 200 for application/x-protobuf', async () => {
     const port = getBoundPort(receiver);
     const { statusCode } = await httpRequest(
-      port, 'POST', '/v1/traces', Buffer.from([0x00, 0x01]),
+      port,
+      'POST',
+      '/v1/traces',
+      Buffer.from([0x00, 0x01]),
       { 'content-type': 'application/x-protobuf' },
     );
     expect(statusCode).toBe(200);
@@ -591,7 +600,9 @@ describe('incomplete body (F-102)', () => {
           conn.end();
         });
         let response = '';
-        conn.on('data', (chunk: Buffer) => { response += chunk.toString(); });
+        conn.on('data', (chunk: Buffer) => {
+          response += chunk.toString();
+        });
         conn.on('end', () => {
           const match = /^HTTP\/1\.1 (\d{3})/.exec(response);
           resolve(match ? parseInt(match[1], 10) : 0);
@@ -619,7 +630,7 @@ describe('error message sanitization (F-103)', () => {
     const upstreamError = new Error(errorMessage);
     const stackFrames = (upstreamError.stack ?? '')
       .split('\n')
-      .filter(l => l.trim().startsWith('at '));
+      .filter((l) => l.trim().startsWith('at '));
 
     (globalThis as { fetch?: unknown }).fetch = () => Promise.reject(upstreamError);
 
@@ -631,12 +642,15 @@ describe('error message sanitization (F-103)', () => {
     try {
       const port = getBoundPort(receiver);
       const { statusCode } = await httpRequest(
-        port, 'POST', '/v1/traces', JSON.stringify({ resourceSpans: [] }),
+        port,
+        'POST',
+        '/v1/traces',
+        JSON.stringify({ resourceSpans: [] }),
       );
       expect(statusCode).toBe(500);
 
       const logged = (stderrSpy.mock.calls as Array<[string | Uint8Array]>)
-        .map(([arg]) => typeof arg === 'string' ? arg : Buffer.from(arg).toString())
+        .map(([arg]) => (typeof arg === 'string' ? arg : Buffer.from(arg).toString()))
         .join('');
 
       expect(logged).toContain(errorMessage);
@@ -670,7 +684,7 @@ describe('Expect: 100-continue (F-104)', () => {
             headers: {
               'content-type': 'application/json',
               'content-length': String(Buffer.byteLength(body)),
-              'expect': '100-continue',
+              expect: '100-continue',
             },
           },
           (res) => {
@@ -729,7 +743,10 @@ describe('F-139: Content-Type edge cases', () => {
   it('returns 200 for application/octet-stream (binary OTLP, allowed content type)', async () => {
     const port = getBoundPort(receiver);
     const { statusCode } = await httpRequest(
-      port, 'POST', '/v1/traces', Buffer.from([0x0a, 0x00]),
+      port,
+      'POST',
+      '/v1/traces',
+      Buffer.from([0x0a, 0x00]),
       { 'content-type': 'application/octet-stream' },
     );
     expect(statusCode).toBe(200);
@@ -760,11 +777,11 @@ describe('F-139: abort mid-stream', () => {
           // the server's 400 response triggered by the "Incomplete body" check.
           socket.write(
             'POST /v1/traces HTTP/1.1\r\n' +
-            'Host: 127.0.0.1\r\n' +
-            'Content-Type: application/json\r\n' +
-            'Content-Length: 100\r\n' +
-            '\r\n' +
-            '{"partial":'
+              'Host: 127.0.0.1\r\n' +
+              'Content-Type: application/json\r\n' +
+              'Content-Length: 100\r\n' +
+              '\r\n' +
+              '{"partial":',
           );
           socket.end();
         });

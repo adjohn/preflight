@@ -16,7 +16,9 @@
   --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
 }
 body {

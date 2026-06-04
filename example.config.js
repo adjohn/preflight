@@ -43,15 +43,15 @@ export default {
 
   // Maximum spend per session in USD before a budget warning is emitted.
   // Env: NEW_RELIC_AI_SESSION_BUDGET_USD
-  sessionBudgetUsd: 5.00,
+  sessionBudgetUsd: 5.0,
 
   // Maximum spend per calendar day in USD.
   // Env: NEW_RELIC_AI_DAILY_BUDGET_USD
-  dailyBudgetUsd: 20.00,
+  dailyBudgetUsd: 20.0,
 
   // Maximum spend per calendar week in USD.
   // Env: NEW_RELIC_AI_WEEKLY_BUDGET_USD
-  weeklyBudgetUsd: 100.00,
+  weeklyBudgetUsd: 100.0,
 
   // ── Personal alert thresholds ─────────────────────────────────────────────
   // Used by: npx tsx scripts/deploy-alerts.ts --developer <name>
@@ -60,7 +60,7 @@ export default {
   alerts: {
     personal: {
       dailyCostUsd: 2,
-      sessionCostUsd: 0.50,
+      sessionCostUsd: 0.5,
       efficiencyScoreMin: 40,
       stuckLoopCountMax: 2,
     },

@@ -47,7 +47,7 @@ describe('Thrashing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const thrashing = result.patterns.filter(p => p.type === 'thrashing');
+    const thrashing = result.patterns.filter((p) => p.type === 'thrashing');
 
     expect(thrashing).toHaveLength(1);
     expect(thrashing[0].file).toBe('/a.ts');
@@ -63,7 +63,7 @@ describe('Thrashing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const thrashing = result.patterns.filter(p => p.type === 'thrashing');
+    const thrashing = result.patterns.filter((p) => p.type === 'thrashing');
     expect(thrashing).toHaveLength(0);
   });
 
@@ -87,7 +87,7 @@ describe('Thrashing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const thrashing = result.patterns.filter(p => p.type === 'thrashing');
+    const thrashing = result.patterns.filter((p) => p.type === 'thrashing');
     expect(thrashing).toHaveLength(0);
   });
 
@@ -105,7 +105,7 @@ describe('Thrashing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const thrashing = result.patterns.filter(p => p.type === 'thrashing');
+    const thrashing = result.patterns.filter((p) => p.type === 'thrashing');
 
     expect(thrashing).toHaveLength(1);
     expect(thrashing[0].file).toBe('/a.ts');
@@ -131,7 +131,7 @@ describe('Re-reading detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const reReading = result.patterns.filter(p => p.type === 're_reading');
+    const reReading = result.patterns.filter((p) => p.type === 're_reading');
 
     expect(reReading).toHaveLength(1);
     expect(reReading[0].file).toBe('/a.ts');
@@ -148,7 +148,7 @@ describe('Re-reading detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const reReading = result.patterns.filter(p => p.type === 're_reading');
+    const reReading = result.patterns.filter((p) => p.type === 're_reading');
     expect(reReading).toHaveLength(1);
     expect(reReading[0].readCount).toBe(3);
   });
@@ -162,7 +162,7 @@ describe('Re-reading detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const reReading = result.patterns.filter(p => p.type === 're_reading');
+    const reReading = result.patterns.filter((p) => p.type === 're_reading');
     expect(reReading).toHaveLength(0);
   });
 });
@@ -183,7 +183,7 @@ describe('Stuck loop detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const stuck = result.patterns.filter(p => p.type === 'stuck_loop');
+    const stuck = result.patterns.filter((p) => p.type === 'stuck_loop');
 
     expect(stuck).toHaveLength(1);
     expect(stuck[0].command).toBe('npm test');
@@ -200,7 +200,7 @@ describe('Stuck loop detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const stuck = result.patterns.filter(p => p.type === 'stuck_loop');
+    const stuck = result.patterns.filter((p) => p.type === 'stuck_loop');
     expect(stuck).toHaveLength(0);
   });
 
@@ -216,7 +216,7 @@ describe('Stuck loop detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const stuck = result.patterns.filter(p => p.type === 'stuck_loop');
+    const stuck = result.patterns.filter((p) => p.type === 'stuck_loop');
     expect(stuck).toHaveLength(0);
   });
 });
@@ -237,7 +237,7 @@ describe('Blind editing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const blind = result.patterns.filter(p => p.type === 'blind_editing');
+    const blind = result.patterns.filter((p) => p.type === 'blind_editing');
 
     expect(blind).toHaveLength(1);
     expect(blind[0].file).toBe('/a.ts');
@@ -254,7 +254,7 @@ describe('Blind editing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const blind = result.patterns.filter(p => p.type === 'blind_editing');
+    const blind = result.patterns.filter((p) => p.type === 'blind_editing');
     expect(blind).toHaveLength(1);
     expect(blind[0].editCount).toBe(3);
   });
@@ -269,7 +269,7 @@ describe('Blind editing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const blind = result.patterns.filter(p => p.type === 'blind_editing');
+    const blind = result.patterns.filter((p) => p.type === 'blind_editing');
     expect(blind).toHaveLength(0);
   });
 
@@ -285,7 +285,7 @@ describe('Blind editing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const blind = result.patterns.filter(p => p.type === 'blind_editing');
+    const blind = result.patterns.filter((p) => p.type === 'blind_editing');
     // Each streak is 2 edits — below threshold of 3
     expect(blind).toHaveLength(0);
   });
@@ -301,7 +301,7 @@ describe('Blind editing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const blind = result.patterns.filter(p => p.type === 'blind_editing');
+    const blind = result.patterns.filter((p) => p.type === 'blind_editing');
     // First streak is 2 edits — below threshold of 3; lint resets it
     expect(blind).toHaveLength(0);
   });
@@ -321,7 +321,7 @@ describe('Blind editing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const blind = result.patterns.filter(p => p.type === 'blind_editing');
+    const blind = result.patterns.filter((p) => p.type === 'blind_editing');
 
     // /a.ts: 2 edits (below threshold), then Read resets, then 1 edit → not flagged
     // /b.ts: 4 edits without verification → flagged
@@ -346,7 +346,7 @@ describe('Blind editing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const blind = result.patterns.filter(p => p.type === 'blind_editing');
+    const blind = result.patterns.filter((p) => p.type === 'blind_editing');
 
     // /b.ts was flagged (4 edits >= threshold) before the test — preserved
     // /a.ts had 2 edits (below threshold) before test, then 2 after reset — not flagged
@@ -369,7 +369,7 @@ describe('Blind editing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const blind = result.patterns.filter(p => p.type === 'blind_editing');
+    const blind = result.patterns.filter((p) => p.type === 'blind_editing');
 
     expect(blind).toHaveLength(1);
     expect(blind[0].file).toBe('/a.ts');
@@ -388,7 +388,7 @@ describe('Blind editing detection', () => {
     ];
 
     const result = detector.analyze(calls);
-    const blind = result.patterns.filter(p => p.type === 'blind_editing');
+    const blind = result.patterns.filter((p) => p.type === 'blind_editing');
 
     expect(blind).toHaveLength(1);
     expect(blind[0].file).toBe('/a.ts');
@@ -409,7 +409,7 @@ describe('Over-delegation detection', () => {
     }
 
     const result = detector.analyze(calls);
-    const overDelegation = result.patterns.filter(p => p.type === 'over_delegation');
+    const overDelegation = result.patterns.filter((p) => p.type === 'over_delegation');
 
     expect(overDelegation).toHaveLength(1);
     expect(overDelegation[0].agentCount).toBe(5);
@@ -424,7 +424,7 @@ describe('Over-delegation detection', () => {
     }
 
     const result = detector.analyze(calls);
-    const overDelegation = result.patterns.filter(p => p.type === 'over_delegation');
+    const overDelegation = result.patterns.filter((p) => p.type === 'over_delegation');
     expect(overDelegation).toHaveLength(0);
   });
 });
@@ -445,7 +445,7 @@ describe('F-136: threshold boundary tests', () => {
       makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
     ];
     const result = detector.analyze(calls);
-    expect(result.patterns.filter(p => p.type === 'thrashing')).toHaveLength(0);
+    expect(result.patterns.filter((p) => p.type === 'thrashing')).toHaveLength(0);
   });
 
   it('thrashing: 4 cycles (threshold+1=4) fires with iterations=4', () => {
@@ -461,7 +461,7 @@ describe('F-136: threshold boundary tests', () => {
       makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
     ];
     const result = detector.analyze(calls);
-    const thrashing = result.patterns.filter(p => p.type === 'thrashing');
+    const thrashing = result.patterns.filter((p) => p.type === 'thrashing');
     expect(thrashing).toHaveLength(1);
     expect(thrashing[0].iterations).toBe(4);
   });
@@ -480,7 +480,7 @@ describe('F-136: threshold boundary tests', () => {
       makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }),
     ];
     const result = detector.analyze(calls);
-    expect(result.patterns.filter(p => p.type === 'thrashing')).toHaveLength(0);
+    expect(result.patterns.filter((p) => p.type === 'thrashing')).toHaveLength(0);
   });
 
   // ---- Stuck loop ----
@@ -493,7 +493,7 @@ describe('F-136: threshold boundary tests', () => {
       makeRecord({ toolName: 'Bash', command: 'npm test' }),
     ];
     const result = detector.analyze(calls);
-    const stuck = result.patterns.filter(p => p.type === 'stuck_loop');
+    const stuck = result.patterns.filter((p) => p.type === 'stuck_loop');
     expect(stuck).toHaveLength(1);
     expect(stuck[0].repeatCount).toBe(3);
   });
@@ -505,7 +505,7 @@ describe('F-136: threshold boundary tests', () => {
       makeRecord({ toolName: 'Bash', command: 'npm test' }),
     ];
     const result = detector.analyze(calls);
-    expect(result.patterns.filter(p => p.type === 'stuck_loop')).toHaveLength(0);
+    expect(result.patterns.filter((p) => p.type === 'stuck_loop')).toHaveLength(0);
   });
 
   // ---- Blind editing ----
@@ -517,7 +517,7 @@ describe('F-136: threshold boundary tests', () => {
       makeRecord({ toolName: 'Edit', filePath: '/a.ts' }),
     ];
     const result = detector.analyze(calls);
-    expect(result.patterns.filter(p => p.type === 'blind_editing')).toHaveLength(0);
+    expect(result.patterns.filter((p) => p.type === 'blind_editing')).toHaveLength(0);
   });
 
   // ---- Over-delegation ----
@@ -529,7 +529,7 @@ describe('F-136: threshold boundary tests', () => {
       calls.push(makeRecord({ toolName: 'Agent', agentDescription: `task-${i}` }));
     }
     const result = detector.analyze(calls);
-    const over = result.patterns.filter(p => p.type === 'over_delegation');
+    const over = result.patterns.filter((p) => p.type === 'over_delegation');
     expect(over).toHaveLength(1);
     expect(over[0].agentCount).toBe(4);
   });
@@ -556,9 +556,7 @@ describe('Efficiency metrics', () => {
   it('readEfficiency is null when no Read calls', () => {
     const detector = new AntiPatternDetector();
 
-    const calls: ToolCallRecord[] = [
-      makeRecord({ toolName: 'Edit', filePath: '/a.ts' }),
-    ];
+    const calls: ToolCallRecord[] = [makeRecord({ toolName: 'Edit', filePath: '/a.ts' })];
 
     const result = detector.analyze(calls);
     expect(result.readEfficiency).toBeNull();
@@ -618,9 +616,7 @@ describe('Efficiency metrics', () => {
   it('verifyRate is null when no edits', () => {
     const detector = new AntiPatternDetector();
 
-    const calls: ToolCallRecord[] = [
-      makeRecord({ toolName: 'Read', filePath: '/a.ts' }),
-    ];
+    const calls: ToolCallRecord[] = [makeRecord({ toolName: 'Read', filePath: '/a.ts' })];
 
     const result = detector.analyze(calls);
     expect(result.verifyRate).toBeNull();
@@ -643,7 +639,8 @@ describe('emitMetrics()', () => {
 
     const result = detector.analyze(calls);
 
-    const recorded: Array<{ name: string; value: number; attrs: Record<string, string | number> }> = [];
+    const recorded: Array<{ name: string; value: number; attrs: Record<string, string | number> }> =
+      [];
     const aggregator = {
       record(name: string, value: number, attrs: Record<string, string | number> = {}) {
         recorded.push({ name, value, attrs });
@@ -682,7 +679,7 @@ describe('Configurable thresholds', () => {
     ];
 
     const result = detector.analyze(calls);
-    const thrashing = result.patterns.filter(p => p.type === 'thrashing');
+    const thrashing = result.patterns.filter((p) => p.type === 'thrashing');
     expect(thrashing).toHaveLength(1);
     expect(thrashing[0].iterations).toBe(2);
   });
@@ -725,7 +722,7 @@ describe('Edge cases', () => {
     ];
 
     const result = detector.analyze(calls);
-    const types = result.patterns.map(p => p.type);
+    const types = result.patterns.map((p) => p.type);
 
     expect(types).toContain('re_reading');
     expect(types).toContain('blind_editing');
@@ -752,7 +749,7 @@ describe('Edge cases', () => {
     const result1 = detector.analyze(calls1);
     const patterns1 = detector.getCurrentPatterns();
     expect(patterns1).toEqual(result1.patterns);
-    expect(patterns1.some(p => p.type === 're_reading')).toBe(true);
+    expect(patterns1.some((p) => p.type === 're_reading')).toBe(true);
 
     const calls2: ToolCallRecord[] = [];
 

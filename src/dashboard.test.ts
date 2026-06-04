@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 // ---------------------------------------------------------------------------
 
 const dashboardsDir = resolve(__dirname, '..', 'dashboards');
-const dashboardFiles = readdirSync(dashboardsDir).filter(f => f.endsWith('.json'));
+const dashboardFiles = readdirSync(dashboardsDir).filter((f) => f.endsWith('.json'));
 
 interface Widget {
   title: string;
@@ -31,7 +31,7 @@ interface Dashboard {
   pages: Page[];
 }
 
-const dashboards: Array<{ file: string; dashboard: Dashboard }> = dashboardFiles.map(file => ({
+const dashboards: Array<{ file: string; dashboard: Dashboard }> = dashboardFiles.map((file) => ({
   file,
   dashboard: JSON.parse(readFileSync(resolve(dashboardsDir, file), 'utf-8')),
 }));
@@ -93,7 +93,15 @@ describe.each(dashboards)('Dashboard: $file', ({ dashboard }) => {
 
   it('all FROM clauses reference known event types', () => {
     const queries = getAllQueries(dashboard);
-    const validEventTypes = new Set(['AiToolCall', 'Metric', 'AiCodingTask', 'AiAntiPattern', 'AiAuditEvent', 'SecurityAlert', 'AiMcpToolCall']);
+    const validEventTypes = new Set([
+      'AiToolCall',
+      'Metric',
+      'AiCodingTask',
+      'AiAntiPattern',
+      'AiAuditEvent',
+      'SecurityAlert',
+      'AiMcpToolCall',
+    ]);
 
     for (const query of queries) {
       const fromMatch = query.match(/FROM\s+(\w+)/i);
@@ -137,7 +145,7 @@ describe.each(dashboards)('Dashboard: $file', ({ dashboard }) => {
 // ---------------------------------------------------------------------------
 
 describe('Overview dashboard', () => {
-  const overview = dashboards.find(d => d.file === 'ai-coding-assistant-overview.json');
+  const overview = dashboards.find((d) => d.file === 'ai-coding-assistant-overview.json');
 
   it('exists', () => {
     expect(overview).toBeDefined();
@@ -149,7 +157,7 @@ describe('Overview dashboard', () => {
 });
 
 describe('Team View dashboard', () => {
-  const teamView = dashboards.find(d => d.file === 'ai-coding-assistant-team-view.json');
+  const teamView = dashboards.find((d) => d.file === 'ai-coding-assistant-team-view.json');
 
   it('exists', () => {
     expect(teamView).toBeDefined();
@@ -165,19 +173,19 @@ describe('Team View dashboard', () => {
 
   it('includes FACET developer queries for team comparison', () => {
     const queries = getAllQueries(teamView!.dashboard);
-    const developerFacetQueries = queries.filter(q => q.includes('FACET developer'));
+    const developerFacetQueries = queries.filter((q) => q.includes('FACET developer'));
     expect(developerFacetQueries.length).toBeGreaterThanOrEqual(3);
   });
 
   it('includes TIMESERIES queries for trend analysis', () => {
     const queries = getAllQueries(teamView!.dashboard);
-    const timeseriesQueries = queries.filter(q => q.includes('TIMESERIES'));
+    const timeseriesQueries = queries.filter((q) => q.includes('TIMESERIES'));
     expect(timeseriesQueries.length).toBeGreaterThanOrEqual(3);
   });
 });
 
 describe('Security Audit dashboard', () => {
-  const security = dashboards.find(d => d.file === 'ai-coding-assistant-security.json');
+  const security = dashboards.find((d) => d.file === 'ai-coding-assistant-security.json');
 
   it('exists', () => {
     expect(security).toBeDefined();
@@ -193,19 +201,21 @@ describe('Security Audit dashboard', () => {
 
   it('includes audit.security_alert filter queries', () => {
     const queries = getAllQueries(security!.dashboard);
-    const alertQueries = queries.filter(q => q.includes('audit.security_alert'));
+    const alertQueries = queries.filter((q) => q.includes('audit.security_alert'));
     expect(alertQueries.length).toBeGreaterThanOrEqual(2);
   });
 
   it('includes audit.severity filter queries', () => {
     const queries = getAllQueries(security!.dashboard);
-    const severityQueries = queries.filter(q => q.includes('audit.severity'));
+    const severityQueries = queries.filter((q) => q.includes('audit.severity'));
     expect(severityQueries.length).toBeGreaterThanOrEqual(2);
   });
 });
 
 describe('Platform Comparison dashboard', () => {
-  const platformComparison = dashboards.find(d => d.file === 'ai-coding-assistant-platform-comparison.json');
+  const platformComparison = dashboards.find(
+    (d) => d.file === 'ai-coding-assistant-platform-comparison.json',
+  );
 
   it('exists', () => {
     expect(platformComparison).toBeDefined();
@@ -221,7 +231,10 @@ describe('Platform Comparison dashboard', () => {
 
   it('all non-billboard NRQL queries include FACET platform for cross-platform comparison', () => {
     const widgets = platformComparison!.dashboard.pages[0].widgets.filter(
-      w => w.visualization.id !== 'viz.billboard' && w.visualization.id !== 'viz.markdown' && w.rawConfiguration.nrqlQueries
+      (w) =>
+        w.visualization.id !== 'viz.billboard' &&
+        w.visualization.id !== 'viz.markdown' &&
+        w.rawConfiguration.nrqlQueries,
     );
     for (const widget of widgets) {
       for (const nrql of widget.rawConfiguration.nrqlQueries!) {
@@ -232,20 +245,20 @@ describe('Platform Comparison dashboard', () => {
 
   it('includes TIMESERIES queries for trend analysis', () => {
     const queries = getAllQueries(platformComparison!.dashboard);
-    const timeseriesQueries = queries.filter(q => q.includes('TIMESERIES'));
+    const timeseriesQueries = queries.filter((q) => q.includes('TIMESERIES'));
     expect(timeseriesQueries.length).toBeGreaterThanOrEqual(2);
   });
 
   it('includes a markdown widget for platform feature coverage', () => {
     const markdownWidgets = platformComparison!.dashboard.pages[0].widgets.filter(
-      w => w.visualization.id === 'viz.markdown'
+      (w) => w.visualization.id === 'viz.markdown',
     );
     expect(markdownWidgets.length).toBeGreaterThanOrEqual(1);
   });
 });
 
 describe('Manager View dashboard', () => {
-  const managerView = dashboards.find(d => d.file === 'ai-coding-assistant-manager-view.json');
+  const managerView = dashboards.find((d) => d.file === 'ai-coding-assistant-manager-view.json');
 
   it('exists', () => expect(managerView).toBeDefined());
 
@@ -255,7 +268,7 @@ describe('Manager View dashboard', () => {
 
   it('includes FACET developer queries for per-developer breakdown', () => {
     const queries = getAllQueries(managerView!.dashboard);
-    const developerFacetQueries = queries.filter(q => q.includes('FACET developer'));
+    const developerFacetQueries = queries.filter((q) => q.includes('FACET developer'));
     expect(developerFacetQueries.length).toBeGreaterThanOrEqual(3);
   });
 
@@ -268,7 +281,7 @@ describe('Manager View dashboard', () => {
 });
 
 describe('Personal dashboard', () => {
-  const entry = dashboards.find(d => d.file === 'ai-coding-assistant-personal.json');
+  const entry = dashboards.find((d) => d.file === 'ai-coding-assistant-personal.json');
   const dashboard = entry?.dashboard;
 
   it('exists', () => {
@@ -276,7 +289,7 @@ describe('Personal dashboard', () => {
   });
 
   it('has exactly 3 pages named My Trends, My Patterns, My Best Sessions', () => {
-    const pageNames = dashboard!.pages.map(p => p.name);
+    const pageNames = dashboard!.pages.map((p) => p.name);
     expect(pageNames).toEqual(['My Trends', 'My Patterns', 'My Best Sessions']);
   });
 
@@ -293,7 +306,9 @@ describe('Personal dashboard', () => {
 
   it('has a developer template variable with replacementStrategy STRING', () => {
     expect(Array.isArray(dashboard!.variables)).toBe(true);
-    const devVar = dashboard!.variables!.find((v: Record<string, unknown>) => v.name === 'developer');
+    const devVar = dashboard!.variables!.find(
+      (v: Record<string, unknown>) => v.name === 'developer',
+    );
     expect(devVar).toBeDefined();
     expect(devVar?.replacementStrategy).toBe('STRING');
   });

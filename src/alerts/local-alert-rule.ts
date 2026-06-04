@@ -22,9 +22,7 @@ const operatorSchema = z
   .enum(['above', 'below', 'above_or_equals', 'below_or_equals'])
   .default('above');
 
-const channelsSchema = z
-  .array(z.enum(['banner', 'os']))
-  .default(['banner']);
+const channelsSchema = z.array(z.enum(['banner', 'os'])).default(['banner']);
 
 const baseShape = {
   id: idSchema,
@@ -48,11 +46,7 @@ const antiPatternTypeSchema = z.enum([
   'over_delegation',
 ]);
 
-const percentileSchema = z.union([
-  z.literal(50),
-  z.literal(95),
-  z.literal(99),
-]);
+const percentileSchema = z.union([z.literal(50), z.literal(95), z.literal(99)]);
 
 // Default to 'session' because v1.1's snapshot collector only populates
 // sessionUsd — today/week always read 0 and any rule asking for those

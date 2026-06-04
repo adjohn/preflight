@@ -127,7 +127,7 @@ After [auditing the backfill script](./PRODUCT_BRIEF.md#resolved-backfill-is-sta
 
 ## Pre-Deployment Consumption Estimation
 
-The brief asserts in [§6 — Clear Consumption Communication](./PRODUCT_BRIEF.md#6--user-must-haves) and [§7 — Consumption Surprises](./PRODUCT_BRIEF.md#7--mindset-shift--risks) that the setup wizard *should* help a customer estimate the ingest volume — and the resulting New Relic bill — that their chosen instrumentation will produce, before they deploy it. That capability does not exist today. Without it, customers face a real risk of unexpected NR consumption costs after rolling out broadly.
+The brief asserts in [§6 — Clear Consumption Communication](./PRODUCT_BRIEF.md#6--user-must-haves) and [§7 — Consumption Surprises](./PRODUCT_BRIEF.md#7--mindset-shift--risks) that the setup wizard _should_ help a customer estimate the ingest volume — and the resulting New Relic bill — that their chosen instrumentation will produce, before they deploy it. That capability does not exist today. Without it, customers face a real risk of unexpected NR consumption costs after rolling out broadly.
 
 **Planned work:**
 

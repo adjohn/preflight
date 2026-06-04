@@ -1,5 +1,14 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { chmodSync, lstatSync, mkdirSync, symlinkSync, writeFileSync, existsSync, rmSync, utimesSync } from 'node:fs';
+import {
+  chmodSync,
+  lstatSync,
+  mkdirSync,
+  symlinkSync,
+  writeFileSync,
+  existsSync,
+  rmSync,
+  utimesSync,
+} from 'node:fs';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -33,7 +42,11 @@ function writeSessionFile(storagePath: string, name: string): void {
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
-    try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
   }
 });
 
@@ -123,7 +136,9 @@ describe('purgeOldSessions — interruption and TOCTOU (F-133)', () => {
 
     // A warning was logged for the failing entry
     const logged = stderrSpy.mock.calls.map((call: unknown[]) => String(call[0]));
-    expect(logged.some((l: string) => l.includes('"warn"') && l.includes('session file'))).toBe(true);
+    expect(logged.some((l: string) => l.includes('"warn"') && l.includes('session file'))).toBe(
+      true,
+    );
   });
 
   it('continues purging when statSync throws for a dangling symlink (TOCTOU: file vanished after readdir)', () => {
@@ -149,7 +164,9 @@ describe('purgeOldSessions — interruption and TOCTOU (F-133)', () => {
     expect(() => lstatSync(dangling)).not.toThrow();
 
     const logged = stderrSpy.mock.calls.map((call: unknown[]) => String(call[0]));
-    expect(logged.some((l: string) => l.includes('"warn"') && l.includes('session file'))).toBe(true);
+    expect(logged.some((l: string) => l.includes('"warn"') && l.includes('session file'))).toBe(
+      true,
+    );
   });
 
   it('handles sessions-directory write permission revoked mid-purge, then succeeds on retry (F-133)', () => {
@@ -175,7 +192,9 @@ describe('purgeOldSessions — interruption and TOCTOU (F-133)', () => {
       expect(existsSync(file2)).toBe(true);
 
       const logged = stderrSpy.mock.calls.map((call: unknown[]) => String(call[0]));
-      expect(logged.some((l: string) => l.includes('"warn"') && l.includes('session file'))).toBe(true);
+      expect(logged.some((l: string) => l.includes('"warn"') && l.includes('session file'))).toBe(
+        true,
+      );
     } finally {
       chmodSync(sessionsDir, 0o700);
     }

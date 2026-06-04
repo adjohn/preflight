@@ -35,11 +35,26 @@ describe('DecisionTracker', () => {
 
   it('tracks failure points', () => {
     const tracker = new DecisionTracker();
-    tracker.recordDecision({ turnNumber: 1, reasoning: 'Try approach A', chosenAction: 'Run tests', toolName: 'Bash' });
+    tracker.recordDecision({
+      turnNumber: 1,
+      reasoning: 'Try approach A',
+      chosenAction: 'Run tests',
+      toolName: 'Bash',
+    });
     tracker.recordOutcome(1, false);
-    tracker.recordDecision({ turnNumber: 2, reasoning: 'Try approach B', chosenAction: 'Run tests again', toolName: 'Bash' });
+    tracker.recordDecision({
+      turnNumber: 2,
+      reasoning: 'Try approach B',
+      chosenAction: 'Run tests again',
+      toolName: 'Bash',
+    });
     tracker.recordOutcome(2, false);
-    tracker.recordDecision({ turnNumber: 3, reasoning: 'Try approach C', chosenAction: 'Fix the import', toolName: 'Edit' });
+    tracker.recordDecision({
+      turnNumber: 3,
+      reasoning: 'Try approach C',
+      chosenAction: 'Fix the import',
+      toolName: 'Edit',
+    });
     tracker.recordOutcome(3, true);
 
     const metrics = tracker.getMetrics();
@@ -53,7 +68,12 @@ describe('DecisionTracker', () => {
     const tracker = new DecisionTracker();
     // Success, fail, fail, fail, success
     for (let i = 1; i <= 5; i++) {
-      tracker.recordDecision({ turnNumber: i, reasoning: `Turn ${i}`, chosenAction: `action ${i}`, toolName: 'Bash' });
+      tracker.recordDecision({
+        turnNumber: i,
+        reasoning: `Turn ${i}`,
+        chosenAction: `action ${i}`,
+        toolName: 'Bash',
+      });
       tracker.recordOutcome(i, i === 1 || i === 5);
     }
 
@@ -74,13 +94,33 @@ describe('DecisionTracker', () => {
 
   it('getPostMortem returns failure zones', () => {
     const tracker = new DecisionTracker();
-    tracker.recordDecision({ turnNumber: 1, reasoning: 'OK', chosenAction: 'read', toolName: 'Read' });
+    tracker.recordDecision({
+      turnNumber: 1,
+      reasoning: 'OK',
+      chosenAction: 'read',
+      toolName: 'Read',
+    });
     tracker.recordOutcome(1, true);
-    tracker.recordDecision({ turnNumber: 2, reasoning: 'Bad choice', chosenAction: 'edit', toolName: 'Edit' });
+    tracker.recordDecision({
+      turnNumber: 2,
+      reasoning: 'Bad choice',
+      chosenAction: 'edit',
+      toolName: 'Edit',
+    });
     tracker.recordOutcome(2, false);
-    tracker.recordDecision({ turnNumber: 3, reasoning: 'Still bad', chosenAction: 'edit again', toolName: 'Edit' });
+    tracker.recordDecision({
+      turnNumber: 3,
+      reasoning: 'Still bad',
+      chosenAction: 'edit again',
+      toolName: 'Edit',
+    });
     tracker.recordOutcome(3, false);
-    tracker.recordDecision({ turnNumber: 4, reasoning: 'Recovery', chosenAction: 'fix', toolName: 'Edit' });
+    tracker.recordDecision({
+      turnNumber: 4,
+      reasoning: 'Recovery',
+      chosenAction: 'fix',
+      toolName: 'Edit',
+    });
     tracker.recordOutcome(4, true);
 
     const postMortem = tracker.getPostMortem();
@@ -106,7 +146,12 @@ describe('DecisionTracker', () => {
   it('caps branches at maxBranches', () => {
     const tracker = new DecisionTracker({ maxBranches: 5 });
     for (let i = 0; i < 10; i++) {
-      tracker.recordDecision({ turnNumber: i, reasoning: `R${i}`, chosenAction: `A${i}`, toolName: 'Bash' });
+      tracker.recordDecision({
+        turnNumber: i,
+        reasoning: `R${i}`,
+        chosenAction: `A${i}`,
+        toolName: 'Bash',
+      });
     }
 
     expect(tracker.getBranches()).toHaveLength(5);

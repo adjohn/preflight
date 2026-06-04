@@ -23,10 +23,7 @@ export class ContextWindowTracker {
     const entries = [...this.fileReadCounts.entries()];
     const totalReadOperations = entries.reduce((sum, [, c]) => sum + c, 0);
     const uniqueFilesRead = entries.length;
-    const repeatedReadCount = entries.reduce(
-      (sum, [, c]) => sum + Math.max(0, c - 1),
-      0,
-    );
+    const repeatedReadCount = entries.reduce((sum, [, c]) => sum + Math.max(0, c - 1), 0);
     const repeatedReadRatio =
       totalReadOperations > 0 ? repeatedReadCount / totalReadOperations : null;
 

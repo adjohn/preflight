@@ -94,7 +94,12 @@ export const TRACKED_METHODS = new Set([
 ]);
 
 /** Headers that are forwarded from the proxy to the upstream server. */
-export const FORWARDED_HEADER_PREFIXES = ['content-type', 'accept', 'authorization', 'mcp-session-id'];
+export const FORWARDED_HEADER_PREFIXES = [
+  'content-type',
+  'accept',
+  'authorization',
+  'mcp-session-id',
+];
 
 /** Check if a header should be forwarded to upstream. */
 export function shouldForwardHeader(name: string): boolean {

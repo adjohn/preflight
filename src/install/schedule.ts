@@ -1,0 +1,114 @@
+import { execFileSync } from 'node:child_process';
+import { writeFileSync, readFileSync, existsSync, unlinkSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+const PLIST_LABEL = 'com.nr-ai-observe.update';
+
+function plistPath(): string {
+  return resolve(homedir(), 'Library', 'LaunchAgents', `${PLIST_LABEL}.plist`);
+}
+
+function updateLogPath(): string {
+  return resolve(homedir(), '.nr-ai-observe', 'update.log');
+}
+
+function buildPlist(binaryPath: string, hour: number, minute: number): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${PLIST_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${escapeXml(binaryPath)}</string>
+    <string>update</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>${hour}</integer>
+    <key>Minute</key>
+    <integer>${minute}</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>${escapeXml(updateLogPath())}</string>
+  <key>StandardErrorPath</key>
+  <string>${escapeXml(updateLogPath())}</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>`;
+}
+
+export interface ScheduleStatus {
+  readonly installed: boolean;
+  readonly hour?: number;
+  readonly minute?: number;
+  readonly binaryPath?: string;
+}
+
+export function installSchedule(binaryPath: string, hour: number, minute: number): void {
+  const path = plistPath();
+  mkdirSync(resolve(homedir(), 'Library', 'LaunchAgents'), { recursive: true, mode: 0o755 });
+  writeFileSync(path, buildPlist(binaryPath, hour, minute), { mode: 0o600 });
+  try {
+    execFileSync('launchctl', ['unload', path], { stdio: 'pipe' });
+  } catch {
+    // Not yet loaded — that's fine.
+  }
+  try {
+    execFileSync('launchctl', ['load', path], { stdio: 'pipe' });
+  } catch (err) {
+    throw new Error(`launchctl load failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export function removeSchedule(): void {
+  const path = plistPath();
+  if (!existsSync(path)) return;
+  try {
+    execFileSync('launchctl', ['unload', path], { stdio: 'pipe' });
+  } catch {
+    // Already unloaded.
+  }
+  unlinkSync(path);
+}
+
+export function getScheduleStatus(): ScheduleStatus {
+  const path = plistPath();
+  if (!existsSync(path)) return { installed: false };
+  try {
+    const content = readFileSync(path, 'utf-8');
+    const hourMatch = content.match(/<key>Hour<\/key>\s*<integer>(\d+)<\/integer>/);
+    const minuteMatch = content.match(/<key>Minute<\/key>\s*<integer>(\d+)<\/integer>/);
+    const binaryMatch = content.match(
+      /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]+)<\/string>/,
+    );
+    return {
+      installed: true,
+      hour: hourMatch ? parseInt(hourMatch[1], 10) : undefined,
+      minute: minuteMatch ? parseInt(minuteMatch[1], 10) : undefined,
+      binaryPath: binaryMatch ? binaryMatch[1] : undefined,
+    };
+  } catch {
+    return { installed: false };
+  }
+}
+
+export function resolveBinaryPath(): string | null {
+  try {
+    return execFileSync('/usr/bin/which', ['nr-ai-observe'], { stdio: 'pipe' }).toString().trim();
+  } catch {
+    return null;
+  }
+}

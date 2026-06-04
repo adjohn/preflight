@@ -174,11 +174,7 @@ export class LocalAlertEngine {
     void this.osNotifier.notify({ title: ev.title, body: ev.description });
   }
 
-  private evaluateRule(
-    rule: LocalAlertRule,
-    snapshot: AlertSnapshot,
-    now: number,
-  ): AlertEvent[] {
+  private evaluateRule(rule: LocalAlertRule, snapshot: AlertSnapshot, now: number): AlertEvent[] {
     // Exhaustive switch so TS catches missing rule-type handlers.
     switch (rule.type) {
       case 'budget.session':
@@ -186,11 +182,7 @@ export class LocalAlertEngine {
       case 'budget.weekly':
         return this.evaluateBudgetRule(rule, snapshot, now);
       case 'cost.window':
-        return this.evaluateThresholdRule(
-          rule,
-          this.computeCostWindowValue(rule, snapshot),
-          now,
-        );
+        return this.evaluateThresholdRule(rule, this.computeCostWindowValue(rule, snapshot), now);
       case 'efficiency.below':
         return this.evaluateEfficiencyBelowRule(rule, snapshot, now);
       case 'antipattern.count':
@@ -200,17 +192,9 @@ export class LocalAlertEngine {
           now,
         );
       case 'latency.percentile':
-        return this.evaluateThresholdRule(
-          rule,
-          this.computeLatencyValue(rule, snapshot),
-          now,
-        );
+        return this.evaluateThresholdRule(rule, this.computeLatencyValue(rule, snapshot), now);
       case 'tool.failure':
-        return this.evaluateThresholdRule(
-          rule,
-          this.computeToolFailureValue(rule, snapshot),
-          now,
-        );
+        return this.evaluateThresholdRule(rule, this.computeToolFailureValue(rule, snapshot), now);
     }
   }
 
@@ -231,11 +215,7 @@ export class LocalAlertEngine {
    * a still-true condition will fire normally.
    */
   private evaluateThresholdRule(
-    rule:
-      | CostWindowRule
-      | AntiPatternCountRule
-      | LatencyPercentileRule
-      | ToolFailureRule,
+    rule: CostWindowRule | AntiPatternCountRule | LatencyPercentileRule | ToolFailureRule,
     value: number | null,
     now: number,
   ): AlertEvent[] {
@@ -336,10 +316,7 @@ export class LocalAlertEngine {
    * window. The engine reads whichever bucket the rule names; v1.2 will
    * swap in a real rolling-N-second cost calculation.
    */
-  private computeCostWindowValue(
-    rule: CostWindowRule,
-    snapshot: AlertSnapshot,
-  ): number | null {
+  private computeCostWindowValue(rule: CostWindowRule, snapshot: AlertSnapshot): number | null {
     switch (rule.costPeriod) {
       case 'session':
         return snapshot.cost.sessionUsd;
@@ -367,10 +344,7 @@ export class LocalAlertEngine {
     return matched ? total : 0;
   }
 
-  private computeLatencyValue(
-    rule: LatencyPercentileRule,
-    snapshot: AlertSnapshot,
-  ): number | null {
+  private computeLatencyValue(rule: LatencyPercentileRule, snapshot: AlertSnapshot): number | null {
     if (snapshot.latency.length === 0) return null;
     const pickPercentile = (entry: AlertSnapshot['latency'][number]): number => {
       switch (rule.percentile) {
@@ -396,10 +370,7 @@ export class LocalAlertEngine {
     return max === -Infinity ? null : max;
   }
 
-  private computeToolFailureValue(
-    rule: ToolFailureRule,
-    snapshot: AlertSnapshot,
-  ): number | null {
+  private computeToolFailureValue(rule: ToolFailureRule, snapshot: AlertSnapshot): number | null {
     const windowMs = rule.windowSeconds * 1000;
     const entry = snapshot.toolFailures.find(
       (f) => f.tool === rule.tool && f.windowMs === windowMs,
@@ -483,8 +454,7 @@ export class LocalAlertEngine {
             state: 'cleared',
             severity: rule.severity,
             title: rule.name,
-            description:
-              rule.description ?? `Budget rule cleared for ${period}`,
+            description: rule.description ?? `Budget rule cleared for ${period}`,
             value: 0,
             threshold: rule.threshold,
             firedAt: lastFiredAt,

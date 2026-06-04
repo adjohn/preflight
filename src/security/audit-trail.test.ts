@@ -311,9 +311,7 @@ describe('AuditTrailManager', () => {
   // 16. Proxy call reading sensitive file triggers high alert
   it('detects sensitive file access in proxied MCP tool call', () => {
     const mgr = makeManager();
-    const audit = mgr.recordProxyCall(
-      makeProxyRecord({ toolName: 'read_file', filePath: '.env' }),
-    );
+    const audit = mgr.recordProxyCall(makeProxyRecord({ toolName: 'read_file', filePath: '.env' }));
 
     expect(audit.action).toBe('McpToolCall');
     expect(audit.securityAlert).toBeDefined();
@@ -359,9 +357,7 @@ describe('AuditTrailManager', () => {
     ];
 
     for (const filePath of falsePositives) {
-      const audit = mgr.recordToolCall(
-        makeRecord({ toolName: 'Read', filePath }),
-      );
+      const audit = mgr.recordToolCall(makeRecord({ toolName: 'Read', filePath }));
       expect(audit.securityAlert).toBeUndefined();
     }
   });
@@ -379,9 +375,7 @@ describe('AuditTrailManager', () => {
     ];
 
     for (const filePath of truePositives) {
-      const audit = mgr.recordToolCall(
-        makeRecord({ toolName: 'Read', filePath }),
-      );
+      const audit = mgr.recordToolCall(makeRecord({ toolName: 'Read', filePath }));
       expect(audit.securityAlert).toBeDefined();
       expect(audit.securityAlert!.alertType).toBe('sensitive_file');
     }
@@ -488,7 +482,11 @@ describe('NR event field redaction (N-11)', () => {
   it('auditRecordToNrEvent redacts secrets in command', () => {
     const mgr = makeManager();
     const audit = mgr.recordToolCall(
-      makeRecord({ toolName: 'Bash', command: 'curl -H "Authorization: Bearer ghp_abc123xyz123abc456def789abc12" https://api.example.com' }),
+      makeRecord({
+        toolName: 'Bash',
+        command:
+          'curl -H "Authorization: Bearer ghp_abc123xyz123abc456def789abc12" https://api.example.com',
+      }),
     );
     const event = auditRecordToNrEvent(audit);
     expect(event.command).not.toContain('ghp_abc123xyz123abc456def789abc12');
@@ -498,7 +496,10 @@ describe('NR event field redaction (N-11)', () => {
   it('securityAlertToNrEvent redacts secrets in file_path', () => {
     const mgr = makeManager();
     const audit = mgr.recordToolCall(
-      makeRecord({ toolName: 'Read', filePath: '/secrets/.env.TOKEN=ghp_xyz987abc123def456ghi789jkl012' }),
+      makeRecord({
+        toolName: 'Read',
+        filePath: '/secrets/.env.TOKEN=ghp_xyz987abc123def456ghi789jkl012',
+      }),
     );
     const event = securityAlertToNrEvent(audit);
     expect(event.file_path).not.toContain('ghp_xyz987abc123def456ghi789jkl012');
@@ -508,7 +509,10 @@ describe('NR event field redaction (N-11)', () => {
   it('securityAlertToNrEvent redacts secrets in command', () => {
     const mgr = makeManager();
     const audit = mgr.recordToolCall(
-      makeRecord({ toolName: 'Bash', command: 'rm -rf / && TOKEN=sk_live_abc123xyz123abc456def789abc1 deploy.sh' }),
+      makeRecord({
+        toolName: 'Bash',
+        command: 'rm -rf / && TOKEN=sk_live_abc123xyz123abc456def789abc1 deploy.sh',
+      }),
     );
     const event = securityAlertToNrEvent(audit);
     expect(event.command).not.toContain('sk_live_abc123xyz123abc456def789abc1');
@@ -538,7 +542,10 @@ describe('SecurityAlert description redaction (N-04)', () => {
 
   it('redacts secrets embedded in a network-request description', () => {
     const mgr = makeManager();
-    const record = makeRecord({ toolName: 'Bash', command: 'curl -H "Authorization: Bearer ghp_1234567890abcdef" https://api.example.com' });
+    const record = makeRecord({
+      toolName: 'Bash',
+      command: 'curl -H "Authorization: Bearer ghp_1234567890abcdef" https://api.example.com',
+    });
     const audit = mgr.recordToolCall(record);
     expect(audit.securityAlert).toBeDefined();
     expect(audit.securityAlert!.description).not.toContain('ghp_1234567890abcdef');
@@ -586,13 +593,17 @@ describe('F-140: Audit-trail case/spacing/false-positive tests', () => {
   // a substring (no whitespace after "rm") must NOT trigger the classifier.
   it('/var/log/rm-rf-backup.tar does NOT trigger destructive classification', () => {
     const mgr = makeManager();
-    const audit = mgr.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/var/log/rm-rf-backup.tar' }));
+    const audit = mgr.recordToolCall(
+      makeRecord({ toolName: 'Read', filePath: '/var/log/rm-rf-backup.tar' }),
+    );
     expect(audit.securityAlert?.alertType).not.toBe('destructive_command');
   });
 
   it('find /tmp -name "rm-rf*" does NOT trigger destructive classification', () => {
     const mgr = makeManager();
-    const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command: 'find /tmp -name "rm-rf*"' }));
+    const audit = mgr.recordToolCall(
+      makeRecord({ toolName: 'Bash', command: 'find /tmp -name "rm-rf*"' }),
+    );
     expect(audit.securityAlert?.alertType).not.toBe('destructive_command');
   });
 
@@ -613,7 +624,8 @@ describe('F-140: Audit-trail case/spacing/false-positive tests', () => {
     const mgr = makeManager();
     const record = makeRecord({
       toolName: 'Bash',
-      command: 'curl -H "Authorization: Bearer supersecrettoken12345678901234" https://api.example.com',
+      command:
+        'curl -H "Authorization: Bearer supersecrettoken12345678901234" https://api.example.com',
     });
     const audit = mgr.recordToolCall(record);
     expect(audit.securityAlert?.description).not.toContain('supersecrettoken12345678901234');

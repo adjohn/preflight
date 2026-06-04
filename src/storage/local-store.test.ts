@@ -1,5 +1,15 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { existsSync, mkdirSync, rmSync, readFileSync, readdirSync, writeFileSync, utimesSync, statSync, chmodSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  rmSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  utimesSync,
+  statSync,
+  chmodSync,
+} from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LocalStore } from './local-store.js';
@@ -10,7 +20,10 @@ let tmpDir: string;
 
 beforeEach(() => {
   stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
-  tmpDir = resolve(tmpdir(), `nr-localstore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  tmpDir = resolve(
+    tmpdir(),
+    `nr-localstore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
 });
 
 afterEach(() => {
@@ -159,9 +172,11 @@ describe('LocalStore', () => {
       const bufferPath = resolve(tmpDir, 'buffer.jsonl');
       writeFileSync(
         bufferPath,
-        JSON.stringify(validEvent) + '\n' +
-        'NOT VALID JSON\n' +
-        JSON.stringify(makeEvent({ tool: 'Write' })) + '\n',
+        JSON.stringify(validEvent) +
+          '\n' +
+          'NOT VALID JSON\n' +
+          JSON.stringify(makeEvent({ tool: 'Write' })) +
+          '\n',
       );
 
       const drained = store.drainBuffer();
@@ -237,7 +252,11 @@ describe('LocalStore', () => {
 
       const now = Date.now();
       const recent = makeSession({ sessionId: 'recent', startTime: now - 1000, endTime: now });
-      const old = makeSession({ sessionId: 'old', startTime: now - 30 * 86_400_000, endTime: now - 30 * 86_400_000 + 1000 });
+      const old = makeSession({
+        sessionId: 'old',
+        startTime: now - 30 * 86_400_000,
+        endTime: now - 30 * 86_400_000 + 1000,
+      });
 
       store.saveSession(recent);
       store.saveSession(old);
@@ -299,7 +318,7 @@ describe('LocalStore', () => {
       store.saveSession(s1);
 
       const loaded = store.loadRecentSessions(7);
-      expect(loaded.map(s => s.sessionId)).toEqual(['s1', 's3', 's2']);
+      expect(loaded.map((s) => s.sessionId)).toEqual(['s1', 's3', 's2']);
     });
   });
 

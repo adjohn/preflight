@@ -7,10 +7,10 @@ import { DEFAULT_PERSONAL_THRESHOLDS } from './types.js';
 const conditionsDir = resolve(__dirname, '..', '..', 'alerts', 'conditions-personal');
 
 const PERSONAL_THRESHOLD_PLACEHOLDERS: Record<string, number> = {
-  __dailyCostUsd__:        DEFAULT_PERSONAL_THRESHOLDS.dailyCostUsd,
-  __sessionCostUsd__:      DEFAULT_PERSONAL_THRESHOLDS.sessionCostUsd,
-  __efficiencyScoreMin__:  DEFAULT_PERSONAL_THRESHOLDS.efficiencyScoreMin,
-  __stuckLoopCountMax__:   DEFAULT_PERSONAL_THRESHOLDS.stuckLoopCountMax,
+  __dailyCostUsd__: DEFAULT_PERSONAL_THRESHOLDS.dailyCostUsd,
+  __sessionCostUsd__: DEFAULT_PERSONAL_THRESHOLDS.sessionCostUsd,
+  __efficiencyScoreMin__: DEFAULT_PERSONAL_THRESHOLDS.efficiencyScoreMin,
+  __stuckLoopCountMax__: DEFAULT_PERSONAL_THRESHOLDS.stuckLoopCountMax,
   __antiPatternCountMax__: DEFAULT_PERSONAL_THRESHOLDS.antiPatternCountMax,
 };
 
@@ -24,7 +24,9 @@ const VALID_EVENT_TYPES = new Set([
 
 const TEST_DEVELOPER = 'test_user';
 
-const rawFiles = readdirSync(conditionsDir).filter(f => f.endsWith('.json')).sort();
+const rawFiles = readdirSync(conditionsDir)
+  .filter((f) => f.endsWith('.json'))
+  .sort();
 
 // Substitute placeholders the same way deploy-alerts.ts does at deploy time, so
 // we validate the same JSON shape NerdGraph will receive.
@@ -67,7 +69,7 @@ describe('Personal alert raw files', () => {
     const placeholders = Object.keys(PERSONAL_THRESHOLD_PLACEHOLDERS);
     for (const file of rawFiles) {
       const raw = readFileSync(resolve(conditionsDir, file), 'utf-8');
-      const hasPlaceholder = placeholders.some(p => raw.includes(p));
+      const hasPlaceholder = placeholders.some((p) => raw.includes(p));
       expect(hasPlaceholder).toBe(true);
     }
   });

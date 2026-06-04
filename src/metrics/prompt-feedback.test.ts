@@ -16,7 +16,10 @@ let store: SessionStore;
 
 beforeEach(() => {
   stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
-  tmpDir = resolve(tmpdir(), `nr-feedback-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  tmpDir = resolve(
+    tmpdir(),
+    `nr-feedback-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   mkdirSync(resolve(tmpDir, 'sessions'), { recursive: true });
   store = new SessionStore({ storagePath: tmpDir });
 });
@@ -102,25 +105,29 @@ describe('PromptFeedbackEngine', () => {
     // Sessions where dev "provides file paths" (low Read ratio, has modifications)
     // Read ratio < 0.3: e.g. Read=2 out of 20 toolCalls = 0.1
     for (let i = 0; i < 5; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `with-fp-${i}`,
-        toolCallCount: 20,
-        toolBreakdown: { Read: 2, Edit: 10, Bash: 8 },
-        filesModified: ['/src/index.ts'],
-        efficiencyScore: 0.85,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `with-fp-${i}`,
+          toolCallCount: 20,
+          toolBreakdown: { Read: 2, Edit: 10, Bash: 8 },
+          filesModified: ['/src/index.ts'],
+          efficiencyScore: 0.85,
+        }),
+      );
     }
 
     // Sessions without file paths (high Read ratio = lots of exploration)
     // Read ratio > 0.3: e.g. Read=15 out of 20 toolCalls = 0.75
     for (let i = 0; i < 5; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `without-fp-${i}`,
-        toolCallCount: 20,
-        toolBreakdown: { Read: 15, Edit: 3, Bash: 2 },
-        filesModified: ['/src/index.ts'],
-        efficiencyScore: 0.55,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `without-fp-${i}`,
+          toolCallCount: 20,
+          toolBreakdown: { Read: 15, Edit: 3, Bash: 2 },
+          filesModified: ['/src/index.ts'],
+          efficiencyScore: 0.55,
+        }),
+      );
     }
 
     const correlations = engine.correlatePromptStyleWithOutcomes('alice');
@@ -128,7 +135,9 @@ describe('PromptFeedbackEngine', () => {
     const filePathCorrelation = correlations.find((c) => c.behavior === 'provides file paths');
     expect(filePathCorrelation).toBeDefined();
     expect(filePathCorrelation!.delta).toBeGreaterThan(0);
-    expect(filePathCorrelation!.withBehaviorAvg).toBeGreaterThan(filePathCorrelation!.withoutBehaviorAvg);
+    expect(filePathCorrelation!.withBehaviorAvg).toBeGreaterThan(
+      filePathCorrelation!.withoutBehaviorAvg,
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -141,20 +150,24 @@ describe('PromptFeedbackEngine', () => {
 
     // Before: efficiency clustered around 0.5
     for (let i = 0; i < 5; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `before-${i}`,
-        startTime: changeTimestamp - 86_400_000 * (i + 1),
-        efficiencyScore: 0.5 + (i % 2 === 0 ? 0.02 : -0.02),
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `before-${i}`,
+          startTime: changeTimestamp - 86_400_000 * (i + 1),
+          efficiencyScore: 0.5 + (i % 2 === 0 ? 0.02 : -0.02),
+        }),
+      );
     }
 
     // After: efficiency clustered around 0.9
     for (let i = 0; i < 5; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `after-${i}`,
-        startTime: changeTimestamp + 86_400_000 * (i + 1),
-        efficiencyScore: 0.9 + (i % 2 === 0 ? 0.02 : -0.02),
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `after-${i}`,
+          startTime: changeTimestamp + 86_400_000 * (i + 1),
+          efficiencyScore: 0.9 + (i % 2 === 0 ? 0.02 : -0.02),
+        }),
+      );
     }
 
     const comparison = engine.compareClaudeMdVersions(changeTimestamp);
@@ -174,23 +187,27 @@ describe('PromptFeedbackEngine', () => {
     const changeTimestamp = Date.now();
 
     // Before: efficiency with large spread, mean ~0.7
-    const beforeScores = [0.50, 0.60, 0.70, 0.80, 0.90];
+    const beforeScores = [0.5, 0.6, 0.7, 0.8, 0.9];
     for (let i = 0; i < 5; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `before-${i}`,
-        startTime: changeTimestamp - 86_400_000 * (i + 1),
-        efficiencyScore: beforeScores[i]!,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `before-${i}`,
+          startTime: changeTimestamp - 86_400_000 * (i + 1),
+          efficiencyScore: beforeScores[i]!,
+        }),
+      );
     }
 
     // After: efficiency with large spread, mean ~0.72 (tiny difference vs before)
     const afterScores = [0.52, 0.62, 0.72, 0.82, 0.92];
     for (let i = 0; i < 5; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `after-${i}`,
-        startTime: changeTimestamp + 86_400_000 * (i + 1),
-        efficiencyScore: afterScores[i]!,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `after-${i}`,
+          startTime: changeTimestamp + 86_400_000 * (i + 1),
+          efficiencyScore: afterScores[i]!,
+        }),
+      );
     }
 
     const comparison = engine.compareClaudeMdVersions(changeTimestamp);
@@ -211,18 +228,22 @@ describe('PromptFeedbackEngine', () => {
 
     // All sessions have identical efficiency scores — pooled SD = 0
     for (let i = 0; i < 3; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `before-${i}`,
-        startTime: changeTimestamp - 86_400_000 * (i + 1),
-        efficiencyScore: 0.5,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `before-${i}`,
+          startTime: changeTimestamp - 86_400_000 * (i + 1),
+          efficiencyScore: 0.5,
+        }),
+      );
     }
     for (let i = 0; i < 3; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `after-${i}`,
-        startTime: changeTimestamp + 86_400_000 * (i + 1),
-        efficiencyScore: 0.9,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `after-${i}`,
+          startTime: changeTimestamp + 86_400_000 * (i + 1),
+          efficiencyScore: 0.9,
+        }),
+      );
     }
 
     const comparison = engine.compareClaudeMdVersions(changeTimestamp);
@@ -261,12 +282,14 @@ describe('PromptFeedbackEngine', () => {
     // Developer with correctionRate dimension = 0.65 → 1 - 0.65 = 0.35 > 0.3
     // correctionRate = 1 - corrections/messages → 0.65 means corrections = 0.35 * messages
     // Need: userCorrections / userMessages = 0.35 → 35% corrections
-    store.saveSession(makeSummary({
-      sessionId: 's1',
-      userMessages: 20,
-      userCorrections: 7,
-      toolCallCount: 10,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 's1',
+        userMessages: 20,
+        userCorrections: 7,
+        toolCallCount: 10,
+      }),
+    );
 
     const recommendations = engine.generatePromptRecommendations('alice');
 
@@ -291,16 +314,18 @@ describe('PromptFeedbackEngine', () => {
     //
     // Low autonomy: toolCalls / assistantMessages / 5 < 0.5 → need assistantMessages > toolCalls/2.5
     // e.g. 40 toolCalls / 25 assistantMessages / 5 = 0.32 < 0.5 ✓
-    store.saveSession(makeSummary({
-      sessionId: 's1',
-      filesRead: Array.from({ length: 10 }, (_, i) => `/f${i}.ts`),
-      filesModified: Array.from({ length: 5 }, (_, i) => `/m${i}.ts`),
-      toolCallCount: 40,
-      agentSpawns: 2,
-      taskCount: 1,
-      userMessages: 10,
-      assistantMessages: 25,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 's1',
+        filesRead: Array.from({ length: 10 }, (_, i) => `/f${i}.ts`),
+        filesModified: Array.from({ length: 5 }, (_, i) => `/m${i}.ts`),
+        toolCallCount: 40,
+        agentSpawns: 2,
+        taskCount: 1,
+        userMessages: 10,
+        assistantMessages: 25,
+      }),
+    );
 
     const recommendations = engine.generatePromptRecommendations('alice');
 
@@ -319,16 +344,20 @@ describe('PromptFeedbackEngine', () => {
 
     // > 50% of sessions have re_reading anti-pattern
     for (let i = 0; i < 4; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `rr-${i}`,
-        antiPatterns: [{ type: 're_reading', count: 3 }],
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `rr-${i}`,
+          antiPatterns: [{ type: 're_reading', count: 3 }],
+        }),
+      );
     }
     // 1 session without
-    store.saveSession(makeSummary({
-      sessionId: 'clean-1',
-      antiPatterns: [],
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'clean-1',
+        antiPatterns: [],
+      }),
+    );
 
     const recommendations = engine.generatePromptRecommendations('alice');
 
@@ -348,41 +377,47 @@ describe('PromptFeedbackEngine', () => {
     const changeTimestamp = Date.now();
 
     // Record a CLAUDE.md change
-    tracker.detectChange(makeToolCall({
-      toolName: 'Write',
-      filePath: '/project/CLAUDE.md',
-      lineCount: 100,
-      timestamp: changeTimestamp,
-    } as Partial<ToolCallRecord>));
+    tracker.detectChange(
+      makeToolCall({
+        toolName: 'Write',
+        filePath: '/project/CLAUDE.md',
+        lineCount: 100,
+        timestamp: changeTimestamp,
+      } as Partial<ToolCallRecord>),
+    );
 
     // Sessions before: good metrics
     for (let i = 0; i < 5; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `before-${i}`,
-        startTime: changeTimestamp - 86_400_000 * (i + 1),
-        efficiencyScore: 0.8,
-        estimatedCostUsd: 2,
-        taskSuccessRate: 0.9,
-        userMessages: 10,
-        userCorrections: 1,
-        toolCallCount: 10,
-        taskCount: 2,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `before-${i}`,
+          startTime: changeTimestamp - 86_400_000 * (i + 1),
+          efficiencyScore: 0.8,
+          estimatedCostUsd: 2,
+          taskSuccessRate: 0.9,
+          userMessages: 10,
+          userCorrections: 1,
+          toolCallCount: 10,
+          taskCount: 2,
+        }),
+      );
     }
 
     // Sessions after: degraded metrics
     for (let i = 0; i < 5; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `after-${i}`,
-        startTime: changeTimestamp + 86_400_000 * (i + 1),
-        efficiencyScore: 0.4,
-        estimatedCostUsd: 6,
-        taskSuccessRate: 0.5,
-        userMessages: 10,
-        userCorrections: 5,
-        toolCallCount: 30,
-        taskCount: 2,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `after-${i}`,
+          startTime: changeTimestamp + 86_400_000 * (i + 1),
+          efficiencyScore: 0.4,
+          estimatedCostUsd: 6,
+          taskSuccessRate: 0.5,
+          userMessages: 10,
+          userCorrections: 5,
+          toolCallCount: 30,
+          taskCount: 2,
+        }),
+      );
     }
 
     const recommendations = engine.generatePromptRecommendations('alice');
@@ -402,19 +437,23 @@ describe('PromptFeedbackEngine', () => {
 
     // Trigger both high-priority (correction rate) and medium-priority (re-reading) rules
     for (let i = 0; i < 4; i++) {
-      store.saveSession(makeSummary({
-        sessionId: `s-${i}`,
+      store.saveSession(
+        makeSummary({
+          sessionId: `s-${i}`,
+          userMessages: 20,
+          userCorrections: 8,
+          antiPatterns: [{ type: 're_reading', count: 2 }],
+        }),
+      );
+    }
+    store.saveSession(
+      makeSummary({
+        sessionId: 's-clean',
         userMessages: 20,
         userCorrections: 8,
-        antiPatterns: [{ type: 're_reading', count: 2 }],
-      }));
-    }
-    store.saveSession(makeSummary({
-      sessionId: 's-clean',
-      userMessages: 20,
-      userCorrections: 8,
-      antiPatterns: [{ type: 're_reading', count: 1 }],
-    }));
+        antiPatterns: [{ type: 're_reading', count: 1 }],
+      }),
+    );
 
     const recommendations = engine.generatePromptRecommendations('alice');
 
@@ -437,11 +476,13 @@ describe('PromptFeedbackEngine', () => {
     const { engine } = createEngine();
 
     // High correction rate → generates recommendation with numbers
-    store.saveSession(makeSummary({
-      sessionId: 's1',
-      userMessages: 20,
-      userCorrections: 8,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 's1',
+        userMessages: 20,
+        userCorrections: 8,
+      }),
+    );
 
     const recommendations = engine.generatePromptRecommendations('alice');
 
@@ -460,13 +501,19 @@ describe('PromptFeedbackEngine', () => {
     const { engine } = createEngine();
 
     // Generate a recommendation
-    store.saveSession(makeSummary({
-      sessionId: 's1',
-      userMessages: 20,
-      userCorrections: 8,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 's1',
+        userMessages: 20,
+        userCorrections: 8,
+      }),
+    );
 
-    const recorded: Array<{ name: string; value: number; attrs?: Record<string, string | number> }> = [];
+    const recorded: Array<{
+      name: string;
+      value: number;
+      attrs?: Record<string, string | number>;
+    }> = [];
     const aggregator = {
       record(name: string, value: number, attrs?: Record<string, string | number>) {
         recorded.push({ name, value, attrs });

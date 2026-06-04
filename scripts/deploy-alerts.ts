@@ -34,7 +34,11 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
-import type { AlertConditionDefinition, AlertPolicyDefinition, PersonalAlertThresholds } from '../src/alerts/types.js';
+import type {
+  AlertConditionDefinition,
+  AlertPolicyDefinition,
+  PersonalAlertThresholds,
+} from '../src/alerts/types.js';
 import { DEFAULT_PERSONAL_THRESHOLDS } from '../src/alerts/types.js';
 import { normalizeDeveloperName } from '../src/config.js';
 
@@ -221,10 +225,10 @@ function loadPersonalDefinitions(
     .sort();
 
   const thresholdMap: Record<string, number> = {
-    __dailyCostUsd__:        thresholds.dailyCostUsd,
-    __sessionCostUsd__:      thresholds.sessionCostUsd,
-    __efficiencyScoreMin__:  thresholds.efficiencyScoreMin,
-    __stuckLoopCountMax__:   thresholds.stuckLoopCountMax,
+    __dailyCostUsd__: thresholds.dailyCostUsd,
+    __sessionCostUsd__: thresholds.sessionCostUsd,
+    __efficiencyScoreMin__: thresholds.efficiencyScoreMin,
+    __stuckLoopCountMax__: thresholds.stuckLoopCountMax,
     __antiPatternCountMax__: thresholds.antiPatternCountMax,
   };
 
@@ -250,16 +254,32 @@ function loadPersonalThresholds(): PersonalAlertThresholds {
   try {
     const file = JSON.parse(readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
     const alertsSection = file.alerts;
-    if (typeof alertsSection !== 'object' || alertsSection === null) return DEFAULT_PERSONAL_THRESHOLDS;
+    if (typeof alertsSection !== 'object' || alertsSection === null)
+      return DEFAULT_PERSONAL_THRESHOLDS;
     const personal = (alertsSection as Record<string, unknown>).personal;
     if (typeof personal !== 'object' || personal === null) return DEFAULT_PERSONAL_THRESHOLDS;
     const t = personal as Record<string, unknown>;
     return {
-      dailyCostUsd:         typeof t.dailyCostUsd === 'number'        ? t.dailyCostUsd        : DEFAULT_PERSONAL_THRESHOLDS.dailyCostUsd,
-      sessionCostUsd:       typeof t.sessionCostUsd === 'number'      ? t.sessionCostUsd      : DEFAULT_PERSONAL_THRESHOLDS.sessionCostUsd,
-      efficiencyScoreMin:   typeof t.efficiencyScoreMin === 'number'  ? t.efficiencyScoreMin  : DEFAULT_PERSONAL_THRESHOLDS.efficiencyScoreMin,
-      stuckLoopCountMax:    typeof t.stuckLoopCountMax === 'number'   ? t.stuckLoopCountMax   : DEFAULT_PERSONAL_THRESHOLDS.stuckLoopCountMax,
-      antiPatternCountMax:  typeof t.antiPatternCountMax === 'number' ? t.antiPatternCountMax : DEFAULT_PERSONAL_THRESHOLDS.antiPatternCountMax,
+      dailyCostUsd:
+        typeof t.dailyCostUsd === 'number'
+          ? t.dailyCostUsd
+          : DEFAULT_PERSONAL_THRESHOLDS.dailyCostUsd,
+      sessionCostUsd:
+        typeof t.sessionCostUsd === 'number'
+          ? t.sessionCostUsd
+          : DEFAULT_PERSONAL_THRESHOLDS.sessionCostUsd,
+      efficiencyScoreMin:
+        typeof t.efficiencyScoreMin === 'number'
+          ? t.efficiencyScoreMin
+          : DEFAULT_PERSONAL_THRESHOLDS.efficiencyScoreMin,
+      stuckLoopCountMax:
+        typeof t.stuckLoopCountMax === 'number'
+          ? t.stuckLoopCountMax
+          : DEFAULT_PERSONAL_THRESHOLDS.stuckLoopCountMax,
+      antiPatternCountMax:
+        typeof t.antiPatternCountMax === 'number'
+          ? t.antiPatternCountMax
+          : DEFAULT_PERSONAL_THRESHOLDS.antiPatternCountMax,
     };
   } catch {
     return DEFAULT_PERSONAL_THRESHOLDS;
@@ -286,13 +306,17 @@ function buildConditionInput(cond: AlertConditionDefinition): Record<string, unk
         operator: cond.thresholdOperator,
         priority: 'CRITICAL',
       },
-      ...(cond.thresholdWarning ? [{
-        threshold: cond.thresholdWarning.value,
-        thresholdDuration: cond.thresholdWarning.duration,
-        thresholdOccurrences: cond.thresholdWarning.occurrences,
-        operator: cond.thresholdOperator,
-        priority: 'WARNING',
-      }] : []),
+      ...(cond.thresholdWarning
+        ? [
+            {
+              threshold: cond.thresholdWarning.value,
+              thresholdDuration: cond.thresholdWarning.duration,
+              thresholdOccurrences: cond.thresholdWarning.occurrences,
+              operator: cond.thresholdOperator,
+              priority: 'WARNING',
+            },
+          ]
+        : []),
     ],
     violationTimeLimitSeconds: cond.violationTimeLimitSeconds,
   };
@@ -383,9 +407,8 @@ async function main(): Promise<void> {
   }
 
   const developerFlagIndex = args.indexOf('--developer');
-  const developerRaw: string | null = developerFlagIndex !== -1
-    ? (args[developerFlagIndex + 1] ?? null)
-    : null;
+  const developerRaw: string | null =
+    developerFlagIndex !== -1 ? (args[developerFlagIndex + 1] ?? null) : null;
 
   const developer: string | null = developerRaw ? normalizeDeveloperName(developerRaw) : null;
 
@@ -424,7 +447,9 @@ async function main(): Promise<void> {
 
   const apiKey = process.env.NEW_RELIC_API_KEY;
   if (!apiKey) {
-    console.error('Error: NEW_RELIC_API_KEY environment variable is required (User API key, not license key).');
+    console.error(
+      'Error: NEW_RELIC_API_KEY environment variable is required (User API key, not license key).',
+    );
     process.exit(1);
   }
 
@@ -460,13 +485,17 @@ async function main(): Promise<void> {
     });
     const existing = listResult.actor.account.alerts.policiesSearch.policies;
     if (existing.length === 0) {
-      console.error(`Error: No policy named "${policy.name}" found. Use deploy (without --update) to create it.`);
+      console.error(
+        `Error: No policy named "${policy.name}" found. Use deploy (without --update) to create it.`,
+      );
       process.exit(1);
     }
     const policyId = existing[0].id;
     process.stdout.write(`Syncing conditions on policy "${policy.name}" (id: ${policyId})...\n`);
     await syncConditions(apiKey, accountId, policyId, conditions);
-    process.stdout.write('\nDone. Tip: --update only syncs conditions. Policy name and incidentPreference changes still require --teardown then re-deploy.\n');
+    process.stdout.write(
+      '\nDone. Tip: --update only syncs conditions. Policy name and incidentPreference changes still require --teardown then re-deploy.\n',
+    );
     return;
   }
 
@@ -481,7 +510,9 @@ async function main(): Promise<void> {
     });
     if (listResult.actor.account.alerts.policiesSearch.policies.length > 0) {
       const existing = listResult.actor.account.alerts.policiesSearch.policies[0];
-      process.stdout.write(`Personal policy for "${developer}" already exists (id: ${existing.id}). Use --teardown to reset.\n`);
+      process.stdout.write(
+        `Personal policy for "${developer}" already exists (id: ${existing.id}). Use --teardown to reset.\n`,
+      );
       return;
     }
 
@@ -495,11 +526,14 @@ async function main(): Promise<void> {
 
     for (const cond of conditions) {
       const result = await nerdgraph<CreateConditionResult>(
-        apiKey, CREATE_NRQL_CONDITION_MUTATION,
+        apiKey,
+        CREATE_NRQL_CONDITION_MUTATION,
         { accountId, policyId, condition: buildConditionInput(cond) },
       );
       const created = result.alertsNrqlConditionStaticCreate;
-      process.stdout.write(`  Created condition "${created.name}" (${created.enabled ? 'enabled' : 'disabled'})\n`);
+      process.stdout.write(
+        `  Created condition "${created.name}" (${created.enabled ? 'enabled' : 'disabled'})\n`,
+      );
     }
     return;
   }
@@ -516,7 +550,9 @@ async function main(): Promise<void> {
 
   if (existing.length > 0) {
     const policyId = existing[0].id;
-    process.stdout.write(`Policy "${policy.name}" already exists (id: ${policyId}). Skipping creation.\n`);
+    process.stdout.write(
+      `Policy "${policy.name}" already exists (id: ${policyId}). Skipping creation.\n`,
+    );
     process.stdout.write('Tip: run with --teardown to delete it first, then re-deploy.\n');
     return;
   }
@@ -532,17 +568,19 @@ async function main(): Promise<void> {
 
   // Create each condition
   for (const cond of conditions) {
-    const result = await nerdgraph<CreateConditionResult>(
-      apiKey,
-      CREATE_NRQL_CONDITION_MUTATION,
-      { accountId, policyId, condition: buildConditionInput(cond) },
-    );
+    const result = await nerdgraph<CreateConditionResult>(apiKey, CREATE_NRQL_CONDITION_MUTATION, {
+      accountId,
+      policyId,
+      condition: buildConditionInput(cond),
+    });
     const created = result.alertsNrqlConditionStaticCreate;
     const status = created.enabled ? 'enabled' : 'disabled';
     process.stdout.write(`  Created condition "${created.name}" (${status})\n`);
   }
 
-  process.stdout.write('\nDone. Tip: adjust threshold values in src/alerts/conditions/ to match your usage.\n');
+  process.stdout.write(
+    '\nDone. Tip: adjust threshold values in src/alerts/conditions/ to match your usage.\n',
+  );
 }
 
 main().catch((err: unknown) => {

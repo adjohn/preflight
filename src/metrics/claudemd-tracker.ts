@@ -180,10 +180,7 @@ export class ClaudeMdTracker {
    * Detect whether CLAUDE.md changed between sessions by comparing hashes.
    * Returns true if previousHash is null (first session) or hashes differ.
    */
-  static detectBetweenSessionChange(
-    previousHash: string | null,
-    currentHash: string,
-  ): boolean {
+  static detectBetweenSessionChange(previousHash: string | null, currentHash: string): boolean {
     if (previousHash === null) return true;
     return previousHash !== currentHash;
   }
@@ -236,9 +233,7 @@ export class ClaudeMdTracker {
 
     // Estimate context tokens from the actual file size
     let contextTokensForClaudeMd: number | null = 0;
-    const latestChange = [...this.changes]
-      .reverse()
-      .find((c) => c.changeType !== 'deleted');
+    const latestChange = [...this.changes].reverse().find((c) => c.changeType !== 'deleted');
     if (latestChange) {
       try {
         const cost = ClaudeMdTracker.estimateContextCost(latestChange.filePath);
@@ -332,11 +327,10 @@ export class ClaudeMdTracker {
         report.deltas.efficiencyScore.value,
         { filePath: latest.filePath, changeType: latest.changeType },
       );
-      aggregator.record(
-        'ai.claudemd.post_change_cost_delta',
-        report.deltas.cost.value,
-        { filePath: latest.filePath, changeType: latest.changeType },
-      );
+      aggregator.record('ai.claudemd.post_change_cost_delta', report.deltas.cost.value, {
+        filePath: latest.filePath,
+        changeType: latest.changeType,
+      });
     }
 
     logger.debug('CLAUDE.md change metrics emitted', { changeCount: this.changes.length });
@@ -390,19 +384,11 @@ function aggregateSessions(sessions: FullSessionSummary[]): AggregateMetrics {
   }
 
   return {
-    avgEfficiencyScore: efficiencyCount > 0
-      ? round(efficiencySum / efficiencyCount, 3)
-      : null,
+    avgEfficiencyScore: efficiencyCount > 0 ? round(efficiencySum / efficiencyCount, 3) : null,
     avgCostUsd: round(totalCost / sessions.length, 4),
-    avgCorrectionRate: totalUserMessages > 0
-      ? round(totalCorrections / totalUserMessages, 3)
-      : 0,
-    avgToolCallsPerTask: totalTasks > 0
-      ? round(totalToolCalls / totalTasks, 1)
-      : 0,
-    avgTaskSuccessRate: totalTasks > 0
-      ? round(taskSuccessSum / totalTasks, 3)
-      : null,
+    avgCorrectionRate: totalUserMessages > 0 ? round(totalCorrections / totalUserMessages, 3) : 0,
+    avgToolCallsPerTask: totalTasks > 0 ? round(totalToolCalls / totalTasks, 1) : 0,
+    avgTaskSuccessRate: totalTasks > 0 ? round(taskSuccessSum / totalTasks, 3) : null,
     sessionCount: sessions.length,
   };
 }
@@ -440,7 +426,8 @@ function generateVerdict(deltas: ClaudeMdImpactReport['deltas']): string {
   const degraded = entries.filter((e) => !e.delta.improved && e.delta.value !== 0);
 
   const formatMetric = (e: { name: string; delta: MetricDelta }) => {
-    if (e.delta.percentChange === null) return `${e.name} ${e.delta.value > 0 ? '+' : ''}${e.delta.value}`;
+    if (e.delta.percentChange === null)
+      return `${e.name} ${e.delta.value > 0 ? '+' : ''}${e.delta.value}`;
     const sign = e.delta.percentChange >= 0 ? '+' : '';
     return `${e.name} ${sign}${e.delta.percentChange}%`;
   };

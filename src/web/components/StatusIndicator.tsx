@@ -13,11 +13,7 @@ export interface StatusIndicatorProps {
   readonly className?: string;
 }
 
-export function StatusIndicator({
-  tone,
-  label,
-  className,
-}: StatusIndicatorProps): JSX.Element {
+export function StatusIndicator({ tone, label, className }: StatusIndicatorProps): JSX.Element {
   const classes = `${TONE_CLASS[tone]} text-xs${className ? ` ${className}` : ''}`;
   return (
     <div className={classes}>

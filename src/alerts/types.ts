@@ -7,7 +7,13 @@ export interface AlertConditionDefinition {
   readonly aggregationWindow: number;
   readonly aggregationDelay?: number;
   readonly aggregationTimer?: number;
-  readonly thresholdOperator: 'ABOVE' | 'ABOVE_OR_EQUALS' | 'BELOW' | 'BELOW_OR_EQUALS' | 'EQUALS' | 'NOT_EQUALS';
+  readonly thresholdOperator:
+    | 'ABOVE'
+    | 'ABOVE_OR_EQUALS'
+    | 'BELOW'
+    | 'BELOW_OR_EQUALS'
+    | 'EQUALS'
+    | 'NOT_EQUALS';
   readonly thresholdCritical: {
     readonly value: number;
     readonly duration: number;
@@ -36,7 +42,7 @@ export interface PersonalAlertThresholds {
 
 export const DEFAULT_PERSONAL_THRESHOLDS: PersonalAlertThresholds = {
   dailyCostUsd: 2,
-  sessionCostUsd: 0.50,
+  sessionCostUsd: 0.5,
   efficiencyScoreMin: 40,
   stuckLoopCountMax: 2,
   antiPatternCountMax: 5,

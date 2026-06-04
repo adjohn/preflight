@@ -12,13 +12,7 @@
  * task-level data into a single FullSessionSummary.
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { createLogger } from '../shared/index.js';
 import { redactSensitive } from '../config.js';
@@ -114,7 +108,11 @@ export class SessionStore {
       logger.debug('Session saved', { sessionId: summary.sessionId, filename });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.warn('Failed to save session file', { sessionId: summary.sessionId, filename, error: message });
+      logger.warn('Failed to save session file', {
+        sessionId: summary.sessionId,
+        filename,
+        error: message,
+      });
     }
   }
 
@@ -168,7 +166,9 @@ export class SessionStore {
       results.push(parsed);
     }
 
-    return results.sort((a, b) => a.date.localeCompare(b.date) || a.sessionId.localeCompare(b.sessionId));
+    return results.sort(
+      (a, b) => a.date.localeCompare(b.date) || a.sessionId.localeCompare(b.sessionId),
+    );
   }
 
   loadAllSessions(options?: ListSessionsOptions): FullSessionSummary[] {
@@ -267,9 +267,10 @@ export function buildSessionSummary(sources: BuildSessionSummarySources): FullSe
   }
 
   // Anti-pattern analysis
-  const antiPatternResults = antiPatternDetector && allToolCalls.length > 0
-    ? antiPatternDetector.analyze(allToolCalls)
-    : null;
+  const antiPatternResults =
+    antiPatternDetector && allToolCalls.length > 0
+      ? antiPatternDetector.analyze(allToolCalls)
+      : null;
 
   const antiPatterns: Array<{ type: string; count: number }> = [];
   if (antiPatternResults) {
@@ -286,9 +287,8 @@ export function buildSessionSummary(sources: BuildSessionSummarySources): FullSe
   const efficiencyAvg = efficiencyScorer?.getSessionAverage() ?? null;
 
   // Task success rate: ratio of test passes to test runs across all tasks
-  const taskSuccessRate = totalTestsRun > 0
-    ? Math.round((totalTestsPassed / totalTestsRun) * 1000) / 1000
-    : null;
+  const taskSuccessRate =
+    totalTestsRun > 0 ? Math.round((totalTestsPassed / totalTestsRun) * 1000) / 1000 : null;
 
   // Enriched timeline for session replay
   const timeline: ReplayTimelineEntry[] = allToolCalls.map((tc) => ({
@@ -386,40 +386,44 @@ function deserializeSession(raw: string): FullSessionSummary | null {
   }
 
   return {
-    sessionId:            typeof obj.sessionId === 'string'  ? obj.sessionId  : '',
-    startTime:            typeof obj.startTime === 'number'  ? obj.startTime  : 0,
-    endTime:              typeof obj.endTime === 'number'    ? obj.endTime    : 0,
-    durationMs:           typeof obj.durationMs === 'number' ? obj.durationMs : 0,
-    toolCallCount:        typeof obj.toolCallCount === 'number' ? obj.toolCallCount : 0,
-    developer:            typeof obj.developer === 'string'  ? obj.developer  : 'unknown',
-    model:                typeof obj.model === 'string'      ? obj.model      : null,
+    sessionId: typeof obj.sessionId === 'string' ? obj.sessionId : '',
+    startTime: typeof obj.startTime === 'number' ? obj.startTime : 0,
+    endTime: typeof obj.endTime === 'number' ? obj.endTime : 0,
+    durationMs: typeof obj.durationMs === 'number' ? obj.durationMs : 0,
+    toolCallCount: typeof obj.toolCallCount === 'number' ? obj.toolCallCount : 0,
+    developer: typeof obj.developer === 'string' ? obj.developer : 'unknown',
+    model: typeof obj.model === 'string' ? obj.model : null,
     toolBreakdown,
-    filesRead:     Array.isArray(obj.filesRead)     ? (obj.filesRead as unknown[]).filter((f): f is string => typeof f === 'string')     : [],
-    filesModified: Array.isArray(obj.filesModified) ? (obj.filesModified as unknown[]).filter((f): f is string => typeof f === 'string') : [],
-    linesAdded:           typeof obj.linesAdded === 'number'           ? obj.linesAdded           : 0,
-    linesRemoved:         typeof obj.linesRemoved === 'number'         ? obj.linesRemoved         : 0,
-    bashCommandCount:     typeof obj.bashCommandCount === 'number'     ? obj.bashCommandCount     : 0,
-    testRunCount:         typeof obj.testRunCount === 'number'         ? obj.testRunCount         : 0,
-    testPassCount:        typeof obj.testPassCount === 'number'        ? obj.testPassCount        : 0,
-    buildRunCount:        typeof obj.buildRunCount === 'number'        ? obj.buildRunCount        : 0,
-    buildPassCount:       typeof obj.buildPassCount === 'number'       ? obj.buildPassCount       : 0,
-    estimatedCostUsd:     typeof obj.estimatedCostUsd === 'number'     ? obj.estimatedCostUsd     : null,
-    tokensInput:          typeof obj.tokensInput === 'number'          ? obj.tokensInput          : 0,
-    tokensOutput:         typeof obj.tokensOutput === 'number'         ? obj.tokensOutput         : 0,
-    tokensThinking:       typeof obj.tokensThinking === 'number'       ? obj.tokensThinking       : 0,
-    efficiencyScore:      typeof obj.efficiencyScore === 'number'      ? obj.efficiencyScore      : null,
+    filesRead: Array.isArray(obj.filesRead)
+      ? (obj.filesRead as unknown[]).filter((f): f is string => typeof f === 'string')
+      : [],
+    filesModified: Array.isArray(obj.filesModified)
+      ? (obj.filesModified as unknown[]).filter((f): f is string => typeof f === 'string')
+      : [],
+    linesAdded: typeof obj.linesAdded === 'number' ? obj.linesAdded : 0,
+    linesRemoved: typeof obj.linesRemoved === 'number' ? obj.linesRemoved : 0,
+    bashCommandCount: typeof obj.bashCommandCount === 'number' ? obj.bashCommandCount : 0,
+    testRunCount: typeof obj.testRunCount === 'number' ? obj.testRunCount : 0,
+    testPassCount: typeof obj.testPassCount === 'number' ? obj.testPassCount : 0,
+    buildRunCount: typeof obj.buildRunCount === 'number' ? obj.buildRunCount : 0,
+    buildPassCount: typeof obj.buildPassCount === 'number' ? obj.buildPassCount : 0,
+    estimatedCostUsd: typeof obj.estimatedCostUsd === 'number' ? obj.estimatedCostUsd : null,
+    tokensInput: typeof obj.tokensInput === 'number' ? obj.tokensInput : 0,
+    tokensOutput: typeof obj.tokensOutput === 'number' ? obj.tokensOutput : 0,
+    tokensThinking: typeof obj.tokensThinking === 'number' ? obj.tokensThinking : 0,
+    efficiencyScore: typeof obj.efficiencyScore === 'number' ? obj.efficiencyScore : null,
     antiPatterns,
-    taskCount:            typeof obj.taskCount === 'number'            ? obj.taskCount            : 0,
-    taskSuccessRate:      typeof obj.taskSuccessRate === 'number'      ? obj.taskSuccessRate      : null,
-    toolSuccessRate:      typeof obj.toolSuccessRate === 'number'      ? obj.toolSuccessRate      : null,
-    contextCompressions:  typeof obj.contextCompressions === 'number'  ? obj.contextCompressions  : 0,
-    agentSpawns:          typeof obj.agentSpawns === 'number'          ? obj.agentSpawns          : 0,
-    userMessages:         typeof obj.userMessages === 'number'         ? obj.userMessages         : 0,
-    assistantMessages:    typeof obj.assistantMessages === 'number'    ? obj.assistantMessages    : 0,
-    userCorrections:      typeof obj.userCorrections === 'number'      ? obj.userCorrections      : 0,
-    outcome:              typeof obj.outcome === 'string'              ? obj.outcome              : 'unknown',
-    platform:             typeof obj.platform === 'string'             ? obj.platform             : undefined,
-    timeline:             Array.isArray(obj.timeline) ? (obj.timeline as ReplayTimelineEntry[]) : undefined,
+    taskCount: typeof obj.taskCount === 'number' ? obj.taskCount : 0,
+    taskSuccessRate: typeof obj.taskSuccessRate === 'number' ? obj.taskSuccessRate : null,
+    toolSuccessRate: typeof obj.toolSuccessRate === 'number' ? obj.toolSuccessRate : null,
+    contextCompressions: typeof obj.contextCompressions === 'number' ? obj.contextCompressions : 0,
+    agentSpawns: typeof obj.agentSpawns === 'number' ? obj.agentSpawns : 0,
+    userMessages: typeof obj.userMessages === 'number' ? obj.userMessages : 0,
+    assistantMessages: typeof obj.assistantMessages === 'number' ? obj.assistantMessages : 0,
+    userCorrections: typeof obj.userCorrections === 'number' ? obj.userCorrections : 0,
+    outcome: typeof obj.outcome === 'string' ? obj.outcome : 'unknown',
+    platform: typeof obj.platform === 'string' ? obj.platform : undefined,
+    timeline: Array.isArray(obj.timeline) ? (obj.timeline as ReplayTimelineEntry[]) : undefined,
   };
 }
 

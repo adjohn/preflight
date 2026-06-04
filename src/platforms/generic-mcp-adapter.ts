@@ -42,7 +42,10 @@ export const REPORT_TOOL_CALL_TOOL = {
       success: { type: 'boolean', description: 'Whether the tool call succeeded' },
       duration_ms: { type: 'number', description: 'Duration of the tool call in milliseconds' },
       error: { type: 'string', description: 'Error message if the tool call failed' },
-      timestamp: { type: 'number', description: 'Epoch milliseconds when the call occurred (defaults to now)' },
+      timestamp: {
+        type: 'number',
+        description: 'Epoch milliseconds when the call occurred (defaults to now)',
+      },
     },
     required: ['tool', 'success'],
   },
@@ -134,9 +137,13 @@ export class GenericMcpAdapter implements PlatformAdapter {
       ...(input.error !== undefined && { error: input.error }),
       ...(input.input_size_bytes !== undefined && { inputSizeBytes: input.input_size_bytes }),
       ...(input.output_size_bytes !== undefined && { outputSizeBytes: input.output_size_bytes }),
-      ...(input.input !== undefined && typeof input.input === 'object' && 'file_path' in input.input &&
+      ...(input.input !== undefined &&
+        typeof input.input === 'object' &&
+        'file_path' in input.input &&
         typeof input.input.file_path === 'string' && { filePath: input.input.file_path }),
-      ...(input.input !== undefined && typeof input.input === 'object' && 'command' in input.input &&
+      ...(input.input !== undefined &&
+        typeof input.input === 'object' &&
+        'command' in input.input &&
         typeof input.input.command === 'string' && { command: input.input.command }),
     };
   }
@@ -156,7 +163,7 @@ export class GenericMcpAdapter implements PlatformAdapter {
   getHookInstallInstructions(): string {
     return [
       'Generic MCP Client Setup:',
-      '1. Add this MCP server to your AI assistant\'s MCP configuration',
+      "1. Add this MCP server to your AI assistant's MCP configuration",
       '   Command: npx nr-ai-mcp-server --stdio',
       '2. Set environment variables: NEW_RELIC_LICENSE_KEY, NEW_RELIC_ACCOUNT_ID',
       '3. MCP tool calls are captured automatically via the proxy',
@@ -169,7 +176,11 @@ export class GenericMcpAdapter implements PlatformAdapter {
     return true;
   }
 
-  getToolDefinitions(): readonly [typeof REPORT_TOOL_CALL_TOOL, typeof REPORT_SESSION_START_TOOL, typeof REPORT_SESSION_END_TOOL] {
+  getToolDefinitions(): readonly [
+    typeof REPORT_TOOL_CALL_TOOL,
+    typeof REPORT_SESSION_START_TOOL,
+    typeof REPORT_SESSION_END_TOOL,
+  ] {
     return [REPORT_TOOL_CALL_TOOL, REPORT_SESSION_START_TOOL, REPORT_SESSION_END_TOOL];
   }
 }

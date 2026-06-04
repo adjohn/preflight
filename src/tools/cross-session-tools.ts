@@ -86,7 +86,8 @@ export const TRENDS_TOOL = {
     properties: {
       metric: {
         type: 'string',
-        description: 'Metric to trend: "efficiency", "cost", "task_success", or "tool_calls" (default: "efficiency")',
+        description:
+          'Metric to trend: "efficiency", "cost", "task_success", or "tool_calls" (default: "efficiency")',
       },
       developer: {
         type: 'string',
@@ -104,7 +105,7 @@ export const TRENDS_TOOL = {
 export const COLLABORATION_PROFILE_TOOL = {
   name: 'nr_observe_get_collaboration_profile',
   description:
-    'Get a developer\'s collaboration profile: specificity, autonomy, correction rate, task complexity, and classification.',
+    "Get a developer's collaboration profile: specificity, autonomy, correction rate, task complexity, and classification.",
   inputSchema: {
     type: 'object' as const,
     properties: {
@@ -173,7 +174,8 @@ export const PLATFORM_COMPARISON_TOOL = {
     properties: {
       metric: {
         type: 'string',
-        description: 'Metric to compare: "efficiency", "cost", "task_success", "tool_calls", or "error_rate" (default: "efficiency")',
+        description:
+          'Metric to compare: "efficiency", "cost", "task_success", "tool_calls", or "error_rate" (default: "efficiency")',
       },
       weeks: {
         type: 'number',
@@ -202,11 +204,15 @@ export const TEAM_SUMMARY_TOOL = {
 
 export const SUBSCRIBE_DIGEST_TOOL = {
   name: 'nr_observe_subscribe_digest',
-  description: 'Register a Slack webhook URL to receive weekly AI coding cost and efficiency summaries.',
+  description:
+    'Register a Slack webhook URL to receive weekly AI coding cost and efficiency summaries.',
   inputSchema: {
     type: 'object' as const,
     properties: {
-      webhookUrl: { type: 'string', description: 'Slack incoming webhook URL (https://hooks.slack.com/...)' },
+      webhookUrl: {
+        type: 'string',
+        description: 'Slack incoming webhook URL (https://hooks.slack.com/...)',
+      },
     },
     required: ['webhookUrl'],
   },
@@ -222,7 +228,8 @@ export const UNSUBSCRIBE_DIGEST_TOOL = {
 
 export const SEND_DIGEST_TOOL = {
   name: 'nr_observe_send_digest',
-  description: 'Generate the current weekly AI coding summary and POST it to the configured Slack webhook immediately.',
+  description:
+    'Generate the current weekly AI coding summary and POST it to the configured Slack webhook immediately.',
   inputSchema: { type: 'object' as const, properties: {} },
   annotations: { readOnlyHint: false },
 };
@@ -230,7 +237,7 @@ export const SEND_DIGEST_TOOL = {
 export const PERSONAL_INSIGHTS_TOOL = {
   name: 'nr_observe_get_personal_insights',
   description:
-    'Returns a narrative coaching report comparing this week\'s personal AI coding metrics against your historical baseline. ' +
+    "Returns a narrative coaching report comparing this week's personal AI coding metrics against your historical baseline. " +
     'Includes highlights, regressions, streaks, and a top recommendation. ' +
     'Requires at least 2 weeks of session history. ' +
     'Returns status: "insufficient_data" with a message when history is too sparse.',
@@ -305,10 +312,12 @@ export function handleGetSessionHistory(
   }));
 
   return {
-    content: [{
-      type: 'text' as const,
-      text: JSON.stringify({ sessions: result, count: result.length }, null, 2),
-    }],
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify({ sessions: result, count: result.length }, null, 2),
+      },
+    ],
   };
 }
 
@@ -323,34 +332,47 @@ export function handleGetWeeklySummary(
       const currentWeek = getIsoWeekId(new Date());
       const generated = weeklySummaryGenerator.generate(currentWeek);
       return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(generated, null, 2),
-        }],
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(generated, null, 2),
+          },
+        ],
       };
     }
     return {
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify(latest, null, 2),
-      }],
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(latest, null, 2),
+        },
+      ],
     };
   }
 
   // N-03: validate week format before it reaches file-path construction
   if (!/^\d{4}-W\d{2}$/.test(args.week)) {
     return {
-      content: [{ type: 'text' as const, text: JSON.stringify({ error: 'Invalid week format. Use YYYY-Wnn (e.g. "2026-W16") or "latest".' }) }],
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'Invalid week format. Use YYYY-Wnn (e.g. "2026-W16") or "latest".',
+          }),
+        },
+      ],
       isError: true,
     };
   }
 
   const summary = weeklySummaryGenerator.generate(args.week);
   return {
-    content: [{
-      type: 'text' as const,
-      text: JSON.stringify(summary, null, 2),
-    }],
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(summary, null, 2),
+      },
+    ],
   };
 }
 
@@ -386,10 +408,12 @@ export function handleGetTrends(
   }
 
   return {
-    content: [{
-      type: 'text' as const,
-      text: JSON.stringify({ metric, weeks, data_points: data }, null, 2),
-    }],
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify({ metric, weeks, data_points: data }, null, 2),
+      },
+    ],
   };
 }
 
@@ -402,16 +426,22 @@ export function handleGetCollaborationProfile(
   const comparison = collaborationProfiler.compareToTeam(developer);
 
   return {
-    content: [{
-      type: 'text' as const,
-      text: JSON.stringify({
-        developer: profile.developer,
-        classification: profile.classification,
-        dimensions: profile.dimensions,
-        session_count: profile.sessionCount,
-        team_comparison: comparison.deltas,
-      }, null, 2),
-    }],
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            developer: profile.developer,
+            classification: profile.classification,
+            dimensions: profile.dimensions,
+            session_count: profile.sessionCount,
+            team_comparison: comparison.deltas,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
   };
 }
 
@@ -420,10 +450,12 @@ export function handleGetClaudeMdImpact(claudeMdTracker: ClaudeMdTracker) {
 
   if (changes.length === 0) {
     return {
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify({ message: 'No CLAUDE.md changes detected' }, null, 2),
-      }],
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify({ message: 'No CLAUDE.md changes detected' }, null, 2),
+        },
+      ],
     };
   }
 
@@ -431,21 +463,27 @@ export function handleGetClaudeMdImpact(claudeMdTracker: ClaudeMdTracker) {
   const impact = claudeMdTracker.computeImpact(latestChange.timestamp);
 
   return {
-    content: [{
-      type: 'text' as const,
-      text: JSON.stringify({
-        change: {
-          file: latestChange.filePath,
-          type: latestChange.changeType,
-          timestamp: new Date(latestChange.timestamp).toISOString(),
-        },
-        before: impact.beforeMetrics,
-        after: impact.afterMetrics,
-        deltas: impact.deltas,
-        context_tokens: impact.contextTokensForClaudeMd,
-        verdict: impact.verdict,
-      }, null, 2),
-    }],
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            change: {
+              file: latestChange.filePath,
+              type: latestChange.changeType,
+              timestamp: new Date(latestChange.timestamp).toISOString(),
+            },
+            before: impact.beforeMetrics,
+            after: impact.afterMetrics,
+            deltas: impact.deltas,
+            context_tokens: impact.contextTokensForClaudeMd,
+            verdict: impact.verdict,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
   };
 }
 
@@ -472,16 +510,22 @@ export function handleGetCostPerOutcome(
   const roi = costPerOutcomeAnalyzer.estimateROI(attribution, 75); // default $75/hr
 
   return {
-    content: [{
-      type: 'text' as const,
-      text: JSON.stringify({
-        outcome_distribution: attribution.outcomeDistribution,
-        waste_ratio: attribution.wasteRatio,
-        total_cost: attribution.totalCost,
-        total_tasks: attribution.totalTasks,
-        roi_estimate: roi,
-      }, null, 2),
-    }],
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            outcome_distribution: attribution.outcomeDistribution,
+            waste_ratio: attribution.wasteRatio,
+            total_cost: attribution.totalCost,
+            total_tasks: attribution.totalTasks,
+            roi_estimate: roi,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
   };
 }
 
@@ -495,10 +539,12 @@ export function handleGetRecommendations(
   });
 
   return {
-    content: [{
-      type: 'text' as const,
-      text: JSON.stringify({ recommendations: recs, count: recs.length }, null, 2),
-    }],
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify({ recommendations: recs, count: recs.length }, null, 2),
+      },
+    ],
   };
 }
 
@@ -572,42 +618,46 @@ export function handleGetPlatformComparison(
   }
 
   return {
-    content: [{
-      type: 'text' as const,
-      text: JSON.stringify({ metric, weeks, platforms: comparison }, null, 2),
-    }],
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify({ metric, weeks, platforms: comparison }, null, 2),
+      },
+    ],
   };
 }
 
-export async function handleGetTeamSummary(
-  options: {
-    teamId: string | null;
-    accountId: string;
-    nrApiKey: string | null;
-    collectorHost?: string | null;
-    since?: string;
-  },
-): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+export async function handleGetTeamSummary(options: {
+  teamId: string | null;
+  accountId: string;
+  nrApiKey: string | null;
+  collectorHost?: string | null;
+  since?: string;
+}): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   if (!options.teamId) {
     return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          error: 'teamId is not configured. Set NEW_RELIC_AI_TEAM_ID or teamId in config.',
-        }),
-      }],
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            error: 'teamId is not configured. Set NEW_RELIC_AI_TEAM_ID or teamId in config.',
+          }),
+        },
+      ],
       isError: true,
     };
   }
 
   if (!options.nrApiKey) {
     return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          error: 'NEW_RELIC_API_KEY (User key) is required for team summary queries.',
-        }),
-      }],
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            error: 'NEW_RELIC_API_KEY (User key) is required for team summary queries.',
+          }),
+        },
+      ],
       isError: true,
     };
   }
@@ -616,12 +666,15 @@ export async function handleGetTeamSummary(
   const rawSince = options.since ?? '7 days ago';
   if (!/^\d+\s+(?:minute|hour|day|week)s?\s+ago$/i.test(rawSince)) {
     return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          error: 'Invalid since value. Use a relative time like "7 days ago", "24 hours ago", or "1 week ago".',
-        }),
-      }],
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            error:
+              'Invalid since value. Use a relative time like "7 days ago", "24 hours ago", or "1 week ago".',
+          }),
+        },
+      ],
       isError: true,
     };
   }
@@ -629,7 +682,14 @@ export async function handleGetTeamSummary(
 
   if (!/^[a-zA-Z0-9_-]+$/.test(options.teamId)) {
     return {
-      content: [{ type: 'text', text: JSON.stringify({ error: 'Invalid teamId format. Allowed characters: a-z, A-Z, 0-9, underscore, hyphen.' }) }],
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            error: 'Invalid teamId format. Allowed characters: a-z, A-Z, 0-9, underscore, hyphen.',
+          }),
+        },
+      ],
       isError: true,
     };
   }
@@ -638,7 +698,14 @@ export async function handleGetTeamSummary(
   const accountId = Number(options.accountId);
   if (!Number.isFinite(accountId)) {
     return {
-      content: [{ type: 'text', text: JSON.stringify({ error: `Invalid accountId: "${options.accountId}" is not a valid number` }) }],
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            error: `Invalid accountId: "${options.accountId}" is not a valid number`,
+          }),
+        },
+      ],
       isError: true,
     };
   }
@@ -658,9 +725,14 @@ export async function handleGetTeamSummary(
     if (!resp.ok) {
       throw new Error(`NerdGraph request failed: HTTP ${resp.status} ${resp.statusText}`);
     }
-    const json = await resp.json() as { data?: { actor: { account: { nrql: { results: unknown[] } } } }; errors?: unknown[] };
+    const json = (await resp.json()) as {
+      data?: { actor: { account: { nrql: { results: unknown[] } } } };
+      errors?: unknown[];
+    };
     if (json.errors && Array.isArray(json.errors) && json.errors.length > 0) {
-      const msg = (json.errors as Array<{ message?: unknown }>).map(e => String(e.message ?? e)).join('; ');
+      const msg = (json.errors as Array<{ message?: unknown }>)
+        .map((e) => String(e.message ?? e))
+        .join('; ');
       throw new Error(`NerdGraph errors: ${msg}`);
     }
     if (!json.data?.actor?.account?.nrql?.results) {
@@ -692,16 +764,21 @@ export async function handleGetTeamSummary(
     ]);
   } catch (err) {
     return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          error: `Failed to query New Relic: ${err instanceof Error ? err.message : String(err)}`,
-        }),
-      }],
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            error: `Failed to query New Relic: ${err instanceof Error ? err.message : String(err)}`,
+          }),
+        },
+      ],
     };
   }
 
-  const byDev: Record<string, { costUsd: number; efficiencyScore: number | null; antiPatterns: number }> = {};
+  const byDev: Record<
+    string,
+    { costUsd: number; efficiencyScore: number | null; antiPatterns: number }
+  > = {};
   for (const row of costRows) {
     const dev = ((row.developer && String(row.developer).trim()) || 'unknown') as string;
     if (!byDev[dev]) byDev[dev] = { costUsd: 0, efficiencyScore: null, antiPatterns: 0 };
@@ -737,28 +814,57 @@ export function handleSubscribeDigest(
   configFilePath: string,
 ): { content: Array<{ type: 'text'; text: string }> } {
   if (!webhookUrl.startsWith('https://hooks.slack.com/')) {
-    return { content: [{ type: 'text', text: JSON.stringify({ error: 'webhookUrl must be a Slack incoming webhook URL (https://hooks.slack.com/...)' }) }] };
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            error: 'webhookUrl must be a Slack incoming webhook URL (https://hooks.slack.com/...)',
+          }),
+        },
+      ],
+    };
   }
   try {
     let existing: Record<string, unknown> = {};
-    try { existing = JSON.parse(readFileSync(configFilePath, 'utf-8')) as Record<string, unknown>; } catch { /* no existing config */ }
+    try {
+      existing = JSON.parse(readFileSync(configFilePath, 'utf-8')) as Record<string, unknown>;
+    } catch {
+      /* no existing config */
+    }
     existing.digestWebhookUrl = webhookUrl;
     writeFileSync(configFilePath, JSON.stringify(existing, null, 2), { mode: 0o600 });
-    return { content: [{ type: 'text', text: JSON.stringify({ ok: true, message: 'Webhook registered. Digest will be sent on the configured schedule.' }) }] };
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            ok: true,
+            message: 'Webhook registered. Digest will be sent on the configured schedule.',
+          }),
+        },
+      ],
+    };
   } catch (err) {
     return { content: [{ type: 'text', text: JSON.stringify({ error: String(err) }) }] };
   }
 }
 
-export function handleUnsubscribeDigest(
-  configFilePath: string,
-): { content: Array<{ type: 'text'; text: string }> } {
+export function handleUnsubscribeDigest(configFilePath: string): {
+  content: Array<{ type: 'text'; text: string }>;
+} {
   try {
     let existing: Record<string, unknown> = {};
-    try { existing = JSON.parse(readFileSync(configFilePath, 'utf-8')) as Record<string, unknown>; } catch { /* no existing config */ }
+    try {
+      existing = JSON.parse(readFileSync(configFilePath, 'utf-8')) as Record<string, unknown>;
+    } catch {
+      /* no existing config */
+    }
     delete existing.digestWebhookUrl;
     writeFileSync(configFilePath, JSON.stringify(existing, null, 2), { mode: 0o600 });
-    return { content: [{ type: 'text', text: JSON.stringify({ ok: true, message: 'Webhook removed.' }) }] };
+    return {
+      content: [{ type: 'text', text: JSON.stringify({ ok: true, message: 'Webhook removed.' }) }],
+    };
   } catch (err) {
     return { content: [{ type: 'text', text: JSON.stringify({ error: String(err) }) }] };
   }
@@ -776,10 +882,21 @@ export async function handleSendDigest(
     if (typeof raw.digestWebhookUrl === 'string') {
       webhookUrl = raw.digestWebhookUrl;
     }
-  } catch { /* config file may not exist yet */ }
+  } catch {
+    /* config file may not exist yet */
+  }
 
   if (!webhookUrl) {
-    return { content: [{ type: 'text', text: JSON.stringify({ error: 'No webhook URL configured. Call nr_observe_subscribe_digest first.' }) }] };
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            error: 'No webhook URL configured. Call nr_observe_subscribe_digest first.',
+          }),
+        },
+      ],
+    };
   }
 
   const currentWeek = getIsoWeekId(new Date());
@@ -788,9 +905,29 @@ export async function handleSendDigest(
 
   try {
     await sendSlackDigest(webhookUrl, payload);
-    return { content: [{ type: 'text', text: JSON.stringify({ ok: true, week: currentWeek, message: 'Digest sent successfully.' }) }] };
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            ok: true,
+            week: currentWeek,
+            message: 'Digest sent successfully.',
+          }),
+        },
+      ],
+    };
   } catch (err) {
-    return { content: [{ type: 'text', text: JSON.stringify({ error: `Failed to send digest: ${err instanceof Error ? err.message : String(err)}` }) }] };
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            error: `Failed to send digest: ${err instanceof Error ? err.message : String(err)}`,
+          }),
+        },
+      ],
+    };
   }
 }
 

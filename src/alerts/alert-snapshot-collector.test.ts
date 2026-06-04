@@ -121,9 +121,7 @@ describe('AlertSnapshotCollector — snapshot windowing', () => {
     const reReading = snap.antiPatterns.find(
       (e) => e.type === 're_reading' && e.windowMs === 60 * 1000,
     );
-    const any = snap.antiPatterns.find(
-      (e) => e.type === '*' && e.windowMs === 5 * 60 * 1000,
-    );
+    const any = snap.antiPatterns.find((e) => e.type === '*' && e.windowMs === 5 * 60 * 1000);
     expect(stuck?.count).toBe(4);
     expect(reReading?.count).toBe(1);
     expect(any?.count).toBe(5);

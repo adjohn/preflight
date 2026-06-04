@@ -365,11 +365,7 @@ describe('Today view — Recent alerts panel', () => {
 
     await screen.findByText('New alert');
     const titles = screen.getAllByText(/(?:Old|Middle|New) alert/);
-    expect(titles.map((el) => el.textContent)).toEqual([
-      'New alert',
-      'Middle alert',
-      'Old alert',
-    ]);
+    expect(titles.map((el) => el.textContent)).toEqual(['New alert', 'Middle alert', 'Old alert']);
   });
 });
 
@@ -394,7 +390,7 @@ describe('computeModelHealth', () => {
 
   it('returns healthy when no baseline exists (fewer than 3 sessions)', () => {
     const sessions = makeSessions('claude-opus-4-6', [0.95, 0.92]);
-    const result = computeModelHealth('claude-opus-4-6', 0.90, 0, sessions);
+    const result = computeModelHealth('claude-opus-4-6', 0.9, 0, sessions);
     expect(result.status).toBe('healthy');
     expect(result.baseline).toBeNull();
   });
@@ -415,21 +411,21 @@ describe('computeModelHealth', () => {
 
   it('returns poor when gap exceeds 20 points', () => {
     const sessions = makeSessions('claude-opus-4-6', [0.95, 0.94, 0.96]);
-    const result = computeModelHealth('claude-opus-4-6', 0.70, 2, sessions);
+    const result = computeModelHealth('claude-opus-4-6', 0.7, 2, sessions);
     expect(result.status).toBe('poor');
     expect(result.message).toContain('consider switching');
   });
 
   it('returns poor when error count exceeds threshold regardless of rate', () => {
     const sessions = makeSessions('claude-opus-4-6', [0.95, 0.94, 0.96]);
-    const result = computeModelHealth('claude-opus-4-6', 0.90, 6, sessions);
+    const result = computeModelHealth('claude-opus-4-6', 0.9, 6, sessions);
     expect(result.status).toBe('poor');
   });
 
   it('only compares sessions for the same model', () => {
     const sessions = [
       ...makeSessions('claude-opus-4-6', [0.95, 0.94, 0.96]),
-      ...makeSessions('claude-sonnet-4-6', [0.60, 0.65, 0.62]),
+      ...makeSessions('claude-sonnet-4-6', [0.6, 0.65, 0.62]),
     ];
     const result = computeModelHealth('claude-opus-4-6', 0.92, 0, sessions);
     expect(result.status).toBe('healthy');

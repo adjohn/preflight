@@ -42,12 +42,12 @@ When adding a new field that goes into a URL path, validate it at config-load ti
 
 ```typescript
 // Good — bounds prevent nonsensical or unsafe values
-envInt('NEW_RELIC_AI_CONTENT_MAX_LENGTH', 4096, { min: 1, max: 1_048_576 })
-envInt('NEW_RELIC_AI_MCP_PORT', 9847, { min: 1, max: 65535 })
-envInt('NEW_RELIC_AI_MCP_HARVEST_EVENTS_MS', 5000, { min: 100, max: 3_600_000 })
+envInt('NEW_RELIC_AI_CONTENT_MAX_LENGTH', 4096, { min: 1, max: 1_048_576 });
+envInt('NEW_RELIC_AI_MCP_PORT', 9847, { min: 1, max: 65535 });
+envInt('NEW_RELIC_AI_MCP_HARVEST_EVENTS_MS', 5000, { min: 100, max: 3_600_000 });
 
 // Bad — unbounded; a value of 0 or -1 could cause setInterval to fire at max rate
-envInt('NEW_RELIC_AI_SOME_INTERVAL', 5000)
+envInt('NEW_RELIC_AI_SOME_INTERVAL', 5000);
 ```
 
 ### Token counts — `safeInt()` in `src/shared/tokens.ts`
@@ -71,7 +71,9 @@ Tool names come from caller-supplied arrays and are stored in NR events. They mu
 
 ```typescript
 function sanitizeToolName(name: unknown): string {
-  return String(name ?? '').slice(0, 256).replace(/[\x00-\x1f]/g, '');
+  return String(name ?? '')
+    .slice(0, 256)
+    .replace(/[\x00-\x1f]/g, '');
 }
 ```
 
@@ -85,18 +87,19 @@ Apply the same pattern to any user-supplied string that becomes a NR event field
 
 A set of compiled regular expressions that cover:
 
-| Pattern | What it catches |
-|---|---|
-| `API_KEY=`, `SECRET=`, `TOKEN=`, `PASSWORD=`, `PASSPHRASE=`, `PRIVATE_KEY=`, … | Key-value secret assignments |
-| `sk-`, `ghp_`, `gho_`, `github_pat_`, `Bearer …` | Common API token prefixes |
-| `-----BEGIN … -----END-----` | PEM-encoded private keys and certificates |
-| `AKIA[0-9A-Z]{16}` | AWS access key IDs |
-| `AIzaSy…` | Google API keys |
-| `eyJ…` (three-part) | JWT tokens |
-| `npm_…` | npm auth tokens |
-| `xox[a-z]-…` | All Slack token types |
+| Pattern                                                                        | What it catches                           |
+| ------------------------------------------------------------------------------ | ----------------------------------------- |
+| `API_KEY=`, `SECRET=`, `TOKEN=`, `PASSWORD=`, `PASSPHRASE=`, `PRIVATE_KEY=`, … | Key-value secret assignments              |
+| `sk-`, `ghp_`, `gho_`, `github_pat_`, `Bearer …`                               | Common API token prefixes                 |
+| `-----BEGIN … -----END-----`                                                   | PEM-encoded private keys and certificates |
+| `AKIA[0-9A-Z]{16}`                                                             | AWS access key IDs                        |
+| `AIzaSy…`                                                                      | Google API keys                           |
+| `eyJ…` (three-part)                                                            | JWT tokens                                |
+| `npm_…`                                                                        | npm auth tokens                           |
+| `xox[a-z]-…`                                                                   | All Slack token types                     |
 
 **Where applied:**
+
 - `collector-script.ts` — redacts tool input/output before writing to the hook buffer
 - `nr-ai-mcp-server/src/config.ts` — `redactSensitive()` for config-level redaction
 - `nr-ai-agent` wrapper (in the separate `nr-ai-typescript-agent` repo) — error messages from the upstream API are run through `redact()` before being stored in NR events
@@ -150,6 +153,7 @@ This is used by both `HttpUpstream` (MCP proxy forwarding) and `OtlpReceiver` (`
 ### Proxy body limits — `proxy-manager.ts`
 
 `readBody()` enforces:
+
 - **30-second timeout** — prevents slow-loris resource exhaustion
 - **10 MB body limit** — prevents unbounded heap growth from large request bodies
 
@@ -193,14 +197,14 @@ When spawning an upstream MCP server as a child process, two invariants must hol
 
 2. **Dangerous env keys stripped** — the following keys are removed from the child environment regardless of what the config file supplies:
 
-   | Key | Risk |
-   |---|---|
-   | `LD_PRELOAD` | Linux: preload attacker shared library |
-   | `LD_LIBRARY_PATH` | Linux: redirect dynamic linker |
-   | `DYLD_INSERT_LIBRARIES` | macOS: same as `LD_PRELOAD` |
-   | `DYLD_LIBRARY_PATH` | macOS: redirect dynamic linker |
-   | `PATH` | Override command resolution — could redirect `node` or other binaries |
-   | `NODE_OPTIONS` | Inject Node.js flags (e.g., `--require`) |
+   | Key                     | Risk                                                                  |
+   | ----------------------- | --------------------------------------------------------------------- |
+   | `LD_PRELOAD`            | Linux: preload attacker shared library                                |
+   | `LD_LIBRARY_PATH`       | Linux: redirect dynamic linker                                        |
+   | `DYLD_INSERT_LIBRARIES` | macOS: same as `LD_PRELOAD`                                           |
+   | `DYLD_LIBRARY_PATH`     | macOS: redirect dynamic linker                                        |
+   | `PATH`                  | Override command resolution — could redirect `node` or other binaries |
+   | `NODE_OPTIONS`          | Inject Node.js flags (e.g., `--require`)                              |
 
 If you add a new subprocess invocation anywhere in the codebase, apply both checks.
 

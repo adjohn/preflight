@@ -14,7 +14,10 @@ let tmpDir: string;
 
 beforeEach(() => {
   stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
-  tmpDir = resolve(tmpdir(), `nr-session-store-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  tmpDir = resolve(
+    tmpdir(),
+    `nr-session-store-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   mkdirSync(resolve(tmpDir, 'sessions'), { recursive: true });
 });
 
@@ -123,14 +126,18 @@ describe('SessionStore', () => {
   it('listSessions filters by date range', () => {
     const store = new SessionStore({ storagePath: tmpDir });
 
-    store.saveSession(makeSummary({
-      sessionId: 'old',
-      startTime: new Date('2026-04-01T10:00:00Z').getTime(),
-    }));
-    store.saveSession(makeSummary({
-      sessionId: 'recent',
-      startTime: new Date('2026-04-15T10:00:00Z').getTime(),
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'old',
+        startTime: new Date('2026-04-01T10:00:00Z').getTime(),
+      }),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 'recent',
+        startTime: new Date('2026-04-15T10:00:00Z').getTime(),
+      }),
+    );
 
     const results = store.listSessions({ since: new Date('2026-04-10') });
     expect(results).toHaveLength(1);
@@ -175,7 +182,7 @@ describe('SessionStore', () => {
 
     const all = store.loadAllSessions();
     expect(all).toHaveLength(3);
-    expect(all.map(s => s.sessionId)).toEqual(['s1', 's3', 's2']);
+    expect(all.map((s) => s.sessionId)).toEqual(['s1', 's3', 's2']);
   });
 
   it('saveSession rejects sessionId containing path traversal and writes no file (N-01)', () => {
@@ -206,10 +213,12 @@ describe('SessionStore', () => {
   it('session file naming follows YYYY-MM-DD_sessionId.json pattern', () => {
     const store = new SessionStore({ storagePath: tmpDir });
 
-    store.saveSession(makeSummary({
-      sessionId: 'pattern-test',
-      startTime: new Date('2026-01-15T12:00:00Z').getTime(),
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'pattern-test',
+        startTime: new Date('2026-01-15T12:00:00Z').getTime(),
+      }),
+    );
 
     const files = readdirSync(resolve(tmpDir, 'sessions'));
     expect(files[0]).toMatch(/^\d{4}-\d{2}-\d{2}_pattern-test\.json$/);
@@ -222,22 +231,28 @@ describe('SessionStore', () => {
     today.setUTCHours(0, 0, 0, 0);
     const todayMs = today.getTime();
 
-    store.saveSession(makeSummary({
-      sessionId: 'today-1',
-      startTime: todayMs + 1000,
-    }));
-    store.saveSession(makeSummary({
-      sessionId: 'today-2',
-      startTime: todayMs + 5000,
-    }));
-    store.saveSession(makeSummary({
-      sessionId: 'yesterday',
-      startTime: todayMs - 86_400_000,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'today-1',
+        startTime: todayMs + 1000,
+      }),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 'today-2',
+        startTime: todayMs + 5000,
+      }),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 'yesterday',
+        startTime: todayMs - 86_400_000,
+      }),
+    );
 
     const sessions = store.loadTodaySessions();
     expect(sessions).toHaveLength(2);
-    expect(sessions.map(s => s.sessionId)).toEqual(['today-1', 'today-2']);
+    expect(sessions.map((s) => s.sessionId)).toEqual(['today-1', 'today-2']);
   });
 });
 
@@ -521,7 +536,9 @@ describe('SessionStore corruption-recovery (F-132)', () => {
     expect(result).toBeNull();
 
     const logged = stderrSpy.mock.calls.map((call: unknown[]) => String(call[0]));
-    expect(logged.some((l: string) => l.includes('"warn"') && l.includes('deserialize'))).toBe(true);
+    expect(logged.some((l: string) => l.includes('"warn"') && l.includes('deserialize'))).toBe(
+      true,
+    );
   });
 
   it('loadSession returns null for an empty file', () => {
@@ -557,7 +574,9 @@ describe('SessionStore corruption-recovery (F-132)', () => {
       expect(() => store.saveSession(makeSummary({ sessionId: 'perm-fail' }))).not.toThrow();
 
       const logged = stderrSpy.mock.calls.map((call: unknown[]) => String(call[0]));
-      expect(logged.some((l: string) => l.includes('"warn"') && l.includes('Failed to save'))).toBe(true);
+      expect(logged.some((l: string) => l.includes('"warn"') && l.includes('Failed to save'))).toBe(
+        true,
+      );
     } finally {
       // Restore permissions so afterEach cleanup can delete the directory
       chmodSync(sessionsDir, 0o700);
@@ -745,11 +764,17 @@ describe('buildSessionSummary timeline', () => {
         { timestamp: 1000, toolName: 'Read', durationMs: 30, success: true, filePath: '/a.ts' },
       ],
     };
-    writeFileSync(join(sessionsDir, '2026-01-01_with-tl.json'), JSON.stringify(withTimeline) + '\n');
+    writeFileSync(
+      join(sessionsDir, '2026-01-01_with-tl.json'),
+      JSON.stringify(withTimeline) + '\n',
+    );
 
     // Session WITHOUT timeline (legacy)
     const withoutTimeline = makeSummary({ sessionId: 'no-tl' });
-    writeFileSync(join(sessionsDir, '2026-01-01_no-tl.json'), JSON.stringify(withoutTimeline) + '\n');
+    writeFileSync(
+      join(sessionsDir, '2026-01-01_no-tl.json'),
+      JSON.stringify(withoutTimeline) + '\n',
+    );
 
     const loaded1 = store.loadSession('with-tl') as Record<string, unknown> | null;
     expect(loaded1).not.toBeNull();

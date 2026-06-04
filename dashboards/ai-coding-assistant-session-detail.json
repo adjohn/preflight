@@ -9,9 +9,7 @@
       "type": "NRQL",
       "nrqlQuery": {
         "query": "SELECT uniques(session_id) FROM AiToolCall SINCE 7 days ago LIMIT 100",
-        "accountIds": [
-          0
-        ]
+        "accountIds": [0]
       },
       "isMultiSelection": false,
       "defaultValues": [],

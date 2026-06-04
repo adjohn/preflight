@@ -26,7 +26,8 @@ export class ClaudeCodeAdapter implements PlatformAdapter {
       ...(record.error !== undefined && { error: record.error }),
       ...(record.inputSizeBytes !== undefined && { inputSizeBytes: record.inputSizeBytes }),
       ...(record.outputSizeBytes !== undefined && { outputSizeBytes: record.outputSizeBytes }),
-      ...(record.sessionId !== undefined && record.sessionId !== null && { sessionId: record.sessionId }),
+      ...(record.sessionId !== undefined &&
+        record.sessionId !== null && { sessionId: record.sessionId }),
       ...(record.toolUseId !== undefined && { toolUseId: record.toolUseId }),
       ...(record.inputHash !== undefined && { inputHash: record.inputHash }),
       ...(typeof record.filePath === 'string' && { filePath: record.filePath }),

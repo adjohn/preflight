@@ -106,7 +106,8 @@ export function createAiResponse(params: CreateAiResponseParams): AiResponse {
   const thinkingTokens = params.thinkingTokens ?? 0;
   const cacheReadTokens = params.cacheReadTokens ?? 0;
   const cacheCreationTokens = params.cacheCreationTokens ?? 0;
-  const totalTokens = inputTokens + outputTokens + thinkingTokens + cacheReadTokens + cacheCreationTokens;
+  const totalTokens =
+    inputTokens + outputTokens + thinkingTokens + cacheReadTokens + cacheCreationTokens;
 
   const durationMs = params.durationMs;
   const tokensPerSecond =

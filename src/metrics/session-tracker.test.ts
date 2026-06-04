@@ -102,11 +102,14 @@ describe('SessionTracker', () => {
       const tracker = new SessionTracker('test-session');
 
       // 6 successful Reads, 2 failed Reads
-      for (let i = 0; i < 6; i++) tracker.recordToolCall(makeRecord({ toolName: 'Read', success: true }));
-      for (let i = 0; i < 2; i++) tracker.recordToolCall(makeRecord({ toolName: 'Read', success: false }));
+      for (let i = 0; i < 6; i++)
+        tracker.recordToolCall(makeRecord({ toolName: 'Read', success: true }));
+      for (let i = 0; i < 2; i++)
+        tracker.recordToolCall(makeRecord({ toolName: 'Read', success: false }));
 
       // 2 successful Bash
-      for (let i = 0; i < 2; i++) tracker.recordToolCall(makeRecord({ toolName: 'Bash', success: true }));
+      for (let i = 0; i < 2; i++)
+        tracker.recordToolCall(makeRecord({ toolName: 'Bash', success: true }));
 
       const metrics = tracker.getMetrics();
 
@@ -296,7 +299,9 @@ describe('SessionTracker', () => {
       const tracker = new SessionTracker('old-session');
 
       tracker.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/a.ts' }));
-      tracker.recordToolCall(makeRecord({ toolName: 'Bash', success: false, errorType: 'timeout' }));
+      tracker.recordToolCall(
+        makeRecord({ toolName: 'Bash', success: false, errorType: 'timeout' }),
+      );
 
       tracker.reset('new-session');
 
@@ -343,7 +348,7 @@ describe('SessionTracker', () => {
       const metrics = aggregator.harvest();
 
       // Should have per-tool call_count, duration_ms, success_rate + session metrics
-      const names = metrics.map(m => m.name);
+      const names = metrics.map((m) => m.name);
 
       // Check that per-tool metrics were emitted
       expect(names).toContain('ai.tool.call_count.count');
@@ -368,8 +373,10 @@ describe('SessionTracker', () => {
       tracker.emitMetrics(aggregator);
       const metrics = aggregator.harvest();
 
-      const durationMetrics = metrics.filter(m => m.name.startsWith('ai.tool.duration_ms') && m.attributes?.tool === 'Read');
-      const byName = Object.fromEntries(durationMetrics.map(m => [m.name, m.value]));
+      const durationMetrics = metrics.filter(
+        (m) => m.name.startsWith('ai.tool.duration_ms') && m.attributes?.tool === 'Read',
+      );
+      const byName = Object.fromEntries(durationMetrics.map((m) => [m.name, m.value]));
 
       // count = 3 (one record() call per duration, not one call with the mean)
       expect(byName['ai.tool.duration_ms.count']).toBe(3);

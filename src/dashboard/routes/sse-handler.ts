@@ -29,8 +29,7 @@ export function createSseHandler(
     // produce NaN here, falling through to no replay. Negative or invalid
     // values also fall through. See F-010 in docs/CODE_REVIEW.md.
     const lastEventIdHeader = req.headers['last-event-id'];
-    const rawSeq =
-      typeof lastEventIdHeader === 'string' ? parseInt(lastEventIdHeader, 10) : NaN;
+    const rawSeq = typeof lastEventIdHeader === 'string' ? parseInt(lastEventIdHeader, 10) : NaN;
     const replaySeq = Number.isFinite(rawSeq) && rawSeq >= 0 ? rawSeq : -1;
     if (replaySeq >= 0) {
       // Replay buffered events with global seq > lastSeq, using the bus's
@@ -54,7 +53,7 @@ export function createSseHandler(
       'tool-call': onAny('tool-call'),
       'cost-update': onAny('cost-update'),
       'anti-pattern': onAny('anti-pattern'),
-      'alert': onAny('alert'),
+      alert: onAny('alert'),
     } as const;
     bus.onWithSeq('tool-call', handlers['tool-call']);
     bus.onWithSeq('cost-update', handlers['cost-update']);

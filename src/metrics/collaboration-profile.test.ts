@@ -75,13 +75,15 @@ describe('CollaborationProfiler', () => {
 
     // specificity: 20 tool calls / 3 user messages = ratio 6.67, normalized: 6.67/10 ≈ 0.667
     // autonomy: 20 tool calls / 4 assistant messages = 5.0, normalized: 5/5 = 1.0
-    store.saveSession(makeSummary({
-      sessionId: 's1',
-      toolCallCount: 20,
-      userMessages: 3,
-      assistantMessages: 4,
-      userCorrections: 0,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 's1',
+        toolCallCount: 20,
+        userMessages: 3,
+        assistantMessages: 4,
+        userCorrections: 0,
+      }),
+    );
 
     const profile = profiler.computeProfile('alice');
 
@@ -98,12 +100,14 @@ describe('CollaborationProfiler', () => {
 
     // 5 tool calls / 4 user messages = ratio 1.25, normalized: 1.25/10 = 0.125
     // 3 corrections / 4 messages → correctionRate = 1 - 3/4 = 0.25
-    store.saveSession(makeSummary({
-      sessionId: 's1',
-      toolCallCount: 5,
-      userMessages: 4,
-      userCorrections: 3,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 's1',
+        toolCallCount: 5,
+        userMessages: 4,
+        userCorrections: 3,
+      }),
+    );
 
     const profile = profiler.computeProfile('alice');
 
@@ -119,14 +123,16 @@ describe('CollaborationProfiler', () => {
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
     // Low complexity: 2 files, 10 tool calls, 0 agents, 1 task
-    store.saveSession(makeSummary({
-      sessionId: 'low',
-      filesRead: ['/a.ts'],
-      filesModified: ['/b.ts'],
-      toolCallCount: 10,
-      agentSpawns: 0,
-      taskCount: 1,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'low',
+        filesRead: ['/a.ts'],
+        filesModified: ['/b.ts'],
+        toolCallCount: 10,
+        agentSpawns: 0,
+        taskCount: 1,
+      }),
+    );
 
     const lowProfile = profiler.computeProfile('alice');
     const lowComplexity = lowProfile.dimensions.taskComplexity;
@@ -138,14 +144,16 @@ describe('CollaborationProfiler', () => {
 
     // High complexity: 15 files, 40 tool calls, 2 agents, 1 task
     const manyFiles = Array.from({ length: 10 }, (_, i) => `/f${i}.ts`);
-    store.saveSession(makeSummary({
-      sessionId: 'high',
-      filesRead: manyFiles,
-      filesModified: manyFiles.slice(0, 5),
-      toolCallCount: 40,
-      agentSpawns: 2,
-      taskCount: 1,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'high',
+        filesRead: manyFiles,
+        filesModified: manyFiles.slice(0, 5),
+        toolCallCount: 40,
+        agentSpawns: 2,
+        taskCount: 1,
+      }),
+    );
 
     const highProfiler = new CollaborationProfiler({ sessionStore: store });
     const highProfile = highProfiler.computeProfile('alice');
@@ -166,55 +174,63 @@ describe('CollaborationProfiler', () => {
     // Power User: high specificity (≥0.6) + high autonomy (≥0.6)
     // specificity: 60/10/10 = 0.6
     // autonomy: 60 toolCalls / 10 assistantMessages / 5 = 1.0 (clamped)
-    store.saveSession(makeSummary({
-      sessionId: 'power',
-      developer: 'power-user',
-      toolCallCount: 60,
-      userMessages: 10,
-      assistantMessages: 10,
-      userCorrections: 0,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'power',
+        developer: 'power-user',
+        toolCallCount: 60,
+        userMessages: 10,
+        assistantMessages: 10,
+        userCorrections: 0,
+      }),
+    );
     expect(profiler.computeProfile('power-user').classification).toBe('Power User');
 
     // Delegator: low specificity (<0.6) + high autonomy (≥0.6)
     // specificity: 15/10/10 = 0.15
     // autonomy: 15 toolCalls / 5 assistantMessages / 5 = 0.6
-    store.saveSession(makeSummary({
-      sessionId: 'delegator',
-      developer: 'delegator-user',
-      toolCallCount: 15,
-      userMessages: 10,
-      assistantMessages: 5,
-      userCorrections: 1,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'delegator',
+        developer: 'delegator-user',
+        toolCallCount: 15,
+        userMessages: 10,
+        assistantMessages: 5,
+        userCorrections: 1,
+      }),
+    );
     expect(profiler.computeProfile('delegator-user').classification).toBe('Delegator');
 
     // Learning: low specificity (<0.6) + low autonomy (<0.6) + correctionRate < 0.6
     // specificity: 5/10/10 = 0.05
     // correctionRate: 1 - 8/10 = 0.2
     // autonomy: 5/10/5 = 0.1 (<0.6)
-    store.saveSession(makeSummary({
-      sessionId: 'learning',
-      developer: 'learning-user',
-      toolCallCount: 5,
-      userMessages: 10,
-      assistantMessages: 10,
-      userCorrections: 8,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'learning',
+        developer: 'learning-user',
+        toolCallCount: 5,
+        userMessages: 10,
+        assistantMessages: 10,
+        userCorrections: 8,
+      }),
+    );
     expect(profiler.computeProfile('learning-user').classification).toBe('Learning');
 
     // Collaborative: low specificity + low autonomy + correctionRate ≥ 0.6
     // specificity: 5/10/10 = 0.05 (<0.6)
     // autonomy: 5 toolCalls / 10 assistantMessages / 5 = 0.1 (<0.6)
     // correctionRate: 1 - 1/10 = 0.9 (≥0.6) — few corrections but low autonomy
-    store.saveSession(makeSummary({
-      sessionId: 'collab',
-      developer: 'collab-user',
-      toolCallCount: 5,
-      userMessages: 10,
-      assistantMessages: 10,
-      userCorrections: 1,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'collab',
+        developer: 'collab-user',
+        toolCallCount: 5,
+        userMessages: 10,
+        assistantMessages: 10,
+        userCorrections: 1,
+      }),
+    );
     expect(profiler.computeProfile('collab-user').classification).toBe('Collaborative');
   });
 
@@ -224,26 +240,30 @@ describe('CollaborationProfiler', () => {
     // specificity: 5/10/10 = 0.05 (<0.6)
     // autonomy: 5 toolCalls / 5 assistantMessages / 5 = 0.2 (<0.6) — low enough for Learning
     // correctionRate: 1 - 4/10 = 0.6 — at threshold, NOT < 0.6, so should be Collaborative
-    store.saveSession(makeSummary({
-      sessionId: 'boundary',
-      developer: 'boundary-user',
-      toolCallCount: 5,
-      userMessages: 10,
-      assistantMessages: 5,
-      userCorrections: 4,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'boundary',
+        developer: 'boundary-user',
+        toolCallCount: 5,
+        userMessages: 10,
+        assistantMessages: 5,
+        userCorrections: 4,
+      }),
+    );
     expect(profiler.computeProfile('boundary-user').classification).toBe('Collaborative');
 
     // Verify Learning still fires when all three conditions are met:
     // specificity: 5/10/10 = 0.05, autonomy: 5/5/5 = 0.2, correctionRate: 1 - 7/10 = 0.3
-    store.saveSession(makeSummary({
-      sessionId: 'learning2',
-      developer: 'learning2-user',
-      toolCallCount: 5,
-      userMessages: 10,
-      assistantMessages: 5,
-      userCorrections: 7,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'learning2',
+        developer: 'learning2-user',
+        toolCallCount: 5,
+        userMessages: 10,
+        assistantMessages: 5,
+        userCorrections: 7,
+      }),
+    );
     expect(profiler.computeProfile('learning2-user').classification).toBe('Learning');
   });
 
@@ -255,34 +275,40 @@ describe('CollaborationProfiler', () => {
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
     // Alice: specificity = 60/10/10 = 0.6, autonomy = 60/10/5 = 1.0 (clamped)
-    store.saveSession(makeSummary({
-      sessionId: 'a1',
-      developer: 'alice',
-      toolCallCount: 60,
-      userMessages: 10,
-      assistantMessages: 10,
-      userCorrections: 0,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'a1',
+        developer: 'alice',
+        toolCallCount: 60,
+        userMessages: 10,
+        assistantMessages: 10,
+        userCorrections: 0,
+      }),
+    );
 
     // Bob: specificity = 30/10/10 = 0.3, autonomy = 30/10/5 = 0.6
-    store.saveSession(makeSummary({
-      sessionId: 'b1',
-      developer: 'bob',
-      toolCallCount: 30,
-      userMessages: 10,
-      assistantMessages: 10,
-      userCorrections: 0,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'b1',
+        developer: 'bob',
+        toolCallCount: 30,
+        userMessages: 10,
+        assistantMessages: 10,
+        userCorrections: 0,
+      }),
+    );
 
     // Charlie: specificity = 90/10/10 = 0.9, autonomy = 90/10/5 = 1.0 (clamped)
-    store.saveSession(makeSummary({
-      sessionId: 'c1',
-      developer: 'charlie',
-      toolCallCount: 90,
-      userMessages: 10,
-      assistantMessages: 10,
-      userCorrections: 0,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'c1',
+        developer: 'charlie',
+        toolCallCount: 90,
+        userMessages: 10,
+        assistantMessages: 10,
+        userCorrections: 0,
+      }),
+    );
 
     const baseline = profiler.computeTeamBaseline();
 
@@ -302,24 +328,28 @@ describe('CollaborationProfiler', () => {
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
     // Alice: specificity = 60/10/10 = 0.6, autonomy = 60/5/5 = 1.0 (clamped)
-    store.saveSession(makeSummary({
-      sessionId: 'a1',
-      developer: 'alice',
-      toolCallCount: 60,
-      userMessages: 10,
-      assistantMessages: 5,
-      userCorrections: 0,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'a1',
+        developer: 'alice',
+        toolCallCount: 60,
+        userMessages: 10,
+        assistantMessages: 5,
+        userCorrections: 0,
+      }),
+    );
 
     // Bob: specificity = 30/10/10 = 0.3, autonomy = 30/10/5 = 0.6
-    store.saveSession(makeSummary({
-      sessionId: 'b1',
-      developer: 'bob',
-      toolCallCount: 30,
-      userMessages: 10,
-      assistantMessages: 10,
-      userCorrections: 5,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'b1',
+        developer: 'bob',
+        toolCallCount: 30,
+        userMessages: 10,
+        assistantMessages: 10,
+        userCorrections: 5,
+      }),
+    );
 
     const comparison = profiler.compareToTeam('alice');
 
@@ -347,13 +377,15 @@ describe('CollaborationProfiler', () => {
 
     for (let i = 0; i < weeks.length; i++) {
       const { start } = getWeekDateRange(weeks[i]!);
-      store.saveSession(makeSummary({
-        sessionId: `s-w${i}`,
-        startTime: start.getTime() + 43_200_000,
-        toolCallCount: toolCounts[i]!,
-        userMessages: 10,
-        userCorrections: 0,
-      }));
+      store.saveSession(
+        makeSummary({
+          sessionId: `s-w${i}`,
+          startTime: start.getTime() + 43_200_000,
+          toolCallCount: toolCounts[i]!,
+          userMessages: 10,
+          userCorrections: 0,
+        }),
+      );
     }
 
     const profile = profiler.computeProfile('alice');
@@ -377,17 +409,19 @@ describe('CollaborationProfiler', () => {
     // specificity: 1000/1/10 = 100 → clamped to 1
     // autonomy: 1000 toolCalls / 1 assistantMessage / 5 = 200 → clamped to 1
     // correctionRate: 1 - 100/1 = -99 → clamped to 0
-    store.saveSession(makeSummary({
-      sessionId: 's-extreme',
-      toolCallCount: 1000,
-      userMessages: 1,
-      assistantMessages: 1,
-      userCorrections: 100,
-      filesRead: Array.from({ length: 100 }, (_, i) => `/f${i}.ts`),
-      filesModified: Array.from({ length: 100 }, (_, i) => `/m${i}.ts`),
-      agentSpawns: 50,
-      taskCount: 1,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 's-extreme',
+        toolCallCount: 1000,
+        userMessages: 1,
+        assistantMessages: 1,
+        userCorrections: 100,
+        filesRead: Array.from({ length: 100 }, (_, i) => `/f${i}.ts`),
+        filesModified: Array.from({ length: 100 }, (_, i) => `/m${i}.ts`),
+        agentSpawns: 50,
+        taskCount: 1,
+      }),
+    );
 
     const profile = profiler.computeProfile('alice');
 
@@ -410,22 +444,30 @@ describe('CollaborationProfiler', () => {
   it('emitMetrics emits all dimension scores with developer attribute', () => {
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
-    store.saveSession(makeSummary({
-      sessionId: 'emit-alice',
-      developer: 'alice',
-      toolCallCount: 60,
-      userMessages: 10,
-      userCorrections: 1,
-    }));
-    store.saveSession(makeSummary({
-      sessionId: 'emit-bob',
-      developer: 'bob',
-      toolCallCount: 20,
-      userMessages: 5,
-      userCorrections: 2,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 'emit-alice',
+        developer: 'alice',
+        toolCallCount: 60,
+        userMessages: 10,
+        userCorrections: 1,
+      }),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 'emit-bob',
+        developer: 'bob',
+        toolCallCount: 20,
+        userMessages: 5,
+        userCorrections: 2,
+      }),
+    );
 
-    const recorded: Array<{ name: string; value: number; attrs?: Record<string, string | number> }> = [];
+    const recorded: Array<{
+      name: string;
+      value: number;
+      attrs?: Record<string, string | number>;
+    }> = [];
     const aggregator = {
       record(name: string, value: number, attrs?: Record<string, string | number>) {
         recorded.push({ name, value, attrs });
@@ -459,13 +501,15 @@ describe('CollaborationProfiler', () => {
   it('returns 0.5 autonomy for sessions with zero assistant messages', () => {
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
-    store.saveSession(makeSummary({
-      sessionId: 's1',
-      toolCallCount: 50,
-      userMessages: 0,
-      assistantMessages: 0,
-      userCorrections: 0,
-    }));
+    store.saveSession(
+      makeSummary({
+        sessionId: 's1',
+        toolCallCount: 50,
+        userMessages: 0,
+        assistantMessages: 0,
+        userCorrections: 0,
+      }),
+    );
 
     const profile = profiler.computeProfile('alice');
 

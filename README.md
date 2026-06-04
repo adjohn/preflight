@@ -40,10 +40,10 @@ nvm install 24 && nvm use 24
 
 You use two different NR keys at different points:
 
-| Key | What it does | Where to find it |
-|-----|-------------|-----------------|
-| **License key** | Sends telemetry data *into* NR | NR One → top-right menu → API keys → create a **License** key |
-| **User API key** | Deploys dashboards and alerts *into* NR | NR One → top-right menu → API keys → create a **User** key (starts with `NRAK-`) |
+| Key              | What it does                            | Where to find it                                                                 |
+| ---------------- | --------------------------------------- | -------------------------------------------------------------------------------- |
+| **License key**  | Sends telemetry data _into_ NR          | NR One → top-right menu → API keys → create a **License** key                    |
+| **User API key** | Deploys dashboards and alerts _into_ NR | NR One → top-right menu → API keys → create a **User** key (starts with `NRAK-`) |
 
 You'll also need your **Account ID** — a number visible in the URL when you're logged into NR One: `https://one.newrelic.com/nr1-core?account=`**`12345`**.
 
@@ -73,7 +73,7 @@ nr-ai-observe install \
 
 This registers a hook in your Claude Code settings so every tool call is captured automatically. You only run this once.
 
-**Step 2 — Deploy dashboards** *(optional but recommended)*
+**Step 2 — Deploy dashboards** _(optional but recommended)_
 
 Replace `NRAK-...` with your user API key and `12345` with your account ID:
 
@@ -88,7 +88,7 @@ This creates 7 dashboards in your NR account. Find them under **Dashboards** →
 
 Restart Claude Code, then type this into the chat:
 
-> *Can you call the `nr_observe_get_session_stats` tool and show me the result?*
+> _Can you call the `nr_observe_get_session_stats` tool and show me the result?_
 
 If you get back a response with tool call counts and timing data, it's working.
 
@@ -107,19 +107,23 @@ npm link         # Register nr-ai-observe binary on PATH (required for hooks)
 
 > **`npm link` permission error?** If you see `EACCES: permission denied` pointing at `/usr/local/lib/node_modules`, your system Node.js is installed in a root-owned directory. Pick one fix:
 >
-> *Quick fix — set a user-writable npm prefix (keeps your existing Node.js):*
+> _Quick fix — set a user-writable npm prefix (keeps your existing Node.js):_
+>
 > ```bash
 > npm config set prefix ~/.npm-global
 > export PATH="$HOME/.npm-global/bin:$PATH"   # also add to ~/.zshrc or ~/.bash_profile
 > npm link
 > ```
-> *Recommended — use nvm (better if you switch Node versions):*
+>
+> _Recommended — use nvm (better if you switch Node versions):_
+>
 > ```bash
 > curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 > # restart your shell, then:
 > nvm install 24 && nvm use 24
 > npm install && npm run build && npm link
 > ```
+>
 > Do not use `sudo npm link` — it creates root-owned files that break future `npm install` runs.
 
 ---
@@ -128,15 +132,15 @@ npm link         # Register nr-ai-observe binary on PATH (required for hooks)
 
 Once installed, Claude Code can query live session data on your behalf. Just ask it in plain English — or use the tool names directly:
 
-| What to ask | What you get back |
-|-------------|------------------|
-| *"Show me my session stats"* → `nr_observe_get_session_stats` | Tool call counts, success rate, total duration |
-| *"What's my efficiency score?"* → `nr_observe_get_efficiency_score` | A 0-100 score with a breakdown of where points were lost |
-| *"How much has this session cost?"* → `nr_observe_get_cost_breakdown` | USD cost broken down by tool type and AI model |
-| *"Any budget warnings?"* → `nr_observe_get_budget_status` | Current spend vs. your configured caps (if set) |
-| *"Any wasteful patterns?"* → `nr_observe_get_anti_patterns` | Detected inefficiencies — repeated reads, blind edits, stuck loops |
-| *"Any recommendations?"* → `nr_observe_get_recommendations` | Personalized suggestions for this session |
-| *"How am I doing this week?"* → `nr_observe_get_personal_insights` | A narrative coaching report vs. your own historical baseline (requires 2+ weeks of history) |
+| What to ask                                                           | What you get back                                                                           |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| _"Show me my session stats"_ → `nr_observe_get_session_stats`         | Tool call counts, success rate, total duration                                              |
+| _"What's my efficiency score?"_ → `nr_observe_get_efficiency_score`   | A 0-100 score with a breakdown of where points were lost                                    |
+| _"How much has this session cost?"_ → `nr_observe_get_cost_breakdown` | USD cost broken down by tool type and AI model                                              |
+| _"Any budget warnings?"_ → `nr_observe_get_budget_status`             | Current spend vs. your configured caps (if set)                                             |
+| _"Any wasteful patterns?"_ → `nr_observe_get_anti_patterns`           | Detected inefficiencies — repeated reads, blind edits, stuck loops                          |
+| _"Any recommendations?"_ → `nr_observe_get_recommendations`           | Personalized suggestions for this session                                                   |
+| _"How am I doing this week?"_ → `nr_observe_get_personal_insights`    | A narrative coaching report vs. your own historical baseline (requires 2+ weeks of history) |
 
 Everything also flows into your New Relic dashboards automatically — you don't have to ask Claude to see it there.
 
@@ -146,15 +150,15 @@ Everything also flows into your New Relic dashboards automatically — you don't
 
 After deploying, you'll have seven dashboards in NR One:
 
-| Dashboard | What it shows |
-|-----------|--------------|
-| **Overview** | Session stats, efficiency score, cost summary, top tools |
-| **Session Detail** | Every tool call in a specific session, in order |
-| **Personal** | 30-day self-reflection view scoped to one developer |
-| **Team View** | Aggregated cost and efficiency across multiple developers |
-| **Manager View** | Team-level cost by developer with no tool-call content visible |
+| Dashboard               | What it shows                                                   |
+| ----------------------- | --------------------------------------------------------------- |
+| **Overview**            | Session stats, efficiency score, cost summary, top tools        |
+| **Session Detail**      | Every tool call in a specific session, in order                 |
+| **Personal**            | 30-day self-reflection view scoped to one developer             |
+| **Team View**           | Aggregated cost and efficiency across multiple developers       |
+| **Manager View**        | Team-level cost by developer with no tool-call content visible  |
 | **Platform Comparison** | Side-by-side metrics across Claude Code, Cursor, Windsurf, etc. |
-| **Security Audit** | Audit trail of sensitive file access and destructive commands |
+| **Security Audit**      | Audit trail of sensitive file access and destructive commands   |
 
 ### Personal dashboard
 
@@ -220,24 +224,24 @@ The easiest way to configure is through the setup wizard (`nr-ai-observe setup`)
   "licenseKey": "175cae4b...",
   "accountId": 12345,
   "developer": "your-name",
-  "sessionBudgetUsd": 1.00,
-  "dailyBudgetUsd": 5.00,
-  "weeklyBudgetUsd": 20.00
+  "sessionBudgetUsd": 1.0,
+  "dailyBudgetUsd": 5.0,
+  "weeklyBudgetUsd": 20.0
 }
 ```
 
 ### Key settings
 
-| Setting | What it does | Default |
-|---------|-------------|---------|
-| `developer` | Your identifier on all NR events. Automatically normalized to lowercase with underscores — e.g., "John Doe" → "john_doe". Falls back to `$USER` or your git name if not set. | Inferred |
-| `sessionBudgetUsd` | Emits a warning event at 50%, 80%, 100% of this amount per session | No limit |
-| `dailyBudgetUsd` | Daily spend cap | No limit |
-| `weeklyBudgetUsd` | Weekly spend cap | No limit |
-| `retainSessionsDays` | Auto-deletes local session files older than N days | Keep forever |
-| `teamId` | Tags all events with your team name for team dashboards | Not set |
-| `projectId` | Tags all events with a project name (auto-derived from your git remote URL if not set) | Auto-derived |
-| `digestWebhookUrl` | Slack webhook URL for weekly cost and efficiency summaries | Not set |
+| Setting              | What it does                                                                                                                                                                 | Default      |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| `developer`          | Your identifier on all NR events. Automatically normalized to lowercase with underscores — e.g., "John Doe" → "john_doe". Falls back to `$USER` or your git name if not set. | Inferred     |
+| `sessionBudgetUsd`   | Emits a warning event at 50%, 80%, 100% of this amount per session                                                                                                           | No limit     |
+| `dailyBudgetUsd`     | Daily spend cap                                                                                                                                                              | No limit     |
+| `weeklyBudgetUsd`    | Weekly spend cap                                                                                                                                                             | No limit     |
+| `retainSessionsDays` | Auto-deletes local session files older than N days                                                                                                                           | Keep forever |
+| `teamId`             | Tags all events with your team name for team dashboards                                                                                                                      | Not set      |
+| `projectId`          | Tags all events with a project name (auto-derived from your git remote URL if not set)                                                                                       | Auto-derived |
+| `digestWebhookUrl`   | Slack webhook URL for weekly cost and efficiency summaries                                                                                                                   | Not set      |
 
 All settings can also be set via environment variables — see [example.config.js](./example.config.js) for the full annotated reference.
 
@@ -255,11 +259,11 @@ Add these settings to `~/.nr-ai-observe/config.json`:
 }
 ```
 
-| Setting | What it does | Options |
-|---------|-------------|---------|
-| `otlpEndpoint` | OTLP/HTTP endpoint URL | **New Relic**: US: `https://otlp.nr-data.net`, EU: `https://otlp.eu01.nr-data.net`. Or use any backend's OTLP URL (Datadog, Grafana, Honeycomb, etc.) |
-| `otlpHeaders` | Extra HTTP headers for authentication | **New Relic**: `{ "api-key": "YOUR_LICENSE_KEY" }`. **Datadog**: `{ "dd-api-key": "YOUR_DATADOG_API_KEY" }`. Consult your backend's docs. |
-| `transport` | How to send telemetry | `"nr-events-api"` (default, NR only), `"otlp"` (OTLP only), `"both"` (simultaneous export to NR and OTLP) |
+| Setting        | What it does                          | Options                                                                                                                                               |
+| -------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `otlpEndpoint` | OTLP/HTTP endpoint URL                | **New Relic**: US: `https://otlp.nr-data.net`, EU: `https://otlp.eu01.nr-data.net`. Or use any backend's OTLP URL (Datadog, Grafana, Honeycomb, etc.) |
+| `otlpHeaders`  | Extra HTTP headers for authentication | **New Relic**: `{ "api-key": "YOUR_LICENSE_KEY" }`. **Datadog**: `{ "dd-api-key": "YOUR_DATADOG_API_KEY" }`. Consult your backend's docs.             |
+| `transport`    | How to send telemetry                 | `"nr-events-api"` (default, NR only), `"otlp"` (OTLP only), `"both"` (simultaneous export to NR and OTLP)                                             |
 
 #### Inbound OTLP Receiver (Proxy Mode)
 
@@ -274,12 +278,12 @@ When running in proxy mode, you can also enable an **inbound OTLP receiver** tha
 }
 ```
 
-| Setting | What it does | Default |
-|---------|-------------|---------|
-| `otlpReceiverEnabled` | Enable the local OTLP/HTTP receiver | `false` |
-| `otlpReceiverPort` | Port the receiver listens on | `4318` |
+| Setting               | What it does                                                                     | Default                                               |
+| --------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `otlpReceiverEnabled` | Enable the local OTLP/HTTP receiver                                              | `false`                                               |
+| `otlpReceiverPort`    | Port the receiver listens on                                                     | `4318`                                                |
 | `otlpForwardEndpoint` | Where enriched payloads are forwarded. Set to `null` to receive and enrich only. | `https://otlp.nr-data.net` (when `licenseKey` is set) |
-| `otlpForwardHeaders` | HTTP headers added to every forwarded request | `{ "api-key": <licenseKey> }` |
+| `otlpForwardHeaders`  | HTTP headers added to every forwarded request                                    | `{ "api-key": <licenseKey> }`                         |
 
 ---
 
@@ -381,14 +385,14 @@ Local-mode users get the same threshold alerting as cloud users — evaluated in
 
 **Eight rule types are supported:**
 
-| Type | What it checks |
-|------|----------------|
-| `cost.window` | Cumulative spend in the named period (`session` / `today` / `week`) crosses a USD threshold. |
-| `efficiency.below` | Efficiency score has stayed under N for `windowSeconds` continuously. |
-| `antipattern.count` | More than N anti-patterns of a chosen type (or any type) in `windowSeconds`. |
-| `latency.percentile` | p50/p95/p99 latency for a tool exceeds N ms. |
-| `budget.session` / `budget.daily` / `budget.weekly` | Budget threshold reached for the named period (uses configured budget caps). |
-| `tool.failure` | Failure rate for a tool exceeds N% in `windowSeconds`. |
+| Type                                                | What it checks                                                                               |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `cost.window`                                       | Cumulative spend in the named period (`session` / `today` / `week`) crosses a USD threshold. |
+| `efficiency.below`                                  | Efficiency score has stayed under N for `windowSeconds` continuously.                        |
+| `antipattern.count`                                 | More than N anti-patterns of a chosen type (or any type) in `windowSeconds`.                 |
+| `latency.percentile`                                | p50/p95/p99 latency for a tool exceeds N ms.                                                 |
+| `budget.session` / `budget.daily` / `budget.weekly` | Budget threshold reached for the named period (uses configured budget caps).                 |
+| `tool.failure`                                      | Failure rate for a tool exceeds N% in `windowSeconds`.                                       |
 
 **Channels.** Each rule has a `channels` array — `["banner"]` (default) shows a dismissible banner in the dashboard; `["banner", "os"]` also fires a native OS notification (macOS/Linux/Windows) when `alerts.osNotifications` is enabled in config. `[]` is silent (logged only).
 
@@ -398,13 +402,13 @@ Local-mode users get the same threshold alerting as cloud users — evaluated in
 
 **Configuration knobs** (under `alerts` in the config file or via env vars):
 
-| Field | Env var | Default |
-|-------|---------|---------|
-| `alerts.enabled` | `NR_AI_ALERTS_ENABLED` | `true` outside cloud-only mode |
-| `alerts.evaluationIntervalSeconds` | `NR_AI_ALERTS_INTERVAL_SECONDS` | `30` (5–300) |
-| `alerts.osNotifications` | `NR_AI_ALERTS_OS_NOTIFICATIONS` | `false` |
-| `alerts.logRetentionMb` | `NR_AI_ALERTS_LOG_RETENTION_MB` | `10` (1–1024) |
-| `alerts.rulesPath` | `NR_AI_ALERTS_RULES_PATH` | `~/.nr-ai-observe/alerts/rules.json` |
+| Field                              | Env var                         | Default                              |
+| ---------------------------------- | ------------------------------- | ------------------------------------ |
+| `alerts.enabled`                   | `NR_AI_ALERTS_ENABLED`          | `true` outside cloud-only mode       |
+| `alerts.evaluationIntervalSeconds` | `NR_AI_ALERTS_INTERVAL_SECONDS` | `30` (5–300)                         |
+| `alerts.osNotifications`           | `NR_AI_ALERTS_OS_NOTIFICATIONS` | `false`                              |
+| `alerts.logRetentionMb`            | `NR_AI_ALERTS_LOG_RETENTION_MB` | `10` (1–1024)                        |
+| `alerts.rulesPath`                 | `NR_AI_ALERTS_RULES_PATH`       | `~/.nr-ai-observe/alerts/rules.json` |
 
 ---
 
@@ -412,7 +416,7 @@ Local-mode users get the same threshold alerting as cloud users — evaluated in
 
 Register a Slack webhook to receive a weekly summary every Monday morning:
 
-In Claude Code, ask: *"Call `nr_observe_subscribe_digest` with this webhook URL: `https://hooks.slack.com/services/...`"*
+In Claude Code, ask: _"Call `nr_observe_subscribe_digest` with this webhook URL: `https://hooks.slack.com/services/...`"_
 
 Or set it in your config file as `digestWebhookUrl`.
 
@@ -420,15 +424,15 @@ Or set it in your config file as `digestWebhookUrl`.
 
 ## Supported Platforms
 
-| Platform | How to enable |
-|----------|--------------|
-| Claude Code | `nr-ai-observe install` (automatic) |
-| Cursor | Set `NEW_RELIC_AI_PLATFORM=cursor` in your environment |
-| Windsurf | Set `NEW_RELIC_AI_PLATFORM=windsurf` |
-| GitHub Copilot | Set `NEW_RELIC_AI_PLATFORM=copilot` |
-| Zed | Set `NEW_RELIC_AI_PLATFORM=zed` |
-| Continue.dev | Set `NEW_RELIC_AI_PLATFORM=continue` |
-| Amazon Q Developer | Set `NEW_RELIC_AI_PLATFORM=amazonq` |
+| Platform           | How to enable                                          |
+| ------------------ | ------------------------------------------------------ |
+| Claude Code        | `nr-ai-observe install` (automatic)                    |
+| Cursor             | Set `NEW_RELIC_AI_PLATFORM=cursor` in your environment |
+| Windsurf           | Set `NEW_RELIC_AI_PLATFORM=windsurf`                   |
+| GitHub Copilot     | Set `NEW_RELIC_AI_PLATFORM=copilot`                    |
+| Zed                | Set `NEW_RELIC_AI_PLATFORM=zed`                        |
+| Continue.dev       | Set `NEW_RELIC_AI_PLATFORM=continue`                   |
+| Amazon Q Developer | Set `NEW_RELIC_AI_PLATFORM=amazonq`                    |
 
 ---
 
@@ -436,9 +440,9 @@ Or set it in your config file as `digestWebhookUrl`.
 
 **MCP (Model Context Protocol)** — A standard that lets AI assistants like Claude Code discover and call external tools. The Observatory registers itself as an MCP server so Claude Code can call it directly.
 
-**License key** — A NR credential for *sending* data into New Relic. Looks like a long hex string (e.g., `175cae4b...`). Found under API Keys in NR One.
+**License key** — A NR credential for _sending_ data into New Relic. Looks like a long hex string (e.g., `175cae4b...`). Found under API Keys in NR One.
 
-**User API key** — A NR credential for *reading* data and managing resources (dashboards, alerts). Starts with `NRAK-`. Create one under API Keys in NR One.
+**User API key** — A NR credential for _reading_ data and managing resources (dashboards, alerts). Starts with `NRAK-`. Create one under API Keys in NR One.
 
 **Anti-pattern** — A detected waste pattern. Examples: re-reading the same file multiple times without making changes between reads (the AI lost context and is reloading it), making edits to a file without reading it first (blind edit), running the same failing command in a loop (stuck loop).
 
@@ -480,14 +484,14 @@ npm test
 
 ### Common tasks
 
-| Command | Purpose |
-|---------|---------|
-| `npm run build` | Build TypeScript server + Vite web dashboard |
-| `npm run build:server` | Build only the TypeScript server (`tsc --build`) |
-| `npm run build:web` | Build only the Vite web dashboard (output: `dist/web/`) |
-| `npm test` | Run all tests |
-| `npm run lint` | Check code style |
-| `npm run format` | Auto-format code |
+| Command                | Purpose                                                 |
+| ---------------------- | ------------------------------------------------------- |
+| `npm run build`        | Build TypeScript server + Vite web dashboard            |
+| `npm run build:server` | Build only the TypeScript server (`tsc --build`)        |
+| `npm run build:web`    | Build only the Vite web dashboard (output: `dist/web/`) |
+| `npm test`             | Run all tests                                           |
+| `npm run lint`         | Check code style                                        |
+| `npm run format`       | Auto-format code                                        |
 
 See [ONBOARDING.md](./docs/ONBOARDING.md) for the full development guide, conventions, and architecture.
 

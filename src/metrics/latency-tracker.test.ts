@@ -13,11 +13,13 @@ afterEach(() => {
 });
 
 describe('LatencyTracker', () => {
-  function makeRecord(overrides: {
-    toolName: string;
-    durationMs: number;
-    success: boolean;
-  } & Partial<ToolCallRecord>): ToolCallRecord {
+  function makeRecord(
+    overrides: {
+      toolName: string;
+      durationMs: number;
+      success: boolean;
+    } & Partial<ToolCallRecord>,
+  ): ToolCallRecord {
     return {
       id: 'r1',
       sessionId: 's1',
@@ -46,13 +48,17 @@ describe('LatencyTracker', () => {
 
   it('ignores calls with null durationMs', () => {
     const t = new LatencyTracker();
-    t.recordToolCall(makeRecord({ toolName: 'Read', durationMs: null as unknown as number, success: true }));
+    t.recordToolCall(
+      makeRecord({ toolName: 'Read', durationMs: null as unknown as number, success: true }),
+    );
     expect(t.getMetrics().overall).toBeNull();
   });
 
   it('ignores calls with undefined durationMs', () => {
     const t = new LatencyTracker();
-    t.recordToolCall(makeRecord({ toolName: 'Read', durationMs: undefined as unknown as number, success: true }));
+    t.recordToolCall(
+      makeRecord({ toolName: 'Read', durationMs: undefined as unknown as number, success: true }),
+    );
     expect(t.getMetrics().overall).toBeNull();
   });
 
@@ -103,7 +109,9 @@ describe('LatencyTracker', () => {
 
   it('slowestCalls includes filePath when present', () => {
     const t = new LatencyTracker();
-    t.recordToolCall(makeRecord({ toolName: 'Read', durationMs: 200, success: true, filePath: '/src/app.ts' }));
+    t.recordToolCall(
+      makeRecord({ toolName: 'Read', durationMs: 200, success: true, filePath: '/src/app.ts' }),
+    );
     expect(t.getMetrics().slowestCalls[0].filePath).toBe('/src/app.ts');
   });
 
@@ -119,7 +127,9 @@ describe('LatencyTracker', () => {
   it('byTool does not include tools with no valid samples (F-028)', () => {
     const t = new LatencyTracker();
     // Record invalid duration for Read — it returns early and is never added to byTool
-    t.recordToolCall(makeRecord({ toolName: 'Read', durationMs: null as unknown as number, success: true }));
+    t.recordToolCall(
+      makeRecord({ toolName: 'Read', durationMs: null as unknown as number, success: true }),
+    );
     // Record valid duration for Bash
     t.recordToolCall(makeRecord({ toolName: 'Bash', durationMs: 100, success: true }));
     const m = t.getMetrics();
@@ -132,8 +142,12 @@ describe('LatencyTracker', () => {
 
   it('overall is null when all recorded calls have null/undefined durationMs (F-028)', () => {
     const t = new LatencyTracker();
-    t.recordToolCall(makeRecord({ toolName: 'Read', durationMs: null as unknown as number, success: true }));
-    t.recordToolCall(makeRecord({ toolName: 'Edit', durationMs: undefined as unknown as number, success: true }));
+    t.recordToolCall(
+      makeRecord({ toolName: 'Read', durationMs: null as unknown as number, success: true }),
+    );
+    t.recordToolCall(
+      makeRecord({ toolName: 'Edit', durationMs: undefined as unknown as number, success: true }),
+    );
     const m = t.getMetrics();
     expect(m.overall).toBeNull();
   });

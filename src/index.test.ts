@@ -81,10 +81,13 @@ describe('parseArgs()', () => {
   it('parses all flags combined', () => {
     const opts = parseArgs([
       ...base,
-      '--port', '9847',
+      '--port',
+      '9847',
       '--stdio',
-      '--config', '/etc/nr.json',
-      '--log-level', 'error',
+      '--config',
+      '/etc/nr.json',
+      '--log-level',
+      'error',
     ]);
     expect(opts.port).toBe(9847);
     expect(opts.stdio).toBe(true);
@@ -135,9 +138,11 @@ describe('F-137: CLI argument edge cases', () => {
   });
 
   it('--help causes process.exit(0)', () => {
-    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(
-      (_code?: string | number | null): never => { throw new Error(`exit:${_code}`); },
-    );
+    const exitSpy = jest
+      .spyOn(process, 'exit')
+      .mockImplementation((_code?: string | number | null): never => {
+        throw new Error(`exit:${_code}`);
+      });
     const stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
     try {
       expect(() => parseArgs([...base, '--help'])).toThrow('exit:0');
@@ -148,9 +153,11 @@ describe('F-137: CLI argument edge cases', () => {
   });
 
   it('unknown flag causes Commander to exit with code 1', () => {
-    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(
-      (_code?: string | number | null): never => { throw new Error(`exit:${_code}`); },
-    );
+    const exitSpy = jest
+      .spyOn(process, 'exit')
+      .mockImplementation((_code?: string | number | null): never => {
+        throw new Error(`exit:${_code}`);
+      });
     try {
       expect(() => parseArgs([...base, '--totally-unknown-flag'])).toThrow('exit:1');
     } finally {
@@ -162,9 +169,7 @@ describe('F-137: CLI argument edge cases', () => {
 describe('stdio integration', () => {
   it('responds to MCP initialize handshake and lists tools', async () => {
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
-    const { StdioClientTransport } = await import(
-      '@modelcontextprotocol/sdk/client/stdio.js'
-    );
+    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
     const { resolve } = await import('node:path');
 
     const binPath = resolve(__dirname, '..', 'dist', 'index.js');

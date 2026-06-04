@@ -14,10 +14,10 @@ export interface PersonalWeekMetrics {
   readonly avgCostPerSession: number;
   readonly avgEfficiencyScore: number | null;
   readonly antiPatternCount: number;
-  readonly antiPatternRate: number;           // antiPatterns / totalToolCalls, 0 if no calls
+  readonly antiPatternRate: number; // antiPatterns / totalToolCalls, 0 if no calls
   readonly sessionsCount: number;
   readonly avgToolCallsPerSession: number;
-  readonly topAntiPattern: string | null;     // most frequent patternType this week, or null
+  readonly topAntiPattern: string | null; // most frequent patternType this week, or null
 }
 
 export interface PersonalInsightsReport {
@@ -25,13 +25,13 @@ export interface PersonalInsightsReport {
   readonly developer: string;
   readonly generatedAt: number;
   readonly weeksAnalyzed: number;
-  readonly highlights: readonly string[];     // positive observations
-  readonly regressions: readonly string[];    // negative observations
-  readonly streaks: readonly string[];        // sustained patterns (good or bad)
+  readonly highlights: readonly string[]; // positive observations
+  readonly regressions: readonly string[]; // negative observations
+  readonly streaks: readonly string[]; // sustained patterns (good or bad)
   readonly topRecommendation: string;
   readonly thisWeek: PersonalWeekMetrics;
-  readonly lastWeek: PersonalWeekMetrics | null;   // null if only one week available
-  readonly baseline: PersonalWeekMetrics;          // mean across all available weeks
+  readonly lastWeek: PersonalWeekMetrics | null; // null if only one week available
+  readonly baseline: PersonalWeekMetrics; // mean across all available weeks
 }
 
 export interface PersonalInsightsInsufficientData {
@@ -69,13 +69,14 @@ export class PersonalCoach {
         developer: this.developer,
         weeksAvailable: weeks.length,
         weeksRequired: WEEKS_REQUIRED,
-        message: `Need at least ${WEEKS_REQUIRED} weeks of session history to generate personal insights. ` +
+        message:
+          `Need at least ${WEEKS_REQUIRED} weeks of session history to generate personal insights. ` +
           `Currently have ${weeks.length}. Keep using the AI coding assistant and check back next week.`,
       };
     }
 
-    const thisWeekData = weeks[0]!;         // most recent week (index 0)
-    const lastWeekData = weeks[1] ?? null;  // second most recent
+    const thisWeekData = weeks[0]!; // most recent week (index 0)
+    const lastWeekData = weeks[1] ?? null; // second most recent
 
     // Baseline = mean across all loaded weeks
     const baseline = this.computeBaseline(weeks);
@@ -124,14 +125,13 @@ export class PersonalCoach {
     return result;
   }
 
-  private toPersonalWeekMetrics(
-    data: { weekId: string; stats: DeveloperWeeklyStats },
-  ): PersonalWeekMetrics {
+  private toPersonalWeekMetrics(data: {
+    weekId: string;
+    stats: DeveloperWeeklyStats;
+  }): PersonalWeekMetrics {
     const { weekId, stats } = data;
     const antiPatternTotal = Object.values(stats.antiPatternCounts).reduce((a, b) => a + b, 0);
-    const antiPatternRate = stats.totalToolCalls > 0
-      ? antiPatternTotal / stats.totalToolCalls
-      : 0;
+    const antiPatternRate = stats.totalToolCalls > 0 ? antiPatternTotal / stats.totalToolCalls : 0;
 
     // Find the most frequent anti-pattern this week
     let topAntiPattern: string | null = null;
@@ -151,7 +151,8 @@ export class PersonalCoach {
       antiPatternCount: antiPatternTotal,
       antiPatternRate,
       sessionsCount: stats.sessionCount,
-      avgToolCallsPerSession: stats.sessionCount > 0 ? stats.totalToolCalls / stats.sessionCount : 0,
+      avgToolCallsPerSession:
+        stats.sessionCount > 0 ? stats.totalToolCalls / stats.sessionCount : 0,
       topAntiPattern,
     };
   }
@@ -159,7 +160,7 @@ export class PersonalCoach {
   private computeBaseline(
     weeks: Array<{ weekId: string; stats: DeveloperWeeklyStats }>,
   ): PersonalWeekMetrics {
-    const metrics = weeks.map(w => this.toPersonalWeekMetrics(w));
+    const metrics = weeks.map((w) => this.toPersonalWeekMetrics(w));
 
     const mean = (values: number[]): number => {
       if (values.length === 0) return 0;
@@ -167,7 +168,7 @@ export class PersonalCoach {
     };
 
     const efficiencyScores = metrics
-      .map(m => m.avgEfficiencyScore)
+      .map((m) => m.avgEfficiencyScore)
       .filter((v): v is number => v !== null);
 
     // For topAntiPattern in baseline: use the most frequently appearing pattern
@@ -177,18 +178,18 @@ export class PersonalCoach {
         patternFrequency[m.topAntiPattern] = (patternFrequency[m.topAntiPattern] ?? 0) + 1;
       }
     }
-    const baselineTopAntiPattern = Object.entries(patternFrequency)
-      .sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const baselineTopAntiPattern =
+      Object.entries(patternFrequency).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
     return {
       weekId: 'baseline',
-      totalCostUsd: mean(metrics.map(m => m.totalCostUsd)),
-      avgCostPerSession: mean(metrics.map(m => m.avgCostPerSession)),
+      totalCostUsd: mean(metrics.map((m) => m.totalCostUsd)),
+      avgCostPerSession: mean(metrics.map((m) => m.avgCostPerSession)),
       avgEfficiencyScore: efficiencyScores.length > 0 ? mean(efficiencyScores) : null,
-      antiPatternCount: mean(metrics.map(m => m.antiPatternCount)),
-      antiPatternRate: mean(metrics.map(m => m.antiPatternRate)),
-      sessionsCount: mean(metrics.map(m => m.sessionsCount)),
-      avgToolCallsPerSession: mean(metrics.map(m => m.avgToolCallsPerSession)),
+      antiPatternCount: mean(metrics.map((m) => m.antiPatternCount)),
+      antiPatternRate: mean(metrics.map((m) => m.antiPatternRate)),
+      sessionsCount: mean(metrics.map((m) => m.sessionsCount)),
+      avgToolCallsPerSession: mean(metrics.map((m) => m.avgToolCallsPerSession)),
       topAntiPattern: baselineTopAntiPattern,
     };
   }
@@ -212,7 +213,8 @@ export class PersonalCoach {
 
     // Cost per session improvement vs baseline
     if (baseline.avgCostPerSession > 0) {
-      const pct = (thisWeek.avgCostPerSession - baseline.avgCostPerSession) / baseline.avgCostPerSession;
+      const pct =
+        (thisWeek.avgCostPerSession - baseline.avgCostPerSession) / baseline.avgCostPerSession;
       if (pct <= -0.15) {
         highlights.push(
           `You spent ${Math.abs(pct * 100).toFixed(0)}% less per session this week ($${thisWeek.avgCostPerSession.toFixed(2)}) than your average ($${baseline.avgCostPerSession.toFixed(2)}).`,
@@ -223,7 +225,7 @@ export class PersonalCoach {
     // Anti-pattern rate improvement vs last week
     if (lastWeek && lastWeek.antiPatternRate > 0) {
       const pct = (thisWeek.antiPatternRate - lastWeek.antiPatternRate) / lastWeek.antiPatternRate;
-      if (pct <= -0.20) {
+      if (pct <= -0.2) {
         highlights.push(
           `Anti-pattern rate dropped ${Math.abs(pct * 100).toFixed(0)}% week-over-week (${(thisWeek.antiPatternRate * 100).toFixed(1)}% vs ${(lastWeek.antiPatternRate * 100).toFixed(1)}%).`,
         );
@@ -252,7 +254,8 @@ export class PersonalCoach {
 
     // Cost spike vs baseline
     if (baseline.avgCostPerSession > 0) {
-      const pct = (thisWeek.avgCostPerSession - baseline.avgCostPerSession) / baseline.avgCostPerSession;
+      const pct =
+        (thisWeek.avgCostPerSession - baseline.avgCostPerSession) / baseline.avgCostPerSession;
       if (pct >= 0.25) {
         regressions.push(
           `Cost per session this week ($${thisWeek.avgCostPerSession.toFixed(2)}) is ${(pct * 100).toFixed(0)}% above your average ($${baseline.avgCostPerSession.toFixed(2)}).`,
@@ -276,13 +279,11 @@ export class PersonalCoach {
     return regressions;
   }
 
-  private buildStreaks(
-    weeks: Array<{ weekId: string; stats: DeveloperWeeklyStats }>,
-  ): string[] {
+  private buildStreaks(weeks: Array<{ weekId: string; stats: DeveloperWeeklyStats }>): string[] {
     if (weeks.length < 3) return [];
 
     const streaks: string[] = [];
-    const metrics = weeks.map(w => this.toPersonalWeekMetrics(w));
+    const metrics = weeks.map((w) => this.toPersonalWeekMetrics(w));
 
     // Consecutive efficiency improvement streak
     let efficiencyStreakLen = 0;
@@ -296,7 +297,9 @@ export class PersonalCoach {
       }
     }
     if (efficiencyStreakLen >= 2) {
-      streaks.push(`Efficiency score has improved for ${efficiencyStreakLen} consecutive weeks. Keep it up.`);
+      streaks.push(
+        `Efficiency score has improved for ${efficiencyStreakLen} consecutive weeks. Keep it up.`,
+      );
     }
 
     // Consecutive cost-per-session reduction streak
@@ -330,8 +333,11 @@ export class PersonalCoach {
       if (thisWeek.avgCostPerSession > baseline.avgCostPerSession * 1.25) {
         return 'Review your longest sessions this week and identify which tasks could be broken into smaller, more focused sessions.';
       }
-      if (thisWeek.avgEfficiencyScore !== null && baseline.avgEfficiencyScore !== null &&
-          thisWeek.avgEfficiencyScore < baseline.avgEfficiencyScore - 5) {
+      if (
+        thisWeek.avgEfficiencyScore !== null &&
+        baseline.avgEfficiencyScore !== null &&
+        thisWeek.avgEfficiencyScore < baseline.avgEfficiencyScore - 5
+      ) {
         return 'Efficiency is below your average. Try writing more specific task descriptions before starting a session.';
       }
       return regressions[0]!;

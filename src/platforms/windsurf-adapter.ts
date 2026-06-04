@@ -10,7 +10,7 @@ const WINDSURF_TOOL_MAP: Record<string, string> = {
   'Write File': 'Write',
   'Edit File': 'Edit',
   'Run Command': 'Bash',
-  'Search': 'Grep',
+  Search: 'Grep',
   read_file: 'Read',
   write_file: 'Write',
   edit_file: 'Edit',
