@@ -64,6 +64,9 @@ nr-ai-observe update
 | `npm run deploy:alerts:update`      | Sync conditions on the existing alert policy in place                                             |
 | `npm run deploy:alerts:teardown`    | Delete the alert policy and all its conditions                                                    |
 | `npm run backfill:sessions`         | Backfill local session JSON files from NR event history                                           |
+| `npm run dev`                       | Start local dashboard server (`--local`); assumes `dist/` already built                           |
+| `npm run dev:all`                   | Build then start local dashboard (`npm run build && npm run dev`)                                 |
+| `npm run start:local`               | Alias for `npm run dev`                                                                           |
 
 To run a single test file:
 
@@ -198,10 +201,9 @@ If you're not sure, start with **`local`** to see what data the tool collects be
 
 #### Verifying local mode
 
-After setting `mode: 'local'`:
+**Via Claude Code** (typical end-user setup): restart Claude Code after setting `mode: 'local'`, then verify the dashboard is up:
 
 ```bash
-# Restart Claude Code, then:
 curl -s http://127.0.0.1:7777/api/health
 # Expected: {"ok":true,"uptime":<number>}
 ```
@@ -211,6 +213,18 @@ You should also see this line in Claude Code's MCP startup logs:
 ```
 Dashboard ready at http://127.0.0.1:7777
 ```
+
+**Standalone (no Claude Code required)**: pass `--local` to run just the dashboard server, without an MCP stdio transport. Useful for testing dashboard changes, running the dashboard during a non-Claude session, or running it as a persistent background service:
+
+```bash
+npm run build          # build once
+npm run dev            # start local dashboard (assumes dist/ already built)
+# or in one step:
+npm run dev:all        # build then start
+npm run start:local    # alias for npm run dev
+```
+
+Open `http://127.0.0.1:7777` in a browser. Press Ctrl+C to stop.
 
 If the URL is unreachable, check whether port 7777 is in use (`lsof -i:7777`) and override with `NR_AI_DASHBOARD_PORT`.
 

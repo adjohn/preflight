@@ -148,6 +148,13 @@ Quit Claude Code completely and reopen it. The MCP server starts automatically w
 
 **Do not** run `nr-ai-mcp-server --stdio` manually. That would start a second process competing with the auto-launched one.
 
+To run the dashboard standalone (without Claude Code), use `--local` instead — that mode has no MCP transport and is safe to run manually:
+
+```bash
+npm run dev       # assumes dist/ already built
+npm run dev:all   # build + start in one step
+```
+
 **Checkpoint:** Open a new Claude Code session (in any project directory) and type:
 
 > _Call `nr_observe_health` and show me the result._

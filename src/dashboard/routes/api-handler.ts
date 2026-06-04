@@ -98,6 +98,7 @@ export interface ApiHandlerDeps {
   readonly efficiencyScorer?: { getSessionAverage: () => { score: number } | null };
   readonly qualityProxyTracker?: { getMetrics: () => unknown };
   readonly toolSelectionScorer?: { scoreSession: (calls: readonly ToolCallRecord[]) => unknown };
+  readonly modelUsageTracker?: { getMetrics: () => unknown };
   readonly toolCallBuffer?: { getRecords: () => readonly ToolCallRecord[] };
 }
 

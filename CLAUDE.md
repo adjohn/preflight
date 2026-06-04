@@ -55,7 +55,7 @@ nr-ai-observatory/
       events/                       # NR event creation and serialization
       harvest/                      # EventBuffer, MetricAggregator, HarvestScheduler
       transport/                    # HTTP clients for Events, Metric, and Logs APIs; OtlpTransport and OtlpEventBridge for OTLP/HTTP export
-    index.ts                        # CLI entry point (parseArgs, stdio vs proxy mode)
+    index.ts                        # CLI entry point (parseArgs, three modes: --stdio MCP transport, --local standalone dashboard, proxy)
     server.ts                       # NrMcpServer — MCP server over stdio transport
     config.ts                       # McpServerConfig loader
     hooks/

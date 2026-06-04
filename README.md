@@ -368,7 +368,20 @@ In local mode:
 - All telemetry stays in `~/.nr-ai-observe/` on your machine.
 - `licenseKey` and `accountId` are not required.
 
-The server still runs via Claude Code's MCP connection (`--stdio`). You don't launch it manually — Claude Code starts it automatically when you open a session, because `nr-ai-observe install` registered it as an MCP server. The dashboard stays alive as long as your Claude Code session is open.
+**With Claude Code** (default): the server runs via the MCP connection (`--stdio`). You don't launch it manually — Claude Code starts it automatically when you open a session, because `nr-ai-observe install` registered it as an MCP server. The dashboard stays alive as long as your Claude Code session is open.
+
+**Standalone** (no Claude Code required): pass `--local` to run the dashboard server directly, without an MCP transport. This is useful for testing the dashboard, running it during a non-Claude session, or as a persistent background process.
+
+```bash
+npm run build          # build once
+node dist/index.js --local
+# or:
+npm run dev            # shortcut: assumes dist/ already built
+npm run dev:all        # build + start in one step
+npm run start:local    # alias for npm run dev
+```
+
+Open `http://127.0.0.1:7777` in your browser. The process stays alive until you press Ctrl+C.
 
 The dashboard has four views:
 
@@ -496,6 +509,9 @@ npm test
 | `npm test`             | Run all tests                                           |
 | `npm run lint`         | Check code style                                        |
 | `npm run format`       | Auto-format code                                        |
+| `npm run dev`          | Start local dashboard (assumes pre-built `dist/`)       |
+| `npm run dev:all`      | Build then start local dashboard                        |
+| `npm run start:local`  | Alias for `npm run dev`                                 |
 
 See [ONBOARDING.md](./docs/ONBOARDING.md) for the full development guide, conventions, and architecture.
 

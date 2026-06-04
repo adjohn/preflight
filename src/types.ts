@@ -19,6 +19,7 @@ export interface CliOptions {
   readonly config: string | null;
   readonly logLevel: LogLevel;
   readonly stdio: boolean;
+  readonly local: boolean;
 }
 
 export interface ServerOptions {

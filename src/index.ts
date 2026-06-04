@@ -103,7 +103,8 @@ export function parseArgs(argv: string[]): CliOptions {
     .option('-p, --port <number>', 'HTTP port for proxy mode', '9847')
     .option('-c, --config <path>', 'path to config file')
     .option('-l, --log-level <level>', 'log level (debug|info|warn|error)', 'info')
-    .option('--stdio', 'use stdio transport (for Claude Code MCP connection)');
+    .option('--stdio', 'use stdio transport (for Claude Code MCP connection)')
+    .option('--local', 'start dashboard and event processor without MCP stdio transport');
 
   program.parse(argv);
   const opts = program.opts();
@@ -115,11 +116,18 @@ export function parseArgs(argv: string[]): CliOptions {
     );
   }
 
+  const stdio = opts.stdio ?? false;
+  const local = opts.local ?? false;
+  if (stdio && local) {
+    throw new Error('--stdio and --local are mutually exclusive. Use one or the other.');
+  }
+
   return {
     port: parsed,
     config: opts.config ?? null,
     logLevel: opts.logLevel as CliOptions['logLevel'],
-    stdio: opts.stdio ?? false,
+    stdio,
+    local,
   };
 }
 
@@ -194,30 +202,42 @@ async function main(): Promise<void> {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  if (options.stdio) {
-    // Connect stdio FIRST so the MCP handshake can complete immediately.
-    // Tools are registered after initialization; tool calls before that
-    // will return MethodNotFound (which the SDK handles gracefully).
-    mcpServer = createServer();
-    await mcpServer.connectStdio();
+  if (options.stdio || options.local) {
+    let sessionTraceId = '';
+    if (options.stdio) {
+      // Connect stdio FIRST so the MCP handshake can complete immediately.
+      // Tools are registered after initialization; tool calls before that
+      // will return MethodNotFound (which the SDK handles gracefully).
+      mcpServer = createServer();
+      await mcpServer.connectStdio();
 
-    config = loadMcpConfig(options);
-    const sessionTraceId = randomUUID();
-    logger.info('Session trace ID generated', { sessionTraceId });
+      config = loadMcpConfig(options);
+      sessionTraceId = randomUUID();
+      logger.info('Session trace ID generated', { sessionTraceId });
 
-    if (config.transport !== 'nr-events-api') {
-      initMcpTracer();
-    }
-    sessionSpan = new SessionSpan(sessionTraceId, config.developer);
-    taskSpanTracker = new TaskSpanTracker();
-    if (config.transport !== 'nr-events-api') {
-      sessionSpan.start();
-    }
+      if (config.transport !== 'nr-events-api') {
+        initMcpTracer();
+      }
+      sessionSpan = new SessionSpan(sessionTraceId, config.developer);
+      taskSpanTracker = new TaskSpanTracker();
+      if (config.transport !== 'nr-events-api') {
+        sessionSpan.start();
+      }
 
-    if (!config.enabled) {
-      logger.info('Server disabled via config — exiting');
-      await mcpServer.close();
-      process.exit(0);
+      if (!config.enabled) {
+        logger.info('Server disabled via config — exiting');
+        await mcpServer.close();
+        process.exit(0);
+      }
+    } else {
+      // --local: force local mode so config validation skips cloud credentials.
+      process.env.NR_AI_MODE = 'local';
+      config = loadMcpConfig(options);
+
+      if (!config.enabled) {
+        logger.info('Server disabled via config — exiting');
+        process.exit(0);
+      }
     }
 
     const localStore = new LocalStore(config.storagePath, config.hookBufferPath);
@@ -424,6 +444,7 @@ async function main(): Promise<void> {
           efficiencyScorer,
           qualityProxyTracker,
           toolSelectionScorer,
+          modelUsageTracker,
           toolCallBuffer: toolCallBufferAccessor,
         },
         alertEngine,
@@ -702,51 +723,6 @@ async function main(): Promise<void> {
       },
     });
 
-    // Wire audit trail into resource handlers (was undefined at createServer() time).
-    // Same instance is shared with the DashboardServer and NrIngestManager so all
-    // three see the same audit log.
-    mcpServer.auditTrailManager = auditTrail;
-
-    // Re-register tools with full dependencies (replaces empty handlers)
-    registerTools(mcpServer.server, {
-      sessionTracker,
-      costTracker,
-      budgetTracker,
-      taskDetector,
-      antiPatternDetector,
-      efficiencyScorer,
-      feedbackCollector,
-      sessionStore,
-      weeklySummaryGenerator,
-      trendAnalyzer,
-      collaborationProfiler,
-      claudeMdTracker,
-      costPerOutcomeAnalyzer,
-      recommendationEngine,
-      contextWindowTracker,
-      latencyTracker,
-      taskCompletionTracker,
-      modelUsageTracker,
-      retryDetector,
-      contextCompositionTracker,
-      latencyDecompositionTracker,
-      decisionTracker,
-      instructionDriftTracker,
-      toolSelectionScorer,
-      toolCallBuffer: toolCallBufferAccessor,
-      qualityProxyTracker,
-      apiFailureTracker,
-      sessionTraceId,
-      sessionStartMs,
-      accountId: config.accountId,
-      teamId: config.teamId,
-      projectId: config.projectId,
-      developer: config.developer,
-      nrApiKey: config.nrApiKey,
-      collectorHost: config.collectorHost,
-      configFilePath: resolve(config.storagePath, 'config.json'),
-    });
-
     persistSession = () => {
       if (!sessionStore || !sessionTracker || !taskDetector || !config) return;
       try {
@@ -767,13 +743,64 @@ async function main(): Promise<void> {
     };
 
     eventProcessor.start();
-    nrIngest?.start();
-    logger.info('Server running on stdio transport');
+    if (options.stdio) {
+      // Wire audit trail into resource handlers (was undefined at createServer() time).
+      // Same instance is shared with the DashboardServer and NrIngestManager so all
+      // three see the same audit log.
+      mcpServer!.auditTrailManager = auditTrail;
 
-    process.stdin.once('end', () => {
-      logger.info('stdin closed, shutting down');
-      void shutdown();
-    });
+      // Re-register tools with full dependencies (replaces empty handlers)
+      registerTools(mcpServer!.server, {
+        sessionTracker,
+        costTracker,
+        budgetTracker,
+        taskDetector,
+        antiPatternDetector,
+        efficiencyScorer,
+        feedbackCollector,
+        sessionStore,
+        weeklySummaryGenerator,
+        trendAnalyzer,
+        collaborationProfiler,
+        claudeMdTracker,
+        costPerOutcomeAnalyzer,
+        recommendationEngine,
+        contextWindowTracker,
+        latencyTracker,
+        taskCompletionTracker,
+        modelUsageTracker,
+        retryDetector,
+        contextCompositionTracker,
+        latencyDecompositionTracker,
+        decisionTracker,
+        instructionDriftTracker,
+        toolSelectionScorer,
+        toolCallBuffer: toolCallBufferAccessor,
+        qualityProxyTracker,
+        apiFailureTracker,
+        sessionTraceId,
+        sessionStartMs,
+        accountId: config.accountId,
+        teamId: config.teamId,
+        projectId: config.projectId,
+        developer: config.developer,
+        nrApiKey: config.nrApiKey,
+        collectorHost: config.collectorHost,
+        configFilePath: resolve(config.storagePath, 'config.json'),
+      });
+
+      nrIngest?.start();
+      logger.info('Server running on stdio transport');
+
+      process.stdin.once('end', () => {
+        logger.info('stdin closed, shutting down');
+        void shutdown();
+      });
+    } else {
+      logger.info('Server running in local dashboard mode (Ctrl+C to stop)');
+      // DashboardServer HTTP listener keeps the process alive.
+      // SIGINT/SIGTERM are handled by the global shutdown handler registered above.
+    }
   } else {
     // Proxy mode: start HTTP proxy server that forwards to upstream MCP servers
     const config = loadMcpConfig(options);
