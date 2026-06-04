@@ -13,6 +13,7 @@ import { homedir } from 'node:os';
 import { normalizeDeveloperName } from '../config.js';
 import { runInstallCli, verifyBinaryOnPath } from './cli.js';
 import { installSchedule, resolveBinaryPath } from './schedule.js';
+import { validateLicenseKey, validateApiKey } from './key-validator.js';
 
 const DEFAULT_STORAGE_PATH = resolve(homedir(), '.nr-ai-observe');
 const CONFIG_PATH = resolve(DEFAULT_STORAGE_PATH, 'config.json');
@@ -124,6 +125,8 @@ export function buildConfig(
     sessionBudgetUsd: number | null;
     mode?: WizardMode;
     dashboardPort?: number | null;
+    nrApiKey?: string | null;
+    collectorHost?: string | null;
   },
 ): Record<string, unknown> {
   const mode = inputs.mode ?? 'cloud';
@@ -139,6 +142,8 @@ export function buildConfig(
     ...(inputs.dashboardPort != null
       ? { dashboard: { port: inputs.dashboardPort, host: '127.0.0.1', openOnStart: false } }
       : {}),
+    ...(inputs.nrApiKey ? { nrApiKey: inputs.nrApiKey } : {}),
+    ...(inputs.collectorHost ? { collectorHost: inputs.collectorHost } : {}),
   };
 }
 
@@ -176,6 +181,9 @@ export async function runSetupWizard(): Promise<void> {
   // Step 1+2: NR credentials (skip in local mode)
   let accountId = '';
   let licenseKey = '';
+  let collectorHost: string | null = null;
+  let nrApiKey: string | null = null;
+  let validatedEmail: string | null = null;
   if (mode !== 'local') {
     const existingAccountId = typeof existing.accountId === 'string' ? existing.accountId : '';
     const accountIdPrompt = existingAccountId
@@ -189,10 +197,9 @@ export async function runSetupWizard(): Promise<void> {
       process.exit(1);
     }
 
-    const existingKey = typeof existing.licenseKey === 'string' ? '(already set)' : '';
-    const keyPrompt = existingKey
-      ? `New Relic License Key ${existingKey}: `
-      : 'New Relic License Key (NEW_RELIC_LICENSE_KEY): ';
+    const existingKey = typeof existing.licenseKey === 'string' ? existing.licenseKey : '';
+    const keyHint = existingKey ? '(already set)' : 'NEW_RELIC_LICENSE_KEY';
+    const keyPrompt = `New Relic License Key [${keyHint}]: `;
     licenseKey = (await rl.question(keyPrompt)).trim();
     if (!licenseKey && typeof existing.licenseKey === 'string') {
       licenseKey = existing.licenseKey;
@@ -202,13 +209,104 @@ export async function runSetupWizard(): Promise<void> {
       rl.close();
       process.exit(1);
     }
+
+    // Step 2b: Environment / region
+    const existingCollectorHost =
+      typeof existing.collectorHost === 'string' ? existing.collectorHost : null;
+    const keyLower = licenseKey.toLowerCase();
+    const autoEnv = keyLower.startsWith('eu01')
+      ? 'eu'
+      : keyLower.startsWith('gov01')
+        ? 'gov'
+        : 'us';
+    const defaultEnv = existingCollectorHost ?? autoEnv;
+    print('Environment:');
+    print('  1) US      — api.newrelic.com');
+    print('  2) EU      — api.eu.newrelic.com');
+    print('  3) Staging — staging-api.newrelic.com');
+    print('  4) FedRAMP — api.newrelic.com (FedRAMP/GovCloud)');
+    const envRaw = (await rl.question(`Which environment? [${defaultEnv}]: `)).trim().toLowerCase();
+    const resolvedEnv =
+      envRaw === '' || envRaw === defaultEnv
+        ? defaultEnv
+        : envRaw === '1' || envRaw === 'us'
+          ? 'us'
+          : envRaw === '2' || envRaw === 'eu'
+            ? 'eu'
+            : envRaw === '3' || envRaw === 'staging'
+              ? 'staging'
+              : envRaw === '4' || envRaw === 'fedramp' || envRaw === 'gov'
+                ? 'gov'
+                : defaultEnv;
+    collectorHost = resolvedEnv === 'us' ? null : resolvedEnv;
+
+    // Warn if license key prefix contradicts selected environment.
+    const keyRegion = keyLower.startsWith('eu01')
+      ? 'eu'
+      : keyLower.startsWith('gov01')
+        ? 'gov'
+        : keyLower.startsWith('us01')
+          ? 'us'
+          : null;
+    if (keyRegion && keyRegion !== resolvedEnv) {
+      print(
+        `  ⚠ Your license key looks like a ${keyRegion.toUpperCase()} key but you selected ${resolvedEnv.toUpperCase()}. Verify this is intentional.`,
+      );
+    }
+
+    // Step 2c: NR API key (optional)
+    const existingApiKey = typeof existing.nrApiKey === 'string' ? existing.nrApiKey : null;
+    const apiKeyHint = existingApiKey ? '(already set)' : 'optional';
+    const apiKeyRaw = (await rl.question(`New Relic API Key (NRAK-...) [${apiKeyHint}]: `)).trim();
+    if (apiKeyRaw) {
+      nrApiKey = apiKeyRaw;
+    } else if (existingApiKey) {
+      nrApiKey = existingApiKey;
+    }
+
+    // Step 2d: Validate credentials
+    print('\nValidating credentials...');
+    const licenseResult = await validateLicenseKey({ licenseKey, accountId, collectorHost });
+    if (licenseResult.valid) {
+      print('  ✓ License key: OK');
+    } else if (licenseResult.reason === 'unauthorized') {
+      print('  ✗ License key: unauthorized — double-check your key and environment selection');
+    } else if (licenseResult.reason === 'timeout' || licenseResult.reason === 'network') {
+      print(
+        `  ⚠ License key: could not reach NR ingest API (${licenseResult.detail ?? licenseResult.reason}) — check your network`,
+      );
+    } else {
+      print(
+        `  ⚠ License key: unexpected response (${licenseResult.detail ?? 'unknown'}) — proceeding anyway`,
+      );
+    }
+
+    if (nrApiKey) {
+      const apiResult = await validateApiKey({ nrApiKey, collectorHost });
+      if (apiResult.valid) {
+        validatedEmail = apiResult.detail ?? null;
+        const who = validatedEmail ? ` (${validatedEmail})` : '';
+        print(`  ✓ API key: OK${who}`);
+      } else if (apiResult.reason === 'unauthorized') {
+        print('  ✗ API key: unauthorized — double-check your NRAK key');
+      } else if (apiResult.reason === 'timeout' || apiResult.reason === 'network') {
+        print(
+          `  ⚠ API key: could not reach NerdGraph (${apiResult.detail ?? apiResult.reason}) — check your network`,
+        );
+      } else {
+        print(
+          `  ⚠ API key: unexpected response (${apiResult.detail ?? 'unknown'}) — proceeding anyway`,
+        );
+      }
+    }
   }
 
-  // Step 3: Developer name
+  // Step 3: Developer name — prefer existing config, then email local-part, then $USER
+  const emailLocalPart = validatedEmail ? (validatedEmail.split('@')[0] ?? '') : '';
   const defaultDeveloper =
     typeof existing.developer === 'string'
       ? existing.developer
-      : normalizeDeveloperName(process.env.USER ?? process.env.USERNAME ?? '');
+      : normalizeDeveloperName(emailLocalPart || process.env.USER || process.env.USERNAME || '');
   const rawInput =
     (await rl.question(`Developer name [${defaultDeveloper}]: `)).trim() || defaultDeveloper;
   const developer = normalizeDeveloperName(rawInput);
@@ -278,6 +376,8 @@ export async function runSetupWizard(): Promise<void> {
     sessionBudgetUsd,
     mode,
     dashboardPort,
+    nrApiKey,
+    collectorHost,
   });
 
   mkdirSync(DEFAULT_STORAGE_PATH, { recursive: true, mode: 0o700 });
@@ -370,18 +470,21 @@ export async function runSetupWizard(): Promise<void> {
 
   // Step 8: Dashboard deploy — show manual command (deploy-dashboard.ts is not a library)
   if (mode !== 'local') {
+    const regionFlag =
+      collectorHost === 'eu' ? ' --eu' : collectorHost === 'staging' ? ' --staging' : '';
+    const apiKeyVar = nrApiKey ? `NEW_RELIC_API_KEY=${nrApiKey}` : 'NEW_RELIC_API_KEY=<NRAK-...>';
     print('\nTo deploy dashboards, run:');
     print(
-      `  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts --all`,
+      `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts --all${regionFlag}`,
     );
     print(`\nFor a personal dashboard pre-filtered to you:`);
     print(
-      `  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer ${developer}`,
+      `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer ${developer}${regionFlag}`,
     );
 
     print(`\nFor personal alerts scoped to you:`);
     print(
-      `  NEW_RELIC_API_KEY=<NRAK-...> NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-alerts.ts --developer ${developer}`,
+      `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-alerts.ts --developer ${developer}${regionFlag}`,
     );
   } else {
     print(

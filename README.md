@@ -59,7 +59,7 @@ After cloning the repo and running `npm install && npm run build` (see [setup be
 nr-ai-observe setup
 ```
 
-The wizard asks for your license key, account ID, and a name for yourself, then installs the hooks and optionally deploys dashboards. Most people are running in under 5 minutes.
+The wizard asks for your license key, account ID, environment/region (US, EU, FedRAMP), and optionally a NR API key for team queries. It validates both keys live against New Relic before continuing, and pre-fills your developer name from the email on the API key. Most people are running in under 5 minutes.
 
 ### Option B — Manual setup
 
@@ -237,6 +237,8 @@ The easiest way to configure is through the setup wizard (`nr-ai-observe setup`)
 | Setting              | What it does                                                                                                                                                                 | Default      |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
 | `developer`          | Your identifier on all NR events. Automatically normalized to lowercase with underscores — e.g., "John Doe" → "john_doe". Falls back to `$USER` or your git name if not set. | Inferred     |
+| `collectorHost`      | Region override: `null` = US (default), `'eu'` = EU, `'gov'` = FedRAMP/GovCloud. The wizard auto-detects from your license key prefix and lets you confirm.                  | `null` (US)  |
+| `nrApiKey`           | User API key (`NRAK-...`) for NerdGraph queries (team summaries, dashboard/alert deploy). The wizard prompts for it and validates it live.                                   | Not set      |
 | `sessionBudgetUsd`   | Emits a warning event at 50%, 80%, 100% of this amount per session                                                                                                           | No limit     |
 | `dailyBudgetUsd`     | Daily spend cap                                                                                                                                                              | No limit     |
 | `weeklyBudgetUsd`    | Weekly spend cap                                                                                                                                                             | No limit     |

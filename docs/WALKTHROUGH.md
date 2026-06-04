@@ -101,18 +101,20 @@ nr-ai-observe setup
 
 Answer the prompts:
 
-| Prompt                                  | What to enter                                    |
-| --------------------------------------- | ------------------------------------------------ |
-| `Which mode? [local]:`                  | Type `cloud` and press **Enter**                 |
-| `New Relic Account ID:`                 | Your account ID (digits only, e.g. `12345`)      |
-| `New Relic License Key:`                | Your license key                                 |
-| `Developer name [your-username]:`       | Your name or alias — it appears on all NR events |
-| `Team ID [optional]:`                   | Press **Enter** to skip                          |
-| `Project ID [auto-detect from git]:`    | Press **Enter** to auto-detect                   |
-| `Session budget USD [no limit]:`        | Press **Enter** to skip                          |
-| `Install Claude Code hooks now? [Y/n]:` | Press **Enter** (yes)                            |
-| `Enable daily auto-updates? [Y/n]:`     | Press **Enter** (yes, macOS only)                |
-| `Update time (24h HH:MM) [08:00]:`      | Press **Enter** to accept default, or enter time |
+| Prompt                                           | What to enter                                                          |
+| ------------------------------------------------ | ---------------------------------------------------------------------- |
+| `Which mode? [local]:`                           | Type `cloud` and press **Enter**                                       |
+| `New Relic Account ID:`                          | Your account ID (digits only, e.g. `12345`)                            |
+| `New Relic License Key [NEW_RELIC_LICENSE_KEY]:` | Your license key                                                       |
+| `Which environment? [us]:`                       | Press **Enter** for US, or type `eu` / `gov` as needed                 |
+| `New Relic API Key (NRAK-...) [optional]:`       | Your `NRAK-...` user API key — press **Enter** to skip                 |
+| `Developer name [your-name-or-$USER]:`           | Your name or alias — pre-filled from API key email if you provided one |
+| `Team ID [optional]:`                            | Press **Enter** to skip                                                |
+| `Project ID [auto-detect from git]:`             | Press **Enter** to auto-detect                                         |
+| `Session budget USD [no limit]:`                 | Press **Enter** to skip                                                |
+| `Install Claude Code hooks now? [Y/n]:`          | Press **Enter** (yes)                                                  |
+| `Enable daily auto-updates? [Y/n]:`              | Press **Enter** (yes, macOS only)                                      |
+| `Update time (24h HH:MM) [08:00]:`               | Press **Enter** to accept default, or enter time                       |
 
 **Expected output after hook install:**
 

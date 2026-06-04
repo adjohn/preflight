@@ -3,6 +3,7 @@ import { buildConfig, runSetupWizard, copyStarterAlertRules } from './setup-wiza
 import * as rlMod from 'node:readline/promises';
 import * as fsMod from 'node:fs';
 import * as scheduleMod from './schedule.js';
+import * as keyValidator from './key-validator.js';
 
 // ---------------------------------------------------------------------------
 // Module-level mocks (hoisted above imports by jest at runtime).
@@ -19,6 +20,12 @@ jest.mock('node:fs', () => ({
   realpathSync: jest.fn((p: unknown) => p),
 }));
 jest.mock('./cli.js', () => ({ runInstallCli: jest.fn(), verifyBinaryOnPath: jest.fn() }));
+jest.mock('./key-validator.js', () => ({
+  validateLicenseKey: jest.fn(),
+  validateApiKey: jest.fn(),
+  getEventsApiUrl: jest.fn(),
+  getNerdgraphUrl: jest.fn(),
+}));
 jest.mock('./schedule.js', () => ({
   installSchedule: jest.fn(),
   removeSchedule: jest.fn(),
@@ -27,6 +34,14 @@ jest.mock('./schedule.js', () => ({
 }));
 
 // Typed handles to the mocked module functions.
+const mockedKeyValidator = {
+  validateLicenseKey: keyValidator.validateLicenseKey as jest.MockedFunction<
+    typeof keyValidator.validateLicenseKey
+  >,
+  validateApiKey: keyValidator.validateApiKey as jest.MockedFunction<
+    typeof keyValidator.validateApiKey
+  >,
+};
 const mockedFs = fsMod as unknown as {
   readFileSync: jest.Mock;
   writeFileSync: jest.Mock;
@@ -298,6 +313,8 @@ describe('F-138: setup-wizard idempotency and env-detection', () => {
     mockedRl.createInterface.mockReturnValue(mockRl);
     mockedFs.mkdirSync.mockReturnValue(undefined);
     mockedFs.writeFileSync.mockReturnValue(undefined);
+    mockedKeyValidator.validateLicenseKey.mockResolvedValue({ valid: true });
+    mockedKeyValidator.validateApiKey.mockResolvedValue({ valid: true });
   });
 
   afterEach(() => {
@@ -306,8 +323,10 @@ describe('F-138: setup-wizard idempotency and env-detection', () => {
   });
 
   // Wires readline to answer prompts in sequence; defaults to '' (accept wizard default).
-  // Wizard asks 8 questions: mode, accountId, licenseKey, developer, teamId, projectId,
-  // sessionBudget, installHooks.
+  // Cloud/both mode order: mode, accountId, licenseKey, environment, nrApiKey, developer,
+  //   teamId, projectId, sessionBudget, installHooks.
+  // Local mode order: mode, developer, teamId, projectId, sessionBudget, dashboardPort,
+  //   copyStarterRules, installHooks.
   function sequenceAnswers(...answers: (string | undefined)[]): void {
     let i = 0;
     mockRl.question.mockImplementation(async () => answers[i++] ?? '');
@@ -368,7 +387,9 @@ describe('F-138: setup-wizard idempotency and env-detection', () => {
     mockedFs.readFileSync.mockReturnValue('not-valid-json{{{');
     // Malformed config → no existing mode → defaults 'local'; force 'cloud' explicitly so
     // accountId/licenseKey prompts fire. Final 'n' skips Step 7 auto-update (macOS).
-    sequenceAnswers('cloud', '12345', 'NRLIC-test', 'testdev', '', '', '', 'n', 'n');
+    // Order: mode, accountId, licenseKey, environment, nrApiKey, developer, teamId, projectId,
+    //        sessionBudget, installHooks, autoUpdate
+    sequenceAnswers('cloud', '12345', 'NRLIC-test', '', '', 'testdev', '', '', '', 'n', 'n');
 
     await runSetupWizard();
 
@@ -439,7 +460,7 @@ describe('setupWizard mode branch', () => {
   });
 
   it("when mode='both', prompts for credentials AND port", async () => {
-    answers('both', '12345', 'NRLIC-test', 'tester', '', '', '', '7777', 'n', 'n');
+    answers('both', '12345', 'NRLIC-test', '', '', 'tester', '', '', '', '7777', 'n', 'n');
 
     await runSetupWizard();
 
@@ -460,9 +481,9 @@ describe('setupWizard mode branch', () => {
   it("when mode='cloud', does NOT copy starter alert rules (F-020)", async () => {
     // Cloud mode skips the dashboardPort and copyStarterRules prompts,
     // so the answer sequence is shorter than the local/both flows.
-    // Order: mode, accountId, licenseKey, developer, teamId, projectId,
+    // Order: mode, accountId, licenseKey, environment, nrApiKey, developer, teamId, projectId,
     //        sessionBudget, installHooks
-    answers('cloud', '12345', 'NRLIC-test', 'tester', '', '', '', 'n');
+    answers('cloud', '12345', 'NRLIC-test', '', '', 'tester', '', '', '', 'n');
 
     await runSetupWizard();
 
@@ -546,7 +567,7 @@ describe('setupWizard input validation', () => {
   });
 
   it('rejects a non-numeric session budget', async () => {
-    answers('cloud', '12345', 'NRLIC-test', 'tester', '', '', 'free', 'n');
+    answers('cloud', '12345', 'NRLIC-test', '', '', 'tester', '', '', 'free', 'n');
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
@@ -555,7 +576,7 @@ describe('setupWizard input validation', () => {
   });
 
   it('rejects a session budget of zero', async () => {
-    answers('cloud', '12345', 'NRLIC-test', 'tester', '', '', '0', 'n');
+    answers('cloud', '12345', 'NRLIC-test', '', '', 'tester', '', '', '0', 'n');
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
@@ -564,7 +585,7 @@ describe('setupWizard input validation', () => {
   });
 
   it('rejects a negative session budget', async () => {
-    answers('cloud', '12345', 'NRLIC-test', 'tester', '', '', '-5', 'n');
+    answers('cloud', '12345', 'NRLIC-test', '', '', 'tester', '', '', '-5', 'n');
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
@@ -592,7 +613,7 @@ describe('setupWizard input validation', () => {
   });
 
   it('rejects a non-numeric dashboard port in both mode', async () => {
-    answers('both', '12345', 'NRLIC-test', 'tester', '', '', '', 'eight-thousand', 'n');
+    answers('both', '12345', 'NRLIC-test', '', '', 'tester', '', '', '', 'eight-thousand', 'n');
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
@@ -644,7 +665,7 @@ describe('setupWizard auto-update step', () => {
   });
 
   // Cloud mode answer order:
-  // mode, accountId, licenseKey, developer, teamId, projectId,
+  // mode, accountId, licenseKey, environment, nrApiKey, developer, teamId, projectId,
   // sessionBudget, installHooks, autoUpdate, updateTime
   function cloudAnswers(...values: string[]): void {
     let i = 0;
@@ -653,7 +674,7 @@ describe('setupWizard auto-update step', () => {
 
   it('calls installSchedule with parsed hour and minute when user accepts', async () => {
     mockedSchedule.resolveBinaryPath.mockReturnValue('/usr/local/bin/nr-ai-observe');
-    cloudAnswers('cloud', '12345', 'NRLIC-test', 'dev', '', '', '', 'n', 'y', '09:00');
+    cloudAnswers('cloud', '12345', 'NRLIC-test', '', '', 'dev', '', '', '', 'n', 'y', '09:00');
 
     await runSetupWizard();
 
@@ -666,7 +687,7 @@ describe('setupWizard auto-update step', () => {
 
   it('uses 08:00 as default time when user presses enter', async () => {
     mockedSchedule.resolveBinaryPath.mockReturnValue('/usr/local/bin/nr-ai-observe');
-    cloudAnswers('cloud', '12345', 'NRLIC-test', 'dev', '', '', '', 'n', 'y', '');
+    cloudAnswers('cloud', '12345', 'NRLIC-test', '', '', 'dev', '', '', '', 'n', 'y', '');
 
     await runSetupWizard();
 
@@ -678,7 +699,7 @@ describe('setupWizard auto-update step', () => {
   });
 
   it('does not call installSchedule when user declines auto-update', async () => {
-    cloudAnswers('cloud', '12345', 'NRLIC-test', 'dev', '', '', '', 'n', 'n');
+    cloudAnswers('cloud', '12345', 'NRLIC-test', '', '', 'dev', '', '', '', 'n', 'n');
 
     await runSetupWizard();
 
@@ -687,7 +708,7 @@ describe('setupWizard auto-update step', () => {
 
   it('prints PATH warning and skips installSchedule when binary not on PATH', async () => {
     mockedSchedule.resolveBinaryPath.mockReturnValue(null);
-    cloudAnswers('cloud', '12345', 'NRLIC-test', 'dev', '', '', '', 'n', 'y', '08:00');
+    cloudAnswers('cloud', '12345', 'NRLIC-test', '', '', 'dev', '', '', '', 'n', 'y', '08:00');
 
     await runSetupWizard();
 
@@ -699,10 +720,389 @@ describe('setupWizard auto-update step', () => {
   it('skips auto-update step entirely on non-macOS', async () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
     // No auto-update answers needed — step is skipped on non-macOS.
-    cloudAnswers('cloud', '12345', 'NRLIC-test', 'dev', '', '', '', 'n');
+    cloudAnswers('cloud', '12345', 'NRLIC-test', '', '', 'dev', '', '', '', 'n');
 
     await runSetupWizard();
 
     expect(mockedSchedule.installSchedule).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildConfig — nrApiKey and collectorHost fields
+// ---------------------------------------------------------------------------
+describe('buildConfig nrApiKey and collectorHost', () => {
+  const base = {
+    accountId: '1',
+    licenseKey: 'k',
+    developer: 'd',
+    teamId: null,
+    projectId: null,
+    sessionBudgetUsd: null,
+  };
+
+  it('omits nrApiKey when null', () => {
+    const result = buildConfig({}, { ...base, nrApiKey: null });
+    expect(Object.keys(result)).not.toContain('nrApiKey');
+  });
+
+  it('includes nrApiKey when provided', () => {
+    const result = buildConfig({}, { ...base, nrApiKey: 'NRAK-abc' });
+    expect(result.nrApiKey).toBe('NRAK-abc');
+  });
+
+  it('omits collectorHost when null (US default)', () => {
+    const result = buildConfig({}, { ...base, collectorHost: null });
+    expect(Object.keys(result)).not.toContain('collectorHost');
+  });
+
+  it('writes collectorHost eu when provided', () => {
+    const result = buildConfig({}, { ...base, collectorHost: 'eu' });
+    expect(result.collectorHost).toBe('eu');
+  });
+
+  it('writes collectorHost staging when provided', () => {
+    const result = buildConfig({}, { ...base, collectorHost: 'staging' });
+    expect(result.collectorHost).toBe('staging');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Environment and NR API key wizard steps
+// ---------------------------------------------------------------------------
+describe('setupWizard environment and nrApiKey steps', () => {
+  let stdoutSpy: ReturnType<typeof jest.spyOn>;
+  let stderrSpy: ReturnType<typeof jest.spyOn>;
+  let mockRl: { question: jest.Mock; close: jest.Mock };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockRl = { question: jest.fn(), close: jest.fn() };
+    mockedRl.createInterface.mockReturnValue(mockRl);
+    mockedFs.mkdirSync.mockReturnValue(undefined);
+    mockedFs.writeFileSync.mockReturnValue(undefined);
+    mockedFs.readFileSync.mockReturnValue('{}');
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+  });
+
+  afterEach(() => {
+    stdoutSpy.mockRestore();
+    stderrSpy.mockRestore();
+  });
+
+  function answers(...values: string[]): void {
+    let i = 0;
+    mockRl.question.mockImplementation(async () => values[i++] ?? '');
+  }
+
+  it('writes collectorHost eu when EU environment selected', async () => {
+    // Order: mode, accountId, licenseKey, environment=eu, nrApiKey, developer,
+    //        teamId, projectId, sessionBudget, installHooks
+    answers('cloud', '12345', 'NRLIC-test', 'eu', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.collectorHost).toBe('eu');
+  });
+
+  it('omits collectorHost when US environment selected', async () => {
+    answers('cloud', '12345', 'NRLIC-test', 'us', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(Object.keys(written)).not.toContain('collectorHost');
+  });
+
+  it('defaults to US when license key has no region prefix', async () => {
+    // Blank environment answer → accepts auto-detected default (US for keys without known prefix)
+    answers('cloud', '12345', 'NRLIC-test', '', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(Object.keys(written)).not.toContain('collectorHost');
+  });
+
+  it('defaults to gov when license key starts with gov01', async () => {
+    answers('cloud', '12345', 'gov01xx-license', '', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.collectorHost).toBe('gov');
+  });
+
+  it('defaults to EU when license key starts with eu01', async () => {
+    // Blank environment answer → accepts auto-detected default (EU from eu01 key prefix)
+    answers('cloud', '12345', 'eu01xx-license', '', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.collectorHost).toBe('eu');
+  });
+
+  it('writes collectorHost staging when staging selected', async () => {
+    answers('cloud', '12345', 'NRLIC-test', 'staging', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.collectorHost).toBe('staging');
+  });
+
+  it('writes collectorHost gov when FedRAMP selected', async () => {
+    answers('cloud', '12345', 'NRLIC-test', 'gov', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.collectorHost).toBe('gov');
+  });
+
+  it('includes --eu in deploy commands when EU is selected', async () => {
+    answers('cloud', '12345', 'NRLIC-test', 'eu', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).toContain('--eu');
+  });
+
+  it('includes --staging in deploy commands when staging is selected', async () => {
+    answers('cloud', '12345', 'NRLIC-test', 'staging', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).toContain('--staging');
+  });
+
+  it('does not include --eu or --staging in deploy commands when US is selected', async () => {
+    answers('cloud', '12345', 'NRLIC-test', 'us', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).not.toContain('--eu');
+    expect(output).not.toContain('--staging');
+  });
+
+  it('falls back to default env on unrecognized input rather than silently picking staging', async () => {
+    // Typo or garbage input should not silently route to staging
+    answers('cloud', '12345', 'NRLIC-test', 'nope', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    // Default for a non-prefixed key is 'us', so collectorHost should be absent (null → omitted)
+    expect(Object.keys(written)).not.toContain('collectorHost');
+  });
+
+  it('writes nrApiKey when provided', async () => {
+    answers('cloud', '12345', 'NRLIC-test', '', 'NRAK-abc123', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.nrApiKey).toBe('NRAK-abc123');
+  });
+
+  it('omits nrApiKey when blank and no existing value', async () => {
+    answers('cloud', '12345', 'NRLIC-test', '', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(Object.keys(written)).not.toContain('nrApiKey');
+  });
+
+  it('preserves existing nrApiKey when prompt is blank', async () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({ accountId: '12345', licenseKey: 'NRLIC-existing', nrApiKey: 'NRAK-kept' }),
+    );
+    // Existing config has no mode → defaults to local, but force cloud here by providing
+    // explicit mode answer so credential prompts fire. Blank nrApiKey → keep existing.
+    answers('cloud', '', '', 'us', '', '', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.nrApiKey).toBe('NRAK-kept');
+  });
+
+  it('warns when eu01 license key is used with a non-EU environment', async () => {
+    answers('cloud', '12345', 'eu01xx-license', 'us', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).toContain('EU key');
+    expect(output).toContain('US');
+  });
+
+  it('warns when us01 license key is used with EU environment', async () => {
+    answers('cloud', '12345', 'us01xx-license', 'eu', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).toContain('US key');
+    expect(output).toContain('EU');
+  });
+
+  it('does not warn when license key prefix matches selected environment', async () => {
+    answers('cloud', '12345', 'eu01xx-license', 'eu', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).not.toContain('⚠');
+  });
+
+  it('does not warn for legacy keys with no region prefix', async () => {
+    answers('cloud', '12345', 'NRLIC-legacykey', 'staging', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).not.toContain('⚠');
+  });
+
+  it('does not prompt for environment or nrApiKey in local mode', async () => {
+    answers('local', 'tester', '', '', '', '', 'n', 'n');
+
+    await runSetupWizard();
+
+    const promptMessages = mockRl.question.mock.calls.map((c) => String(c[0]).toLowerCase());
+    expect(promptMessages.some((m) => m.includes('environment'))).toBe(false);
+    expect(promptMessages.some((m) => m.includes('api key'))).toBe(false);
+  });
+
+  it('prints ✓ when license key and API key are both valid', async () => {
+    mockedKeyValidator.validateLicenseKey.mockResolvedValue({ valid: true });
+    mockedKeyValidator.validateApiKey.mockResolvedValue({ valid: true, detail: 'dev@example.com' });
+    answers('cloud', '12345', 'NRLIC-test', '', 'NRAK-abc', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).toContain('✓ License key: OK');
+    expect(output).toContain('✓ API key: OK (dev@example.com)');
+  });
+
+  it('prints ✗ when license key is unauthorized', async () => {
+    mockedKeyValidator.validateLicenseKey.mockResolvedValue({
+      valid: false,
+      reason: 'unauthorized',
+    });
+    answers('cloud', '12345', 'NRLIC-test', '', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).toContain('✗ License key: unauthorized');
+  });
+
+  it('prints ✗ when API key is unauthorized', async () => {
+    mockedKeyValidator.validateApiKey.mockResolvedValue({ valid: false, reason: 'unauthorized' });
+    answers('cloud', '12345', 'NRLIC-test', '', 'NRAK-bad', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).toContain('✗ API key: unauthorized');
+  });
+
+  it('prints ⚠ when license key check times out', async () => {
+    mockedKeyValidator.validateLicenseKey.mockResolvedValue({
+      valid: false,
+      reason: 'timeout',
+      detail: 'no response within 5000ms',
+    });
+    answers('cloud', '12345', 'NRLIC-test', '', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).toContain('⚠ License key: could not reach NR ingest API');
+  });
+
+  it('skips API key validation when no API key is set', async () => {
+    answers('cloud', '12345', 'NRLIC-test', '', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    expect(mockedKeyValidator.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it('does not validate in local mode', async () => {
+    answers('local', 'tester', '', '', '', '', 'n', 'n');
+
+    await runSetupWizard();
+
+    expect(mockedKeyValidator.validateLicenseKey).not.toHaveBeenCalled();
+    expect(mockedKeyValidator.validateApiKey).not.toHaveBeenCalled();
+  });
+
+  it('uses email local-part from API key validation as default developer name', async () => {
+    mockedKeyValidator.validateApiKey.mockResolvedValue({
+      valid: true,
+      detail: 'jane.smith@newrelic.com',
+    });
+    // Developer name answer is blank → should fall back to email local-part
+    answers('cloud', '12345', 'NRLIC-test', '', 'NRAK-abc', '', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.developer).toBe('jane_smith');
+  });
+
+  it('prefers existing developer name over email local-part', async () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({ accountId: '12345', licenseKey: 'NRLIC-existing', developer: 'the_dev' }),
+    );
+    mockedKeyValidator.validateApiKey.mockResolvedValue({
+      valid: true,
+      detail: 'other@newrelic.com',
+    });
+    answers('cloud', '', '', 'us', 'NRAK-abc', '', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(written.developer).toBe('the_dev');
+  });
+
+  it('shows license key hint in bracket format when already set', async () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({ accountId: '12345', licenseKey: 'NRLIC-existing' }),
+    );
+    answers('cloud', '', '', 'us', '', 'tester', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const promptMessages = mockRl.question.mock.calls.map((c) => String(c[0]));
+    const licensePrompt = promptMessages.find((m) => m.toLowerCase().includes('license key'));
+    expect(licensePrompt).toContain('(already set)');
+    expect(licensePrompt).toMatch(/\[.*\]/); // brackets
   });
 });
