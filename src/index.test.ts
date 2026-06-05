@@ -1,5 +1,5 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { parseArgs } from './index.js';
+import { parseArgs, maskCredential } from './index.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 
@@ -93,6 +93,57 @@ describe('parseArgs()', () => {
     expect(opts.stdio).toBe(true);
     expect(opts.config).toBe('/etc/nr.json');
     expect(opts.logLevel).toBe('error');
+  });
+
+  it('defaults validate to false', () => {
+    const opts = parseArgs([...base]);
+    expect(opts.validate).toBe(false);
+  });
+
+  it('parses --validate flag', () => {
+    const opts = parseArgs([...base, '--validate']);
+    expect(opts.validate).toBe(true);
+  });
+
+  it('--validate combined with --config is accepted', () => {
+    const opts = parseArgs([...base, '--validate', '--config', '/etc/nr.json']);
+    expect(opts.validate).toBe(true);
+    expect(opts.config).toBe('/etc/nr.json');
+  });
+
+  it('--validate and --stdio are mutually exclusive', () => {
+    expect(() => parseArgs([...base, '--validate', '--stdio'])).toThrow(/mutually exclusive/);
+  });
+
+  it('--validate and --local are mutually exclusive', () => {
+    expect(() => parseArgs([...base, '--validate', '--local'])).toThrow(/mutually exclusive/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// maskCredential()
+// ---------------------------------------------------------------------------
+
+describe('maskCredential()', () => {
+  it('masks a normal-length key to first-4...last-4', () => {
+    expect(maskCredential('ABCD1234567890WXYZ')).toBe('ABCD...WXYZ');
+  });
+
+  it('returns *** for keys of exactly 8 characters (would fully expose if unguarded)', () => {
+    expect(maskCredential('ABCD1234')).toBe('***');
+  });
+
+  it('returns *** for keys shorter than 8 characters', () => {
+    expect(maskCredential('SHORT')).toBe('***');
+    expect(maskCredential('X')).toBe('***');
+    expect(maskCredential('')).toBe('***');
+  });
+
+  it('masks a typical 40-char NR license key', () => {
+    const key = 'a'.repeat(32) + 'b'.repeat(8);
+    const result = maskCredential(key);
+    expect(result).toBe('aaaa...bbbb');
+    expect(result).not.toBe(key);
   });
 });
 

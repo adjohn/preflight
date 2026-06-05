@@ -147,6 +147,17 @@ const HEALTH_TOOL = {
   annotations: { readOnlyHint: true },
 };
 
+const CONFIG_TOOL = {
+  name: 'nr_observe_get_config',
+  description:
+    'Show the current server configuration (sensitive fields masked): mode, developer, account, region, storage path, dashboard URL, and config file location. Use to diagnose misconfiguration without exposing credentials.',
+  inputSchema: {
+    type: 'object' as const,
+    properties: {},
+  },
+  annotations: { readOnlyHint: true },
+};
+
 const SESSION_TIMELINE_TOOL = {
   name: 'nr_observe_get_session_timeline',
   description:
@@ -245,6 +256,35 @@ export function handleHealth(options: {
 }
 
 // ---------------------------------------------------------------------------
+// handleGetConfig
+// ---------------------------------------------------------------------------
+
+export interface ConfigSummary {
+  readonly mode: string;
+  readonly developer: string;
+  readonly accountId: string | null;
+  readonly licenseKeyMasked: string | null;
+  readonly nrApiKeyMasked: string | null;
+  readonly region: string;
+  readonly storagePath: string;
+  readonly dashboardUrl: string;
+  readonly configFilePath: string;
+}
+
+export function handleGetConfig(configSummary: ConfigSummary): {
+  content: [{ type: 'text'; text: string }];
+} {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(configSummary, null, 2),
+      },
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Registration options
 // ---------------------------------------------------------------------------
 
@@ -285,6 +325,7 @@ export interface ToolRegistrationOptions {
   nrApiKey?: string | null;
   collectorHost?: string | null;
   configFilePath?: string;
+  configSummary?: ConfigSummary;
 }
 
 // ---------------------------------------------------------------------------
@@ -351,6 +392,9 @@ export function registerTools(server: Server, options: ToolRegistrationOptions):
 
   // Build combined tool list
   const tools: (typeof SESSION_STATS_TOOL)[] = [HEALTH_TOOL];
+  if (options.configSummary) {
+    tools.push(CONFIG_TOOL);
+  }
   if (sessionTracker) {
     tools.push(SESSION_STATS_TOOL, SESSION_TIMELINE_TOOL);
   }
@@ -461,6 +505,21 @@ export function registerTools(server: Server, options: ToolRegistrationOptions):
             developer: options.developer,
             sessionId: sessionTracker?.getMetrics().sessionId,
           });
+        }
+
+        case 'nr_observe_get_config': {
+          if (!options.configSummary) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'Config summary not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetConfig(options.configSummary);
         }
 
         case 'nr_observe_get_session_stats': {

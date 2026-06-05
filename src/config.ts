@@ -81,7 +81,7 @@ export interface McpServerConfig {
   };
 }
 
-const DEFAULT_STORAGE_PATH = resolve(homedir(), '.nr-ai-observe');
+export const DEFAULT_STORAGE_PATH = resolve(homedir(), '.nr-ai-observe');
 
 const DEFAULT_REDACTION_PATTERNS: RegExp[] = [
   /\b(?:API_KEY|SECRET|TOKEN|PASSWORD|PASSPHRASE|PRIVATE_KEY)\b[\s]*[=:]\s*\S+/gi,

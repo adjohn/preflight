@@ -5,7 +5,13 @@ import { createServer, NrMcpServer } from '../server.js';
 import { SessionTracker } from '../metrics/session-tracker.js';
 import { CostTracker } from '../metrics/cost-tracker.js';
 import { FeedbackCollector } from './workflow-tools.js';
-import { handleGetSessionStats, handleGetSessionTimeline, handleHealth } from './session-stats.js';
+import {
+  handleGetSessionStats,
+  handleGetSessionTimeline,
+  handleHealth,
+  handleGetConfig,
+} from './session-stats.js';
+import type { ConfigSummary } from './session-stats.js';
 import type { ToolCallRecord } from '../storage/types.js';
 import type { SessionStore } from '../storage/session-store.js';
 import type { WeeklySummaryGenerator } from '../storage/weekly-summary.js';
@@ -210,6 +216,66 @@ describe('handleHealth()', () => {
 
     expect(data.developer).toBe('alice');
     expect(data.session_id).toBe('health-session-id');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleGetConfig — unit tests
+// ---------------------------------------------------------------------------
+
+function makeConfigSummary(overrides?: Partial<ConfigSummary>): ConfigSummary {
+  return {
+    mode: 'cloud',
+    developer: 'alice',
+    accountId: '1234567',
+    licenseKeyMasked: 'NRAA...1234',
+    nrApiKeyMasked: 'NRAK...5678',
+    region: 'us',
+    storagePath: '/home/alice/.nr-ai-observe',
+    dashboardUrl: 'http://127.0.0.1:9847',
+    configFilePath: '/home/alice/.nr-ai-observe/config.json',
+    ...overrides,
+  };
+}
+
+describe('handleGetConfig()', () => {
+  it('returns all config fields as JSON', () => {
+    const summary = makeConfigSummary();
+    const result = handleGetConfig(summary);
+    const data = JSON.parse(result.content[0].text) as ConfigSummary;
+
+    expect(data.mode).toBe('cloud');
+    expect(data.developer).toBe('alice');
+    expect(data.accountId).toBe('1234567');
+    expect(data.licenseKeyMasked).toBe('NRAA...1234');
+    expect(data.nrApiKeyMasked).toBe('NRAK...5678');
+    expect(data.region).toBe('us');
+    expect(data.storagePath).toBe('/home/alice/.nr-ai-observe');
+    expect(data.dashboardUrl).toBe('http://127.0.0.1:9847');
+    expect(data.configFilePath).toBe('/home/alice/.nr-ai-observe/config.json');
+  });
+
+  it('handles null sensitive fields (local mode)', () => {
+    const summary = makeConfigSummary({
+      mode: 'local',
+      accountId: null,
+      licenseKeyMasked: null,
+      nrApiKeyMasked: null,
+    });
+    const result = handleGetConfig(summary);
+    const data = JSON.parse(result.content[0].text) as ConfigSummary;
+
+    expect(data.mode).toBe('local');
+    expect(data.accountId).toBeNull();
+    expect(data.licenseKeyMasked).toBeNull();
+    expect(data.nrApiKeyMasked).toBeNull();
+  });
+
+  it('reflects eu region', () => {
+    const summary = makeConfigSummary({ region: 'eu' });
+    const result = handleGetConfig(summary);
+    const data = JSON.parse(result.content[0].text) as ConfigSummary;
+    expect(data.region).toBe('eu');
   });
 });
 

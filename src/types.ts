@@ -20,6 +20,7 @@ export interface CliOptions {
   readonly logLevel: LogLevel;
   readonly stdio: boolean;
   readonly local: boolean;
+  readonly validate: boolean;
 }
 
 export interface ServerOptions {

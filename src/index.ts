@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { Command } from 'commander';
 import { VERSION, createLogger } from './shared/index.js';
 import { createServer } from './server.js';
-import { loadMcpConfig } from './config.js';
+import { loadMcpConfig, DEFAULT_STORAGE_PATH } from './config.js';
 import { ProxyManager } from './proxy/index.js';
 import { LocalStore } from './storage/index.js';
 import { SessionStore, buildSessionSummary } from './storage/session-store.js';
@@ -50,6 +50,7 @@ import { OsNotifier } from './alerts/os-notifier.js';
 import { parseLocalAlertRules } from './alerts/local-alert-rule.js';
 import { FeedbackCollector } from './tools/workflow-tools.js';
 import { registerTools } from './tools/session-stats.js';
+import type { ConfigSummary } from './tools/session-stats.js';
 import { initMcpTracer } from './tracing/mcp-tracer.js';
 import { SessionSpan } from './tracing/session-span.js';
 import { TaskSpanTracker } from './tracing/task-span-tracker.js';
@@ -94,6 +95,13 @@ export type {
 
 const logger = createLogger('mcp-cli');
 
+// Show first-4 and last-4 chars of a credential. Guards against short values
+// (e.g. test stubs) that would otherwise expose the full secret.
+export function maskCredential(key: string): string {
+  if (key.length <= 8) return '***';
+  return key.slice(0, 4) + '...' + key.slice(-4);
+}
+
 export function parseArgs(argv: string[]): CliOptions {
   const program = new Command();
   program
@@ -104,7 +112,11 @@ export function parseArgs(argv: string[]): CliOptions {
     .option('-c, --config <path>', 'path to config file')
     .option('-l, --log-level <level>', 'log level (debug|info|warn|error)', 'info')
     .option('--stdio', 'use stdio transport (for Claude Code MCP connection)')
-    .option('--local', 'start dashboard and event processor without MCP stdio transport');
+    .option('--local', 'start dashboard and event processor without MCP stdio transport')
+    .option(
+      '--validate',
+      'validate config file and exit (combine with --config to check a specific file)',
+    );
 
   program.parse(argv);
   const opts = program.opts();
@@ -118,8 +130,12 @@ export function parseArgs(argv: string[]): CliOptions {
 
   const stdio = opts.stdio ?? false;
   const local = opts.local ?? false;
+  const validate = opts.validate ?? false;
   if (stdio && local) {
     throw new Error('--stdio and --local are mutually exclusive. Use one or the other.');
+  }
+  if (validate && (stdio || local)) {
+    throw new Error('--validate is mutually exclusive with --stdio and --local.');
   }
 
   return {
@@ -128,6 +144,7 @@ export function parseArgs(argv: string[]): CliOptions {
     logLevel: opts.logLevel as CliOptions['logLevel'],
     stdio,
     local,
+    validate,
   };
 }
 
@@ -144,6 +161,28 @@ async function main(): Promise<void> {
     port: options.port,
     logLevel: options.logLevel,
   });
+
+  if (options.validate) {
+    const configPath = options.config ?? resolve(DEFAULT_STORAGE_PATH, 'config.json');
+    process.stdout.write(`Validating config: ${configPath}\n\n`);
+    try {
+      const cfg = loadMcpConfig(options);
+      process.stdout.write(`  mode:       ${cfg.mode}\n`);
+      process.stdout.write(`  developer:  ${cfg.developer}\n`);
+      if (cfg.accountId) process.stdout.write(`  accountId:  ${cfg.accountId}\n`);
+      if (cfg.licenseKey) process.stdout.write(`  licenseKey: ${maskCredential(cfg.licenseKey)}\n`);
+      if (cfg.nrApiKey) process.stdout.write(`  nrApiKey:   ${maskCredential(cfg.nrApiKey)}\n`);
+      process.stdout.write(`  region:     ${cfg.collectorHost ?? 'us'}\n`);
+      process.stdout.write(`  storage:    ${cfg.storagePath}\n`);
+      process.stdout.write(`  dashboard:  http://${cfg.dashboard.host}:${cfg.dashboard.port}\n`);
+      process.stdout.write(`\nConfig is valid.\n`);
+      process.exit(0);
+    } catch (err) {
+      process.stdout.write(`  error: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.stdout.write(`\nConfig validation failed.\n`);
+      process.exit(1);
+    }
+  }
 
   // Declare resource holders before any async work so the shutdown handler
   // safely cleans up whatever was initialized before a signal arrives.
@@ -750,6 +789,18 @@ async function main(): Promise<void> {
       mcpServer!.auditTrailManager = auditTrail;
 
       // Re-register tools with full dependencies (replaces empty handlers)
+      const configFilePath = options.config ?? resolve(DEFAULT_STORAGE_PATH, 'config.json');
+      const configSummary: ConfigSummary = {
+        mode: config.mode,
+        developer: config.developer,
+        accountId: config.accountId ?? null,
+        licenseKeyMasked: config.licenseKey ? maskCredential(config.licenseKey) : null,
+        nrApiKeyMasked: config.nrApiKey ? maskCredential(config.nrApiKey) : null,
+        region: config.collectorHost ?? 'us',
+        storagePath: config.storagePath,
+        dashboardUrl: `http://${config.dashboard.host}:${config.dashboard.port}`,
+        configFilePath,
+      };
       registerTools(mcpServer!.server, {
         sessionTracker,
         costTracker,
@@ -786,7 +837,8 @@ async function main(): Promise<void> {
         developer: config.developer,
         nrApiKey: config.nrApiKey,
         collectorHost: config.collectorHost,
-        configFilePath: resolve(config.storagePath, 'config.json'),
+        configFilePath,
+        configSummary,
       });
 
       nrIngest?.start();
