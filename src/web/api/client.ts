@@ -38,6 +38,7 @@ export const fetchSessionReplay = (id: string): Promise<unknown> =>
 export const fetchQualityProxy = (): Promise<unknown> => getJson<unknown>('/api/quality-proxy');
 export const fetchToolSelectionScore = (): Promise<unknown> =>
   getJson<unknown>('/api/tool-selection-score');
+export const fetchGitEfficiency = (): Promise<unknown> => getJson<unknown>('/api/git-efficiency');
 
 export const qk = {
   sessionCurrent: ['session', 'current'] as const,
@@ -56,4 +57,5 @@ export const qk = {
   sessionReplay: (id: string) => ['session', id, 'replay'] as const,
   qualityProxy: ['quality-proxy'] as const,
   toolSelectionScore: ['tool-selection-score'] as const,
+  gitEfficiency: ['git-efficiency'] as const,
 };

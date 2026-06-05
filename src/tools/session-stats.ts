@@ -94,6 +94,7 @@ import type { QualityProxyTracker } from '../metrics/quality-proxy-tracker.js';
 import type { ApiFailureTracker } from '../metrics/api-failure-tracker.js';
 import type { TurnCostAttributor } from '../metrics/turn-cost-attributor.js';
 import type { TurnTracker } from '../metrics/turn-tracker.js';
+import type { GitEfficiencyTracker } from '../metrics/git-efficiency-tracker.js';
 import {
   CONTEXT_EFFICIENCY_TOOL,
   LATENCY_PERCENTILES_TOOL,
@@ -309,6 +310,34 @@ export function handleGetConfig(configSummary: ConfigSummary): {
 }
 
 // ---------------------------------------------------------------------------
+// Git Efficiency tool definition
+// ---------------------------------------------------------------------------
+
+const GIT_EFFICIENCY_TOOL = {
+  name: 'nr_observe_get_git_efficiency',
+  description:
+    'Get Git workflow efficiency metrics: merge conflicts, aborted operations, force pushes, stale branch detection, and actionable suggestions to reduce Git friction.',
+  inputSchema: {
+    type: 'object' as const,
+    properties: {},
+  },
+  annotations: { readOnlyHint: true },
+};
+
+export function handleGetGitEfficiency(tracker: GitEfficiencyTracker): {
+  content: [{ type: 'text'; text: string }];
+} {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(tracker.getMetrics(), null, 2),
+      },
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Registration options
 // ---------------------------------------------------------------------------
 
@@ -342,6 +371,7 @@ export interface ToolRegistrationOptions {
   apiFailureTracker?: ApiFailureTracker;
   turnCostAttributor?: TurnCostAttributor;
   turnTracker?: TurnTracker;
+  gitEfficiencyTracker?: GitEfficiencyTracker;
   sessionTraceId?: string;
   sessionStartMs?: number;
   accountId?: string;
@@ -414,6 +444,7 @@ export function registerTools(server: Server, options: ToolRegistrationOptions):
     apiFailureTracker,
     turnCostAttributor,
     turnTracker,
+    gitEfficiencyTracker,
     sessionTraceId,
     sessionStartMs,
   } = options;
@@ -518,6 +549,9 @@ export function registerTools(server: Server, options: ToolRegistrationOptions):
   }
   if (apiFailureTracker) {
     tools.push(API_FAILURES_TOOL);
+  }
+  if (gitEfficiencyTracker) {
+    tools.push(GIT_EFFICIENCY_TOOL);
   }
   if (turnCostAttributor) {
     tools.push(COST_PER_TOOL_TOOL);
@@ -1230,6 +1264,21 @@ export function registerTools(server: Server, options: ToolRegistrationOptions):
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(turnMetrics, null, 2) }],
           };
+        }
+
+        case 'nr_observe_get_git_efficiency': {
+          if (!gitEfficiencyTracker) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify({ error: 'GitEfficiencyTracker not available' }),
+                },
+              ],
+              isError: true,
+            };
+          }
+          return handleGetGitEfficiency(gitEfficiencyTracker);
         }
 
         default:

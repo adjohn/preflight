@@ -12,6 +12,7 @@ import { Today } from './views/Today';
 import { Sessions } from './views/Sessions';
 import { History } from './views/History';
 import { Audit } from './views/Audit';
+import { GitEfficiency } from './views/GitEfficiency';
 
 export function App(): JSX.Element {
   useLiveEvents();
@@ -42,6 +43,7 @@ export function App(): JSX.Element {
                 <Route path="/sessions" component={Sessions} />
                 <Route path="/history" component={History} />
                 <Route path="/audit" component={Audit} />
+                <Route path="/git" component={GitEfficiency} />
                 <Route path="/" component={Today} />
                 <Route>
                   <div className="text-ink-muted">Not found</div>

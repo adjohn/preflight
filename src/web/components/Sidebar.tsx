@@ -1,4 +1,4 @@
-import { Home, Clock, TrendingUp, ShieldCheck, Sun, Moon } from 'lucide-react';
+import { Home, Clock, TrendingUp, ShieldCheck, GitBranch, Sun, Moon } from 'lucide-react';
 import { StatusIndicator } from './StatusIndicator';
 import { useLiveAlerts } from '../hooks/useLiveAlerts';
 import type { AlertEvent } from '../store/liveStore';
@@ -11,6 +11,7 @@ const NAV_OBSERVE = [
 
 const NAV_ANALYZE = [
   { path: '/history', label: 'History', Icon: TrendingUp },
+  { path: '/git', label: 'Git', Icon: GitBranch },
   { path: '/audit', label: 'Audit', Icon: ShieldCheck },
 ] as const;
 

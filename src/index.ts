@@ -42,6 +42,7 @@ import { ApiFailureTracker } from './metrics/api-failure-tracker.js';
 import { LiveSessionRegistry } from './metrics/live-session-registry.js';
 import { TurnCostAttributor } from './metrics/turn-cost-attributor.js';
 import { TurnTracker } from './metrics/turn-tracker.js';
+import { GitEfficiencyTracker } from './metrics/git-efficiency-tracker.js';
 import { NrIngestManager } from './transport/nr-ingest.js';
 import { AuditTrailManager } from './security/audit-trail.js';
 import { LiveEventBus } from './dashboard/index.js';
@@ -318,6 +319,7 @@ async function main(): Promise<void> {
     const liveSessionRegistry = new LiveSessionRegistry();
     const turnCostAttributor = new TurnCostAttributor();
     const turnTracker = new TurnTracker();
+    const gitEfficiencyTracker = new GitEfficiencyTracker();
 
     const toolCallBuffer: import('./storage/types.js').ToolCallRecord[] = [];
     const toolCallBufferAccessor = {
@@ -326,6 +328,88 @@ async function main(): Promise<void> {
 
     sessionStore = new SessionStore({ storagePath: config.storagePath });
     const currentSessionId = sessionTracker.getMetrics().sessionId;
+
+    // Hydrate git efficiency tracker with today's prior sessions so the
+    // dashboard shows all-day git activity, not just the current session.
+    const todaySessions = sessionStore.loadTodaySessions();
+    for (const session of todaySessions) {
+      if (session.sessionId === currentSessionId) continue;
+      if (session.timeline && session.timeline.length > 0) {
+        gitEfficiencyTracker.replayTimeline(session.timeline);
+      }
+    }
+
+    // Also hydrate from git log — commit commands often aren't captured by
+    // tool hooks (Claude Code commits internally), so we read the actual
+    // repo history to get an accurate commit count for today.
+    // Each command is isolated so a slow/missing git or remote doesn't block
+    // the others. Uses spawnSync (no shell) to avoid injection; stderr is
+    // suppressed via stdio rather than shell redirection. Timeout 2s per call.
+    const { spawnSync } = await import('node:child_process');
+    const GIT_OPTS = {
+      encoding: 'utf-8' as const,
+      timeout: 2000,
+      stdio: ['ignore', 'pipe', 'ignore'] as ['ignore', 'pipe', 'ignore'],
+    };
+
+    try {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const logResult = spawnSync(
+        'git',
+        ['log', `--since=${todayStr}T00:00:00`, '--format=%H %ct'],
+        GIT_OPTS,
+      );
+      if (logResult.status === 0 && logResult.stdout) {
+        const commits = logResult.stdout
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => {
+            const [hash, epochStr] = line.split(' ');
+            return { hash: hash ?? '', timestamp: parseInt(epochStr ?? '0', 10) * 1000 };
+          });
+        gitEfficiencyTracker.hydrateGitLog(commits);
+      }
+    } catch {
+      // Not in a git repo or git unavailable — skip silently
+    }
+
+    try {
+      // Repo context for the dashboard header
+      const remoteResult = spawnSync('git', ['remote', 'get-url', 'origin'], GIT_OPTS);
+      const branchResult = spawnSync('git', ['branch', '--show-current'], GIT_OPTS);
+      if (remoteResult.status === 0 && branchResult.status === 0) {
+        const remoteUrl = remoteResult.stdout.trim();
+        const branch = branchResult.stdout.trim();
+        // Extract repo name from remote URL (handles both HTTPS and SSH)
+        const repoMatch = remoteUrl.match(/[/:]([^/]+\/[^/]+?)(?:\.git)?$/);
+        const repoName = repoMatch ? repoMatch[1] : remoteUrl || null;
+        gitEfficiencyTracker.hydrateRepoContext({
+          repoName,
+          branch: branch || null,
+          remoteName: 'origin',
+          defaultBranch: 'main',
+        });
+      }
+    } catch {
+      // No origin remote or git unavailable — skip silently
+    }
+
+    try {
+      // Branch divergence from main — how far ahead/behind are we?
+      const aheadResult = spawnSync('git', ['rev-list', '--count', 'origin/main..HEAD'], GIT_OPTS);
+      const behindResult = spawnSync('git', ['rev-list', '--count', 'HEAD..origin/main'], GIT_OPTS);
+      if (aheadResult.status === 0 && behindResult.status === 0) {
+        const ahead = parseInt(aheadResult.stdout.trim(), 10);
+        const behind = parseInt(behindResult.stdout.trim(), 10);
+        if (!Number.isNaN(ahead) && !Number.isNaN(behind)) {
+          gitEfficiencyTracker.hydrateBranchDivergence(ahead, behind);
+        }
+      }
+    } catch {
+      // origin/main not fetched or git unavailable — skip silently
+    }
+
     const { priorDailyCostUsd, priorWeeklyCostUsd } = computeHistoricalCosts(
       sessionStore,
       currentSessionId,
@@ -495,6 +579,7 @@ async function main(): Promise<void> {
           modelUsageTracker,
           toolCallBuffer: toolCallBufferAccessor,
           liveSessionRegistry,
+          gitEfficiencyTracker,
         },
         alertEngine,
         alertLog,
@@ -643,6 +728,7 @@ async function main(): Promise<void> {
         turnCostAttributor.recordToolCall(record, turnId);
         decisionTracker.recordToolCall(record);
         instructionDriftTracker.recordToolCall(record);
+        gitEfficiencyTracker.recordToolCall(record);
 
         (record as Record<string, unknown>).turn_id = turnId;
         (record as Record<string, unknown>).turn_number = turnNumber;
@@ -857,6 +943,7 @@ async function main(): Promise<void> {
         apiFailureTracker,
         turnCostAttributor,
         turnTracker,
+        gitEfficiencyTracker,
         sessionTraceId,
         sessionStartMs,
         accountId: config.accountId,

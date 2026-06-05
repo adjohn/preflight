@@ -98,6 +98,7 @@ export interface ApiHandlerDeps {
   // Minimal interface — we only need the rolling session-average score for the
   // Today KPI; richer per-task breakdowns ship via the existing MCP tool path.
   readonly efficiencyScorer?: { getSessionAverage: () => { score: number } | null };
+  readonly gitEfficiencyTracker?: { getMetrics: () => unknown };
   readonly qualityProxyTracker?: { getMetrics: () => unknown };
   readonly toolSelectionScorer?: { scoreSession: (calls: readonly ToolCallRecord[]) => unknown };
   readonly modelUsageTracker?: { getMetrics: () => unknown };
@@ -371,6 +372,11 @@ export function createApiHandler(
     if (!deps.toolSelectionScorer) return unavailable(res, 'toolSelectionScorer');
     const calls = deps.toolCallBuffer?.getRecords() ?? [];
     jsonOk(res, deps.toolSelectionScorer.scoreSession(calls));
+  });
+
+  routes.set('GET /api/git-efficiency', (_req, res) => {
+    if (!deps.gitEfficiencyTracker) return unavailable(res, 'gitEfficiencyTracker');
+    jsonOk(res, deps.gitEfficiencyTracker.getMetrics());
   });
 
   return async (req, res) => {
