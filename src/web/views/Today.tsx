@@ -605,7 +605,10 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
                     <span className="w-4 text-center text-[11px]" aria-hidden="true">
                       {TOOL_ICONS[entry.toolName] ?? '\u{00B7}'}
                     </span>
-                    <span className="w-28 truncate font-medium text-ink-base text-[11px]" title={entry.toolName}>
+                    <span
+                      className="w-28 truncate font-medium text-ink-base text-[11px]"
+                      title={entry.toolName}
+                    >
                       {shortToolName(entry.toolName)}
                     </span>
                     <span className="flex-1 truncate text-ink-subtle text-[10px]">

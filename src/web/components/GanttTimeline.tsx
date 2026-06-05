@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { shortToolName } from '../lib/format';
 
 interface GanttTimelineEntry {
   readonly timestamp: number;
@@ -124,12 +125,15 @@ export function GanttTimeline({ entries, segments }: GanttTimelineProps): JSX.El
               key={`${idx}-${entry.timestamp}`}
               className={`flex items-center h-7 ${borderClass}`}
             >
-              <div className="w-20 shrink-0 truncate text-[11px] text-ink-subtle pr-2 text-right">
-                {entry.toolName}
+              <div
+                className="w-20 shrink-0 truncate text-[11px] text-ink-subtle pr-2 text-right"
+                title={entry.toolName}
+              >
+                {shortToolName(entry.toolName)}
               </div>
               <div className="relative flex-1 h-full flex items-center">
                 <div
-                  className={`gantt-bar absolute h-5 rounded-sm opacity-80 ${getBarColor(entry.toolName)} ${!entry.success ? 'ring-1 ring-accent-red/60' : ''}`}
+                  className={`gantt-bar absolute h-5 rounded-sm opacity-80 ${getBarColor(shortToolName(entry.toolName))} ${!entry.success ? 'ring-1 ring-accent-red/60' : ''}`}
                   style={{
                     left: `${leftPct}%`,
                     width: `${widthPct}%`,
