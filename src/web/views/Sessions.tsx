@@ -608,10 +608,6 @@ function InlineReplay({ sessionId, isLive }: { sessionId: string; isLive: boolea
       )}
 
       <div className="flex items-center justify-between mb-2">
-        <div className="text-[10px] text-ink-muted uppercase tracking-wider">
-          replay · {data.timeline.length} calls
-          {isLive && <span className="text-accent-cyan ml-1">· auto-updating</span>}
-        </div>
         <div className="flex gap-1">
           <button
             type="button"
@@ -627,6 +623,10 @@ function InlineReplay({ sessionId, isLive }: { sessionId: string; isLive: boolea
           >
             List
           </button>
+        </div>
+        <div className="text-[10px] text-ink-muted uppercase tracking-wider">
+          replay · {data.timeline.length} calls
+          {isLive && <span className="text-accent-cyan ml-1">· auto-updating</span>}
         </div>
       </div>
 

@@ -146,7 +146,7 @@ export function GanttTimeline({ entries, segments }: GanttTimelineProps): JSX.El
                 {/* Tooltip */}
                 {hoveredIndex === idx && (
                   <div
-                    className={`absolute z-50 px-2 py-1.5 rounded-lg bg-bg-elevated border border-bg-line text-[11px] text-ink-base shadow-lg whitespace-nowrap pointer-events-none ${idx > entries.length - 4 ? 'bottom-full mb-1' : 'top-full mt-1'}`}
+                    className={`absolute z-50 px-2 py-1.5 rounded-lg bg-bg-elevated border border-bg-line text-[11px] text-ink-base shadow-lg whitespace-nowrap pointer-events-none ${idx >= 3 && idx > entries.length - 4 ? 'bottom-full mb-1' : 'top-full mt-1'}`}
                     style={
                       leftPct > 60
                         ? { right: `${100 - leftPct - widthPct}%` }
