@@ -17,6 +17,7 @@ import {
   fetchSessionReplay,
   qk,
 } from '../api/client';
+import { shortToolName } from '../lib/format';
 
 // F-051: keep the query limit and the "showing N most recent" notice in
 // lock-step. If you bump this, also update the api-handler clamp upper
@@ -443,7 +444,7 @@ function SessionTimeline({ data, isLive }: { data: SessionDetail; isLive: boolea
               const pct = totalCalls > 0 ? (count / totalCalls) * 100 : 0;
               return (
                 <div key={tool} className="flex items-center gap-2 text-[11px]">
-                  <span className="w-20 text-ink-subtle truncate">{tool}</span>
+                  <span className="w-28 text-ink-subtle truncate" title={tool}>{shortToolName(tool)}</span>
                   <div className="flex-1 h-3 bg-[rgba(255,255,255,0.04)] relative rounded">
                     <div
                       className={`h-3 rounded ${toolBarColor(tool)}`}
@@ -655,8 +656,8 @@ function InlineReplay({ sessionId, isLive }: { sessionId: string; isLive: boolea
                   <span className="w-4 text-center shrink-0" aria-hidden="true">
                     {TOOL_ICONS[entry.toolName] ?? '·'}
                   </span>
-                  <span className="w-16 truncate font-medium text-ink-base shrink-0">
-                    {entry.toolName}
+                  <span className="w-28 truncate font-medium text-ink-base shrink-0" title={entry.toolName}>
+                    {shortToolName(entry.toolName)}
                   </span>
                   <span className="flex-1 truncate text-ink-subtle min-w-0">
                     {entry.filePath ?? entry.command ?? ''}

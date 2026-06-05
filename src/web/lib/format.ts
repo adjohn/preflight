@@ -20,3 +20,16 @@ export function formatNumber(n: number): string {
   if (Number.isInteger(n)) return String(n);
   return n.toFixed(2);
 }
+
+/**
+ * Shorten MCP tool names for display. Strips the `mcp__<server>__` prefix
+ * and shows only the tool-specific suffix (e.g. `nr_observe_health`).
+ * Non-MCP tool names pass through unchanged.
+ */
+export function shortToolName(name: string): string {
+  const parts = name.split('__');
+  if (parts.length >= 3 && parts[0] === 'mcp') {
+    return parts.slice(2).join('__');
+  }
+  return name;
+}

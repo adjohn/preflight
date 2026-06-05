@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'wouter';
 import { fetchSessionReplay, fetchSessionCurrent, qk } from '../api/client';
+import { shortToolName } from '../lib/format';
 
 interface TimelineEntry {
   readonly timestamp: number;
@@ -244,7 +245,7 @@ function Timeline({
             <span className="w-5 text-center" aria-hidden="true">
               {TOOL_ICONS[entry.toolName] ?? '·'}
             </span>
-            <span className="w-28 truncate font-medium text-ink-base">{entry.toolName}</span>
+            <span className="w-28 truncate font-medium text-ink-base" title={entry.toolName}>{shortToolName(entry.toolName)}</span>
             <span className="flex-1 truncate text-ink-subtle text-[11px]">
               {entry.filePath ?? entry.command ?? ''}
             </span>
