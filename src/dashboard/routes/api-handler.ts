@@ -14,7 +14,6 @@ import type { ReplayTimelineEntry, ToolCallRecord } from '../../storage/types.js
 // ---------------------------------------------------------------------------
 
 interface HistoricalSession {
-  readonly toolBreakdown?: Record<string, number>;
   readonly testRunCount?: number;
   readonly testPassCount?: number;
   readonly timeline?: readonly ReplayTimelineEntry[];
@@ -39,7 +38,6 @@ function aggregateQualityFromHistory(sessions: unknown[]): {
 
   for (const raw of sessions) {
     const session = raw as HistoricalSession;
-    const editCount = (session.toolBreakdown?.['Edit'] ?? 0) + (session.toolBreakdown?.['Write'] ?? 0);
     const testRuns = session.testRunCount ?? 0;
     const testPasses = session.testPassCount ?? 0;
 
@@ -55,9 +53,9 @@ function aggregateQualityFromHistory(sessions: unknown[]): {
 
           // Detect self-correction: re-edit same file within 3 turns after a test failure
           if (lastEditFile && entry.filePath === lastEditFile && i - lastEditIdx <= 3) {
-            const recentFail = session.timeline.slice(lastEditIdx + 1, i).some(
-              (e) => e.isTestCommand && !e.success,
-            );
+            const recentFail = session.timeline
+              .slice(lastEditIdx + 1, i)
+              .some((e) => e.isTestCommand && !e.success);
             if (recentFail) selfCorrectionCount++;
           }
 
@@ -65,7 +63,12 @@ function aggregateQualityFromHistory(sessions: unknown[]): {
           lastEditIdx = i;
         }
         // Detect backtrack: Read of a recently edited file
-        if (entry.toolName === 'Read' && lastEditFile && entry.filePath === lastEditFile && i - lastEditIdx <= 2) {
+        if (
+          entry.toolName === 'Read' &&
+          lastEditFile &&
+          entry.filePath === lastEditFile &&
+          i - lastEditIdx <= 2
+        ) {
           backtrackCount++;
         }
         if (entry.isTestCommand) {
@@ -74,8 +77,9 @@ function aggregateQualityFromHistory(sessions: unknown[]): {
         }
       }
     } else {
-      // No timeline — use summary counts
-      diffApplied += editCount;
+      // No timeline — use summary counts for test pass/fail only.
+      // Edit/Write counts from toolBreakdown have no success/failure split,
+      // so including them would always produce 100% diffApplyRate; skip them.
       testPass += testPasses;
       testFail += Math.max(0, testRuns - testPasses);
     }
