@@ -381,14 +381,24 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [, navigate] = useLocation();
 
-  const { data: current } = useQuery<{ sessionId: string }>({
+  const { data: current } = useQuery<{ sessionId: string; liveSessions?: string[] }>({
     queryKey: qk.sessionCurrent,
-    queryFn: () => fetchSessionCurrent() as Promise<{ sessionId: string }>,
+    queryFn: () => fetchSessionCurrent() as Promise<{ sessionId: string; liveSessions?: string[] }>,
   });
 
-  const liveSessionId = current?.sessionId ?? null;
-  const activeId = selectedId ?? liveSessionId;
-  const isLive = activeId !== null && activeId === liveSessionId;
+  const liveSessionIds = useMemo(() => {
+    const set = new Set<string>();
+    if (current?.liveSessions?.length) {
+      for (const id of current.liveSessions) set.add(id);
+    } else if (current?.sessionId) {
+      set.add(current.sessionId);
+    }
+    return set;
+  }, [current]);
+
+  const firstLiveId = liveSessionIds.size > 0 ? [...liveSessionIds][0]! : null;
+  const activeId = selectedId ?? firstLiveId;
+  const isLive = activeId !== null && liveSessionIds.has(activeId);
 
   const { data: replay } = useQuery<ReplayData>({
     queryKey: activeId ? qk.sessionReplay(activeId) : ['replay', 'none'],
@@ -426,37 +436,8 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
         <div className="text-[10px] text-ink-muted uppercase tracking-wider p-2 border-b border-bg-line">
           session live tail
         </div>
-        {liveSessionId && (
-          <button
-            type="button"
-            onClick={() => setSelectedId(liveSessionId)}
-            className={
-              'block w-full text-left p-2 border-b border-bg-line text-xs hover:bg-bg-line ' +
-              (activeId === liveSessionId ? 'bg-bg-line' : '')
-            }
-          >
-            <div className="flex items-center gap-1.5">
-              <span className="font-mono text-ink-base">{liveSessionId.slice(0, 8)}</span>
-              <span className="inline-flex items-center gap-0.5 bg-accent-cyan/20 text-accent-cyan text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-pulse" />
-                live
-              </span>
-            </div>
-            <div className="flex gap-2 mt-0.5 text-[10px] text-ink-subtle">
-              <span>
-                $
-                {(
-                  sessions.find((s) => s.sessionId === liveSessionId)?.estimatedCostUsd ?? 0
-                ).toFixed(2)}
-              </span>
-              <span>
-                {sessions.find((s) => s.sessionId === liveSessionId)?.toolCallCount ?? 0} calls
-              </span>
-            </div>
-          </button>
-        )}
         {todaySessions.map((s) => {
-          if (s.sessionId === liveSessionId) return null;
+          const isSessionLive = liveSessionIds.has(s.sessionId);
           return (
             <button
               key={s.sessionId}
@@ -469,9 +450,16 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
             >
               <div className="flex items-center gap-1.5">
                 <span className="font-mono text-ink-base">{s.sessionId.slice(0, 8)}</span>
-                <span className="text-[10px] text-ink-muted">
-                  {s.startTime ? fmtTime(s.startTime) : ''}
-                </span>
+                {isSessionLive ? (
+                  <span className="inline-flex items-center gap-0.5 bg-accent-cyan/20 text-accent-cyan text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded">
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-pulse" />
+                    live
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-ink-muted">
+                    {s.startTime ? fmtTime(s.startTime) : ''}
+                  </span>
+                )}
               </div>
               <div className="flex gap-2 mt-0.5 text-[10px] text-ink-subtle">
                 <span>${(s.estimatedCostUsd ?? 0).toFixed(2)}</span>
@@ -480,7 +468,7 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
             </button>
           );
         })}
-        {!liveSessionId && todaySessions.length === 0 && (
+        {liveSessionIds.size === 0 && todaySessions.length === 0 && (
           <div className="p-2 text-ink-muted text-xs">No sessions today.</div>
         )}
       </div>

@@ -219,6 +219,7 @@ function inferProjectId(): string | null {
     const remote = execSync('git remote get-url origin', {
       encoding: 'utf-8',
       timeout: 2000,
+      env: { ...process.env },
     }).trim();
     // Extract "org/repo" from HTTPS or SSH remotes:
     // https://github.com/org/repo.git  → org/repo

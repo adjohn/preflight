@@ -55,12 +55,14 @@ export function Replay(): JSX.Element {
   const params = useParams<{ sessionId: string }>();
   const sessionId = params.sessionId ?? '';
 
-  const currentSession = useQuery<{ sessionId: string }>({
+  const currentSession = useQuery<{ sessionId: string; liveSessions?: string[] }>({
     queryKey: qk.sessionCurrent,
-    queryFn: () => fetchSessionCurrent() as Promise<{ sessionId: string }>,
+    queryFn: () => fetchSessionCurrent() as Promise<{ sessionId: string; liveSessions?: string[] }>,
   });
 
-  const isLive = currentSession.data?.sessionId === sessionId;
+  const isLive =
+    currentSession.data?.liveSessions?.includes(sessionId) ??
+    currentSession.data?.sessionId === sessionId;
 
   const { data, isLoading, error } = useQuery<ReplayData>({
     queryKey: qk.sessionReplay(sessionId),

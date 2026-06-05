@@ -100,6 +100,7 @@ export interface ApiHandlerDeps {
   readonly toolSelectionScorer?: { scoreSession: (calls: readonly ToolCallRecord[]) => unknown };
   readonly modelUsageTracker?: { getMetrics: () => unknown };
   readonly toolCallBuffer?: { getRecords: () => readonly ToolCallRecord[] };
+  readonly liveSessionRegistry?: { getLiveSessions: () => string[] };
 }
 
 type RouteFn = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
@@ -191,7 +192,8 @@ export function createApiHandler(
     // SPA Today KPI can render it without a second round-trip. `null` when
     // no tasks have been scored yet (or when the scorer wasn't wired in).
     const efficiencyScore = deps.efficiencyScorer?.getSessionAverage()?.score ?? null;
-    jsonOk(res, { ...deps.sessionTracker.getMetrics(), efficiencyScore });
+    const liveSessions = deps.liveSessionRegistry?.getLiveSessions() ?? [];
+    jsonOk(res, { ...deps.sessionTracker.getMetrics(), efficiencyScore, liveSessions });
   });
 
   routes.set('GET /api/session/today', (_req, res) => {

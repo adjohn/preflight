@@ -39,6 +39,7 @@ import { InstructionDriftTracker } from './metrics/instruction-drift-tracker.js'
 import { ToolSelectionScorer } from './metrics/tool-selection-scorer.js';
 import { QualityProxyTracker } from './metrics/quality-proxy-tracker.js';
 import { ApiFailureTracker } from './metrics/api-failure-tracker.js';
+import { LiveSessionRegistry } from './metrics/live-session-registry.js';
 import { NrIngestManager } from './transport/nr-ingest.js';
 import { AuditTrailManager } from './security/audit-trail.js';
 import { LiveEventBus } from './dashboard/index.js';
@@ -309,6 +310,7 @@ async function main(): Promise<void> {
     const toolSelectionScorer = new ToolSelectionScorer();
     const qualityProxyTracker = new QualityProxyTracker();
     const apiFailureTracker = new ApiFailureTracker();
+    const liveSessionRegistry = new LiveSessionRegistry();
 
     const toolCallBuffer: import('./storage/types.js').ToolCallRecord[] = [];
     const toolCallBufferAccessor = {
@@ -485,6 +487,7 @@ async function main(): Promise<void> {
           toolSelectionScorer,
           modelUsageTracker,
           toolCallBuffer: toolCallBufferAccessor,
+          liveSessionRegistry,
         },
         alertEngine,
         alertLog,
@@ -607,6 +610,7 @@ async function main(): Promise<void> {
 
         sessionTracker.recordToolCall(record);
         taskDetector.recordToolCall(record);
+        if (record.sessionId) liveSessionRegistry.touch(record.sessionId);
 
         if (config.transport !== 'nr-events-api' && taskSpanTracker && sessionSpan) {
           // Emit tool call span — parent is the active task span (or session span if no task)

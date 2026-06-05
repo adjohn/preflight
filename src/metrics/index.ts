@@ -62,3 +62,4 @@ export type {
 } from './cost-per-outcome.js';
 export { RecommendationEngine } from './recommendation-engine.js';
 export type { Recommendation } from './recommendation-engine.js';
+export { LiveSessionRegistry } from './live-session-registry.js';

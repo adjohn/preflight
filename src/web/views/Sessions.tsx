@@ -25,6 +25,7 @@ interface CurrentSession {
   readonly sessionId: string;
   readonly sessionStartTime?: number;
   readonly toolCallCount?: number;
+  readonly liveSessions?: string[];
 }
 
 interface TimelineEntry {
@@ -152,7 +153,15 @@ export function Sessions(): JSX.Element {
     enabled: selectedId !== null,
   });
 
-  const liveSessionId = current.data?.sessionId ?? null;
+  const liveSessionIds = useMemo(() => {
+    const set = new Set<string>();
+    if (current.data?.liveSessions?.length) {
+      for (const id of current.data.liveSessions) set.add(id);
+    } else if (current.data?.sessionId) {
+      set.add(current.data.sessionId);
+    }
+    return set;
+  }, [current.data]);
 
   const rows = useMemo(() => {
     const persisted = list.data ?? [];
@@ -181,43 +190,14 @@ export function Sessions(): JSX.Element {
           </div>
         </header>
         <div className="overflow-auto">
-          {/* Live session pinned at top */}
-          {liveSessionId && (
-            <button
-              key={liveSessionId}
-              type="button"
-              onClick={() => handleSessionClick(liveSessionId)}
-              className={
-                'block w-full text-left p-2 border-b border-bg-line text-xs hover:bg-bg-line ' +
-                (selectedId === liveSessionId ? 'bg-bg-line' : '')
-              }
-            >
-              <div className="flex justify-between items-center">
-                <span className="flex items-center gap-1.5">
-                  <span className="font-mono text-ink-base">{liveSessionId.slice(0, 8)}</span>
-                  <span className="inline-flex items-center gap-0.5 bg-accent-cyan/20 text-accent-cyan text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded">
-                    <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-pulse" />
-                    live
-                  </span>
-                </span>
-                <span className="text-ink-muted">
-                  {current.data?.sessionStartTime ? fmtTime(current.data.sessionStartTime) : 'now'}
-                </span>
-              </div>
-              <div className="flex justify-between mt-1 text-ink-subtle text-[11px]">
-                <span>{current.data?.toolCallCount ?? 0} calls</span>
-              </div>
-            </button>
-          )}
-
           {list.isLoading && <div className="p-3 text-ink-muted text-xs">Loading…</div>}
-          {!list.isLoading && rows.length === 0 && !liveSessionId && (
+          {!list.isLoading && rows.length === 0 && liveSessionIds.size === 0 && (
             <div className="p-3 text-ink-muted text-xs">
               No sessions yet — start coding with Claude.
             </div>
           )}
           {rows.map((r) => {
-            if (r.sessionId === liveSessionId) return null;
+            const isLive = liveSessionIds.has(r.sessionId);
             return (
               <button
                 key={r.sessionId}
@@ -228,8 +208,16 @@ export function Sessions(): JSX.Element {
                   (selectedId === r.sessionId ? 'bg-bg-line' : '')
                 }
               >
-                <div className="flex justify-between">
-                  <span className="font-mono text-ink-base">{r.sessionId.slice(0, 8)}</span>
+                <div className="flex justify-between items-center">
+                  <span className="flex items-center gap-1.5">
+                    <span className="font-mono text-ink-base">{r.sessionId.slice(0, 8)}</span>
+                    {isLive && (
+                      <span className="inline-flex items-center gap-0.5 bg-accent-cyan/20 text-accent-cyan text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-pulse" />
+                        live
+                      </span>
+                    )}
+                  </span>
                   <span className="text-ink-muted">{r.startTime ? fmtTime(r.startTime) : '—'}</span>
                 </div>
                 <div className="flex justify-between mt-1 text-ink-subtle text-[11px]">
@@ -260,7 +248,10 @@ export function Sessions(): JSX.Element {
           <div className="text-ink-muted text-xs">Loading detail…</div>
         )}
         {selectedId && detail.data && (
-          <SessionTimeline data={detail.data} isLive={selectedId === liveSessionId} />
+          <SessionTimeline
+            data={detail.data}
+            isLive={!!selectedId && liveSessionIds.has(selectedId)}
+          />
         )}
       </div>
     </section>

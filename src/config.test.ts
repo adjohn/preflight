@@ -990,6 +990,8 @@ describe('developer sanitization via loadMcpConfig() (N-07)', () => {
     const origDir = process.cwd();
     try {
       process.chdir(tmpDir); // non-git directory → git remote get-url origin throws
+      delete process.env.GIT_DIR;
+      delete process.env.GIT_WORK_TREE;
       process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
       process.env.NEW_RELIC_ACCOUNT_ID = '12345';
       const configPath = writeConfigFile({});

@@ -40,7 +40,7 @@ describe('api-handler GET /api/session/current', () => {
     await handler(req, res);
     expect(status()).toBe(200);
     expect(headers()['content-type']).toMatch(/application\/json/);
-    expect(JSON.parse(body())).toEqual({ ...fake, efficiencyScore: null });
+    expect(JSON.parse(body())).toEqual({ ...fake, efficiencyScore: null, liveSessions: [] });
   });
 
   it('includes efficiencyScore from getSessionAverage() when scorer is wired in', async () => {
@@ -55,7 +55,7 @@ describe('api-handler GET /api/session/current', () => {
     const { res, status, body } = fakeRes();
     await handler(req, res);
     expect(status()).toBe(200);
-    expect(JSON.parse(body())).toEqual({ ...fake, efficiencyScore: 0.78 });
+    expect(JSON.parse(body())).toEqual({ ...fake, efficiencyScore: 0.78, liveSessions: [] });
   });
 
   it('keeps efficiencyScore null when scorer returns null (no tasks scored yet)', async () => {
@@ -70,7 +70,7 @@ describe('api-handler GET /api/session/current', () => {
     const { res, status, body } = fakeRes();
     await handler(req, res);
     expect(status()).toBe(200);
-    expect(JSON.parse(body())).toEqual({ ...fake, efficiencyScore: null });
+    expect(JSON.parse(body())).toEqual({ ...fake, efficiencyScore: null, liveSessions: [] });
   });
 
   it('returns 503 with { error, what } body when sessionTracker is missing', async () => {
