@@ -153,11 +153,13 @@ export function Sessions(): JSX.Element {
   const list = useQuery<SessionRow[]>({
     queryKey: qk.sessionsList(SESSIONS_PAGE_SIZE),
     queryFn: () => fetchSessionsList(SESSIONS_PAGE_SIZE) as Promise<SessionRow[]>,
+    refetchInterval: 10_000,
   });
 
   const current = useQuery<CurrentSession>({
     queryKey: qk.sessionCurrent,
     queryFn: () => fetchSessionCurrent() as Promise<CurrentSession>,
+    refetchInterval: 10_000,
   });
 
   const detail = useQuery<SessionDetail>({

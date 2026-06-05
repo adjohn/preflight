@@ -237,7 +237,41 @@ export function createApiHandler(
       }
     }
 
-    jsonOk(res, sliced);
+    // Inject stub entries for live sessions not yet persisted to disk.
+    // Derive toolCallCount and startTime from the in-memory tool call buffer
+    // so concurrent sessions show real activity counts on the badges.
+    if (deps.liveSessionRegistry) {
+      const knownIds = new Set(sliced.map((s) => (s as { sessionId?: string }).sessionId));
+      const records = deps.toolCallBuffer?.getRecords() ?? [];
+      const perSession = new Map<string, { count: number; firstTs: number; lastTs: number }>();
+      for (const r of records) {
+        const sid = (r as { sessionId?: string | null }).sessionId;
+        if (!sid) continue;
+        const ts = (r as { timestamp?: number }).timestamp ?? 0;
+        const entry = perSession.get(sid);
+        if (entry) {
+          entry.count++;
+          if (ts && ts < entry.firstTs) entry.firstTs = ts;
+          if (ts && ts > entry.lastTs) entry.lastTs = ts;
+        } else {
+          perSession.set(sid, { count: 1, firstTs: ts || Date.now(), lastTs: ts || Date.now() });
+        }
+      }
+      for (const id of deps.liveSessionRegistry.getLiveSessions()) {
+        if (!knownIds.has(id)) {
+          const stats = perSession.get(id);
+          sliced.push({
+            sessionId: id,
+            startTime: stats?.firstTs ?? Date.now(),
+            durationMs: stats ? stats.lastTs - stats.firstTs : 0,
+            toolCallCount: stats?.count ?? 0,
+            estimatedCostUsd: null,
+          });
+        }
+      }
+    }
+
+    jsonOk(res, sliced.length > limit ? sliced.slice(-limit) : sliced);
   });
 
   routes.set('GET /api/cost', (_req, res) => {
@@ -406,6 +440,43 @@ export function createApiHandler(
           });
           return;
         }
+      }
+      // Concurrent live session tracked by the registry but not this server's
+      // own session — synthesize from tool call buffer records.
+      if (deps.liveSessionRegistry?.getLiveSessions().includes(sessionId)) {
+        const allRecords = deps.toolCallBuffer?.getRecords() ?? [];
+        const records = allRecords.filter(
+          (r) => (r as { sessionId?: string | null }).sessionId === sessionId,
+        );
+        const timeline = records
+          .map((r) => ({
+            timestamp: r.timestamp,
+            toolName: r.toolName,
+            durationMs: r.durationMs ?? null,
+            success: r.success,
+            filePath: r.filePath ? redactSensitive(String(r.filePath)) : undefined,
+            command: r.command ? redactSensitive(String(r.command)) : undefined,
+          }))
+          .sort((a, b) => a.timestamp - b.timestamp);
+        const breakdown: Record<string, number> = {};
+        for (const r of records) {
+          breakdown[r.toolName] = (breakdown[r.toolName] ?? 0) + 1;
+        }
+        const startTime = timeline.length > 0 ? timeline[0]!.timestamp : Date.now();
+        const lastTs = timeline.length > 0 ? timeline[timeline.length - 1]!.timestamp : startTime;
+        jsonOk(res, {
+          sessionId,
+          startTime,
+          durationMs: lastTs - startTime,
+          toolCallCount: records.length,
+          estimatedCostUsd: null,
+          model: null,
+          outcome: 'in progress',
+          toolBreakdown: breakdown,
+          antiPatterns: [],
+          timeline,
+        });
+        return;
       }
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: 'not_found' }));
