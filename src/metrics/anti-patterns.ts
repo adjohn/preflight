@@ -225,11 +225,9 @@ export class AntiPatternDetector {
             consecutiveCount = 1;
           }
         }
-      } else {
-        // Non-Bash call breaks the consecutive Bash sequence
-        lastCommand = null;
-        consecutiveCount = 0;
       }
+      // Non-Bash calls are transparent to stuck-loop detection: Bash(cmd) → Read → Bash(cmd)
+      // still counts as two repetitions of the same command.
     }
 
     const patterns: AntiPattern[] = [];

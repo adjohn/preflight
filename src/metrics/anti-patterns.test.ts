@@ -204,7 +204,7 @@ describe('Stuck loop detection', () => {
     expect(stuck).toHaveLength(0);
   });
 
-  it('non-Bash tool call breaks consecutive sequence', () => {
+  it('non-Bash tool call is transparent — Bash(cmd)×2 → Read → Bash(cmd)×2 still fires', () => {
     const detector = new AntiPatternDetector();
 
     const calls: ToolCallRecord[] = [
@@ -217,7 +217,9 @@ describe('Stuck loop detection', () => {
 
     const result = detector.analyze(calls);
     const stuck = result.patterns.filter((p) => p.type === 'stuck_loop');
-    expect(stuck).toHaveLength(0);
+    expect(stuck).toHaveLength(1);
+    expect(stuck[0].command).toBe('npm test');
+    expect(stuck[0].repeatCount).toBe(4);
   });
 });
 

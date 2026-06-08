@@ -2,7 +2,15 @@
   "name": "nr-ai-mcp-server",
   "version": "0.1.0",
   "type": "module",
+  "license": "Apache-2.0",
   "private": true,
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/newrelic/nr-ai-coding-observability"
+  },
   "description": "New Relic MCP server for observing AI coding assistants (Claude Code)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
