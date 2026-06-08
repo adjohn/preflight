@@ -88,7 +88,7 @@ export class SessionStore {
   }
 
   saveSession(summary: FullSessionSummary): void {
-    if (!/^[A-Za-z0-9_-]{1,128}$/.test(summary.sessionId)) {
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(summary.sessionId) || summary.sessionId === 'unknown') {
       logger.warn('Rejecting invalid sessionId for file path', { sessionId: summary.sessionId });
       return;
     }
@@ -97,7 +97,11 @@ export class SessionStore {
       mkdirSync(this.sessionsDir, { recursive: true, mode: 0o700 });
     }
 
-    const date = new Date(summary.startTime).toISOString().slice(0, 10);
+    const startDate = new Date(summary.startTime);
+    if (!isFinite(startDate.getTime())) {
+      throw new Error(`Invalid startTime for session ${summary.sessionId}: ${summary.startTime}`);
+    }
+    const date = startDate.toISOString().slice(0, 10);
     const filename = `${date}_${summary.sessionId}.json`;
     const filepath = resolve(this.sessionsDir, filename);
     if (!filepath.startsWith(this.sessionsDir + sep)) {
@@ -204,7 +208,7 @@ export class SessionStore {
 
   loadTodaySessions(): FullSessionSummary[] {
     const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
     return this.loadAllSessions({ since: today });
   }
 }
@@ -312,7 +316,9 @@ export function buildSessionSummary(sources: BuildSessionSummarySources): FullSe
     sessionName: sessionMetrics.sessionName,
     startTime: sessionMetrics.sessionStartTime,
     endTime: now,
-    durationMs: sessionMetrics.sessionDurationMs,
+    // Recalculate durationMs from wall-clock times rather than trusting the
+    // tracker's accumulated value, which can lag if polling is infrequent.
+    durationMs: now - sessionMetrics.sessionStartTime,
     toolCallCount: sessionMetrics.toolCallCount,
     developer,
     model: costMetrics?.model ?? null,
@@ -388,7 +394,10 @@ function deserializeSession(raw: string): FullSessionSummary | null {
   }
 
   return {
-    sessionId: typeof obj.sessionId === 'string' ? obj.sessionId : '',
+    // Use 'unknown' sentinel instead of '' so callers can distinguish "no ID"
+    // from a real session ID (empty string passes !==null checks silently).
+    sessionId:
+      typeof obj.sessionId === 'string' && obj.sessionId.length > 0 ? obj.sessionId : 'unknown',
     sessionName: typeof obj.sessionName === 'string' ? obj.sessionName : null,
     startTime: typeof obj.startTime === 'number' ? obj.startTime : 0,
     endTime: typeof obj.endTime === 'number' ? obj.endTime : 0,
@@ -426,7 +435,29 @@ function deserializeSession(raw: string): FullSessionSummary | null {
     userCorrections: typeof obj.userCorrections === 'number' ? obj.userCorrections : 0,
     outcome: typeof obj.outcome === 'string' ? obj.outcome : 'unknown',
     platform: typeof obj.platform === 'string' ? obj.platform : undefined,
-    timeline: Array.isArray(obj.timeline) ? (obj.timeline as ReplayTimelineEntry[]) : undefined,
+    timeline: Array.isArray(obj.timeline)
+      ? (obj.timeline as unknown[])
+          .filter(
+            (e): e is Record<string, unknown> =>
+              typeof e === 'object' &&
+              e !== null &&
+              typeof (e as Record<string, unknown>).timestamp === 'number' &&
+              typeof (e as Record<string, unknown>).toolName === 'string',
+          )
+          .map((e) => ({
+            timestamp: e.timestamp as number,
+            toolName: e.toolName as string,
+            durationMs: typeof e.durationMs === 'number' ? e.durationMs : null,
+            success: typeof e.success === 'boolean' ? e.success : true,
+            // Sanitize string fields to prevent injection from hand-edited session files
+            filePath: typeof e.filePath === 'string' ? e.filePath : undefined,
+            command: typeof e.command === 'string' ? e.command : undefined,
+            isTestCommand: typeof e.isTestCommand === 'boolean' ? e.isTestCommand : undefined,
+            isBuildCommand: typeof e.isBuildCommand === 'boolean' ? e.isBuildCommand : undefined,
+            isLintCommand: typeof e.isLintCommand === 'boolean' ? e.isLintCommand : undefined,
+            errorType: typeof e.errorType === 'string' ? e.errorType : undefined,
+          }))
+      : undefined,
   };
 }
 

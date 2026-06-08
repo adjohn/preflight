@@ -14,7 +14,15 @@ const logger = createLogger('mcp-server');
 
 export class NrMcpServer {
   readonly server: Server;
-  auditTrailManager: import('./security/audit-trail.js').AuditTrailManager | undefined;
+  private _auditTrailManager: import('./security/audit-trail.js').AuditTrailManager | undefined;
+
+  get auditTrailManager(): import('./security/audit-trail.js').AuditTrailManager | undefined {
+    return this._auditTrailManager;
+  }
+
+  set auditTrailManager(value: import('./security/audit-trail.js').AuditTrailManager | undefined) {
+    this._auditTrailManager = value;
+  }
 
   constructor(options: ServerOptions) {
     const serverStartMs = Date.now();
@@ -28,7 +36,7 @@ export class NrMcpServer {
       },
     );
 
-    this.auditTrailManager = options.auditTrailManager;
+    this._auditTrailManager = options.auditTrailManager;
     this.registerHandlers(options, serverStartMs);
     logger.info('MCP server created', { name: options.name, version: options.version });
   }
@@ -70,19 +78,25 @@ export class NrMcpServer {
     });
 
     this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-      if (request.params.uri === 'nr-observe://session/audit-log' && this.auditTrailManager) {
-        const entries = this.auditTrailManager.getAuditLog();
-        return {
-          contents: [
-            {
-              uri: request.params.uri,
-              mimeType: 'application/json',
-              text: JSON.stringify(entries, null, 2),
-            },
-          ],
-        };
+      try {
+        if (request.params.uri === 'nr-observe://session/audit-log' && this.auditTrailManager) {
+          const entries = this.auditTrailManager.getAuditLog();
+          return {
+            contents: [
+              {
+                uri: request.params.uri,
+                mimeType: 'application/json',
+                text: JSON.stringify(entries, null, 2),
+              },
+            ],
+          };
+        }
+        throw new McpError(ErrorCode.InvalidRequest, `Unknown resource: ${request.params.uri}`);
+      } catch (err) {
+        if (err instanceof McpError) throw err;
+        logger.error('Resource handler error', { uri: request.params.uri, error: String(err) });
+        throw err;
       }
-      throw new McpError(ErrorCode.InvalidRequest, `Unknown resource: ${request.params.uri}`);
     });
   }
 

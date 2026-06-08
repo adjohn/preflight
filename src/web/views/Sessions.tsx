@@ -116,7 +116,7 @@ const LIVE_REFETCH_MS = 3_000;
 type SortKey = 'date' | 'cost' | 'calls';
 
 function fmtTime(value: string | number): string {
-  const d = typeof value === 'number' ? new Date(value) : new Date(value);
+  const d = new Date(value);
   return d.toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -498,67 +498,68 @@ function fmtElapsed(ms: number): string {
   return `+${min}:${String(sec).padStart(2, '0')}`;
 }
 
-const ScrollableTimeline = forwardRef<HTMLDivElement, { children: ReactNode; isLive: boolean }>(
-  function ScrollableTimeline({ children, isLive }, ref) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [showJump, setShowJump] = useState(false);
+const ScrollableTimeline = forwardRef<
+  HTMLDivElement,
+  { children: ReactNode; isLive: boolean; timelineLength?: number }
+>(function ScrollableTimeline({ children, isLive, timelineLength }, ref) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [showJump, setShowJump] = useState(false);
 
-    const checkScroll = useCallback(() => {
-      const el = containerRef.current;
-      if (!el) return;
-      const hasOverflow = el.scrollHeight > el.clientHeight + 40;
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-      setShowJump(hasOverflow && !atBottom);
-    }, []);
+  const checkScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const hasOverflow = el.scrollHeight > el.clientHeight + 40;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    setShowJump(hasOverflow && !atBottom);
+  }, []);
 
-    useEffect(() => {
-      const el = containerRef.current;
-      if (!el) return;
-      checkScroll();
-      el.addEventListener('scroll', checkScroll, { passive: true });
-      return () => el.removeEventListener('scroll', checkScroll);
-    }, [checkScroll]);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    checkScroll();
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    return () => el.removeEventListener('scroll', checkScroll);
+  }, [checkScroll]);
 
-    useEffect(() => {
-      if (isLive && containerRef.current) {
-        containerRef.current.scrollTop = containerRef.current.scrollHeight;
-      }
-    }, [isLive]);
+  useEffect(() => {
+    if (isLive && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [isLive, timelineLength]);
 
-    const jumpToBottom = useCallback(() => {
-      containerRef.current?.scrollTo({
-        top: containerRef.current.scrollHeight,
-        behavior: 'smooth',
-      });
-    }, []);
+  const jumpToBottom = useCallback(() => {
+    containerRef.current?.scrollTo({
+      top: containerRef.current.scrollHeight,
+      behavior: 'smooth',
+    });
+  }, []);
 
-    const mergedRef = useCallback(
-      (el: HTMLDivElement | null) => {
-        (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-        if (typeof ref === 'function') ref(el);
-        else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = el;
-      },
-      [ref],
-    );
+  const mergedRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+      if (typeof ref === 'function') ref(el);
+      else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = el;
+    },
+    [ref],
+  );
 
-    return (
-      <div className="relative">
-        <div ref={mergedRef} className="overflow-auto max-h-[60vh]">
-          {children}
-        </div>
-        {showJump && (
-          <button
-            type="button"
-            onClick={jumpToBottom}
-            className="absolute bottom-2 right-3 px-2 py-1 rounded-lg bg-bg-elevated/90 border border-bg-line text-[10px] text-ink-subtle hover:text-ink-base hover:border-accent-green/40 backdrop-blur-sm transition-all shadow-lg"
-          >
-            ↓ Jump to bottom
-          </button>
-        )}
+  return (
+    <div className="relative">
+      <div ref={mergedRef} className="overflow-auto max-h-[60vh]">
+        {children}
       </div>
-    );
-  },
-);
+      {showJump && (
+        <button
+          type="button"
+          onClick={jumpToBottom}
+          className="absolute bottom-2 right-3 px-2 py-1 rounded-lg bg-bg-elevated/90 border border-bg-line text-[10px] text-ink-subtle hover:text-ink-base hover:border-accent-green/40 backdrop-blur-sm transition-all shadow-lg"
+        >
+          ↓ Jump to bottom
+        </button>
+      )}
+    </div>
+  );
+});
 
 function InlineReplay({ sessionId, isLive }: { sessionId: string; isLive: boolean }): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -638,7 +639,7 @@ function InlineReplay({ sessionId, isLive }: { sessionId: string; isLive: boolea
         </div>
       </div>
 
-      <ScrollableTimeline ref={scrollRef} isLive={isLive}>
+      <ScrollableTimeline ref={scrollRef} isLive={isLive} timelineLength={data.timeline.length}>
         {viewMode === 'gantt' ? (
           <GanttTimeline entries={data.timeline} segments={segments} />
         ) : (
@@ -738,8 +739,13 @@ function aggregateSegments(segments: Segment[]): AggregatedSegment[] {
 function buildSegmentLookup(length: number, segments: Segment[]): (Segment | null)[] {
   const lookup: (Segment | null)[] = new Array(length).fill(null);
   for (const seg of segments) {
-    for (let i = seg.startIndex; i <= Math.min(seg.endIndex, length - 1); i++) {
-      if (lookup[i] === null || seg.severity === 'critical') {
+    const start = Math.max(0, seg.startIndex);
+    const end = Math.min(seg.endIndex, length - 1);
+    for (let i = start; i <= end; i++) {
+      if (
+        lookup[i] === null ||
+        (seg.severity === 'critical' && lookup[i]!.severity !== 'critical')
+      ) {
         lookup[i] = seg;
       }
     }

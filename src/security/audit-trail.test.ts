@@ -149,15 +149,20 @@ describe('AuditTrailManager', () => {
     expect(audit.securityAlert!.alertType).toBe('destructive_command');
   });
 
-  // 5c. rm without force should NOT trigger
-  it.each(['rm -r /tmp/build', 'rm -f file.txt'])(
-    'does not flag "%s" as destructive (missing r or f flag)',
-    (command) => {
-      const mgr = makeManager();
-      const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command }));
-      expect(audit.securityAlert?.alertType).not.toBe('destructive_command');
-    },
-  );
+  // 5c. rm -r alone is critical; rm -f alone (no -r) should NOT trigger
+  it('detects "rm -r /tmp/build" as critical (recursive alone is destructive)', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command: 'rm -r /tmp/build' }));
+    expect(audit.securityAlert).toBeDefined();
+    expect(audit.securityAlert!.severity).toBe('critical');
+    expect(audit.securityAlert!.alertType).toBe('destructive_command');
+  });
+
+  it('does not flag "rm -f file.txt" as destructive (no recursive flag)', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command: 'rm -f file.txt' }));
+    expect(audit.securityAlert?.alertType).not.toBe('destructive_command');
+  });
 
   // 5d. Pipe to shell variants — bash, zsh, ksh, dash, absolute paths
   it.each([

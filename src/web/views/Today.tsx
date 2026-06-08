@@ -154,7 +154,7 @@ export function Today(): JSX.Element {
   );
 
   const calls = persistedTodayCalls;
-  const spendLoading = !cost && costPending && sessionsPending;
+  const spendLoading = (costPending || sessionsPending) && !cost && persistedTodaySpend === 0;
   // The sessions list API already includes the live session with its current
   // cost, so persistedTodaySpend covers all sessions including the active one.
   // Take the max of SSE-pushed total (which may be more current) vs. the REST
@@ -163,10 +163,16 @@ export function Today(): JSX.Element {
 
   const currentSessionFlags = Math.max(apiAntiPatterns?.length ?? 0, antiPatterns.length);
   const flagsCount = persistedTodayFlags + currentSessionFlags;
-  const headerTimestamp = useMemo(
-    () => new Date().toLocaleString(undefined, HEADER_TIMESTAMP_FORMAT),
-    [],
+  const [headerTimestamp, setHeaderTimestamp] = useState(() =>
+    new Date().toLocaleString(undefined, HEADER_TIMESTAMP_FORMAT),
   );
+  useEffect(() => {
+    const id = setInterval(
+      () => setHeaderTimestamp(new Date().toLocaleString(undefined, HEADER_TIMESTAMP_FORMAT)),
+      60_000,
+    );
+    return () => clearInterval(id);
+  }, []);
 
   const effScore = sessionCurrent?.efficiencyScore ?? null;
   const effDisplay =
@@ -239,33 +245,34 @@ export function Today(): JSX.Element {
         />
       </AnimatedCard>
 
-      {flagsCount > 0 && (
-        <AnimatedCard index={3} className="mb-3 glass-card border-accent-amber/40 p-2.5 text-xs">
-          {antiPatterns.length > 0 ? (
-            <>
-              <span className="text-accent-amber font-semibold">⚠ {antiPatterns[0].type}</span>
-              <span className="text-ink-muted"> — </span>
-              <span>{antiPatterns[0].count}× on </span>
-              <code className="bg-bg-line px-1 rounded">{antiPatterns[0].target}</code>
-            </>
-          ) : apiAntiPatterns && apiAntiPatterns.length > 0 ? (
-            <>
-              <span className="text-accent-amber font-semibold">⚠ {apiAntiPatterns[0].type}</span>
-              <span className="text-ink-muted"> — </span>
-              <span>
-                {apiAntiPatterns[0].count ??
-                  apiAntiPatterns[0].iterations ??
-                  apiAntiPatterns[0].readCount ??
-                  '?'}
-                × on{' '}
-              </span>
-              <code className="bg-bg-line px-1 rounded">
-                {apiAntiPatterns[0].file ?? apiAntiPatterns[0].command ?? 'unknown'}
-              </code>
-            </>
-          ) : null}
-        </AnimatedCard>
-      )}
+      {flagsCount > 0 &&
+        (antiPatterns.length > 0 || (apiAntiPatterns && apiAntiPatterns.length > 0)) && (
+          <AnimatedCard index={3} className="mb-3 glass-card border-accent-amber/40 p-2.5 text-xs">
+            {antiPatterns.length > 0 ? (
+              <>
+                <span className="text-accent-amber font-semibold">⚠ {antiPatterns[0].type}</span>
+                <span className="text-ink-muted"> — </span>
+                <span>{antiPatterns[0].count}× on </span>
+                <code className="bg-bg-line px-1 rounded">{antiPatterns[0].target}</code>
+              </>
+            ) : apiAntiPatterns && apiAntiPatterns.length > 0 ? (
+              <>
+                <span className="text-accent-amber font-semibold">⚠ {apiAntiPatterns[0].type}</span>
+                <span className="text-ink-muted"> — </span>
+                <span>
+                  {apiAntiPatterns[0].count ??
+                    apiAntiPatterns[0].iterations ??
+                    apiAntiPatterns[0].readCount ??
+                    '?'}
+                  × on{' '}
+                </span>
+                <code className="bg-bg-line px-1 rounded">
+                  {apiAntiPatterns[0].file ?? apiAntiPatterns[0].command ?? 'unknown'}
+                </code>
+              </>
+            ) : null}
+          </AnimatedCard>
+        )}
 
       <AnimatedCard index={4} className="grid grid-cols-2 gap-3 mb-3">
         <QualityProxyPanel />

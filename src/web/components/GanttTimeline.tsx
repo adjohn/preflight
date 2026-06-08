@@ -51,21 +51,23 @@ export function GanttTimeline({ entries, segments }: GanttTimelineProps): JSX.El
     return <div className="text-ink-muted text-xs">No tool calls recorded.</div>;
   }
 
-  const firstTs = entries[0]!.timestamp;
-  const lastEntry = entries[entries.length - 1]!;
-  const lastEnd = lastEntry.timestamp + (lastEntry.durationMs ?? 50);
-  const totalDuration = Math.max(lastEnd - firstTs, 1);
+  // Sort by timestamp so out-of-order entries (clock skew, live injection) don't
+  // produce negative offsets or clip bars behind the label column.
+  const sorted = [...entries].sort((a, b) => a.timestamp - b.timestamp);
+  const firstTs = sorted[0]!.timestamp;
+  // Use the maximum end time across all entries, not just the last entry in array
+  // order — an intermediate entry may have a longer duration and overflow the track.
+  const maxEnd = sorted.reduce((m, e) => Math.max(m, e.timestamp + (e.durationMs ?? 50)), 0);
+  const totalDuration = Math.max(maxEnd - firstTs, 1);
 
   // Compute tick interval — target ~8 visible labels max
   const MAX_TICKS = 8;
   const candidates = [10_000, 30_000, 60_000, 120_000, 300_000, 600_000, 900_000, 1_800_000];
-  let tickIntervalMs = candidates[candidates.length - 1]!;
-  for (const c of candidates) {
-    if (totalDuration / c <= MAX_TICKS) {
-      tickIntervalMs = c;
-      break;
-    }
-  }
+  // Find the smallest candidate that gives <= MAX_TICKS ticks.
+  // Fall back to ceil(totalDuration / MAX_TICKS) so short sessions still
+  // get tick marks rather than rendering a blank axis.
+  let tickIntervalMs =
+    candidates.find((c) => totalDuration / c <= MAX_TICKS) ?? Math.ceil(totalDuration / MAX_TICKS);
 
   const ticks: number[] = [];
   for (let t = tickIntervalMs; t < totalDuration; t += tickIntervalMs) {
@@ -75,8 +77,13 @@ export function GanttTimeline({ entries, segments }: GanttTimelineProps): JSX.El
   // Build per-row segment lookup for left-border indicators
   const segmentAt: (GanttSegment | null)[] = new Array(entries.length).fill(null);
   for (const seg of segments) {
-    for (let i = seg.startIndex; i <= Math.min(seg.endIndex, entries.length - 1); i++) {
-      if (segmentAt[i] === null || seg.severity === 'critical') {
+    const start = Math.max(0, seg.startIndex);
+    const end = Math.min(seg.endIndex, entries.length - 1);
+    for (let i = start; i <= end; i++) {
+      if (
+        segmentAt[i] === null ||
+        (seg.severity === 'critical' && segmentAt[i]!.severity !== 'critical')
+      ) {
         segmentAt[i] = seg;
       }
     }
@@ -108,7 +115,7 @@ export function GanttTimeline({ entries, segments }: GanttTimelineProps): JSX.El
 
       {/* Rows */}
       <div className="mt-1">
-        {entries.map((entry, idx) => {
+        {sorted.map((entry, idx) => {
           const offsetMs = entry.timestamp - firstTs;
           const duration = entry.durationMs ?? 50;
           const leftPct = (offsetMs / totalDuration) * 100;

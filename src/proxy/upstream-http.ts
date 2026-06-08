@@ -144,6 +144,9 @@ export class HttpUpstream implements ProxyUpstream {
               if (!res.writableEnded) {
                 res.socket?.destroy();
               }
+              // Destroy upstream and counter to stop reading from the network.
+              upstreamRes.destroy();
+              counter.destroy();
               resolveSSE();
             });
 
@@ -186,7 +189,9 @@ export class HttpUpstream implements ProxyUpstream {
               if (bytesAlreadySent > 0 && !res.writableEnded) {
                 res.socket?.destroy();
               } else if (!res.writableEnded) {
-                res.writeHead(statusCode, { 'content-type': 'application/json' });
+                // Write 502 rather than re-using the upstream's statusCode (which may
+                // be 200) — that would fool callers into treating an error body as success.
+                res.writeHead(502, { 'content-type': 'application/json' });
                 res.end(JSON.stringify({ error: 'upstream_error', message: String(err) }));
               }
               resolve({

@@ -178,7 +178,7 @@ export class QualityProxyTracker {
   private computeTurnBuckets(): TurnQualityBucket[] {
     if (this.events.length === 0) return [];
 
-    const maxTurn = Math.max(...this.events.map((e) => e.turnNumber));
+    const maxTurn = this.events.reduce((m, e) => Math.max(m, e.turnNumber), 0);
     const buckets: TurnQualityBucket[] = [];
 
     for (let start = 1; start <= maxTurn; start += this.bucketSize) {

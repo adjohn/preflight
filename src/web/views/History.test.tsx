@@ -319,8 +319,8 @@ describe('History data helpers', () => {
         30,
       );
       expect(out).toEqual([
-        { day: '05-26', cost: 2.0 },
-        { day: '05-27', cost: 2.4 },
+        { day: '2026-05-26', cost: 2.0 },
+        { day: '2026-05-27', cost: 2.4 },
       ]);
     });
 
@@ -340,7 +340,7 @@ describe('History data helpers', () => {
         ],
         30,
       );
-      expect(out).toEqual([{ day: '05-26', cost: 0.8 }]);
+      expect(out).toEqual([{ day: '2026-05-26', cost: 0.8 }]);
     });
 
     it('keeps only the most recent N days when there are more', () => {
@@ -351,7 +351,7 @@ describe('History data helpers', () => {
       }));
       const out = aggregateDailyCost(rows, 3);
       expect(out).toHaveLength(3);
-      expect(out.map((d) => d.day)).toEqual(['05-27', '05-28', '05-29']);
+      expect(out.map((d) => d.day)).toEqual(['2026-05-27', '2026-05-28', '2026-05-29']);
     });
 
     it('returns an empty array when given no rows', () => {
@@ -369,7 +369,7 @@ describe('History data helpers', () => {
         [{ sessionId: 'late', startTime: localLateEvening, estimatedCostUsd: 1.5 }],
         30,
       );
-      expect(out).toEqual([{ day: '05-31', cost: 1.5 }]);
+      expect(out).toEqual([{ day: '2026-05-31', cost: 1.5 }]);
     });
 
     it('buckets local early-morning sessions to their local day', () => {
@@ -381,7 +381,7 @@ describe('History data helpers', () => {
         [{ sessionId: 'early', startTime: localEarlyMorning, estimatedCostUsd: 0.4 }],
         30,
       );
-      expect(out).toEqual([{ day: '06-01', cost: 0.4 }]);
+      expect(out).toEqual([{ day: '2026-06-01', cost: 0.4 }]);
     });
   });
 
@@ -486,7 +486,7 @@ describe('History helpers with real API data shapes', () => {
       // Both sessions are on the same day, so costs should be summed
       expect(out[0].cost).toBe(1.0);
       // The day string should be a valid MM-DD format
-      expect(out[0].day).toMatch(/^\d{2}-\d{2}$/);
+      expect(out[0].day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
     it('handles sessions with undefined estimatedCostUsd (skips them)', () => {

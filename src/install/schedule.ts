@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync, existsSync, unlinkSync, mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 
 function escapeXml(s: string): string {
@@ -106,9 +106,16 @@ export function getScheduleStatus(): ScheduleStatus {
 }
 
 export function resolveBinaryPath(): string | null {
-  try {
-    return execFileSync('/usr/bin/which', ['nr-ai-observe'], { stdio: 'pipe' }).toString().trim();
-  } catch {
-    return null;
+  // Walk PATH directly — avoids hardcoding the `which` location and is safe
+  // for Nix/Homebrew installs where binaries live outside /usr/bin.
+  const pathDirs = (process.env.PATH ?? '').split(':').filter(Boolean);
+  for (const dir of pathDirs) {
+    const candidate = join(dir, 'nr-ai-observe');
+    try {
+      if (existsSync(candidate)) return candidate;
+    } catch {
+      continue;
+    }
   }
+  return null;
 }

@@ -5,32 +5,32 @@ describe('digest-sender', () => {
   describe('sendSlackDigest() — SSRF validation (F-016)', () => {
     it('rejects non-Slack webhook URLs', async () => {
       await expect(sendSlackDigest('http://evil.com/webhook', { text: 'test' })).rejects.toThrow(
-        'Invalid webhook URL: must start with https://hooks.slack.com/',
+        'Invalid webhook URL: must be a valid https://hooks.slack.com/ URL',
       );
     });
 
     it('rejects HTTP URLs (requires HTTPS)', async () => {
       await expect(
         sendSlackDigest('http://hooks.slack.com/services/T00/B00/X', { text: 'test' }),
-      ).rejects.toThrow('Invalid webhook URL: must start with https://hooks.slack.com/');
+      ).rejects.toThrow('Invalid webhook URL: must be a valid https://hooks.slack.com/ URL');
     });
 
     it('rejects URLs with wrong domain', async () => {
       await expect(
         sendSlackDigest('https://hooks.slack.net/services/T00/B00/X', { text: 'test' }),
-      ).rejects.toThrow('Invalid webhook URL: must start with https://hooks.slack.com/');
+      ).rejects.toThrow('Invalid webhook URL: must be a valid https://hooks.slack.com/ URL');
     });
 
     it('rejects localhost URLs', async () => {
       await expect(
         sendSlackDigest('https://localhost:8080/webhook', { text: 'test' }),
-      ).rejects.toThrow('Invalid webhook URL: must start with https://hooks.slack.com/');
+      ).rejects.toThrow('Invalid webhook URL: must be a valid https://hooks.slack.com/ URL');
     });
 
     it('rejects internal IP addresses', async () => {
       await expect(
         sendSlackDigest('https://192.168.1.1/webhook', { text: 'test' }),
-      ).rejects.toThrow('Invalid webhook URL: must start with https://hooks.slack.com/');
+      ).rejects.toThrow('Invalid webhook URL: must be a valid https://hooks.slack.com/ URL');
     });
 
     it('accepts Slack webhook URL format', async () => {

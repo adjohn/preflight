@@ -88,13 +88,16 @@ export class BudgetTracker {
       return `day:${year}-${month}-${day}`;
     }
     if (period === 'weekly') {
-      const year = now.getFullYear();
-      const jan4 = new Date(year, 0, 4);
-      const weekStart = new Date(jan4);
-      weekStart.setDate(jan4.getDate() - jan4.getDay());
-      const week = Math.ceil((now.getTime() - weekStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
-      const weekNum = String(Math.max(1, week)).padStart(2, '0');
-      return `week:${year}-W${weekNum}`;
+      // ISO 8601 week number — correct across year boundaries.
+      // The ISO week year can differ from the calendar year in early Jan / late Dec.
+      const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+      const dayOfWeek = d.getUTCDay() || 7; // 1=Mon … 7=Sun
+      d.setUTCDate(d.getUTCDate() + 4 - dayOfWeek); // nearest Thursday
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+      const isoYear = d.getUTCFullYear();
+      const weekNum = String(week).padStart(2, '0');
+      return `week:${isoYear}-W${weekNum}`;
     }
     return '';
   }
@@ -160,7 +163,7 @@ export class BudgetTracker {
       };
     }
     const remaining = Math.max(0, budget - spent);
-    const pctUsed = (spent / budget) * 100;
+    const pctUsed = Math.round((spent / budget) * 1000) / 10;
     return {
       budgetUsd: budget,
       spentUsd: spent,

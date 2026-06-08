@@ -18,7 +18,11 @@ import type { ForwardResult, ProxyUpstream, UpstreamConfig } from './types.js';
 const logger = createLogger('proxy-stdio');
 
 // ---------------------------------------------------------------------------
-// Env sanitization — strips keys that enable dynamic-linker or Node injection
+// Env sanitization — strips keys that enable dynamic-linker or Node injection.
+// Note: PATH is intentionally NOT listed here. StdioClientTransport (MCP SDK)
+// spreads getDefaultEnvironment() before applying this env, so stripping PATH
+// from the caller-supplied env has no effect — PATH always flows through.
+// PATH hijacking is prevented instead by validateCommand requiring absolute paths.
 // ---------------------------------------------------------------------------
 
 export const DANGEROUS_ENV_KEYS = new Set([
@@ -26,7 +30,6 @@ export const DANGEROUS_ENV_KEYS = new Set([
   'LD_LIBRARY_PATH',
   'DYLD_INSERT_LIBRARIES',
   'DYLD_LIBRARY_PATH',
-  'PATH',
   'NODE_OPTIONS',
 ]);
 
@@ -73,6 +76,7 @@ export function validateCommand(
 }
 
 const DISCONNECT_TIMEOUT_MS = 5_000;
+const DISPATCH_TIMEOUT_MS = 30_000;
 
 // ---------------------------------------------------------------------------
 // JSON-RPC helpers
@@ -172,6 +176,18 @@ export class StdioUpstream implements ProxyUpstream {
 
     await this.client.connect(this.transport);
     logger.info(`Stdio upstream "${this.name}" connected`, { command, args: this.config.args });
+
+    // Detect unexpected child process exit so subsequent requests fail fast
+    // instead of hanging on a dead client.
+    this.transport.onclose = () => {
+      if (this.client !== null) {
+        logger.warn(
+          `Stdio upstream "${this.name}" process exited unexpectedly — marking disconnected`,
+        );
+        this.client = null;
+        this.transport = null;
+      }
+    };
   }
 
   async disconnect(): Promise<void> {
@@ -200,9 +216,14 @@ export class StdioUpstream implements ProxyUpstream {
       logger.warn(
         `Stdio upstream "${this.name}" close timed out after ${DISCONNECT_TIMEOUT_MS}ms — force-killing process`,
       );
-      const proc = (transport as unknown as { _process?: { kill(signal?: string): void } })
-        ._process;
-      proc?.kill('SIGKILL');
+      // Access the child process via the MCP SDK's private field. If the field
+      // is renamed in a future SDK version, the optional-chain gracefully no-ops
+      // rather than throwing, and the OS will clean up the orphaned child when
+      // this process exits.
+      const maybeProc = (transport as unknown as Record<string, unknown>)['_process'] as
+        | { kill(signal?: string): void }
+        | undefined;
+      maybeProc?.kill('SIGKILL');
     }
 
     logger.info(`Stdio upstream "${this.name}" disconnected`);
@@ -266,36 +287,49 @@ export class StdioUpstream implements ProxyUpstream {
     const client = this.client!;
     const params = rpc.params ?? {};
 
+    // Wrap the dispatch in a timeout so a hung child process doesn't hold
+    // the HTTP connection open indefinitely.
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      const t = setTimeout(
+        () => reject(new Error(`Stdio dispatch timeout after ${DISPATCH_TIMEOUT_MS}ms`)),
+        DISPATCH_TIMEOUT_MS,
+      );
+      t.unref();
+    });
+
+    let dispatchPromise: Promise<unknown>;
     switch (rpc.method) {
       case 'tools/call':
-        return client.callTool(params as Parameters<typeof client.callTool>[0]);
-
+        dispatchPromise = client.callTool(params as Parameters<typeof client.callTool>[0]);
+        break;
       case 'tools/list':
-        return client.listTools(params as Parameters<typeof client.listTools>[0]);
-
+        dispatchPromise = client.listTools(params as Parameters<typeof client.listTools>[0]);
+        break;
       case 'resources/list':
-        return client.listResources(params as Parameters<typeof client.listResources>[0]);
-
+        dispatchPromise = client.listResources(
+          params as Parameters<typeof client.listResources>[0],
+        );
+        break;
       case 'resources/read':
-        return client.readResource(params as Parameters<typeof client.readResource>[0]);
-
+        dispatchPromise = client.readResource(params as Parameters<typeof client.readResource>[0]);
+        break;
       case 'ping':
-        return client.ping();
-
+        dispatchPromise = client.ping();
+        break;
       case 'initialize':
-        // The Client has already initialized; return current server info
+        // The Client has already initialized; return current server info synchronously.
         return {
           protocolVersion: '2025-03-26',
           capabilities: client.getServerCapabilities() ?? {},
           serverInfo: client.getServerVersion() ?? { name: this.name, version: '0.0.0' },
         };
-
       default:
-        // Generic passthrough for any other JSON-RPC method
-        return client.request(
+        dispatchPromise = client.request(
           { method: rpc.method, params } as Parameters<typeof client.request>[0],
           z.any(),
         );
     }
+
+    return Promise.race([dispatchPromise, timeoutPromise]);
   }
 }

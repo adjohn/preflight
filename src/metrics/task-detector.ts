@@ -156,7 +156,9 @@ class ActiveTask {
       taskId: this.taskId,
       startTime: this.startTime,
       endTime,
-      durationMs: endTime - this.startTime,
+      // Cap at 4 hours to guard against inflated durations from process suspension
+      // (laptop sleep or container pause) causing the idle timer to fire on resume.
+      durationMs: Math.min(endTime - this.startTime, 4 * 60 * 60 * 1000),
       toolCallCount: this.toolCallCount,
       toolCallsByType,
       filesRead: [...this.filesReadSet].sort(),
@@ -193,6 +195,7 @@ export class TaskDetector {
   private activeTask: ActiveTask | null = null;
   private completedTasks: AiCodingTask[] = [];
   private pendingEmission: AiCodingTask[] = [];
+  private lifetimeCompletedCount = 0;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Cost/token snapshots at task start for computing deltas
@@ -276,7 +279,7 @@ export class TaskDetector {
     }
 
     return {
-      totalTasksCompleted: completed.length,
+      totalTasksCompleted: this.lifetimeCompletedCount,
       currentTaskActive: this.activeTask !== null,
       currentTaskToolCalls: this.activeTask?.toolCallCount ?? 0,
       averageTaskDurationMs: avgDuration,
@@ -305,6 +308,7 @@ export class TaskDetector {
     this.pendingEmission = [];
     this.costAtTaskStart = 0;
     this.tokensAtTaskStart = 0;
+    this.lifetimeCompletedCount = 0;
   }
 
   dispose(): void {
@@ -331,10 +335,16 @@ export class TaskDetector {
     const completed = this.activeTask.toCompleted(endTime, costUsd, tokens);
     this.completedTasks.push(completed);
     this.pendingEmission.push(completed);
+    this.lifetimeCompletedCount++;
 
     // Cap completed tasks to prevent unbounded memory
     while (this.completedTasks.length > this.maxCompletedTasks) {
       this.completedTasks.shift();
+    }
+    // Cap pendingEmission to the same limit (drainNewlyCompletedTasks may
+    // never be called in abnormal shutdown paths)
+    while (this.pendingEmission.length > this.maxCompletedTasks) {
+      this.pendingEmission.shift();
     }
 
     this.activeTask = null;

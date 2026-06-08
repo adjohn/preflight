@@ -6,6 +6,7 @@ const logger = createLogger('task-span-tracker');
 
 export class TaskSpanTracker {
   private readonly activeTasks: Map<string, Span> = new Map();
+  private readonly taskContexts: Map<string, ReturnType<typeof context.active>> = new Map();
 
   openTask(taskId: string, label: string, parentContext: ReturnType<typeof context.active>): void {
     if (this.activeTasks.has(taskId)) return;
@@ -20,6 +21,7 @@ export class TaskSpanTracker {
       parentContext,
     );
     this.activeTasks.set(taskId, span);
+    this.taskContexts.set(taskId, parentContext);
     logger.debug('Task span opened', { taskId, label });
   }
 
@@ -30,6 +32,7 @@ export class TaskSpanTracker {
     span.setStatus({ code: SpanStatusCode.OK });
     span.end();
     this.activeTasks.delete(taskId);
+    this.taskContexts.delete(taskId);
     logger.debug('Task span closed', { taskId });
   }
 
@@ -40,7 +43,10 @@ export class TaskSpanTracker {
     if (!taskId) return fallback;
     const span = this.activeTasks.get(taskId);
     if (!span) return fallback;
-    return trace.setSpan(context.active(), span);
+    // Use the stored parent context from openTask() rather than context.active() to
+    // avoid attaching the span to an unrelated async frame's context.
+    const parentCtx = this.taskContexts.get(taskId) ?? fallback;
+    return trace.setSpan(parentCtx, span);
   }
 
   closeAll(): void {
@@ -53,6 +59,7 @@ export class TaskSpanTracker {
       logger.debug('Force-closed task span', { taskId });
     }
     this.activeTasks.clear();
+    this.taskContexts.clear();
   }
 
   get size(): number {

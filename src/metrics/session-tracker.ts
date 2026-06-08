@@ -49,6 +49,10 @@ export interface SessionMetrics {
   bashExitCodes: Record<string, number>;
   searchQueries: number;
   toolCallTimeline: TimelineEntry[];
+  /** True when the timeline was capped at MAX_TIMELINE_ENTRIES; callers should not assume they have the full history. */
+  timelineTruncated: boolean;
+  /** Lifetime total of timeline entries, including those dropped by the cap. */
+  timelineEntryCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +111,7 @@ export class SessionTracker {
   private readonly filesWritten = new Set<string>();
   private readonly bashExitCodes = new Map<number, number>();
   private timeline: TimelineEntry[] = [];
+  private timelineEntryCount = 0;
 
   constructor(sessionId?: string) {
     this.sessionId = sessionId ?? randomUUID();
@@ -116,12 +121,15 @@ export class SessionTracker {
   recordToolCall(record: ToolCallRecord): void {
     this.toolCallCount++;
 
-    // Derive session name from the first cwd seen; reject degenerate names
-    // like '.' or '..' that basename returns for relative directory references.
-    if (this.sessionName === null && typeof record.cwd === 'string' && record.cwd.length > 0) {
+    // Derive session name from cwd; prefer a later, more meaningful name if the
+    // current one is a degenerate system directory (tmp, var, usr, etc.).
+    const DEGENERATE_NAMES = new Set(['tmp', 'temp', 'var', 'usr', 'opt', 'home', '.', '..', '']);
+    if (typeof record.cwd === 'string' && record.cwd.length > 0) {
       const name = basename(record.cwd);
       if (name.length > 0 && name !== '.' && name !== '..') {
-        this.sessionName = name;
+        if (this.sessionName === null || DEGENERATE_NAMES.has(this.sessionName.toLowerCase())) {
+          this.sessionName = name;
+        }
       }
     }
 
@@ -133,7 +141,7 @@ export class SessionTracker {
     if (record.durationMs !== null && record.durationMs !== undefined) {
       const durations = this.toolDurationsByTool.get(tool);
       if (durations) {
-        durations.push(record.durationMs);
+        if (durations.length < 500) durations.push(record.durationMs);
       } else {
         this.toolDurationsByTool.set(tool, [record.durationMs]);
       }
@@ -180,7 +188,8 @@ export class SessionTracker {
       this.searchQueries++;
     }
 
-    // Timeline (capped)
+    // Timeline (capped); always increment the lifetime counter.
+    this.timelineEntryCount++;
     if (this.timeline.length < MAX_TIMELINE_ENTRIES) {
       this.timeline.push({
         timestamp: record.timestamp,
@@ -239,6 +248,8 @@ export class SessionTracker {
       bashExitCodes,
       searchQueries: this.searchQueries,
       toolCallTimeline: [...this.timeline],
+      timelineTruncated: this.timelineEntryCount > this.timeline.length,
+      timelineEntryCount: this.timelineEntryCount,
     };
   }
 
@@ -282,5 +293,6 @@ export class SessionTracker {
     this.filesWritten.clear();
     this.bashExitCodes.clear();
     this.timeline = [];
+    this.timelineEntryCount = 0;
   }
 }

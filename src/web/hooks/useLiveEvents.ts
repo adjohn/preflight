@@ -11,10 +11,10 @@ interface SessionCurrentResponse {
   }>;
 }
 
-function hydrateFromApi(): void {
+function hydrateFromApi(signal: AbortSignal): void {
   const store = useLiveStore.getState();
 
-  fetch('/api/session/current')
+  fetch('/api/session/current', { signal })
     .then((r) => (r.ok ? (r.json() as Promise<SessionCurrentResponse>) : null))
     .then((data) => {
       if (!data?.toolCallTimeline) return;
@@ -37,7 +37,7 @@ function hydrateFromApi(): void {
   // Query fallback (persistedTodaySpend + session cost) handles the pre-SSE
   // window correctly.
 
-  fetch('/api/anti-patterns')
+  fetch('/api/anti-patterns', { signal })
     .then((r) => (r.ok ? (r.json() as Promise<unknown>) : null))
     .then((data) => {
       if (!Array.isArray(data)) return;
@@ -52,7 +52,8 @@ function hydrateFromApi(): void {
 
 export function useLiveEvents(url: string = '/sse'): void {
   useEffect(() => {
-    hydrateFromApi();
+    const controller = new AbortController();
+    hydrateFromApi(controller.signal);
 
     const es = new EventSource(url);
 
@@ -98,6 +99,7 @@ export function useLiveEvents(url: string = '/sse'): void {
     es.addEventListener('alert', onAlert as EventListener);
 
     return (): void => {
+      controller.abort();
       es.removeEventListener('tool-call', onToolCall as EventListener);
       es.removeEventListener('cost-update', onCost as EventListener);
       es.removeEventListener('anti-pattern', onAnti as EventListener);

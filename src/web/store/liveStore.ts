@@ -65,6 +65,8 @@ export const useLiveStore = create<LiveState>((set) => ({
 
   pushToolCall: (e) =>
     set((s) => {
+      // Deduplicate by id so SSE and hydrateFromApi() don't push the same event twice.
+      if (s.recentToolCalls.some((t) => t.id === e.id)) return {};
       const next = [...s.recentToolCalls, e];
       return {
         recentToolCalls: next.length > RECENT_CAP ? next.slice(next.length - RECENT_CAP) : next,

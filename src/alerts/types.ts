@@ -43,7 +43,7 @@ export interface PersonalAlertThresholds {
 export const DEFAULT_PERSONAL_THRESHOLDS: PersonalAlertThresholds = {
   dailyCostUsd: 2,
   sessionCostUsd: 0.5,
-  efficiencyScoreMin: 40,
+  efficiencyScoreMin: 0.4,
   stuckLoopCountMax: 2,
   antiPatternCountMax: 5,
 };

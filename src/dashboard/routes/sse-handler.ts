@@ -10,7 +10,8 @@ const HEARTBEAT_MS = 30_000;
 // replay" — safer than letting a heartbeat id contaminate the bus seq
 // namespace. See F-005 in docs/CODE_REVIEW.md.
 function frame(event: string, id: string | number, data: unknown): string {
-  return `event: ${event}\nid: ${id}\ndata: ${JSON.stringify(data)}\n\n`;
+  const safeEvent = event.replace(/[\r\n]/g, '');
+  return `event: ${safeEvent}\nid: ${id}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
 export function createSseHandler(
@@ -42,11 +43,17 @@ export function createSseHandler(
       }
     }
 
+    // Swallow EPIPE / ERR_HTTP_HEADERS_SENT from writes to a closed response.
+    // The cleanup handlers remove these listeners, but there is a brief race
+    // window between client disconnect and cleanup — the error handler prevents
+    // that from reaching Node's unhandled-rejection handler.
+    res.on('error', () => cleanup());
+
     // Live frames carry the bus's global seq (delivered via onWithSeq).
     const onAny =
       <E extends LiveEventName>(event: E) =>
       (entry: SeqEntry<E>): void => {
-        res.write(frame(event, entry.seq, entry.payload));
+        if (!res.destroyed) res.write(frame(event, entry.seq, entry.payload));
       };
 
     const handlers = {

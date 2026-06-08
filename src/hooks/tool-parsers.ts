@@ -220,14 +220,21 @@ export function parseToolSpecificFields(
   try {
     const fields: ToolFields = {};
 
+    // Normalize tool name: try exact match first, then capitalize first letter
+    // to handle variants like "read" → "Read" from non-Claude-Code platforms.
+    const normalizedName =
+      INPUT_PARSERS[toolName] !== undefined
+        ? toolName
+        : toolName.charAt(0).toUpperCase() + toolName.slice(1);
+
     // Parse input fields
-    const inputParser = INPUT_PARSERS[toolName];
+    const inputParser = INPUT_PARSERS[normalizedName];
     if (inputParser && input !== null && input !== undefined && typeof input === 'object') {
       Object.assign(fields, inputParser(input as Record<string, unknown>));
     }
 
     // Parse output fields
-    const outputParser = OUTPUT_PARSERS[toolName];
+    const outputParser = OUTPUT_PARSERS[normalizedName];
     if (outputParser && output !== null && output !== undefined && typeof output === 'object') {
       Object.assign(fields, outputParser(output as Record<string, unknown>));
     }

@@ -419,13 +419,15 @@ describe('sanitizeEnv', () => {
         LD_LIBRARY_PATH: '/evil',
         DYLD_INSERT_LIBRARIES: '/evil/lib.dylib',
         DYLD_LIBRARY_PATH: '/evil',
+        // PATH is intentionally NOT stripped — StdioClientTransport always re-adds it
+        // from getDefaultEnvironment(). Safe path is enforced by absolute-path validation.
         PATH: '/tmp/evil:/usr/bin',
         NODE_OPTIONS: '--require /evil/code.js',
         SAFE_VAR: 'hello',
       },
       'test',
     );
-    expect(result).toEqual({ SAFE_VAR: 'hello' });
+    expect(result).toEqual({ PATH: '/tmp/evil:/usr/bin', SAFE_VAR: 'hello' });
   });
 
   it('logs a warning when dangerous keys are stripped', () => {

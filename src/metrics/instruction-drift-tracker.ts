@@ -151,7 +151,9 @@ export class InstructionDriftTracker {
   }
 
   loadRecords(records: readonly SessionOutcomeRecord[]): void {
-    this.records.push(...records);
+    // Prepend external records (historical, older) before in-memory records so
+    // that trimming from the front evicts the oldest entries first (FIFO).
+    this.records.unshift(...records);
     if (this.records.length > this.maxRecords) {
       this.records.splice(0, this.records.length - this.maxRecords);
     }

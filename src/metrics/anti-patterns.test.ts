@@ -415,7 +415,7 @@ describe('Over-delegation detection', () => {
     expect(overDelegation[0].agentCount).toBe(5);
   });
 
-  it('does not detect 3 Agent calls (at threshold)', () => {
+  it('detects exactly 3 Agent calls (at threshold, >= comparison)', () => {
     const detector = new AntiPatternDetector();
 
     const calls: ToolCallRecord[] = [];
@@ -425,7 +425,7 @@ describe('Over-delegation detection', () => {
 
     const result = detector.analyze(calls);
     const overDelegation = result.patterns.filter((p) => p.type === 'over_delegation');
-    expect(overDelegation).toHaveLength(0);
+    expect(overDelegation).toHaveLength(1);
   });
 });
 

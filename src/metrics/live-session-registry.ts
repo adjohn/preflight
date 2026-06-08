@@ -33,16 +33,17 @@ export class LiveSessionRegistry {
   getLiveSessions(): string[] {
     const now = Date.now();
     const live: string[] = [];
+    const stale: string[] = [];
     for (const [id, ts] of this.lastActivity) {
       if (now - ts <= this.staleThresholdMs) {
         live.push(id);
+      } else {
+        stale.push(id);
       }
     }
-    for (const [id, ts] of this.lastActivity) {
-      if (now - ts > this.staleThresholdMs) {
-        this.lastActivity.delete(id);
-        this.sessionNames.delete(id);
-      }
+    for (const id of stale) {
+      this.lastActivity.delete(id);
+      this.sessionNames.delete(id);
     }
     return live;
   }
@@ -57,6 +58,7 @@ export class LiveSessionRegistry {
     if (ts === undefined) return false;
     if (Date.now() - ts > this.staleThresholdMs) {
       this.lastActivity.delete(sessionId);
+      this.sessionNames.delete(sessionId);
       return false;
     }
     return true;

@@ -164,6 +164,13 @@ export class ProxyManager {
       this.httpServer!.once('error', reject);
       this.httpServer!.listen(this.port, '127.0.0.1', () => {
         logger.info(`Proxy server listening`, { port: this.port });
+        // Replace the startup rejection handler with a permanent error logger so
+        // post-startup server errors don't invoke reject() on an already-resolved
+        // promise and don't become unhandled Node.js errors.
+        this.httpServer!.removeAllListeners('error');
+        this.httpServer!.on('error', (err) =>
+          logger.error('Proxy server error', { error: String(err) }),
+        );
         resolve();
       });
     });
@@ -189,6 +196,11 @@ export class ProxyManager {
   async stop(): Promise<void> {
     // Close the HTTP server
     if (this.httpServer) {
+      // closeAllConnections() forcibly destroys keep-alive connections so stop()
+      // doesn't hang waiting for clients to close them naturally (Node 18.2+).
+      if (typeof this.httpServer.closeAllConnections === 'function') {
+        this.httpServer.closeAllConnections();
+      }
       await new Promise<void>((resolve) => {
         this.httpServer!.close(() => resolve());
       });
@@ -264,6 +276,8 @@ export class ProxyManager {
         res.writeHead(408, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: 'request_timeout' }));
       }
+      // Destroy the request so Node stops buffering inbound data.
+      req.destroy();
       return;
     }
 
@@ -287,7 +301,7 @@ export class ProxyManager {
     if (!isTracked || !rpc) return;
 
     const totalDurationMs = overallEnd - overallStart;
-    const proxyOverheadMs = totalDurationMs - result.upstreamLatencyMs;
+    const proxyOverheadMs = Math.max(0, totalDurationMs - result.upstreamLatencyMs);
 
     if (rpc.method === 'tools/call') {
       this.emitToolCallRecord(upstream, rpc, result, totalDurationMs, proxyOverheadMs, body);
@@ -329,7 +343,7 @@ export class ProxyManager {
       toolUseId: String(rpc.id ?? ''),
       timestamp: Date.now(),
       durationMs,
-      success: result.statusCode >= 200 && result.statusCode < 400,
+      success: result.statusCode >= 200 && result.statusCode < 300,
       serverName: upstream.name,
       upstreamLatencyMs: result.upstreamLatencyMs,
       proxyOverheadMs,
@@ -359,7 +373,7 @@ export class ProxyManager {
       durationMs,
       upstreamLatencyMs: result.upstreamLatencyMs,
       proxyOverheadMs,
-      success: result.statusCode >= 200 && result.statusCode < 400,
+      success: result.statusCode >= 200 && result.statusCode < 300,
       responseSizeBytes: result.responseSizeBytes ?? undefined,
     };
 

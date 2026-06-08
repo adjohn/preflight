@@ -295,7 +295,7 @@ export function handleGetSessionHistory(
     developer,
   });
 
-  const limit = args.limit ?? 20;
+  const limit = Math.max(1, Math.min(Math.floor(args.limit ?? 20), 500));
   const limited = sessions.slice(-limit);
 
   const result = limited.map((s) => ({
@@ -381,7 +381,7 @@ export function handleGetTrends(
   trendAnalyzer: TrendAnalyzer,
   args: { metric?: string; developer?: string; weeks?: number },
 ) {
-  const weeks = args.weeks ?? 8;
+  const weeks = Math.max(1, args.weeks ?? 8);
   const since = new Date(Date.now() - weeks * 7 * 86_400_000);
 
   const developer = typeof args.developer === 'string' ? args.developer.slice(0, 256) : undefined;
@@ -422,7 +422,10 @@ export function handleGetCollaborationProfile(
   collaborationProfiler: CollaborationProfiler,
   args: { developer?: string },
 ) {
-  const developer = typeof args.developer === 'string' ? args.developer.slice(0, 256) : 'unknown';
+  const developer =
+    typeof args.developer === 'string'
+      ? args.developer.trim().slice(0, 256) || 'unknown'
+      : 'unknown';
   const profile = collaborationProfiler.computeProfile(developer);
   const comparison = collaborationProfiler.compareToTeam(developer);
 
@@ -502,9 +505,18 @@ export function handleGetCostPerOutcome(
 
   if (args.since) {
     const sinceMs = new Date(args.since).getTime();
-    if (!isNaN(sinceMs)) {
-      tasks = tasks.filter((t) => t.startTime >= sinceMs);
+    if (isNaN(sinceMs)) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({ error: `Invalid since date: "${args.since}"` }),
+          },
+        ],
+        isError: true,
+      };
     }
+    tasks = tasks.filter((t) => t.startTime >= sinceMs);
   }
 
   const attribution = costPerOutcomeAnalyzer.attributeCosts(tasks);
@@ -534,7 +546,10 @@ export function handleGetRecommendations(
   recommendationEngine: RecommendationEngine,
   args: { developer?: string; topN?: number },
 ) {
-  const developer = typeof args.developer === 'string' ? args.developer.slice(0, 256) : 'unknown';
+  const developer =
+    typeof args.developer === 'string'
+      ? args.developer.trim().slice(0, 256) || 'unknown'
+      : 'unknown';
   const recs = recommendationEngine.generateAllRecommendations(developer, {
     topN: args.topN,
   });
@@ -697,7 +712,7 @@ export async function handleGetTeamSummary(options: {
   const safeTeamId = options.teamId;
 
   const accountId = Number(options.accountId);
-  if (!Number.isFinite(accountId)) {
+  if (!Number.isFinite(accountId) || accountId <= 0) {
     return {
       content: [
         {
@@ -773,13 +788,16 @@ export async function handleGetTeamSummary(options: {
           }),
         },
       ],
+      isError: true,
     };
   }
 
-  const byDev: Record<
+  // Use Object.create(null) to prevent prototype-pollution if a developer name
+  // is "__proto__", "constructor", or "toString".
+  const byDev = Object.create(null) as Record<
     string,
     { costUsd: number; efficiencyScore: number | null; antiPatterns: number }
-  > = {};
+  >;
   for (const row of costRows) {
     const dev = ((row.developer && String(row.developer).trim()) || 'unknown') as string;
     if (!byDev[dev]) byDev[dev] = { costUsd: 0, efficiencyScore: null, antiPatterns: 0 };
@@ -813,7 +831,7 @@ export async function handleGetTeamSummary(options: {
 export function handleSubscribeDigest(
   webhookUrl: string,
   configFilePath: string,
-): { content: Array<{ type: 'text'; text: string }> } {
+): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
   if (!webhookUrl.startsWith('https://hooks.slack.com/')) {
     return {
       content: [
@@ -824,6 +842,7 @@ export function handleSubscribeDigest(
           }),
         },
       ],
+      isError: true,
     };
   }
   try {
@@ -847,12 +866,16 @@ export function handleSubscribeDigest(
       ],
     };
   } catch (err) {
-    return { content: [{ type: 'text', text: JSON.stringify({ error: String(err) }) }] };
+    return {
+      content: [{ type: 'text', text: JSON.stringify({ error: String(err) }) }],
+      isError: true,
+    };
   }
 }
 
 export function handleUnsubscribeDigest(configFilePath: string): {
   content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
 } {
   try {
     let existing: Record<string, unknown> = {};
@@ -867,7 +890,10 @@ export function handleUnsubscribeDigest(configFilePath: string): {
       content: [{ type: 'text', text: JSON.stringify({ ok: true, message: 'Webhook removed.' }) }],
     };
   } catch (err) {
-    return { content: [{ type: 'text', text: JSON.stringify({ error: String(err) }) }] };
+    return {
+      content: [{ type: 'text', text: JSON.stringify({ error: String(err) }) }],
+      isError: true,
+    };
   }
 }
 

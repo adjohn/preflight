@@ -13,6 +13,7 @@ jest.mock('node:readline/promises', () => ({ createInterface: jest.fn() }));
 jest.mock('node:fs', () => ({
   readFileSync: jest.fn(),
   writeFileSync: jest.fn(),
+  renameSync: jest.fn(),
   mkdirSync: jest.fn(),
   existsSync: jest.fn(),
   copyFileSync: jest.fn(),

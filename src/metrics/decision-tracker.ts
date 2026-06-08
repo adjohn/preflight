@@ -85,7 +85,7 @@ export class DecisionTracker {
       const key = `${record.toolName}:${filePath}`;
       const count = (this.fileCallCounts.get(key) ?? 0) + 1;
       this.fileCallCounts.set(key, count);
-      if (count === 3) {
+      if (count >= 3) {
         this.recordDecision({
           turnNumber: turn,
           reasoning: `retrying ${record.toolName} on ${filePath} (${count} attempts)`,

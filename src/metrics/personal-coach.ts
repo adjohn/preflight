@@ -75,11 +75,13 @@ export class PersonalCoach {
       };
     }
 
-    const thisWeekData = weeks[0]!; // most recent week (index 0)
-    const lastWeekData = weeks[1] ?? null; // second most recent
+    // Ensure descending order (most recent first) regardless of how loadRecentWeeks returns.
+    const sorted = [...weeks].sort((a, b) => b.weekId.localeCompare(a.weekId));
+    const thisWeekData = sorted[0]!; // most recent week
+    const lastWeekData = sorted[1] ?? null; // second most recent
 
     // Baseline = mean across all loaded weeks
-    const baseline = this.computeBaseline(weeks);
+    const baseline = this.computeBaseline(sorted);
 
     const thisWeek = this.toPersonalWeekMetrics(thisWeekData);
     const lastWeek = lastWeekData ? this.toPersonalWeekMetrics(lastWeekData) : null;
@@ -160,7 +162,10 @@ export class PersonalCoach {
   private computeBaseline(
     weeks: Array<{ weekId: string; stats: DeveloperWeeklyStats }>,
   ): PersonalWeekMetrics {
-    const metrics = weeks.map((w) => this.toPersonalWeekMetrics(w));
+    // Exclude weeks[0] (this week) from the baseline so deltas compare the
+    // current week against prior history rather than a mean that includes itself.
+    const historicalWeeks = weeks.length > 1 ? weeks.slice(1) : weeks;
+    const metrics = historicalWeeks.map((w) => this.toPersonalWeekMetrics(w));
 
     const mean = (values: number[]): number => {
       if (values.length === 0) return 0;

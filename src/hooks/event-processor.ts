@@ -110,7 +110,9 @@ export class HookEventProcessor {
       logger.info('Event processor stopped');
     }
 
-    // Always flush pending — even if processEvents() was called without start()
+    // Always flush remaining pre-events as orphans — even on a second stop() call
+    // or when stop() is called without start(). A second call on an already-empty
+    // pending map is a no-op.
     this.flushPending();
   }
 
@@ -172,11 +174,28 @@ export class HookEventProcessor {
         }
       }
       if (evictedKey === undefined) {
-        evictedKey = this.pending.keys().next().value as string;
+        evictedKey = this.pending.keys().next().value as string | undefined;
         logger.warn('Evicting non-orphan pre-event due to capacity overflow', { evictedKey });
       }
       if (evictedKey) {
+        const evicted = this.pending.get(evictedKey)!;
         this.pending.delete(evictedKey);
+        // Emit a synthetic timeout record so the eviction is visible in metrics,
+        // matching the behavior of sweepOrphans() and flushPending().
+        const toolFields = parseToolSpecificFields(evicted.tool, evicted.toolInput, undefined);
+        this.emitRecord({
+          id: randomUUID(),
+          sessionId: (evicted.sessionId as string) ?? null,
+          toolName: evicted.tool,
+          toolUseId: (evicted.toolUseId as string) ?? evictedKey,
+          timestamp: evicted.timestamp,
+          durationMs: null,
+          success: false,
+          errorType: 'timeout',
+          ...(evicted.inputSize !== undefined && { inputSizeBytes: evicted.inputSize }),
+          ...(evicted.inputHash !== undefined && { inputHash: evicted.inputHash }),
+          ...toolFields,
+        });
       }
     }
     this.pending.set(this.pairingKey(event), event);
@@ -245,10 +264,20 @@ export class HookEventProcessor {
     const tokenEvent: TokenEvent = {
       mode: 'token',
       timestamp: event.timestamp,
-      inputTokens: (event.inputTokens as number) ?? 0,
-      outputTokens: (event.outputTokens as number) ?? 0,
-      cacheReadTokens: (event.cacheReadTokens as number) ?? 0,
-      cacheCreationTokens: (event.cacheCreationTokens as number) ?? 0,
+      inputTokens:
+        typeof event.inputTokens === 'number' && !isNaN(event.inputTokens) ? event.inputTokens : 0,
+      outputTokens:
+        typeof event.outputTokens === 'number' && !isNaN(event.outputTokens)
+          ? event.outputTokens
+          : 0,
+      cacheReadTokens:
+        typeof event.cacheReadTokens === 'number' && !isNaN(event.cacheReadTokens)
+          ? event.cacheReadTokens
+          : 0,
+      cacheCreationTokens:
+        typeof event.cacheCreationTokens === 'number' && !isNaN(event.cacheCreationTokens)
+          ? event.cacheCreationTokens
+          : 0,
       model: (event.model as string) ?? 'unknown',
       sessionId: event.sessionId as string | undefined,
     };
@@ -326,7 +355,15 @@ export class HookEventProcessor {
     let oldestKey: string | undefined;
     let oldestTimestamp = Infinity;
     for (const [k, v] of this.pending) {
-      if (v.tool === tool && v.timestamp < oldestTimestamp) {
+      // Only match fallback-keyed entries (format: "Tool:timestamp:uuid") — skip
+      // entries keyed by their real toolUseId so a no-toolUseId post event doesn't
+      // steal a slot that belongs to a later post event that carries that toolUseId.
+      const isFallbackKey = k.startsWith(`${v.tool}:`);
+      if (
+        v.tool.toLowerCase() === tool.toLowerCase() &&
+        isFallbackKey &&
+        v.timestamp < oldestTimestamp
+      ) {
         oldestKey = k;
         oldestTimestamp = v.timestamp;
       }

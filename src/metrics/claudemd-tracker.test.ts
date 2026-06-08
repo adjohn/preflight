@@ -207,11 +207,11 @@ describe('ClaudeMdTracker', () => {
     expect(report.beforeMetrics.avgCostUsd).toBe(4);
     expect(report.afterMetrics.avgCostUsd).toBe(3);
 
-    expect(report.deltas.efficiencyScore.value).toBeCloseTo(0.15, 2);
-    expect(report.deltas.efficiencyScore.improved).toBe(true);
+    expect(report.deltas.efficiencyScore!.value).toBeCloseTo(0.15, 2);
+    expect(report.deltas.efficiencyScore!.improved).toBe(true);
     expect(report.deltas.cost.value).toBeCloseTo(-1, 2);
     expect(report.deltas.cost.improved).toBe(true);
-    expect(report.deltas.taskSuccessRate.improved).toBe(true);
+    expect(report.deltas.taskSuccessRate!.improved).toBe(true);
 
     expect(report.verdict).toMatch(/^Positive impact/);
   });
@@ -270,9 +270,9 @@ describe('ClaudeMdTracker', () => {
 
     const report = tracker.computeImpact(changeTimestamp);
 
-    expect(report.deltas.efficiencyScore.improved).toBe(false);
+    expect(report.deltas.efficiencyScore!.improved).toBe(false);
     expect(report.deltas.cost.improved).toBe(false);
-    expect(report.deltas.taskSuccessRate.improved).toBe(false);
+    expect(report.deltas.taskSuccessRate!.improved).toBe(false);
     expect(report.verdict).toMatch(/^Negative impact/);
   });
 
@@ -326,13 +326,13 @@ describe('ClaudeMdTracker', () => {
     const report = tracker.computeImpact(changeTimestamp);
 
     // Higher efficiency = improved
-    expect(report.deltas.efficiencyScore.improved).toBe(true);
+    expect(report.deltas.efficiencyScore!.improved).toBe(true);
     // Lower cost = improved
     expect(report.deltas.cost.improved).toBe(true);
     // Lower correction rate = improved
     expect(report.deltas.correctionRate.improved).toBe(true);
     // Higher task success = improved
-    expect(report.deltas.taskSuccessRate.improved).toBe(true);
+    expect(report.deltas.taskSuccessRate!.improved).toBe(true);
 
     // Now test the reverse: worse efficiency and cost
     rmSync(tmpDir, { recursive: true, force: true });
@@ -372,7 +372,7 @@ describe('ClaudeMdTracker', () => {
     const report2 = tracker2.computeImpact(changeTimestamp);
 
     // Lower efficiency = NOT improved
-    expect(report2.deltas.efficiencyScore.improved).toBe(false);
+    expect(report2.deltas.efficiencyScore!.improved).toBe(false);
     // Higher cost = NOT improved
     expect(report2.deltas.cost.improved).toBe(false);
   });

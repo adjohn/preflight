@@ -75,7 +75,10 @@ export const DEFAULT_SENSITIVE_FILE_PATTERNS: RegExp[] = [
 export const DEFAULT_DESTRUCTIVE_COMMAND_PATTERNS: RegExp[] = [
   // rm with recursive + force flags in any combination or order:
   // combined (-rf, -fr, -rfv, -rvf, -Rf, etc.) or separate (-r -f, -f -r, -r -v -f, etc.)
-  /\brm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*[fF][a-zA-Z]*|-[a-zA-Z]*[fF][a-zA-Z]*[rR][a-zA-Z]*|-[rR][a-zA-Z]*(?:\s+-[a-zA-Z]+)*\s+-[fF]|-[fF][a-zA-Z]*(?:\s+-[a-zA-Z]+)*\s+-[rR])/,
+  // rm with -r/-R (recursive), in any combination of flags or alone
+  /\brm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*[fF][a-zA-Z]*|-[a-zA-Z]*[fF][a-zA-Z]*[rR][a-zA-Z]*|-[rR][a-zA-Z]*(?:\s+-[a-zA-Z]+)*\s+-[fF]|-[fF][a-zA-Z]*(?:\s+-[a-zA-Z]+)*\s+-[rR]|-[rR]\b|-[a-zA-Z]*[rR]\b)/,
+  // GNU long-form: rm --recursive
+  /\brm\b.*--recursive\b/,
   /\bgit\s+push\s+--force\b/i,
   /\bgit\s+push\s+-f\b/i,
   /\bgit\s+reset\s+--hard\b/i,
@@ -83,9 +86,11 @@ export const DEFAULT_DESTRUCTIVE_COMMAND_PATTERNS: RegExp[] = [
   /\bDROP\s+DATABASE\b/i,
   /\bDELETE\s+FROM\b/i,
   /\bchmod\s+777\b/,
-  // Pipe to shell — matches sh, bash, zsh, ksh, dash, and absolute paths (/bin/bash, /usr/bin/zsh, etc.)
-  /\bcurl\b.*\|\s*(?:\/(?:usr\/(?:local\/)?)?bin\/)?(?:ba|z|k|da)?sh\b/i,
-  /\bwget\b.*\|\s*(?:\/(?:usr\/(?:local\/)?)?bin\/)?(?:ba|z|k|da)?sh\b/i,
+  // Pipe to shell — matches common shells and interpreters
+  /\bcurl\b.*\|\s*(?:\/[^\s]*\/)?(?:ba|z|k|da|fi|tc|c)?sh\b/i,
+  /\bwget\b.*\|\s*(?:\/[^\s]*\/)?(?:ba|z|k|da|fi|tc|c)?sh\b/i,
+  /\bcurl\b.*\|\s*(?:\/[^\s]*\/)?(?:node|python3?|perl|ruby)\b/i,
+  /\bwget\b.*\|\s*(?:\/[^\s]*\/)?(?:node|python3?|perl|ruby)\b/i,
 ];
 
 export const DEFAULT_NETWORK_COMMAND_PATTERNS: RegExp[] = [
@@ -222,7 +227,8 @@ export function securityAlertToNrEvent(
   record: AuditRecord,
   attrs?: { teamId?: string | null; projectId?: string | null; orgId?: string | null },
 ): NrEventData {
-  const alert = record.securityAlert!;
+  const alert = record.securityAlert;
+  if (!alert) throw new Error('securityAlertToNrEvent called with no securityAlert on record');
   const event: NrEventData = {
     eventType: 'SecurityAlert',
     timestamp: Math.floor(record.timestamp / 1000),
@@ -268,6 +274,7 @@ export class AuditTrailManager {
 
   private entries: AuditRecord[] = [];
   private sensitiveAccessLog: AuditRecord[] = [];
+  private static readonly MAX_ENTRIES = 10_000;
 
   constructor(options: AuditTrailManagerOptions) {
     this.developer = options.developer;
@@ -305,8 +312,11 @@ export class AuditTrailManager {
       securityAlert: alert,
     };
 
+    if (this.entries.length >= AuditTrailManager.MAX_ENTRIES) this.entries.shift();
     this.entries.push(auditRecord);
     if (alert) {
+      if (this.sensitiveAccessLog.length >= AuditTrailManager.MAX_ENTRIES)
+        this.sensitiveAccessLog.shift();
       this.sensitiveAccessLog.push(auditRecord);
       logger.warn('Security alert', {
         severity: alert.severity,
@@ -345,8 +355,11 @@ export class AuditTrailManager {
       securityAlert: alert,
     };
 
+    if (this.entries.length >= AuditTrailManager.MAX_ENTRIES) this.entries.shift();
     this.entries.push(auditRecord);
     if (alert) {
+      if (this.sensitiveAccessLog.length >= AuditTrailManager.MAX_ENTRIES)
+        this.sensitiveAccessLog.shift();
       this.sensitiveAccessLog.push(auditRecord);
       logger.warn('Security alert', {
         severity: alert.severity,
@@ -399,6 +412,7 @@ export class AuditTrailManager {
     if (!this.localStore) return;
     this.localStore.appendAuditLog({
       timestamp: record.timestamp,
+      sessionId: record.sessionId,
       action: record.action,
       tool: record.tool,
       detail: record.detail,

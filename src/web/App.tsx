@@ -22,6 +22,7 @@ export function App(): JSX.Element {
   const { theme, toggleTheme } = useTheme();
 
   const toggleHelp = useCallback(() => setShortcutHelpOpen((v) => !v), []);
+  const closeHelp = useCallback(() => setShortcutHelpOpen(false), []);
 
   useKeyboardShortcuts({ navigate, onToggleHelp: toggleHelp, onToggleTheme: toggleTheme });
 
@@ -53,7 +54,7 @@ export function App(): JSX.Element {
           </main>
         </div>
       </div>
-      <ShortcutOverlay open={shortcutHelpOpen} onClose={() => setShortcutHelpOpen(false)} />
+      <ShortcutOverlay open={shortcutHelpOpen} onClose={closeHelp} />
     </>
   );
 }

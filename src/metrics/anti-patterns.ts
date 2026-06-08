@@ -172,7 +172,12 @@ export class AntiPatternDetector {
     const readCounts = new Map<string, number>();
 
     for (const call of toolCalls) {
-      if (call.toolName === 'Read') {
+      // Match Read and common platform-specific read variants (NotebookRead, mcp__ide__read, etc.)
+      if (
+        call.toolName === 'Read' ||
+        call.toolName === 'NotebookRead' ||
+        call.toolName.toLowerCase().includes('read')
+      ) {
         const file = call.filePath as string | undefined;
         if (file) {
           readCounts.set(file, (readCounts.get(file) ?? 0) + 1);
@@ -300,7 +305,7 @@ export class AntiPatternDetector {
       }
     }
 
-    if (agentCount > this.overDelegationThreshold) {
+    if (agentCount >= this.overDelegationThreshold) {
       return [
         {
           type: 'over_delegation',

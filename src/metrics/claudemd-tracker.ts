@@ -60,11 +60,11 @@ export interface ClaudeMdImpactReport {
   readonly beforeMetrics: AggregateMetrics;
   readonly afterMetrics: AggregateMetrics;
   readonly deltas: {
-    readonly efficiencyScore: MetricDelta;
+    readonly efficiencyScore: MetricDelta | null;
     readonly cost: MetricDelta;
     readonly correctionRate: MetricDelta;
     readonly toolCallsPerTask: MetricDelta;
-    readonly taskSuccessRate: MetricDelta;
+    readonly taskSuccessRate: MetricDelta | null;
   };
   readonly contextTokensForClaudeMd: number | null;
   readonly verdict: string;
@@ -178,10 +178,11 @@ export class ClaudeMdTracker {
 
   /**
    * Detect whether CLAUDE.md changed between sessions by comparing hashes.
-   * Returns true if previousHash is null (first session) or hashes differ.
+   * Returns true if hashes differ. Returns false when previousHash is null
+   * (first session ever — no prior state to compare against, so no change).
    */
   static detectBetweenSessionChange(previousHash: string | null, currentHash: string): boolean {
-    if (previousHash === null) return true;
+    if (previousHash === null) return false;
     return previousHash !== currentHash;
   }
 
@@ -204,11 +205,10 @@ export class ClaudeMdTracker {
     const afterMetrics = aggregateSessions(afterSessions);
 
     const deltas = {
-      efficiencyScore: computeDelta(
-        beforeMetrics.avgEfficiencyScore ?? 0,
-        afterMetrics.avgEfficiencyScore ?? 0,
-        true, // higher is better
-      ),
+      efficiencyScore:
+        beforeMetrics.avgEfficiencyScore !== null && afterMetrics.avgEfficiencyScore !== null
+          ? computeDelta(beforeMetrics.avgEfficiencyScore, afterMetrics.avgEfficiencyScore, true)
+          : null,
       cost: computeDelta(
         beforeMetrics.avgCostUsd,
         afterMetrics.avgCostUsd,
@@ -224,11 +224,10 @@ export class ClaudeMdTracker {
         afterMetrics.avgToolCallsPerTask,
         false, // lower is better
       ),
-      taskSuccessRate: computeDelta(
-        beforeMetrics.avgTaskSuccessRate ?? 0,
-        afterMetrics.avgTaskSuccessRate ?? 0,
-        true, // higher is better
-      ),
+      taskSuccessRate:
+        beforeMetrics.avgTaskSuccessRate !== null && afterMetrics.avgTaskSuccessRate !== null
+          ? computeDelta(beforeMetrics.avgTaskSuccessRate, afterMetrics.avgTaskSuccessRate, true)
+          : null,
     };
 
     // Estimate context tokens from the actual file size
@@ -322,11 +321,13 @@ export class ClaudeMdTracker {
       const latest = this.changes[this.changes.length - 1]!;
       const report = this.getCachedImpact(latest.timestamp);
 
-      aggregator.record(
-        'ai.claudemd.post_change_efficiency_delta',
-        report.deltas.efficiencyScore.value,
-        { filePath: latest.filePath, changeType: latest.changeType },
-      );
+      if (report.deltas.efficiencyScore !== null) {
+        aggregator.record(
+          'ai.claudemd.post_change_efficiency_delta',
+          report.deltas.efficiencyScore.value,
+          { filePath: latest.filePath, changeType: latest.changeType },
+        );
+      }
       aggregator.record('ai.claudemd.post_change_cost_delta', report.deltas.cost.value, {
         filePath: latest.filePath,
         changeType: latest.changeType,
@@ -415,11 +416,15 @@ function computeDelta(
 
 function generateVerdict(deltas: ClaudeMdImpactReport['deltas']): string {
   const entries: Array<{ name: string; delta: MetricDelta }> = [
-    { name: 'efficiency', delta: deltas.efficiencyScore },
+    ...(deltas.efficiencyScore !== null
+      ? [{ name: 'efficiency', delta: deltas.efficiencyScore }]
+      : []),
     { name: 'cost', delta: deltas.cost },
     { name: 'corrections', delta: deltas.correctionRate },
     { name: 'tool calls/task', delta: deltas.toolCallsPerTask },
-    { name: 'task success', delta: deltas.taskSuccessRate },
+    ...(deltas.taskSuccessRate !== null
+      ? [{ name: 'task success', delta: deltas.taskSuccessRate }]
+      : []),
   ];
 
   const improved = entries.filter((e) => e.delta.improved);

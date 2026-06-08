@@ -128,8 +128,10 @@ export class CostPerOutcomeAnalyzer {
       }
     }
 
-    // Priority 1: failed_attempt — tests failed and never recovered
-    if (hasTestFailure && !hasTestPassAfterEdit) {
+    // Priority 1: failed_attempt — tests failed and never recovered.
+    // Exclude tasks that also created new files; those are better classified
+    // as feature/refactor attempts that happen to have failing tests.
+    if (hasTestFailure && !hasTestPassAfterEdit && !hasWriteNewFile) {
       return 'failed_attempt';
     }
 

@@ -105,6 +105,12 @@ export const FORWARDED_HEADER_PREFIXES = [
 export function shouldForwardHeader(name: string): boolean {
   const lower = name.toLowerCase();
   if (FORWARDED_HEADER_PREFIXES.includes(lower)) return true;
+  // Block x-forwarded-* and x-real-* headers — upstream services that trust
+  // these for authentication or rate-limiting can be spoofed by a client that
+  // sets them on the inbound request. The proxy will re-add its own if needed.
+  if (lower === 'x-forwarded-for' || lower === 'x-forwarded-host' || lower === 'x-real-ip') {
+    return false;
+  }
   if (lower.startsWith('x-')) return true;
   return false;
 }

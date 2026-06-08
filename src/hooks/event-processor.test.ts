@@ -445,15 +445,17 @@ describe('HookEventProcessor', () => {
         processor.processEvents([makePreEvent({ toolUseId: `toolu_${i}`, timestamp: 1000 + i })]);
       }
 
-      // Adding a 4th evicts toolu_0 (the oldest)
+      // Adding a 4th evicts toolu_0 (the oldest) and emits a synthetic timeout record
       processor.processEvents([makePreEvent({ toolUseId: 'toolu_3', timestamp: 1003 })]);
 
       expect(processor.pendingCount).toBe(3);
-
-      // toolu_0 was evicted, so its post produces an orphaned-post record
-      processor.processEvents([makePostEvent({ toolUseId: 'toolu_0', timestamp: 2000 })]);
       expect(records).toHaveLength(1);
-      expect(records[0]!.durationMs).toBeNull(); // orphaned post — no matching pre
+      expect(records[0]!.errorType).toBe('timeout'); // eviction emits a timeout record
+
+      // toolu_0's post produces an orphaned-post record (no matching pre in pending)
+      processor.processEvents([makePostEvent({ toolUseId: 'toolu_0', timestamp: 2000 })]);
+      expect(records).toHaveLength(2);
+      expect(records[1]!.durationMs).toBeNull(); // orphaned post — no matching pre
 
       // toolu_1 through toolu_3 still pair normally
       records.length = 0;
@@ -623,8 +625,13 @@ describe('HookEventProcessor', () => {
       processor.processEvents([makePostEvent({ toolUseId: 'toolu_mid' })]);
       processor.processEvents([makePostEvent({ toolUseId: 'toolu_newest' })]);
 
-      // Should have 3 completed records (the old one was orphaned and dropped)
-      expect(records).toHaveLength(3);
+      // Should have 4 records: 1 timeout for the evicted old entry + 3 successful completions
+      expect(records).toHaveLength(4);
+      const timeoutRecord = records.find((r) => r.errorType === 'timeout');
+      expect(timeoutRecord).toBeDefined();
+      expect(timeoutRecord!.toolUseId).toBe('toolu_old');
+      const completions = records.filter((r) => r.errorType !== 'timeout');
+      expect(completions).toHaveLength(3);
     });
   });
 

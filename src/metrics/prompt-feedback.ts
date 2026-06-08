@@ -284,7 +284,7 @@ export class PromptFeedbackEngine {
           category: 'claudemd_impact',
           message:
             'Recent CLAUDE.md update had a negative impact on metrics. Consider reverting or refining the changes',
-          evidence: `${impact.verdict}. Cost changed by ${impact.deltas.cost.percentChange ?? 'N/A'}%, efficiency by ${impact.deltas.efficiencyScore.percentChange ?? 'N/A'}%`,
+          evidence: `${impact.verdict}. Cost changed by ${impact.deltas.cost.percentChange ?? 'N/A'}%, efficiency by ${impact.deltas.efficiencyScore?.percentChange ?? 'N/A'}%`,
           estimatedImpact: `Reverting could save ~${costPct}% on costs`,
           priority: 'high',
         });
@@ -342,12 +342,15 @@ function cohensD(groupA: number[], groupB: number[]): number {
   const nA = groupA.length;
   const nB = groupB.length;
 
-  if (nA + nB < 2) return 0;
+  // Need at least 3 samples total so denominator (nA+nB-2) > 0; with exactly
+  // nA=1,nB=1 the denominator is 0 and pooledVariance = 0/0 = NaN which the
+  // pooledSd===0 guard below cannot catch.
+  if (nA + nB < 3) return 0;
 
   const pooledVariance = ((nA - 1) * sdA * sdA + (nB - 1) * sdB * sdB) / (nA + nB - 2);
   const pooledSd = Math.sqrt(pooledVariance);
 
-  if (pooledSd === 0) return 0;
+  if (pooledSd === 0 || !isFinite(pooledSd)) return 0;
 
   return Math.abs(meanB - meanA) / pooledSd;
 }

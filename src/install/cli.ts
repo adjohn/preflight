@@ -17,7 +17,7 @@ import {
   copyFileSync,
   realpathSync,
 } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import {
   mergeSettings,
@@ -60,15 +60,18 @@ function writeJsonFile(path: string, data: Record<string, unknown>): void {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
 
-  // Symlink guard: verify the resolved parent directory is under HOME or cwd.
-  // Prevents a symlink at ~/.claude/ from redirecting writes to a sensitive location.
+  // Symlink guard: verify both the resolved parent directory AND the resolved
+  // target file path are under HOME or cwd. Checking only the directory misses
+  // the case where the file itself (e.g. settings.json) is a symlink pointing
+  // outside HOME (e.g. to /etc/cron.d/evil).
   const resolvedDir = realpathSync(dir);
+  const resolvedPath = existsSync(path) ? realpathSync(path) : resolve(resolvedDir, basename(path));
   const home = homedir();
   const cwd = process.cwd();
-  const underHome = resolvedDir === home || resolvedDir.startsWith(home + sep);
-  const underCwd = resolvedDir === cwd || resolvedDir.startsWith(cwd + sep);
-  if (!underHome && !underCwd) {
-    throw new Error(`Refusing to write outside HOME or project root: ${resolvedDir}`);
+  const check = (p: string) =>
+    p === home || p.startsWith(home + sep) || p === cwd || p.startsWith(cwd + sep);
+  if (!check(resolvedDir) || !check(resolvedPath)) {
+    throw new Error(`Refusing to write outside HOME or project root: ${resolvedPath}`);
   }
 
   const tmp = path + '.tmp';
@@ -218,14 +221,30 @@ function handleInstall(options: {
 
   // Hooks go in settings.json
   const settingsPath = detectSettingsPath(scope);
-  const existingSettings = readJsonFile(settingsPath);
-  const mergedSettings = mergeSettings(existingSettings);
+  let mergedSettings: ReturnType<typeof mergeSettings>;
+  try {
+    const existingSettings = readJsonFile(settingsPath);
+    mergedSettings = mergeSettings(existingSettings);
+  } catch (err) {
+    console.error(
+      `✗ Failed to update ${settingsPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exit(1);
+  }
   writeJsonFile(settingsPath, mergedSettings);
 
   // MCP server goes in .mcp.json
   const mcpPath = detectMcpConfigPath(scope);
-  const existingMcp = readJsonFile(mcpPath);
-  const mergedMcp = mergeMcpConfig(existingMcp);
+  let mergedMcp: ReturnType<typeof mergeMcpConfig>;
+  try {
+    const existingMcp = readJsonFile(mcpPath);
+    mergedMcp = mergeMcpConfig(existingMcp);
+  } catch (err) {
+    console.error(
+      `✗ Failed to update ${mcpPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exit(1);
+  }
   writeJsonFile(mcpPath, mergedMcp);
 
   print(`\n✓ Claude Code hooks updated: ${settingsPath}`);
@@ -325,8 +344,13 @@ export function createInstallProgram(): Command {
       'Interactive first-run setup: configure New Relic keys, install hooks, and deploy dashboards',
     )
     .action(async () => {
-      const { runSetupWizard } = await import('./setup-wizard.js');
-      await runSetupWizard();
+      try {
+        const { runSetupWizard } = await import('./setup-wizard.js');
+        await runSetupWizard();
+      } catch (err) {
+        print(`\n✗ Setup failed: ${err instanceof Error ? err.message : String(err)}`);
+        process.exitCode = 1;
+      }
     });
 
   program

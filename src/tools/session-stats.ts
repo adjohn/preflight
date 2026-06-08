@@ -233,13 +233,15 @@ export function handleGetSessionStats(sessionTracker: SessionTracker, sessionTra
   };
 
   return {
+    _stats: stats, // raw object for callers that need to merge without re-parsing
     content: [{ type: 'text' as const, text: JSON.stringify(stats, null, 2) }],
   };
 }
 
 export function handleGetSessionTimeline(sessionTracker: SessionTracker, lastN: number = 20) {
   const metrics = sessionTracker.getMetrics();
-  const entries = metrics.toolCallTimeline.slice(-lastN);
+  const safeN = Math.max(1, Math.min(Math.floor(lastN), 10_000));
+  const entries = metrics.toolCallTimeline.slice(-safeN);
 
   const timeline = entries.map((entry) => ({
     timestamp: new Date(entry.timestamp).toISOString(),
@@ -604,7 +606,8 @@ export function registerTools(server: Server, options: ToolRegistrationOptions):
             };
           }
           const result = handleGetSessionStats(sessionTracker, sessionTraceId);
-          const stats = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+          // Use the raw stats object directly to avoid a JSON parse/stringify round-trip.
+          const stats = result._stats;
           return {
             content: [
               {

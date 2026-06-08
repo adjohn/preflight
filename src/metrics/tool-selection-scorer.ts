@@ -175,26 +175,24 @@ export class ToolSelectionScorer {
 
   private findRepeatedFailures(toolCalls: readonly ToolCallRecord[]): ToolSelectionPenalty[] {
     const penalties: ToolSelectionPenalty[] = [];
-    const failuresByTool = new Map<string, string[]>();
+    // Track consecutive failures: reset streak when the tool succeeds or a
+    // different tool is called. Only penalize back-to-back failures.
+    const consecutiveFailures = new Map<string, number>();
 
     for (const call of toolCalls) {
-      if (call.success) continue;
-      const key = call.toolName;
-      const ids = failuresByTool.get(key) ?? [];
-      ids.push(call.id);
-      failuresByTool.set(key, ids);
-    }
-
-    for (const [tool, ids] of failuresByTool) {
-      if (ids.length <= 1) continue;
-      // Penalize consecutive failures after the first
-      for (let i = 1; i < ids.length; i++) {
+      if (call.success) {
+        consecutiveFailures.set(call.toolName, 0);
+        continue;
+      }
+      const streak = (consecutiveFailures.get(call.toolName) ?? 0) + 1;
+      consecutiveFailures.set(call.toolName, streak);
+      if (streak > 1) {
         penalties.push({
-          callId: ids[i],
-          toolName: tool,
+          callId: call.id,
+          toolName: call.toolName,
           reason: 'repeated_failure',
           penaltyScore: this.repeatedFailurePenalty,
-          detail: `Repeated failure of ${tool} (failure #${i + 1} of ${ids.length})`,
+          detail: `Consecutive failure of ${call.toolName} (${streak} in a row)`,
         });
       }
     }

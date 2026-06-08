@@ -346,11 +346,13 @@ export class AlertSnapshotCollector {
 
   private pruneOlderThan<T extends { ts: number }>(buf: T[], cutoff: number): void {
     if (buf.length === 0) return;
-    let removeUntil = 0;
-    while (removeUntil < buf.length && buf[removeUntil]!.ts < cutoff) {
-      removeUntil++;
+    // Use filter to handle occasional out-of-order entries (late-arriving hook events).
+    // Linear scan from index 0 would stop at the first in-range entry and leave
+    // out-of-order stale entries further in the array.
+    const filtered = buf.filter((e) => e.ts >= cutoff);
+    if (filtered.length < buf.length) {
+      buf.splice(0, buf.length, ...filtered);
     }
-    if (removeUntil > 0) buf.splice(0, removeUntil);
   }
 
   // ---------------------------------------------------------------------------

@@ -225,11 +225,12 @@ describe('SessionStore', () => {
     expect(files[0]).toMatch(/^\d{4}-\d{2}-\d{2}_pattern-test\.json$/);
   });
 
-  it('loadTodaySessions returns only sessions from today UTC', () => {
+  it('loadTodaySessions returns only sessions from today (local midnight)', () => {
     const store = new SessionStore({ storagePath: tmpDir });
 
+    // Use local midnight so the boundary is correct for any timezone
     const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
     const todayMs = today.getTime();
 
     store.saveSession(

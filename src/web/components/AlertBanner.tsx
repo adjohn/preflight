@@ -50,7 +50,7 @@ export function AlertBanner({ alert, onDismiss }: AlertBannerProps): JSX.Element
     }
   };
 
-  const titleId = `alert-title-${alert.id}`;
+  const titleId = `alert-title-${String(alert.id).replace(/[^a-zA-Z0-9-_]/g, '_')}`;
   return (
     <div
       role={ariaRole(alert.severity)}

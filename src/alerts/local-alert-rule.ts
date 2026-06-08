@@ -29,7 +29,7 @@ const baseShape = {
   name: z.string().min(1),
   severity: severitySchema,
   enabled: z.boolean().default(true),
-  threshold: z.number(),
+  threshold: z.number().finite(),
   operator: operatorSchema,
   deduplicateSeconds: z.number().min(0).default(300),
   description: z.string().optional(),
@@ -68,6 +68,9 @@ const costWindowRuleSchema = z.object({
 
 const efficiencyBelowRuleSchema = z.object({
   ...baseShape,
+  // Override operator default: efficiency.below should fire when score is
+  // below the threshold, not above it (which is the baseShape default).
+  operator: operatorSchema.default('below'),
   type: z.literal('efficiency.below'),
   windowSeconds: windowSecondsSchema,
 });

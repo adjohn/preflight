@@ -61,8 +61,11 @@ export function Replay(): JSX.Element {
     queryFn: () => fetchSessionCurrent() as Promise<{ sessionId: string; liveSessions?: string[] }>,
   });
 
+  // Use || not ?? — includes() returns boolean (never null/undefined), so
+  // ?? would only fall through when liveSessions is absent (undefined); but
+  // with || the fallback fires correctly whenever includes() returns false.
   const isLive =
-    currentSession.data?.liveSessions?.includes(sessionId) ??
+    currentSession.data?.liveSessions?.includes(sessionId) ||
     currentSession.data?.sessionId === sessionId;
 
   const { data, isLoading, error } = useQuery<ReplayData>({
@@ -73,6 +76,9 @@ export function Replay(): JSX.Element {
     refetchInterval: isLive ? LIVE_REFETCH_MS : false,
   });
 
+  // The !sessionId check must come before !data, otherwise the disabled
+  // query (enabled=false) sets isLoading=false and data=undefined, and
+  // !data returns an empty fragment before this message is ever reached.
   if (!sessionId) {
     return <div className="text-ink-muted text-xs">No session ID provided.</div>;
   }
@@ -93,6 +99,8 @@ export function Replay(): JSX.Element {
     );
   }
 
+  // When sessionId is empty the query is disabled (data=undefined, isLoading=false).
+  // The !sessionId guard above catches that path before we reach here.
   if (!data) return <></>;
 
   return (
@@ -298,7 +306,10 @@ function buildSegmentLookup(length: number, segments: Segment[]): (Segment | nul
   const lookup: (Segment | null)[] = new Array(length).fill(null);
   for (const seg of segments) {
     for (let i = seg.startIndex; i <= Math.min(seg.endIndex, length - 1); i++) {
-      if (lookup[i] === null || seg.severity === 'critical') {
+      if (
+        lookup[i] === null ||
+        (seg.severity === 'critical' && lookup[i]!.severity !== 'critical')
+      ) {
         lookup[i] = seg;
       }
     }

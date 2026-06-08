@@ -84,6 +84,7 @@ export class LogIngestManager {
   private readonly harvestIntervalMs: number;
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private running = false;
+  private inFlightFlush: Promise<void> | null = null;
 
   constructor(options: LogIngestOptions) {
     this.licenseKey = options.licenseKey;
@@ -107,7 +108,9 @@ export class LogIngestManager {
     this.running = true;
 
     this.intervalId = setInterval(() => {
-      void this.flush();
+      this.inFlightFlush = this.flush().finally(() => {
+        this.inFlightFlush = null;
+      });
     }, this.harvestIntervalMs);
     this.intervalId.unref();
   }
@@ -121,6 +124,9 @@ export class LogIngestManager {
       this.intervalId = null;
     }
 
+    // Wait for any in-flight periodic flush to finish before draining the
+    // final batch, so a concurrent requeueBatch() doesn't lose entries.
+    if (this.inFlightFlush) await this.inFlightFlush.catch(() => {});
     await this.flush();
   }
 
@@ -133,11 +139,26 @@ export class LogIngestManager {
     try {
       const result = await this.sendLogsFn(batch, this.licenseKey, this.transportOptions);
       if (!result.success) {
-        logger.warn('Failed to send logs — re-queuing batch for retry', {
-          batchSize: batch.length,
-          error: result.error,
-        });
-        this.requeueBatch(batch);
+        // Drop non-retryable 4xx (auth failure, bad payload) — re-queuing
+        // would fill the buffer indefinitely with entries that will never succeed.
+        const isNonRetryable =
+          result.statusCode !== null &&
+          result.statusCode >= 400 &&
+          result.statusCode < 500 &&
+          result.statusCode !== 408 &&
+          result.statusCode !== 429;
+        if (isNonRetryable) {
+          logger.warn('Dropping non-retryable log batch', {
+            statusCode: result.statusCode,
+            batchSize: batch.length,
+          });
+        } else {
+          logger.warn('Failed to send logs — re-queuing batch for retry', {
+            batchSize: batch.length,
+            error: result.error,
+          });
+          this.requeueBatch(batch);
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -150,7 +171,8 @@ export class LogIngestManager {
   }
 
   private requeueBatch(batch: NrLogEntry[]): void {
-    this.buffer = [...this.buffer, ...batch];
+    // Prepend failed batch so it retries before any new entries (FIFO order)
+    this.buffer = [...batch, ...this.buffer];
     if (this.buffer.length > this.maxBufferSize) {
       const dropped = this.buffer.length - this.maxBufferSize;
       this.buffer = this.buffer.slice(-this.maxBufferSize);

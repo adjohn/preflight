@@ -23,7 +23,7 @@ const CHERRY_PICK_ABORT_RE = /\bgit\s+cherry-pick\s+--abort\b/;
 const GIT_PULL_RE = /\bgit\s+pull\b/;
 const GIT_FETCH_RE = /\bgit\s+fetch\b/;
 const GIT_PUSH_RE = /\bgit\s+push\b/;
-const GIT_PUSH_FORCE_RE = /\bgit\s+push\s+.*--force\b|\bgit\s+push\s+-f\b/;
+const GIT_PUSH_FORCE_RE = /\bgit\s+push\s+.*--force(?!-)|\bgit\s+push\s+-f\b/;
 const GIT_PUSH_FORCE_LEASE_RE = /--force-with-lease\b/;
 const GIT_MERGE_RE = /\bgit\s+merge\b/;
 const GIT_REBASE_RE = /\bgit\s+rebase\b/;
@@ -240,7 +240,6 @@ export class GitEfficiencyTracker {
   private lastBuildOrTestTimestamp: number | null = null;
   private lastPushTimestamp: number | null = null;
   private buildBeforePush: boolean | null = null;
-  private testBeforePush: boolean | null = null;
   private commitsAheadOfMain: number | null = null;
   private commitsBehindMain: number | null = null;
   private quickConflictResolutions = 0;
@@ -278,8 +277,9 @@ export class GitEfficiencyTracker {
     const command = record.command as string | undefined;
     if (!command) return;
 
-    // Track GitHub CLI PR commands (skip if gh appears inside a commit message)
-    if (GH_COMMAND_RE.test(command) && !GIT_COMMIT_RE.test(command)) {
+    // Track GitHub CLI PR commands (skip if `git commit` is the *command*, not
+    // text that happens to appear inside a gh argument like --title).
+    if (GH_COMMAND_RE.test(command) && !command.trimStart().startsWith('git ')) {
       this.processGhCommand(command, record.timestamp);
     }
 
@@ -331,7 +331,7 @@ export class GitEfficiencyTracker {
     if (created > 0 && this.firstCommitTimestamp !== null) {
       const firstCreate = this.prEvents.find((e) => e.action === 'create');
       if (firstCreate) {
-        avgTimeToCreateMs = firstCreate.timestamp - this.firstCommitTimestamp;
+        avgTimeToCreateMs = Math.max(0, firstCreate.timestamp - this.firstCommitTimestamp);
       }
     }
 
@@ -362,7 +362,8 @@ export class GitEfficiencyTracker {
       if (!isDuplicate) {
         this.events.push(event);
         this.commitTimestamps.push(commit.timestamp);
-        this.commitsSinceLastSync++;
+        // Don't increment commitsSinceLastSync for historical commits — this counter
+        // tracks real-time session activity, not replayed history.
       }
     }
   }
@@ -519,7 +520,6 @@ export class GitEfficiencyTracker {
     this.lastBuildOrTestTimestamp = null;
     this.lastPushTimestamp = null;
     this.buildBeforePush = null;
-    this.testBeforePush = null;
     this.commitsAheadOfMain = null;
     this.commitsBehindMain = null;
     this.quickConflictResolutions = 0;
@@ -614,7 +614,14 @@ export class GitEfficiencyTracker {
         break;
 
       case 'commit': {
-        // git commit --amend fixes a prior commit, not a merge conflict
+        // git commit --amend fixes a prior commit, not a merge conflict.
+        // Clear the pending conflict on amend so the *next* normal commit
+        // doesn't see a stale pendingConflictTimestamp (potentially hours old).
+        if (command.includes('--amend')) {
+          this.pendingConflictTimestamp = null;
+          this.pendingConflictCommand = '';
+          this.pendingConflictFiles = [];
+        }
         if (this.pendingConflictTimestamp !== null && !command.includes('--amend')) {
           const resolutionMs = event.timestamp - this.pendingConflictTimestamp;
           this.conflictRecords.push({
@@ -656,16 +663,22 @@ export class GitEfficiencyTracker {
         this.statusChecksSinceLastAction = 0;
         break;
 
-      case 'push':
+      case 'push': {
+        // buildBeforePush is only meaningful if the build/test happened AFTER the
+        // most recent commit — a stale test from session start with many commits
+        // in between doesn't protect the pushed code.
+        const lastCommitTs =
+          this.commitTimestamps.length > 0
+            ? this.commitTimestamps[this.commitTimestamps.length - 1]!
+            : null;
         this.lastPushTimestamp = event.timestamp;
-        if (this.lastBuildOrTestTimestamp !== null) {
-          this.buildBeforePush = true;
-        } else {
-          this.buildBeforePush = false;
-        }
+        this.buildBeforePush =
+          this.lastBuildOrTestTimestamp !== null &&
+          (lastCommitTs === null || this.lastBuildOrTestTimestamp > lastCommitTs);
         this.consecutiveFailedPushes = 0;
         this.statusChecksSinceLastAction = 0;
         break;
+      }
 
       case 'push_rejected':
         this.pushRejections++;
@@ -682,7 +695,15 @@ export class GitEfficiencyTracker {
           this.forceAfterReject++;
         }
         this.lastPushTimestamp = event.timestamp;
-        this.buildBeforePush = this.lastBuildOrTestTimestamp !== null;
+        {
+          const lastCt =
+            this.commitTimestamps.length > 0
+              ? this.commitTimestamps[this.commitTimestamps.length - 1]!
+              : null;
+          this.buildBeforePush =
+            this.lastBuildOrTestTimestamp !== null &&
+            (lastCt === null || this.lastBuildOrTestTimestamp > lastCt);
+        }
         this.consecutiveFailedPushes = 0;
         this.statusChecksSinceLastAction = 0;
         break;
@@ -690,7 +711,15 @@ export class GitEfficiencyTracker {
       case 'force_push_lease':
         this.hasUsedForceWithLease = true;
         this.lastPushTimestamp = event.timestamp;
-        this.buildBeforePush = this.lastBuildOrTestTimestamp !== null;
+        {
+          const lastCt =
+            this.commitTimestamps.length > 0
+              ? this.commitTimestamps[this.commitTimestamps.length - 1]!
+              : null;
+          this.buildBeforePush =
+            this.lastBuildOrTestTimestamp !== null &&
+            (lastCt === null || this.lastBuildOrTestTimestamp > lastCt);
+        }
         this.consecutiveFailedPushes = 0;
         this.statusChecksSinceLastAction = 0;
         break;
@@ -745,7 +774,7 @@ export class GitEfficiencyTracker {
         : null;
 
     const sessionDurationMs =
-      this.sessionStartTimestamp !== null ? Date.now() - this.sessionStartTimestamp : null;
+      this.sessionStartTimestamp !== null ? now - this.sessionStartTimestamp : null;
 
     return {
       syncedBeforeEditing,
@@ -1267,13 +1296,13 @@ export class GitEfficiencyTracker {
         gaps.push(sorted[i] - sorted[i - 1]);
       }
       avgTimeBetweenCommitsMs = gaps.reduce((a, b) => a + b, 0) / gaps.length;
-      longestGapMs = Math.max(...gaps);
-      // A "burst" is 3+ commits within 2 minutes of each other
+      longestGapMs = gaps.reduce((max, g) => (g > max ? g : max), 0);
+      // A "burst" is 3+ commits within 2 minutes of each other; count once per burst
       let consecutive = 1;
       for (let i = 1; i < sorted.length; i++) {
         if (sorted[i] - sorted[i - 1] < 120_000) {
           consecutive++;
-          if (consecutive >= 3) commitBurstCount++;
+          if (consecutive === 3) commitBurstCount++;
         } else {
           consecutive = 1;
         }
@@ -1286,10 +1315,9 @@ export class GitEfficiencyTracker {
       longestGapMs,
       worktreeCount: this.worktreeCommands,
       buildBeforePush: this.buildBeforePush,
-      testBeforePush:
-        this.lastBuildOrTestTimestamp !== null && this.lastPushTimestamp !== null
-          ? this.lastBuildOrTestTimestamp < this.lastPushTimestamp
-          : null,
+      // Use the push-time snapshot rather than comparing current timestamps, which go
+      // stale when new builds run after the push.
+      testBeforePush: this.buildBeforePush,
     };
   }
 

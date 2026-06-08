@@ -19,7 +19,7 @@ const BLOCKED_METADATA_IPS = new Set(['100.100.100.200']);
 // Supports both decimal IPv4 and hex-normalized IPv6-mapped formats (Node.js normalizes ::ffff:127.0.0.1 to ::ffff:7f00:1).
 // Node.js URL.hostname returns IPv6 addresses with brackets (e.g. [::1]).
 const BLOCKED_HOST_RE =
-  /^(?:\[)?(?:127\.(?:\d{1,3}\.)*\d{1,3}|10\.(?:\d{1,3}\.)*\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.(?:\d{1,3}\.)*\d{1,3}|192\.168\.(?:\d{1,3}\.)*\d{1,3}|169\.254\.(?:\d{1,3}\.)*\d{1,3}|(?:22[4-9]|23[0-9])\.(?:\d{1,3}\.)*\d{1,3}|::1|::|::ffff:(?:7f(?:00)?|0?a00|ac1[0-9a-f]|c0a8|a9fe)[0-9a-f]*:[0-9a-f]+|::ffff:(?:127|10|172\.(?:1[6-9]|2\d|3[01])|192\.168|169\.254)\.(?:\d{1,3}\.)*\d{1,3}|fc[0-9a-f]{2}:[0-9a-f:]*|fd[0-9a-f]{2}:[0-9a-f:]*|fe[89ab][0-9a-f]:[0-9a-f:]*|0\.0\.0\.0|localhost)(?:\])?$/i;
+  /^(?:\[)?(?:127\.(?:\d{1,3}\.)*\d{1,3}|10\.(?:\d{1,3}\.)*\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.(?:\d{1,3}\.)*\d{1,3}|192\.168\.(?:\d{1,3}\.)*\d{1,3}|169\.254\.(?:\d{1,3}\.)*\d{1,3}|(?:22[4-9]|23[0-9])\.(?:\d{1,3}\.)*\d{1,3}|::1|::|::ffff:(?:7f[0-9a-f]{2}|0a[0-9a-f]{2}|ac1[0-9a-f]|c0a8|a9fe)[0-9a-f]*:[0-9a-f]+|fc[0-9a-f]{2}:[0-9a-f:]*|fd[0-9a-f]{2}:[0-9a-f:]*|fe[89ab][0-9a-f]:[0-9a-f:]*|0\.0\.0\.0|localhost)(?:\])?$/i;
 
 // Extracts embedded IPv4 from IPv6-mapped address. Returns null if not a valid mapped address.
 // Handles both decimal form (::ffff:127.0.0.1) and hex-normalized form (::ffff:7f00:1).

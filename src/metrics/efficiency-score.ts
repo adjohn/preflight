@@ -164,6 +164,11 @@ export class EfficiencyScorer {
 
     if (idx >= 0) {
       this.scores[idx] = result;
+      // Reset emit pointer so the updated score gets re-emitted on the next
+      // emitMetrics() call — previously it was silently dropped if already emitted.
+      if (idx < this.lastEmittedIndex) {
+        this.lastEmittedIndex = idx;
+      }
     } else {
       this.appendScore(result);
     }

@@ -157,6 +157,7 @@ interface LiveSessionMetrics {
     readonly timestamp: number;
     readonly toolName: string;
     readonly durationMs: number | null;
+    readonly success: boolean;
   }>;
 }
 
@@ -243,7 +244,13 @@ function buildReplayResponse(sessionId: string, deps: ApiHandlerDeps): unknown |
   if (deps.sessionStore) {
     const session = deps.sessionStore.loadSession(sessionId) as Record<string, unknown> | null;
     if (session && Array.isArray(session['timeline'])) {
-      const timeline = session['timeline'] as ReplayTimelineEntry[];
+      const rawTimeline = session['timeline'] as ReplayTimelineEntry[];
+      // Redact sensitive fields before sending to the browser
+      const timeline = rawTimeline.map((e) => ({
+        ...e,
+        filePath: e.filePath ? redactSensitive(String(e.filePath)) : undefined,
+        command: e.command ? redactSensitive(String(e.command)) : undefined,
+      }));
       const analysis = analyzeReplayTimeline(timeline);
       return {
         sessionId,
@@ -403,8 +410,9 @@ export function createApiHandler(
     }
     try {
       deps.weeklySummaryGenerator.generate(getIsoWeekId(new Date()));
-    } catch {
-      /* best-effort */
+    } catch (err) {
+      // best-effort — failure here means stale weekly data is returned, not a 500
+      console.error('Weekly summary generation failed', err);
     }
     jsonOk(res, deps.weeklySummaryGenerator.loadRecentWeeks(count));
   });
@@ -484,118 +492,127 @@ export function createApiHandler(
   });
 
   return async (req, res) => {
-    const path = (req.url ?? '/').split('?')[0] ?? '/';
-    const key = `${req.method ?? 'GET'} ${path}`;
-    const fn = routes.get(key);
-    if (fn) {
-      await fn(req, res);
-      return;
-    }
-
-    // Try dynamic routes
-    const replayMatch = /^\/api\/sessions\/([A-Za-z0-9_-]{1,128})\/replay$/.exec(path);
-    if (req.method === 'GET' && replayMatch) {
-      const sessionId = replayMatch[1]!;
-      const replay = buildReplayResponse(sessionId, deps);
-      if (replay === null) {
-        res.writeHead(404, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ error: 'no_replay_data' }));
+    try {
+      const path = (req.url ?? '/').split('?')[0] ?? '/';
+      const key = `${req.method ?? 'GET'} ${path}`;
+      const fn = routes.get(key);
+      if (fn) {
+        await fn(req, res);
         return;
       }
-      jsonOk(res, replay);
-      return;
-    }
 
-    const sessionIdMatch = /^\/api\/sessions\/([A-Za-z0-9_-]{1,128})$/.exec(path);
-    if (req.method === 'GET' && sessionIdMatch) {
-      const sessionId = sessionIdMatch[1]!;
-      if (!deps.sessionStore) return unavailable(res, 'sessionStore');
-      const session = deps.sessionStore.loadSession(sessionId);
-      if (session !== null) {
-        jsonOk(res, session);
+      // Try dynamic routes
+      const replayMatch = /^\/api\/sessions\/([A-Za-z0-9_-]{1,128})\/replay$/.exec(path);
+      if (req.method === 'GET' && replayMatch) {
+        const sessionId = replayMatch[1]!;
+        const replay = buildReplayResponse(sessionId, deps);
+        if (replay === null) {
+          res.writeHead(404, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'no_replay_data' }));
+          return;
+        }
+        jsonOk(res, replay);
         return;
       }
-      // Not persisted — check if it's the current live session
-      if (deps.sessionTracker) {
-        const live = deps.sessionTracker.getMetrics();
-        if (live.sessionId === sessionId) {
-          const costMetrics = deps.costTracker?.getMetrics();
-          const costUsd = costMetrics?.sessionTotalCostUsd ?? null;
-          const model = costMetrics?.model ?? null;
-          const antiPatterns = deps.antiPatternDetector
-            ? (deps.antiPatternDetector.getCurrentPatterns() as Array<{
-                type: string;
-                count: number;
-              }>)
-            : [];
+
+      const sessionIdMatch = /^\/api\/sessions\/([A-Za-z0-9_-]{1,128})$/.exec(path);
+      if (req.method === 'GET' && sessionIdMatch) {
+        const sessionId = sessionIdMatch[1]!;
+        if (!deps.sessionStore) return unavailable(res, 'sessionStore');
+        const session = deps.sessionStore.loadSession(sessionId);
+        if (session != null) {
+          jsonOk(res, session);
+          return;
+        }
+        // Not persisted — check if it's the current live session
+        if (deps.sessionTracker) {
+          const live = deps.sessionTracker.getMetrics();
+          if (live.sessionId === sessionId) {
+            const costMetrics = deps.costTracker?.getMetrics();
+            const costUsd = costMetrics?.sessionTotalCostUsd ?? null;
+            const model = costMetrics?.model ?? null;
+            const antiPatterns = deps.antiPatternDetector
+              ? (deps.antiPatternDetector.getCurrentPatterns() as Array<{
+                  type: string;
+                  count: number;
+                }>)
+              : [];
+            jsonOk(res, {
+              sessionId: live.sessionId,
+              sessionName: live.sessionName ?? null,
+              startTime: live.sessionStartTime,
+              durationMs: live.sessionDurationMs,
+              toolCallCount: live.toolCallCount,
+              estimatedCostUsd: costUsd,
+              model,
+              outcome: 'in progress',
+              toolBreakdown: live.toolCallCountByTool,
+              antiPatterns,
+              // Use the same `timeline` shape as persisted sessions so the
+              // Sessions and Replay views can consume one type. See
+              // src/storage/types.ts ReplayTimelineEntry.
+              timeline: live.toolCallTimeline.map((t) => ({
+                timestamp: t.timestamp,
+                toolName: t.toolName,
+                durationMs: t.durationMs,
+                success: t.success ?? true,
+              })),
+            });
+            return;
+          }
+        }
+        // Concurrent live session tracked by the registry but not this server's
+        // own session — synthesize from tool call buffer records.
+        if (deps.liveSessionRegistry?.getLiveSessions().includes(sessionId)) {
+          const allRecords = deps.toolCallBuffer?.getRecords() ?? [];
+          const records = allRecords.filter(
+            (r) => (r as { sessionId?: string | null }).sessionId === sessionId,
+          );
+          const timeline = records
+            .map((r) => ({
+              timestamp: r.timestamp,
+              toolName: r.toolName,
+              durationMs: r.durationMs ?? null,
+              success: r.success,
+              filePath: r.filePath ? redactSensitive(String(r.filePath)) : undefined,
+              command: r.command ? redactSensitive(String(r.command)) : undefined,
+            }))
+            .sort((a, b) => a.timestamp - b.timestamp);
+          const breakdown: Record<string, number> = Object.create(null);
+          for (const r of records) {
+            breakdown[r.toolName] = (breakdown[r.toolName] ?? 0) + 1;
+          }
+          const startTime = timeline.length > 0 ? timeline[0]!.timestamp : Date.now();
+          const lastTs = timeline.length > 0 ? timeline[timeline.length - 1]!.timestamp : startTime;
           jsonOk(res, {
-            sessionId: live.sessionId,
-            sessionName: live.sessionName ?? null,
-            startTime: live.sessionStartTime,
-            durationMs: live.sessionDurationMs,
-            toolCallCount: live.toolCallCount,
-            estimatedCostUsd: costUsd,
-            model,
+            sessionId,
+            sessionName: deps.liveSessionRegistry.getSessionName(sessionId),
+            startTime,
+            durationMs: lastTs - startTime,
+            toolCallCount: records.length,
+            estimatedCostUsd: null,
+            model: null,
             outcome: 'in progress',
-            toolBreakdown: live.toolCallCountByTool,
-            antiPatterns,
-            // Use the same `timeline` shape as persisted sessions so the
-            // Sessions and Replay views can consume one type. See
-            // src/storage/types.ts ReplayTimelineEntry.
-            timeline: live.toolCallTimeline.map((t) => ({
-              timestamp: t.timestamp,
-              toolName: t.toolName,
-              durationMs: t.durationMs,
-              success: true,
-            })),
+            toolBreakdown: breakdown,
+            antiPatterns: [],
+            timeline,
           });
           return;
         }
-      }
-      // Concurrent live session tracked by the registry but not this server's
-      // own session — synthesize from tool call buffer records.
-      if (deps.liveSessionRegistry?.getLiveSessions().includes(sessionId)) {
-        const allRecords = deps.toolCallBuffer?.getRecords() ?? [];
-        const records = allRecords.filter(
-          (r) => (r as { sessionId?: string | null }).sessionId === sessionId,
-        );
-        const timeline = records
-          .map((r) => ({
-            timestamp: r.timestamp,
-            toolName: r.toolName,
-            durationMs: r.durationMs ?? null,
-            success: r.success,
-            filePath: r.filePath ? redactSensitive(String(r.filePath)) : undefined,
-            command: r.command ? redactSensitive(String(r.command)) : undefined,
-          }))
-          .sort((a, b) => a.timestamp - b.timestamp);
-        const breakdown: Record<string, number> = {};
-        for (const r of records) {
-          breakdown[r.toolName] = (breakdown[r.toolName] ?? 0) + 1;
-        }
-        const startTime = timeline.length > 0 ? timeline[0]!.timestamp : Date.now();
-        const lastTs = timeline.length > 0 ? timeline[timeline.length - 1]!.timestamp : startTime;
-        jsonOk(res, {
-          sessionId,
-          sessionName: deps.liveSessionRegistry.getSessionName(sessionId),
-          startTime,
-          durationMs: lastTs - startTime,
-          toolCallCount: records.length,
-          estimatedCostUsd: null,
-          model: null,
-          outcome: 'in progress',
-          toolBreakdown: breakdown,
-          antiPatterns: [],
-          timeline,
-        });
+        res.writeHead(404, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'not_found' }));
         return;
       }
+
       res.writeHead(404, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: 'not_found' }));
-      return;
+    } catch (err) {
+      const logger = (await import('../../shared/index.js')).createLogger('api-handler');
+      logger.error('Unhandled error in API route handler', { error: String(err) });
+      if (!res.headersSent) {
+        res.writeHead(500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'internal_error' }));
+      }
     }
-
-    res.writeHead(404, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: 'not_found' }));
   };
 }

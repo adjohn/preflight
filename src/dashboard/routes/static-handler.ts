@@ -78,7 +78,10 @@ export function createStaticHandler(
       // new asset hashes are picked up. Other static files (the rare
       // unhashed asset, robots.txt, favicons that aren't in /assets/)
       // get a short cache for sane DevTools behaviour.
-      const isAsset = target.includes(`${sep}assets${sep}`);
+      // Check against path relative to root, not the full absolute path, to
+      // avoid false positives when rootDir itself contains an 'assets' component.
+      const relPath = target.slice(root.length);
+      const isAsset = relPath.includes(`${sep}assets${sep}`);
       const isIndexHtml = filename === 'index.html';
       const cacheControl = isIndexHtml
         ? 'no-cache'

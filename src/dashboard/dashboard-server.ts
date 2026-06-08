@@ -150,59 +150,67 @@ export class DashboardServer {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    this.setSecurityHeaders(res);
-    if (!this.isHostAllowed(req.headers.host)) {
-      res.writeHead(403, { 'content-type': 'text/plain' });
-      res.end('Forbidden: invalid Host header');
-      return;
-    }
-    const url = req.url ?? '/';
-    const pathname = url.split('?')[0] ?? '/';
-    const key = `${req.method ?? 'GET'} ${pathname}`;
-    const handler = this.routes.get(key);
-    if (handler) {
-      try {
-        await handler(req, res);
-      } catch (err) {
-        logger.error('Route handler error', { route: key, error: String(err) });
-        if (!res.headersSent) {
-          res.writeHead(500, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ error: 'internal' }));
-        }
+    try {
+      this.setSecurityHeaders(res);
+      if (!this.isHostAllowed(req.headers.host)) {
+        res.writeHead(403, { 'content-type': 'text/plain' });
+        res.end('Forbidden: invalid Host header');
+        return;
       }
-      return;
-    }
-    if (
-      req.method === 'GET' &&
-      pathname.startsWith('/api/') &&
-      pathname !== '/api/health' &&
-      this.apiHandler
-    ) {
-      try {
-        await this.apiHandler(req, res);
-      } catch (err) {
-        logger.error('API handler error', { route: key, error: String(err) });
-        if (!res.headersSent) {
-          res.writeHead(500, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ error: 'internal' }));
+      const url = req.url ?? '/';
+      const pathname = url.split('?')[0] ?? '/';
+      const key = `${req.method ?? 'GET'} ${pathname}`;
+      const handler = this.routes.get(key);
+      if (handler) {
+        try {
+          await handler(req, res);
+        } catch (err) {
+          logger.error('Route handler error', { route: key, error: String(err) });
+          if (!res.headersSent) {
+            res.writeHead(500, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: 'internal' }));
+          }
         }
+        return;
       }
-      return;
-    }
-    if (req.method === 'GET' && this.staticHandler) {
-      try {
-        await this.staticHandler(req, res);
-      } catch (err) {
-        logger.error('Static handler error', { error: String(err) });
-        if (!res.headersSent) {
-          res.writeHead(500, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ error: 'internal' }));
+      if (
+        req.method === 'GET' &&
+        pathname.startsWith('/api/') &&
+        pathname !== '/api/health' &&
+        this.apiHandler
+      ) {
+        try {
+          await this.apiHandler(req, res);
+        } catch (err) {
+          logger.error('API handler error', { route: key, error: String(err) });
+          if (!res.headersSent) {
+            res.writeHead(500, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: 'internal' }));
+          }
         }
+        return;
       }
-      return;
+      if (req.method === 'GET' && this.staticHandler) {
+        try {
+          await this.staticHandler(req, res);
+        } catch (err) {
+          logger.error('Static handler error', { error: String(err) });
+          if (!res.headersSent) {
+            res.writeHead(500, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: 'internal' }));
+          }
+        }
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    } catch (err) {
+      logger.error('Unhandled error in dashboard handle()', { error: String(err) });
+      if (!res.destroyed && !res.headersSent) {
+        res.writeHead(500);
+        res.end();
+      }
     }
-    res.writeHead(404);
-    res.end();
   }
 
   private isHostAllowed(hostHeader: string | undefined): boolean {

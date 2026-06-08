@@ -115,7 +115,12 @@ export class WeeklySummaryGenerator {
     }
     const { start, end } = getWeekDateRange(weekId);
 
-    const allSessions = this.sessionStore.loadAllSessions({ since: start });
+    // Widen the filename pre-filter by one day to avoid excluding sessions that started
+    // near midnight UTC on the week boundary — the strict startTime filter below is
+    // the authoritative range guard.
+    const allSessions = this.sessionStore.loadAllSessions({
+      since: new Date(start.getTime() - 86_400_000),
+    });
     const weekSessions = allSessions.filter(
       (s) => s.startTime >= start.getTime() && s.startTime < end.getTime(),
     );
@@ -127,9 +132,13 @@ export class WeeklySummaryGenerator {
     }
 
     const filepath = join(this.summariesDir, `${weekId}.json`);
-    writeFileSync(filepath, JSON.stringify(summary, null, 2) + '\n', { mode: 0o600 });
-
-    logger.debug('Weekly summary generated', { weekId, sessions: weekSessions.length });
+    try {
+      writeFileSync(filepath, JSON.stringify(summary, null, 2) + '\n', { mode: 0o600 });
+      logger.debug('Weekly summary generated', { weekId, sessions: weekSessions.length });
+    } catch (err) {
+      logger.error('Failed to write weekly summary to disk', { weekId, error: String(err) });
+      // Return the in-memory summary even if the write fails so callers still get data
+    }
 
     return summary;
   }
@@ -137,8 +146,10 @@ export class WeeklySummaryGenerator {
   getLatest(): WeeklySummary | null {
     if (!existsSync(this.summariesDir)) return null;
 
+    // Only include zero-padded filenames (YYYY-Wnn.json); older non-padded
+    // files (e.g. 2026-W9.json) sort incorrectly and are excluded.
     const files = readdirSync(this.summariesDir)
-      .filter((f) => f.endsWith('.json'))
+      .filter((f) => /^\d{4}-W\d{2}\.json$/.test(f))
       .sort();
 
     if (files.length === 0) return null;
@@ -154,8 +165,7 @@ export class WeeklySummaryGenerator {
   }
 
   checkAndGenerateLastWeek(): WeeklySummary | null {
-    const lastWeekDate = new Date();
-    lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+    const lastWeekDate = new Date(Date.now() - 7 * 86_400_000);
     const lastWeekId = getIsoWeekId(lastWeekDate);
 
     const filepath = join(this.summariesDir, `${lastWeekId}.json`);
@@ -170,7 +180,7 @@ export class WeeklySummaryGenerator {
     if (!existsSync(this.summariesDir)) return [];
 
     const files = readdirSync(this.summariesDir)
-      .filter((f) => f.endsWith('.json'))
+      .filter((f) => /^\d{4}-W\d{2}\.json$/.test(f))
       .sort()
       .reverse() // newest first
       .slice(0, count);
@@ -250,7 +260,8 @@ function aggregateSessions(weekId: string, sessions: FullSessionSummary[]): Week
     totalToolCalls,
     toolBreakdown,
     totalTasksCompleted,
-    taskSuccessRate: totalTestsRun > 0 ? round(totalTestsPassed / totalTestsRun, 3) : null,
+    taskSuccessRate:
+      totalTestsRun > 0 ? round(Math.min(1, totalTestsPassed / totalTestsRun), 3) : null,
     antiPatternCounts,
     perDeveloper: devStats,
   };
@@ -296,7 +307,8 @@ function aggregateDeveloperSessions(sessions: FullSessionSummary[]): DeveloperWe
     totalToolCalls,
     toolBreakdown,
     totalTasksCompleted,
-    taskSuccessRate: totalTestsRun > 0 ? round(totalTestsPassed / totalTestsRun, 3) : null,
+    taskSuccessRate:
+      totalTestsRun > 0 ? round(Math.min(1, totalTestsPassed / totalTestsRun), 3) : null,
     antiPatternCounts,
   };
 }

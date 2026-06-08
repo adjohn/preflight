@@ -24,7 +24,7 @@ export function Sparkline({
     if (animate && !hasAnimated.current) {
       hasAnimated.current = true;
     }
-  });
+  }, [animate]);
 
   if (values.length < 2) return null;
   const min = Math.min(...values);

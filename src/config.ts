@@ -84,9 +84,9 @@ export interface McpServerConfig {
 export const DEFAULT_STORAGE_PATH = resolve(homedir(), '.nr-ai-observe');
 
 const DEFAULT_REDACTION_PATTERNS: RegExp[] = [
-  /\b(?:API_KEY|SECRET|TOKEN|PASSWORD|PASSPHRASE|PRIVATE_KEY)\b[\s]*[=:]\s*\S+/gi,
+  /(?<![a-zA-Z])(?:API_KEY|SECRET|TOKEN|PASSWORD|PASSPHRASE|PRIVATE_KEY)(?![a-zA-Z])[\s]*[=:]\s*\S+/gi,
   /(?:sk-|ghp_|gho_|ghs_|github_pat_|xoxb-|xoxp-|Bearer\s+)[A-Za-z0-9_-]{20,200}/g,
-  /-----BEGIN[\s\S]{0,65536}?-----END[^\n]{0,256}-----/g,
+  /-----BEGIN[^-\n]{0,100}-----[A-Za-z0-9+/=\r\n. ]{0,65536}-----END[^-\n]{0,100}-----/g,
   /\bAKIA[0-9A-Z]{16}\b/g,
   /\bAIzaSy[0-9A-Za-z_-]{33}\b/g,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
@@ -207,7 +207,11 @@ function inferDeveloper(): string {
   if (process.env.USERNAME) return sanitizeDeveloper(process.env.USERNAME);
   try {
     return sanitizeDeveloper(
-      execSync('git config user.name', { encoding: 'utf-8', timeout: 2000 }).trim(),
+      execSync('git config user.name', {
+        encoding: 'utf-8',
+        timeout: 2000,
+        env: { ...process.env },
+      }).trim(),
     );
   } catch {
     return 'unknown';
@@ -319,9 +323,12 @@ function parseOtlpHeaders(headerString: string | undefined): Record<string, stri
   const result: Record<string, string> = {};
   const pairs = headerString.split(',');
   for (const pair of pairs) {
-    const [key, value] = pair.split('=');
+    const eqIdx = pair.indexOf('=');
+    if (eqIdx < 1) continue;
+    const key = pair.slice(0, eqIdx).trim();
+    const value = pair.slice(eqIdx + 1).trim();
     if (key && value) {
-      result[key.trim()] = value.trim();
+      result[key] = value;
     }
   }
   return result;
@@ -438,6 +445,14 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
         ", or switch to mode='local' to skip cloud transport.",
     );
   }
+  // Reject the literal string "null" — it's truthy but not a valid key
+  // and would cause silent auth failures at transport time.
+  if (licenseKeyRaw === 'null') {
+    throw new Error(
+      'Invalid licenseKey: the string "null" is not a valid New Relic license key. ' +
+        'Remove it from the config file or set the correct key in NEW_RELIC_LICENSE_KEY.',
+    );
+  }
   // In local mode, undefined if licenseKey is missing (NR transport won't be used)
   const licenseKey = licenseKeyRaw;
 
@@ -543,7 +558,7 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
 
     sessionBudgetUsd: (() => {
       const raw = process.env.NEW_RELIC_AI_SESSION_BUDGET_USD;
-      if (raw) {
+      if (raw !== undefined && raw !== '') {
         const v = parseFloat(raw);
         if (Number.isFinite(v) && v > 0) return v;
       }
@@ -552,7 +567,7 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
 
     dailyBudgetUsd: (() => {
       const raw = process.env.NEW_RELIC_AI_DAILY_BUDGET_USD;
-      if (raw) {
+      if (raw !== undefined && raw !== '') {
         const v = parseFloat(raw);
         if (Number.isFinite(v) && v > 0) return v;
       }
@@ -561,7 +576,7 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
 
     weeklyBudgetUsd: (() => {
       const raw = process.env.NEW_RELIC_AI_WEEKLY_BUDGET_USD;
-      if (raw) {
+      if (raw !== undefined && raw !== '') {
         const v = parseFloat(raw);
         if (Number.isFinite(v) && v > 0) return v;
       }
@@ -609,7 +624,7 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
 
     retainSessionsDays: (() => {
       const raw = process.env.NEW_RELIC_AI_RETAIN_SESSIONS_DAYS;
-      if (raw) {
+      if (raw !== undefined && raw !== '') {
         const v = parseInt(raw, 10);
         if (Number.isFinite(v) && v > 0) return v;
       }
@@ -860,12 +875,12 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
 const MAX_REDACT_LEN = 1_048_576; // 1 MB
 
 export function redactSensitive(value: string, patterns?: readonly RegExp[]): string {
+  if (typeof value !== 'string') return String(value ?? '');
   const pats = patterns ?? DEFAULT_REDACTION_PATTERNS;
   let result = value.length > MAX_REDACT_LEN ? value.slice(0, MAX_REDACT_LEN) : value;
   for (const pattern of pats) {
-    // Clone the regex to reset lastIndex for global patterns
-    const re = new RegExp(pattern.source, pattern.flags);
-    result = result.replace(re, '[REDACTED]');
+    pattern.lastIndex = 0;
+    result = result.replace(pattern, '[REDACTED]');
   }
   return result;
 }

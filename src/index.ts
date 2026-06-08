@@ -2,7 +2,7 @@
 import 'dotenv/config';
 
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Command } from 'commander';
 import { VERSION, createLogger } from './shared/index.js';
@@ -231,10 +231,18 @@ async function main(): Promise<void> {
         alertRulesWatcher = undefined;
       }
       eventProcessor?.stop();
-      if (dashboardServer) await dashboardServer.stop();
-      if (nrIngest) await nrIngest.stop();
-      if (mcpServer) await mcpServer.close();
-      if (proxyManager) await proxyManager.stop();
+      // Use allSettled so a failure in one stop() doesn't prevent the others.
+      const stopResults = await Promise.allSettled([
+        dashboardServer ? dashboardServer.stop() : Promise.resolve(),
+        nrIngest ? nrIngest.stop() : Promise.resolve(),
+        mcpServer ? mcpServer.close() : Promise.resolve(),
+        proxyManager ? proxyManager.stop() : Promise.resolve(),
+      ]);
+      for (const r of stopResults) {
+        if (r.status === 'rejected') {
+          logger.warn('Error stopping service during shutdown', { error: String(r.reason) });
+        }
+      }
     } catch (err) {
       logger.error('Error during shutdown cleanup', { error: String(err) });
     } finally {
@@ -242,11 +250,17 @@ async function main(): Promise<void> {
     }
   };
 
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  const handleSignal = () => {
+    shutdown().catch((err) => {
+      process.stderr.write(`Shutdown error: ${String(err)}\n`);
+      process.exit(1);
+    });
+  };
+  process.on('SIGINT', handleSignal);
+  process.on('SIGTERM', handleSignal);
 
   if (options.stdio || options.local) {
-    let sessionTraceId = '';
+    let sessionTraceId = randomUUID();
     if (options.stdio) {
       // Connect stdio FIRST so the MCP handshake can complete immediately.
       // Tools are registered after initialization; tool calls before that
@@ -255,7 +269,7 @@ async function main(): Promise<void> {
       await mcpServer.connectStdio();
 
       config = loadMcpConfig(options);
-      sessionTraceId = randomUUID();
+      // sessionTraceId already generated above; log it here once config is loaded
       logger.info('Session trace ID generated', { sessionTraceId });
 
       if (config.transport !== 'nr-events-api') {
@@ -352,62 +366,52 @@ async function main(): Promise<void> {
       stdio: ['ignore', 'pipe', 'ignore'] as ['ignore', 'pipe', 'ignore'],
     };
 
-    try {
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const logResult = spawnSync(
-        'git',
-        ['log', `--since=${todayStr}T00:00:00`, '--format=%H %ct'],
-        GIT_OPTS,
-      );
-      if (logResult.status === 0 && logResult.stdout) {
-        const commits = logResult.stdout
-          .trim()
-          .split('\n')
-          .filter(Boolean)
-          .map((line) => {
-            const [hash, epochStr] = line.split(' ');
-            return { hash: hash ?? '', timestamp: parseInt(epochStr ?? '0', 10) * 1000 };
-          });
-        gitEfficiencyTracker.hydrateGitLog(commits);
-      }
-    } catch {
-      // Not in a git repo or git unavailable — skip silently
-    }
-
-    try {
-      // Repo context for the dashboard header
-      const remoteResult = spawnSync('git', ['remote', 'get-url', 'origin'], GIT_OPTS);
-      const branchResult = spawnSync('git', ['branch', '--show-current'], GIT_OPTS);
-      if (remoteResult.status === 0 && branchResult.status === 0) {
-        const remoteUrl = remoteResult.stdout.trim();
-        const branch = branchResult.stdout.trim();
-        // Extract repo name from remote URL (handles both HTTPS and SSH)
-        const repoMatch = remoteUrl.match(/[/:]([^/]+\/[^/]+?)(?:\.git)?$/);
-        const repoName = repoMatch ? repoMatch[1] : remoteUrl || null;
-        gitEfficiencyTracker.hydrateRepoContext({
-          repoName,
-          branch: branch || null,
-          remoteName: 'origin',
-          defaultBranch: 'main',
+    // spawnSync with ENOENT doesn't throw — it returns { status: null, error: Error }.
+    // The status === 0 guard handles unavailable-git without a try/catch.
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const logResult = spawnSync(
+      'git',
+      ['log', `--since=${todayStr}T00:00:00Z`, '--format=%H %ct'],
+      GIT_OPTS,
+    );
+    if (logResult.status === 0 && logResult.stdout !== null) {
+      const commits = logResult.stdout
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => {
+          const [hash, epochStr] = line.split(' ');
+          return { hash: hash ?? '', timestamp: parseInt(epochStr ?? '0', 10) * 1000 };
         });
-      }
-    } catch {
-      // No origin remote or git unavailable — skip silently
+      gitEfficiencyTracker.hydrateGitLog(commits);
     }
 
-    try {
-      // Branch divergence from main — how far ahead/behind are we?
-      const aheadResult = spawnSync('git', ['rev-list', '--count', 'origin/main..HEAD'], GIT_OPTS);
-      const behindResult = spawnSync('git', ['rev-list', '--count', 'HEAD..origin/main'], GIT_OPTS);
-      if (aheadResult.status === 0 && behindResult.status === 0) {
-        const ahead = parseInt(aheadResult.stdout.trim(), 10);
-        const behind = parseInt(behindResult.stdout.trim(), 10);
-        if (!Number.isNaN(ahead) && !Number.isNaN(behind)) {
-          gitEfficiencyTracker.hydrateBranchDivergence(ahead, behind);
-        }
+    // Repo context for the dashboard header
+    const remoteResult = spawnSync('git', ['remote', 'get-url', 'origin'], GIT_OPTS);
+    const branchResult = spawnSync('git', ['branch', '--show-current'], GIT_OPTS);
+    if (remoteResult.status === 0 && branchResult.status === 0) {
+      const remoteUrl = remoteResult.stdout.trim();
+      const branch = branchResult.stdout.trim();
+      // Extract repo name from remote URL (handles both HTTPS and SSH)
+      const repoMatch = remoteUrl.match(/[/:]([^/]+\/[^/]+?)(?:\.git)?$/);
+      const repoName = repoMatch ? repoMatch[1] : remoteUrl || null;
+      gitEfficiencyTracker.hydrateRepoContext({
+        repoName,
+        branch: branch || null,
+        remoteName: 'origin',
+        defaultBranch: 'main',
+      });
+    }
+
+    // Branch divergence from main — how far ahead/behind are we?
+    const aheadResult = spawnSync('git', ['rev-list', '--count', 'origin/main..HEAD'], GIT_OPTS);
+    const behindResult = spawnSync('git', ['rev-list', '--count', 'HEAD..origin/main'], GIT_OPTS);
+    if (aheadResult.status === 0 && behindResult.status === 0) {
+      const ahead = parseInt(aheadResult.stdout.trim(), 10);
+      const behind = parseInt(behindResult.stdout.trim(), 10);
+      if (!Number.isNaN(ahead) && !Number.isNaN(behind)) {
+        gitEfficiencyTracker.hydrateBranchDivergence(ahead, behind);
       }
-    } catch {
-      // origin/main not fetched or git unavailable — skip silently
     }
 
     const { priorDailyCostUsd, priorWeeklyCostUsd } = computeHistoricalCosts(
@@ -454,7 +458,7 @@ async function main(): Promise<void> {
     // and McpServer still need an audit log.
     const auditTrail = new AuditTrailManager({
       developer: config.developer,
-      sessionId: null,
+      sessionId: sessionTraceId,
       localStore,
     });
 
@@ -965,6 +969,12 @@ async function main(): Promise<void> {
         logger.info('stdin closed, shutting down');
         void shutdown();
       });
+      // ECONNRESET/EPIPE surfaces as an 'error' event on stdin, not 'end'.
+      // Without this handler the error propagates as an unhandled exception.
+      process.stdin.on('error', (err) => {
+        logger.warn('stdin error, shutting down', { error: String(err) });
+        void shutdown();
+      });
     } else {
       logger.info('Server running in local dashboard mode (Ctrl+C to stop)');
       // DashboardServer HTTP listener keeps the process alive.
@@ -1022,7 +1032,13 @@ async function main(): Promise<void> {
       proxyManager.registerUpstream(upstream);
     }
 
-    await proxyManager.start();
+    try {
+      await proxyManager.start();
+    } catch (err) {
+      logger.error('Failed to start proxy server', { error: String(err) });
+      await proxyManager.stop().catch(() => {});
+      throw err;
+    }
     logger.info('Proxy server running', {
       port: config.port,
       upstreams: proxyManager.getUpstreamNames(),
@@ -1040,14 +1056,17 @@ async function main(): Promise<void> {
  */
 function loadAlertRulesFromDisk(engine: LocalAlertEngine, rulesPath: string): void {
   try {
-    if (!existsSync(rulesPath)) {
-      logger.info('Alert rules file not found; engine running with no rules', {
-        rulesPath,
-      });
-      engine.loadRules([]);
-      return;
+    let raw: string;
+    try {
+      raw = readFileSync(rulesPath, 'utf-8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.info('Alert rules file not found; engine running with no rules', { rulesPath });
+        engine.loadRules([]);
+        return;
+      }
+      throw err;
     }
-    const raw = readFileSync(rulesPath, 'utf-8');
     let json: unknown;
     try {
       json = JSON.parse(raw);
@@ -1111,8 +1130,11 @@ function computeHistoricalCosts(
       if (sessionDate === todayStr) priorDailyCostUsd += session.estimatedCostUsd;
       priorWeeklyCostUsd += session.estimatedCostUsd;
     }
-  } catch {
+  } catch (err) {
     // Non-fatal: fall back to session-only costs if history is unreadable
+    logger.warn('Failed to load historical costs — budget thresholds may be inaccurate', {
+      error: String(err),
+    });
   }
   return { priorDailyCostUsd, priorWeeklyCostUsd };
 }

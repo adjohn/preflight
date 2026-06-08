@@ -33,17 +33,15 @@ import { createHash } from 'node:crypto';
 
 const DEFAULT_BUFFER_PATH = resolve(homedir(), '.nr-ai-observe', 'buffer.jsonl');
 
-/** POSIX PIPE_BUF — writes at or below this size are atomic with O_APPEND. */
-const PIPE_BUF = 4096;
-
 function getBufferPath(): string {
   return process.env.NEW_RELIC_AI_MCP_BUFFER_PATH ?? DEFAULT_BUFFER_PATH;
 }
 
-function getHighSecurity(): boolean {
-  const highSecurityEnv = process.env.NEW_RELIC_AI_MCP_HIGH_SECURITY === 'true';
-  if (highSecurityEnv) return true;
-
+// Cache only the file-read result to avoid repeated disk I/O on the hot path
+// (<5ms budget per hook invocation) while keeping the env-var check dynamic
+// so runtime changes in tests (and future dynamic config) are respected.
+// This also eliminates the TOCTOU window between existsSync and readFileSync.
+const HIGH_SECURITY_FROM_FILE: boolean = (() => {
   try {
     const configPath = resolve(homedir(), '.nr-ai-observe', 'config.json');
     if (existsSync(configPath)) {
@@ -53,8 +51,11 @@ function getHighSecurity(): boolean {
   } catch {
     // Silently ignore config read errors
   }
-
   return false;
+})();
+
+function getHighSecurity(): boolean {
+  return process.env.NEW_RELIC_AI_MCP_HIGH_SECURITY === 'true' || HIGH_SECURITY_FROM_FILE;
 }
 
 function getRecordContent(): boolean {
@@ -75,9 +76,9 @@ function getMaxContentLength(): number {
 // ---------------------------------------------------------------------------
 
 const REDACTION_PATTERNS: RegExp[] = [
-  /\b(?:API_KEY|SECRET|TOKEN|PASSWORD|PASSPHRASE|PRIVATE_KEY)\b[\s]*[=:]\s*\S+/gi,
+  /(?<![a-zA-Z])(?:API_KEY|SECRET|TOKEN|PASSWORD|PASSPHRASE|PRIVATE_KEY)(?![a-zA-Z])[\s]*[=:]\s*\S+/gi,
   /(?:sk-|ghp_|gho_|github_pat_|xoxb-|xoxp-|Bearer\s+)\S+/g,
-  /-----BEGIN[\s\S]{0,65536}?-----END[^\n]{0,256}-----/g,
+  /-----BEGIN[^-\n]{0,100}-----[A-Za-z0-9+/=\r\n. ]{0,65536}-----END[^-\n]{0,100}-----/g,
   /\bAKIA[0-9A-Z]{16}\b/g,
   /\bAIzaSy[0-9A-Za-z_-]{33}\b/g,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
@@ -85,10 +86,16 @@ const REDACTION_PATTERNS: RegExp[] = [
   /\bxox[a-z]-[0-9A-Za-z-]+/g,
 ];
 
-const MAX_REDACT_LEN = 1_048_576; // 1 MB
+const MAX_REDACT_BYTES = 1_048_576; // 1 MB
 
 function redact(value: string): string {
-  let result = value.length > MAX_REDACT_LEN ? value.slice(0, MAX_REDACT_LEN) : value;
+  // Truncate by byte count, not character count — 4-byte emoji chars would otherwise
+  // allow up to 4 MB of content through the regex pass.
+  let result = value;
+  if (Buffer.byteLength(value, 'utf8') > MAX_REDACT_BYTES) {
+    const buf = Buffer.from(value, 'utf8').subarray(0, MAX_REDACT_BYTES);
+    result = buf.toString('utf8').replace(/�$/, ''); // drop any partial surrogate at cut point
+  }
   for (const pattern of REDACTION_PATTERNS) {
     const re = new RegExp(pattern.source, pattern.flags);
     result = result.replace(re, '[REDACTED]');
@@ -108,7 +115,11 @@ function hashInput(input: unknown): string {
 function sizeOf(value: unknown): number {
   if (value === undefined || value === null) return 0;
   if (typeof value === 'string') return value.length;
-  return JSON.stringify(value).length;
+  try {
+    return JSON.stringify(value).length;
+  } catch {
+    return 0;
+  }
 }
 
 function truncate(value: string, maxLen: number): string {
@@ -117,6 +128,7 @@ function truncate(value: string, maxLen: number): string {
 }
 
 function countLines(text: string): number {
+  if (text === '') return 0;
   return (text.match(/\n/g) || []).length + 1;
 }
 
@@ -190,6 +202,7 @@ function readLastAssistantUsage(transcriptPath: string): TranscriptUsage | null 
 }
 
 function getLastTranscriptSize(sessionId: string): number {
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(sessionId)) return 0;
   try {
     const bufferDir = dirname(getBufferPath());
     const statePath = resolve(bufferDir, `.transcript-pos-${sessionId}`);
@@ -202,7 +215,10 @@ function getLastTranscriptSize(sessionId: string): number {
   return 0;
 }
 
+let _transcriptSizeWriteFailed = false;
+
 function setLastTranscriptSize(sessionId: string, size: number): void {
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(sessionId)) return;
   try {
     const bufferDir = dirname(getBufferPath());
     if (!existsSync(bufferDir)) {
@@ -210,8 +226,14 @@ function setLastTranscriptSize(sessionId: string, size: number): void {
     }
     const statePath = resolve(bufferDir, `.transcript-pos-${sessionId}`);
     writeFileSync(statePath, String(size), { mode: 0o600 });
-  } catch {
-    // Ignore
+    _transcriptSizeWriteFailed = false;
+  } catch (err) {
+    if (!_transcriptSizeWriteFailed) {
+      process.stderr.write(
+        `[nr-ai-observe] Warning: cannot persist transcript size: ${String(err)}\n`,
+      );
+      _transcriptSizeWriteFailed = true;
+    }
   }
 }
 
@@ -237,7 +259,12 @@ function collectTranscriptTokens(data: {
     return;
   }
 
-  const lastSize = getLastTranscriptSize(sessionId);
+  let lastSize = getLastTranscriptSize(sessionId);
+  if (currentSize < lastSize) {
+    // Transcript file was rotated — reset tracking so we read from offset 0
+    setLastTranscriptSize(sessionId, 0);
+    lastSize = 0;
+  }
   if (currentSize <= lastSize) return;
 
   const usage = readLastAssistantUsage(transcriptPath);
@@ -246,8 +273,6 @@ function collectTranscriptTokens(data: {
   const inputTokens = usage.input_tokens ?? 0;
   const outputTokens = usage.output_tokens ?? 0;
   if (inputTokens === 0 && outputTokens === 0) return;
-
-  setLastTranscriptSize(sessionId, currentSize);
 
   const tokenEvent: Record<string, unknown> = {
     mode: 'token',
@@ -278,6 +303,9 @@ function collectTranscriptTokens(data: {
     } finally {
       closeSync(fd);
     }
+    // Persist the new size only after a successful buffer write so that a
+    // write failure doesn't silently drop the token event on the next invocation.
+    setLastTranscriptSize(sessionId, currentSize);
   } catch {
     // Silent failure — never block Claude Code
   }
@@ -338,8 +366,8 @@ function extractInputMeta(toolName: string, input: unknown): Record<string, unkn
       if (typeof obj.replace_all === 'boolean') meta.replace_all = obj.replace_all;
       break;
     case 'Bash':
-      if (typeof obj.command === 'string') meta.command = obj.command;
-      if (typeof obj.description === 'string') meta.description = obj.description;
+      if (typeof obj.command === 'string') meta.command = redact(obj.command);
+      if (typeof obj.description === 'string') meta.description = redact(obj.description);
       if (typeof obj.timeout === 'number') meta.timeout = obj.timeout;
       if (typeof obj.run_in_background === 'boolean')
         meta.run_in_background = obj.run_in_background;
@@ -455,7 +483,12 @@ function extractOutputMeta(toolName: string, output: unknown): Record<string, un
 }
 
 function processHook(raw: string): void {
-  const data: HookInput = JSON.parse(raw);
+  let data: HookInput;
+  try {
+    data = JSON.parse(raw) as HookInput;
+  } catch {
+    return; // Malformed JSON — skip silently
+  }
 
   const eventName = data.hook_event_name;
   const toolName = data.tool_name ?? 'unknown';
@@ -528,7 +561,6 @@ function processHook(raw: string): void {
   if (data.tool_use_id) event.toolUseId = data.tool_use_id;
 
   // Write to buffer — wrapped in try/catch for resilience.
-  // Uses O_APPEND + single write to guarantee atomicity for lines <= PIPE_BUF.
   try {
     const bufferPath = getBufferPath();
     const bufferDir = dirname(bufferPath);
@@ -536,19 +568,7 @@ function processHook(raw: string): void {
       mkdirSync(bufferDir, { recursive: true, mode: 0o700 });
     }
 
-    let line = JSON.stringify(event) + '\n';
-
-    // If the line exceeds PIPE_BUF, trim toolInput to fit — concurrent
-    // writers can interleave larger writes on POSIX systems.
-    if (line.length > PIPE_BUF && event.toolInput !== undefined) {
-      const overhead = line.length - JSON.stringify(event.toolInput).length;
-      const budget = PIPE_BUF - overhead - 20; // margin for truncation suffix
-      event.toolInput = truncate(
-        typeof event.toolInput === 'string' ? event.toolInput : JSON.stringify(event.toolInput),
-        Math.max(budget, 64),
-      );
-      line = JSON.stringify(event) + '\n';
-    }
+    const line = JSON.stringify(event) + '\n';
 
     const fd = openSync(
       bufferPath,

@@ -36,9 +36,9 @@ export interface ModelReliabilityScorecard {
   readonly model: string;
   readonly totalRequests: number;
   readonly failureCount: number;
-  readonly failureRate: number;
+  readonly failureRate: number | null;
   readonly throttleCount: number;
-  readonly throttleFrequency: number;
+  readonly throttleFrequency: number | null;
   readonly meanRecoveryMs: number | null;
   readonly p95LatencyMs: number | null;
   readonly tokensLost: number;
@@ -108,6 +108,9 @@ export class ApiFailureTracker {
 
   recordRequest(model: string, latencyMs: number): void {
     this.totalRequests++;
+    if (!this.latenciesByModel.has(model) && this.latenciesByModel.size >= 50) {
+      return; // Cap total models to prevent unbounded memory under high model churn
+    }
     const arr = this.latenciesByModel.get(model) ?? [];
     arr.push(latencyMs);
     if (arr.length > this.maxEvents) {
@@ -207,7 +210,9 @@ export class ApiFailureTracker {
     }
 
     for (const [model, scorecard] of Object.entries(metrics.byModel)) {
-      aggregator.record('ai.api.model_failure_rate', scorecard.failureRate, { model });
+      if (scorecard.failureRate !== null) {
+        aggregator.record('ai.api.model_failure_rate', scorecard.failureRate, { model });
+      }
       if (scorecard.meanRecoveryMs !== null) {
         aggregator.record('ai.api.model_mean_recovery_ms', scorecard.meanRecoveryMs, { model });
       }
@@ -277,7 +282,9 @@ export class ApiFailureTracker {
     for (const [model, modelEvents] of eventsByModel) {
       const latencies = this.latenciesByModel.get(model) ?? [];
       const sortedLatencies = [...latencies].sort((a, b) => a - b);
-      const totalModelRequests = latencies.length || modelEvents.length;
+      // Only use latencies.length as total — modelEvents are failures only, so
+      // using them as both numerator and denominator would always give rate=1.0.
+      const totalModelRequests = latencies.length;
 
       const throttles = modelEvents.filter((e) => e.errorType === 'rate_limit');
       const recoveryTimes = modelEvents
@@ -292,12 +299,12 @@ export class ApiFailureTracker {
         failureRate:
           totalModelRequests > 0
             ? Math.round((modelEvents.length / totalModelRequests) * 1000) / 1000
-            : 0,
+            : null,
         throttleCount: throttles.length,
         throttleFrequency:
           totalModelRequests > 0
             ? Math.round((throttles.length / totalModelRequests) * 1000) / 1000
-            : 0,
+            : null,
         meanRecoveryMs:
           recoveryTimes.length > 0
             ? Math.round(recoveryTimes.reduce((a, b) => a + b, 0) / recoveryTimes.length)

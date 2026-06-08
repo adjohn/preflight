@@ -216,12 +216,24 @@ describe('validateApiKey', () => {
     expect(result.reason).toBe('unauthorized');
   });
 
-  it('returns unauthorized when GraphQL errors array is non-empty', async () => {
-    const body = JSON.stringify({ errors: [{ message: 'Unauthorized' }] });
+  it('returns unauthorized when GraphQL errors contain an auth error code', async () => {
+    const body = JSON.stringify({
+      errors: [{ message: 'Unauthorized', extensions: { code: 'AUTHENTICATION_ERROR' } }],
+    });
     fetchSpy.mockResolvedValue(new Response(body, { status: 200 }));
     const result = await validateApiKey({ nrApiKey: 'NRAK-BAD', collectorHost: null });
     expect(result.valid).toBe(false);
     expect(result.reason).toBe('unauthorized');
+  });
+
+  it('returns server-error when GraphQL errors contain a non-auth error', async () => {
+    const body = JSON.stringify({
+      errors: [{ message: 'Internal Server Error', extensions: { code: 'INTERNAL_SERVER_ERROR' } }],
+    });
+    fetchSpy.mockResolvedValue(new Response(body, { status: 200 }));
+    const result = await validateApiKey({ nrApiKey: 'NRAK-TEST', collectorHost: null });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe('server-error');
   });
 
   it('returns server-error on non-200 non-401/403 status', async () => {

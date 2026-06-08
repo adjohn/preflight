@@ -70,37 +70,47 @@ export class AlertLog {
 
   async readRecent(limit: number): Promise<AlertEvent[]> {
     if (limit <= 0) return [];
-    try {
-      const data = await fs.readFile(this.path, 'utf8');
-      const lines = data.split('\n').filter((l) => l.length > 0);
-      const slice = lines.slice(-limit).reverse();
-      const out: AlertEvent[] = [];
-      for (const line of slice) {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(line);
-        } catch (err) {
-          logger.warn('Skipping malformed alert log line (invalid JSON)', {
-            error: String(err),
-          });
-          continue;
-        }
-        const result = AlertEventSchema.safeParse(parsed);
-        if (!result.success) {
-          logger.warn('Skipping alert log entry with unexpected shape', {
-            issue: result.error.issues[0]?.message ?? 'unknown',
-          });
-          continue;
-        }
-        out.push(result.data);
+    const readLines = async (filePath: string): Promise<string[]> => {
+      try {
+        const data = await fs.readFile(filePath, 'utf8');
+        return data.split('\n').filter((l) => l.length > 0);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT') return [];
+        logger.error('Failed to read alert log', { path: filePath, error: String(err) });
+        return [];
       }
-      return out;
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === 'ENOENT') return [];
-      logger.error('Failed to read alert log', { error: String(err) });
-      return [];
+    };
+
+    // Read the rotation backup first (older entries), then the primary file
+    const [rotatedLines, primaryLines] = await Promise.all([
+      readLines(`${this.path}.1`),
+      readLines(this.path),
+    ]);
+    const allLines = [...rotatedLines, ...primaryLines];
+    const slice = allLines.slice(-limit).reverse();
+
+    const out: AlertEvent[] = [];
+    for (const line of slice) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch (err) {
+        logger.warn('Skipping malformed alert log line (invalid JSON)', {
+          error: String(err),
+        });
+        continue;
+      }
+      const result = AlertEventSchema.safeParse(parsed);
+      if (!result.success) {
+        logger.warn('Skipping alert log entry with unexpected shape', {
+          issue: result.error.issues[0]?.message ?? 'unknown',
+        });
+        continue;
+      }
+      out.push(result.data);
     }
+    return out;
   }
 
   async rotateIfNeeded(): Promise<void> {

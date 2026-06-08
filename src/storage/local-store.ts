@@ -47,7 +47,7 @@ export class LocalStore {
    */
   appendToBuffer(event: HookEvent): void {
     try {
-      appendFileSync(this.bufferPath, JSON.stringify(event) + '\n');
+      appendFileSync(this.bufferPath, JSON.stringify(event) + '\n', { mode: 0o600 });
     } catch (err) {
       // Never block the caller — log and move on
       logger.warn('Failed to append to buffer', { error: String(err) });
@@ -72,6 +72,7 @@ export class LocalStore {
           writeFileSync(
             this.bufferPath,
             drainData + (drainData.endsWith('\n') ? '' : '\n') + bufferData,
+            { mode: 0o600 },
           );
           unlinkSync(tmpPath);
         } else {
@@ -126,7 +127,7 @@ export class LocalStore {
     if (!filepath.startsWith(sessionsDir + sep)) {
       throw new Error(`Session path escaped storage directory: ${filepath}`);
     }
-    writeFileSync(filepath, JSON.stringify(session, null, 2) + '\n');
+    writeFileSync(filepath, JSON.stringify(session, null, 2) + '\n', { mode: 0o600 });
     logger.debug('Session saved', { sessionId: session.sessionId });
   }
 
@@ -148,7 +149,12 @@ export class LocalStore {
         if (stat.mtimeMs < cutoff) continue;
 
         const raw = readFileSync(filepath, 'utf-8');
-        sessions.push(JSON.parse(raw) as SessionSummary);
+        const parsed = JSON.parse(raw) as unknown;
+        // Guard against corrupted files (null, numbers, arrays) that would crash
+        // the downstream sort on .startTime.
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+          sessions.push(parsed as SessionSummary);
+        }
       } catch {
         logger.warn('Skipping unreadable session file', { file });
       }

@@ -124,7 +124,8 @@ export class ContextCompositionTracker {
     };
     this.currentTotalTokens = report.totalTokens;
 
-    const fillPercent = (report.totalTokens / this.modelContextWindow) * 100;
+    const fillPercent =
+      this.modelContextWindow > 0 ? (report.totalTokens / this.modelContextWindow) * 100 : 0;
     const dominantCategory = this.findDominantCategory();
 
     const composition: TurnComposition = {
@@ -159,9 +160,11 @@ export class ContextCompositionTracker {
 
     if (totalInput === 0) return;
 
+    // cacheCreationTokens are newly-cached conversation context (not just the system prompt),
+    // so bucket them under conversation_history for a less misleading breakdown.
     this.recordTurn({
-      systemPromptTokens: cacheCreation,
-      conversationHistoryTokens: cachedContext,
+      systemPromptTokens: 0,
+      conversationHistoryTokens: cachedContext + cacheCreation,
       toolResultTokens: newContent,
       injectedFileContentTokens: 0,
       otherTokens: 0,
@@ -229,6 +232,12 @@ export class ContextCompositionTracker {
 
   private checkFillThresholds(fillPercent: number, now: number): void {
     for (const threshold of this.fillThresholds) {
+      // Re-arm when fill drops below threshold (e.g. after a compaction) so
+      // the alert can fire again if context rises back to that level.
+      if (fillPercent < threshold) {
+        this.firedThresholds.delete(threshold);
+        continue;
+      }
       if (fillPercent >= threshold && !this.firedThresholds.has(threshold)) {
         this.firedThresholds.add(threshold);
 
@@ -276,7 +285,9 @@ export class ContextCompositionTracker {
           turnNumber: this.turnCount,
         };
 
-        this.dominanceAlerts.push(alert);
+        if (this.dominanceAlerts.length < this.maxHistorySize) {
+          this.dominanceAlerts.push(alert);
+        }
 
         logger.warn(`Context dominated by ${category}`, {
           percent: alert.percent,

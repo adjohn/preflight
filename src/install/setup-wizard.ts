@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline/promises';
 import {
   writeFileSync,
+  renameSync,
   mkdirSync,
   readFileSync,
   existsSync,
@@ -159,354 +160,366 @@ function parseModeAnswer(raw: string, fallback: WizardMode): WizardMode {
 export async function runSetupWizard(): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
-  print('\n=== NR AI Coding Observability Setup ===\n');
-  print('This wizard will configure observability for your AI coding assistant.');
-  print('Press Ctrl+C at any time to cancel.\n');
+  try {
+    print('\n=== NR AI Coding Observability Setup ===\n');
+    print('This wizard will configure observability for your AI coding assistant.');
+    print('Press Ctrl+C at any time to cancel.\n');
 
-  const existing = loadExisting();
+    const existing = loadExisting();
 
-  // Step 0: Mode
-  const existingMode =
-    typeof existing.mode === 'string' &&
-    (existing.mode === 'cloud' || existing.mode === 'local' || existing.mode === 'both')
-      ? (existing.mode as WizardMode)
-      : 'local';
-  print('Modes:');
-  print('  1) cloud — ship telemetry to New Relic');
-  print('  2) local — keep all data on this machine, run a local dashboard (default)');
-  print('  3) both  — ship to NR AND run the local dashboard');
-  const modeRaw = await rl.question(`Which mode? [${existingMode}]: `);
-  const mode = parseModeAnswer(modeRaw, existingMode);
+    // Step 0: Mode
+    const existingMode =
+      typeof existing.mode === 'string' &&
+      (existing.mode === 'cloud' || existing.mode === 'local' || existing.mode === 'both')
+        ? (existing.mode as WizardMode)
+        : 'local';
+    print('Modes:');
+    print('  1) cloud — ship telemetry to New Relic');
+    print('  2) local — keep all data on this machine, run a local dashboard (default)');
+    print('  3) both  — ship to NR AND run the local dashboard');
+    const modeRaw = await rl.question(`Which mode? [${existingMode}]: `);
+    const mode = parseModeAnswer(modeRaw, existingMode);
 
-  // Step 1+2: NR credentials (skip in local mode)
-  let accountId = '';
-  let licenseKey = '';
-  let collectorHost: string | null = null;
-  let nrApiKey: string | null = null;
-  let validatedEmail: string | null = null;
-  if (mode !== 'local') {
-    const existingAccountId = typeof existing.accountId === 'string' ? existing.accountId : '';
-    const accountIdPrompt = existingAccountId
-      ? `New Relic Account ID [${existingAccountId}]: `
-      : 'New Relic Account ID: ';
-    accountId = (await rl.question(accountIdPrompt)).trim();
-    if (!accountId) accountId = existingAccountId;
-    if (!/^\d{1,12}$/.test(accountId)) {
-      console.error(`Invalid account ID: "${accountId}". Must be 1–12 digits.`);
-      rl.close();
-      process.exit(1);
-    }
-
-    const existingKey = typeof existing.licenseKey === 'string' ? existing.licenseKey : '';
-    const keyHint = existingKey ? '(already set)' : 'NEW_RELIC_LICENSE_KEY';
-    const keyPrompt = `New Relic License Key [${keyHint}]: `;
-    licenseKey = (await rl.question(keyPrompt)).trim();
-    if (!licenseKey && typeof existing.licenseKey === 'string') {
-      licenseKey = existing.licenseKey;
-    }
-    if (!licenseKey) {
-      console.error('License key is required.');
-      rl.close();
-      process.exit(1);
-    }
-
-    // Step 2b: Environment / region
-    const existingCollectorHost =
-      typeof existing.collectorHost === 'string' ? existing.collectorHost : null;
-    const keyLower = licenseKey.toLowerCase();
-    const autoEnv = keyLower.startsWith('eu01')
-      ? 'eu'
-      : keyLower.startsWith('gov01')
-        ? 'gov'
-        : 'us';
-    const defaultEnv = existingCollectorHost ?? autoEnv;
-    print('Environment:');
-    print('  1) US      — api.newrelic.com');
-    print('  2) EU      — api.eu.newrelic.com');
-    print('  3) Staging — staging-api.newrelic.com');
-    print('  4) FedRAMP — api.newrelic.com (FedRAMP/GovCloud)');
-    const envRaw = (await rl.question(`Which environment? [${defaultEnv}]: `)).trim().toLowerCase();
-    const resolvedEnv =
-      envRaw === '' || envRaw === defaultEnv
-        ? defaultEnv
-        : envRaw === '1' || envRaw === 'us'
-          ? 'us'
-          : envRaw === '2' || envRaw === 'eu'
-            ? 'eu'
-            : envRaw === '3' || envRaw === 'staging'
-              ? 'staging'
-              : envRaw === '4' || envRaw === 'fedramp' || envRaw === 'gov'
-                ? 'gov'
-                : defaultEnv;
-    collectorHost = resolvedEnv === 'us' ? null : resolvedEnv;
-
-    // Warn if license key prefix contradicts selected environment.
-    const keyRegion = keyLower.startsWith('eu01')
-      ? 'eu'
-      : keyLower.startsWith('gov01')
-        ? 'gov'
-        : keyLower.startsWith('us01')
-          ? 'us'
-          : null;
-    if (keyRegion && keyRegion !== resolvedEnv) {
-      print(
-        `  ⚠ Your license key looks like a ${keyRegion.toUpperCase()} key but you selected ${resolvedEnv.toUpperCase()}. Verify this is intentional.`,
-      );
-    }
-
-    // Step 2c: NR API key (optional)
-    const existingApiKey = typeof existing.nrApiKey === 'string' ? existing.nrApiKey : null;
-    const apiKeyHint = existingApiKey ? '(already set)' : 'optional';
-    const apiKeyRaw = (await rl.question(`New Relic API Key (NRAK-...) [${apiKeyHint}]: `)).trim();
-    if (apiKeyRaw) {
-      nrApiKey = apiKeyRaw;
-    } else if (existingApiKey) {
-      nrApiKey = existingApiKey;
-    }
-
-    // Step 2d: Validate credentials
-    print('\nValidating credentials...');
-    const licenseResult = await validateLicenseKey({ licenseKey, accountId, collectorHost });
-    if (licenseResult.valid) {
-      print('  ✓ License key: OK');
-    } else if (licenseResult.reason === 'unauthorized') {
-      print('  ✗ License key: unauthorized — double-check your key and environment selection');
-    } else if (licenseResult.reason === 'timeout' || licenseResult.reason === 'network') {
-      print(
-        `  ⚠ License key: could not reach NR ingest API (${licenseResult.detail ?? licenseResult.reason}) — check your network`,
-      );
-    } else {
-      print(
-        `  ⚠ License key: unexpected response (${licenseResult.detail ?? 'unknown'}) — proceeding anyway`,
-      );
-    }
-
-    if (nrApiKey) {
-      const apiResult = await validateApiKey({ nrApiKey, collectorHost });
-      if (apiResult.valid) {
-        validatedEmail = apiResult.detail ?? null;
-        const who = validatedEmail ? ` (${validatedEmail})` : '';
-        print(`  ✓ API key: OK${who}`);
-      } else if (apiResult.reason === 'unauthorized') {
-        print('  ✗ API key: unauthorized — double-check your NRAK key');
-      } else if (apiResult.reason === 'timeout' || apiResult.reason === 'network') {
-        print(
-          `  ⚠ API key: could not reach NerdGraph (${apiResult.detail ?? apiResult.reason}) — check your network`,
-        );
-      } else {
-        print(
-          `  ⚠ API key: unexpected response (${apiResult.detail ?? 'unknown'}) — proceeding anyway`,
-        );
-      }
-    }
-  }
-
-  // Step 3: Developer name — prefer existing config, then email local-part, then $USER
-  const emailLocalPart = validatedEmail ? (validatedEmail.split('@')[0] ?? '') : '';
-  const defaultDeveloper =
-    typeof existing.developer === 'string'
-      ? existing.developer
-      : normalizeDeveloperName(emailLocalPart || process.env.USER || process.env.USERNAME || '');
-  const rawInput =
-    (await rl.question(`Developer name [${defaultDeveloper}]: `)).trim() || defaultDeveloper;
-  const developer = normalizeDeveloperName(rawInput);
-  if (developer !== rawInput) {
-    print(`  → Normalized to: ${developer}`);
-  }
-
-  // Step 4: Optional fields
-  const existingTeamId = typeof existing.teamId === 'string' ? existing.teamId : null;
-  const teamIdAnswer = (await rl.question(`Team ID [${existingTeamId ?? 'optional'}]: `)).trim();
-  const teamId = teamIdAnswer || existingTeamId;
-
-  const existingProjectId = typeof existing.projectId === 'string' ? existing.projectId : null;
-  const projectIdAnswer = (
-    await rl.question(`Project ID [${existingProjectId ?? 'auto-detect from git'}]: `)
-  ).trim();
-  const projectId = projectIdAnswer || existingProjectId;
-
-  // Step 5: Budget caps
-  const existingBudget =
-    typeof existing.sessionBudgetUsd === 'number' ? String(existing.sessionBudgetUsd) : null;
-  const sessionBudgetStr =
-    (await rl.question(`Session budget USD [${existingBudget ?? 'no limit'}]: `)).trim() ||
-    (existingBudget ?? '');
-  let sessionBudgetUsd: number | null = null;
-  if (sessionBudgetStr) {
-    const parsed = parseFloat(sessionBudgetStr);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      console.error(`Invalid session budget "${sessionBudgetStr}": must be a positive number.`);
-      rl.close();
-      process.exit(1);
-    }
-    sessionBudgetUsd = parsed;
-  }
-
-  // Step 5b: Dashboard port (local/both only)
-  let dashboardPort: number | null = null;
-  if (mode === 'local' || mode === 'both') {
-    const existingDashboard =
-      existing.dashboard && typeof existing.dashboard === 'object'
-        ? (existing.dashboard as { port?: number })
-        : null;
-    const defaultPort = existingDashboard?.port ?? 7777;
-    const portStr = (
-      await rl.question(`Local dashboard port (loopback only) [${defaultPort}]: `)
-    ).trim();
-    if (portStr) {
-      const parsed = parseInt(portStr, 10);
-      if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 65536) {
-        console.error(`Invalid port "${portStr}": must be 1–65535.`);
+    // Step 1+2: NR credentials (skip in local mode)
+    let accountId = '';
+    let licenseKey = '';
+    let collectorHost: string | null = null;
+    let nrApiKey: string | null = null;
+    let validatedEmail: string | null = null;
+    if (mode !== 'local') {
+      const existingAccountId = typeof existing.accountId === 'string' ? existing.accountId : '';
+      const accountIdPrompt = existingAccountId
+        ? `New Relic Account ID [${existingAccountId}]: `
+        : 'New Relic Account ID: ';
+      accountId = (await rl.question(accountIdPrompt)).trim();
+      if (!accountId) accountId = existingAccountId;
+      if (!/^\d{1,12}$/.test(accountId)) {
+        console.error(`Invalid account ID: "${accountId}". Must be 1–12 digits.`);
         rl.close();
         process.exit(1);
       }
-      dashboardPort = parsed;
-    } else {
-      dashboardPort = defaultPort;
-    }
-  }
 
-  // Write config
-  const config = buildConfig(existing, {
-    accountId,
-    licenseKey,
-    developer,
-    teamId,
-    projectId,
-    sessionBudgetUsd,
-    mode,
-    dashboardPort,
-    nrApiKey,
-    collectorHost,
-  });
+      const existingKey = typeof existing.licenseKey === 'string' ? existing.licenseKey : '';
+      const keyHint = existingKey ? '(already set)' : 'NEW_RELIC_LICENSE_KEY';
+      const keyPrompt = `New Relic License Key [${keyHint}]: `;
+      licenseKey = (await rl.question(keyPrompt)).trim();
+      if (!licenseKey && typeof existing.licenseKey === 'string') {
+        licenseKey = existing.licenseKey;
+      }
+      if (!licenseKey) {
+        console.error('License key is required.');
+        rl.close();
+        process.exit(1);
+      }
 
-  mkdirSync(DEFAULT_STORAGE_PATH, { recursive: true, mode: 0o700 });
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), { mode: 0o600 });
-  print(`\nConfig written to ${CONFIG_PATH}`);
+      // Step 2b: Environment / region
+      const existingCollectorHost =
+        typeof existing.collectorHost === 'string' ? existing.collectorHost : null;
+      const keyLower = licenseKey.toLowerCase();
+      const autoEnv = keyLower.startsWith('eu01')
+        ? 'eu'
+        : keyLower.startsWith('gov01')
+          ? 'gov'
+          : 'us';
+      const defaultEnv = existingCollectorHost ?? autoEnv;
+      print('Environment:');
+      print('  1) US      — api.newrelic.com');
+      print('  2) EU      — api.eu.newrelic.com');
+      print('  3) Staging — staging-api.newrelic.com');
+      print('  4) FedRAMP — api.newrelic.com (FedRAMP/GovCloud)');
+      const envRaw = (await rl.question(`Which environment? [${defaultEnv}]: `))
+        .trim()
+        .toLowerCase();
+      const resolvedEnv =
+        envRaw === '' || envRaw === defaultEnv
+          ? defaultEnv
+          : envRaw === '1' || envRaw === 'us'
+            ? 'us'
+            : envRaw === '2' || envRaw === 'eu'
+              ? 'eu'
+              : envRaw === '3' || envRaw === 'staging'
+                ? 'staging'
+                : envRaw === '4' || envRaw === 'fedramp' || envRaw === 'gov'
+                  ? 'gov'
+                  : defaultEnv;
+      collectorHost = resolvedEnv === 'us' ? null : resolvedEnv;
 
-  // Step 5c: Starter alert rules (local + both modes only).
-  // Default-yes prompt; copy is idempotent — re-running the wizard never
-  // overwrites a user-edited rules file.
-  if (mode === 'local' || mode === 'both') {
-    const copyAnswer = (
-      await rl.question('Copy starter alert rules to ~/.nr-ai-observe/alerts/rules.json? [Y/n]: ')
-    )
-      .trim()
-      .toLowerCase();
-    if (copyAnswer !== 'n' && copyAnswer !== 'no') {
-      const result = copyStarterAlertRules({
-        sourcePath: defaultStarterRulesSource(),
-        destPath: ALERT_RULES_DEST,
-        logger: {
-          warn: (msg) => print(`  ! ${msg}`),
-          info: (msg) => print(`  → ${msg}`),
-        },
-      });
-      if (result.copied) {
-        print(`Starter alert rules copied to ${ALERT_RULES_DEST}`);
-      } else if (result.reason === 'exists') {
-        print(`Existing rules.json left in place (skipped — file exists).`);
+      // Warn if license key prefix contradicts selected environment.
+      const keyRegion = keyLower.startsWith('eu01')
+        ? 'eu'
+        : keyLower.startsWith('gov01')
+          ? 'gov'
+          : keyLower.startsWith('us01')
+            ? 'us'
+            : null;
+      if (keyRegion && keyRegion !== resolvedEnv) {
+        print(
+          `  ⚠ Your license key looks like a ${keyRegion.toUpperCase()} key but you selected ${resolvedEnv.toUpperCase()}. Verify this is intentional.`,
+        );
+      }
+
+      // Step 2c: NR API key (optional)
+      const existingApiKey = typeof existing.nrApiKey === 'string' ? existing.nrApiKey : null;
+      const apiKeyHint = existingApiKey ? '(already set)' : 'optional';
+      const apiKeyRaw = (
+        await rl.question(`New Relic API Key (NRAK-...) [${apiKeyHint}]: `)
+      ).trim();
+      if (apiKeyRaw) {
+        nrApiKey = apiKeyRaw;
+      } else if (existingApiKey) {
+        nrApiKey = existingApiKey;
+      }
+
+      // Step 2d: Validate credentials
+      print('\nValidating credentials...');
+      const licenseResult = await validateLicenseKey({ licenseKey, accountId, collectorHost });
+      if (licenseResult.valid) {
+        print('  ✓ License key: OK');
+      } else if (licenseResult.reason === 'unauthorized') {
+        print('  ✗ License key: unauthorized — double-check your key and environment selection');
+      } else if (licenseResult.reason === 'timeout' || licenseResult.reason === 'network') {
+        print(
+          `  ⚠ License key: could not reach NR ingest API (${licenseResult.detail ?? licenseResult.reason}) — check your network`,
+        );
       } else {
-        print(`Could not copy starter rules: ${result.reason ?? 'unknown error'}`);
+        print(
+          `  ⚠ License key: unexpected response (${licenseResult.detail ?? 'unknown'}) — proceeding anyway`,
+        );
       }
-    }
-  }
 
-  // Step 6: Hook install
-  // Config is already written above; pass no credentials to install so it only
-  // wires hooks and MCP without overwriting the config we just wrote.
-  const installHooks = (await rl.question('\nInstall Claude Code hooks now? [Y/n]: '))
-    .trim()
-    .toLowerCase();
-  if (installHooks !== 'n') {
-    print('\nRunning hook installer...');
-    await runInstallCli(['install']);
-    print('Hooks installed.');
-
-    if (verifyBinaryOnPath()) {
-      print('✓ nr-ai-observe is on your PATH');
-    } else {
-      print('\n⚠ nr-ai-observe is not on your PATH.');
-      print('  Claude Code hooks will fail with "command not found" until this is resolved.');
-      print('  Fix: run `npm link` in the project directory, or install globally:');
-      print('    npm install -g nr-ai-mcp-server');
-    }
-  }
-
-  // Step 7: Auto-update schedule (macOS only)
-  if (process.platform === 'darwin') {
-    const enableUpdate = (await rl.question('\nEnable daily auto-updates? [Y/n]: '))
-      .trim()
-      .toLowerCase();
-    if (enableUpdate !== 'n' && enableUpdate !== 'no') {
-      const timeRaw = (await rl.question('Update time (24h HH:MM) [08:00]: ')).trim();
-      const timeStr = timeRaw || '08:00';
-      const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
-      const parsedHour = match ? parseInt(match[1], 10) : -1;
-      const parsedMinute = match ? parseInt(match[2], 10) : -1;
-      const validTime =
-        parsedHour >= 0 && parsedHour <= 23 && parsedMinute >= 0 && parsedMinute <= 59;
-      const hour = validTime ? parsedHour : 8;
-      const minute = validTime ? parsedMinute : 0;
-      if (!validTime && timeStr !== '08:00') {
-        print(`⚠ Invalid time "${timeStr}", using default 08:00.`);
-      }
-      const hh = String(hour).padStart(2, '0');
-      const mm = String(minute).padStart(2, '0');
-      const binaryPath = resolveBinaryPath();
-      if (binaryPath) {
-        try {
-          installSchedule(binaryPath, hour, minute);
-          print(`✓ Daily auto-update scheduled for ${hh}:${mm}`);
-        } catch {
-          print(`⚠ Could not register schedule — run: nr-ai-observe schedule --time ${hh}:${mm}`);
+      if (nrApiKey) {
+        const apiResult = await validateApiKey({ nrApiKey, collectorHost });
+        if (apiResult.valid) {
+          validatedEmail = apiResult.detail ?? null;
+          const who = validatedEmail ? ` (${validatedEmail})` : '';
+          print(`  ✓ API key: OK${who}`);
+        } else if (apiResult.reason === 'unauthorized') {
+          print('  ✗ API key: unauthorized — double-check your NRAK key');
+        } else if (apiResult.reason === 'timeout' || apiResult.reason === 'network') {
+          print(
+            `  ⚠ API key: could not reach NerdGraph (${apiResult.detail ?? apiResult.reason}) — check your network`,
+          );
+        } else {
+          print(
+            `  ⚠ API key: unexpected response (${apiResult.detail ?? 'unknown'}) — proceeding anyway`,
+          );
         }
-      } else {
-        print('\n⚠ Cannot schedule — nr-ai-observe not found on PATH.');
-        print(`  Run nr-ai-observe schedule --time ${hh}:${mm} after fixing PATH.`);
       }
     }
+
+    // Step 3: Developer name — prefer existing config, then email local-part, then $USER
+    const emailLocalPart = validatedEmail ? (validatedEmail.split('@')[0] ?? '') : '';
+    const defaultDeveloper =
+      typeof existing.developer === 'string'
+        ? existing.developer
+        : normalizeDeveloperName(emailLocalPart || process.env.USER || process.env.USERNAME || '');
+    const rawInput =
+      (await rl.question(`Developer name [${defaultDeveloper}]: `)).trim() || defaultDeveloper;
+    const developer = normalizeDeveloperName(rawInput);
+    if (developer !== rawInput) {
+      print(`  → Normalized to: ${developer}`);
+    }
+
+    // Step 4: Optional fields
+    const existingTeamId = typeof existing.teamId === 'string' ? existing.teamId : null;
+    const teamIdAnswer = (await rl.question(`Team ID [${existingTeamId ?? 'optional'}]: `)).trim();
+    const teamId = teamIdAnswer || existingTeamId;
+
+    const existingProjectId = typeof existing.projectId === 'string' ? existing.projectId : null;
+    const projectIdAnswer = (
+      await rl.question(`Project ID [${existingProjectId ?? 'auto-detect from git'}]: `)
+    ).trim();
+    const projectId = projectIdAnswer || existingProjectId;
+
+    // Step 5: Budget caps
+    const existingBudget =
+      typeof existing.sessionBudgetUsd === 'number' ? String(existing.sessionBudgetUsd) : null;
+    const sessionBudgetStr =
+      (await rl.question(`Session budget USD [${existingBudget ?? 'no limit'}]: `)).trim() ||
+      (existingBudget ?? '');
+    let sessionBudgetUsd: number | null = null;
+    if (sessionBudgetStr) {
+      const parsed = parseFloat(sessionBudgetStr);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        console.error(`Invalid session budget "${sessionBudgetStr}": must be a positive number.`);
+        rl.close();
+        process.exit(1);
+      }
+      sessionBudgetUsd = parsed;
+    }
+
+    // Step 5b: Dashboard port (local/both only)
+    let dashboardPort: number | null = null;
+    if (mode === 'local' || mode === 'both') {
+      const existingDashboard =
+        existing.dashboard && typeof existing.dashboard === 'object'
+          ? (existing.dashboard as { port?: number })
+          : null;
+      const defaultPort = existingDashboard?.port ?? 7777;
+      const portStr = (
+        await rl.question(`Local dashboard port (loopback only) [${defaultPort}]: `)
+      ).trim();
+      if (portStr) {
+        const parsed = parseInt(portStr, 10);
+        if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 65536) {
+          console.error(`Invalid port "${portStr}": must be 1–65535.`);
+          rl.close();
+          process.exit(1);
+        }
+        dashboardPort = parsed;
+      } else {
+        dashboardPort = defaultPort;
+      }
+    }
+
+    // Write config
+    const config = buildConfig(existing, {
+      accountId,
+      licenseKey,
+      developer,
+      teamId,
+      projectId,
+      sessionBudgetUsd,
+      mode,
+      dashboardPort,
+      nrApiKey,
+      collectorHost,
+    });
+
+    mkdirSync(DEFAULT_STORAGE_PATH, { recursive: true, mode: 0o700 });
+    const configTmp = CONFIG_PATH + '.tmp';
+    writeFileSync(configTmp, JSON.stringify(config, null, 2), { mode: 0o600 });
+    renameSync(configTmp, CONFIG_PATH);
+    print(`\nConfig written to ${CONFIG_PATH}`);
+
+    // Step 5c: Starter alert rules (local + both modes only).
+    // Default-yes prompt; copy is idempotent — re-running the wizard never
+    // overwrites a user-edited rules file.
+    if (mode === 'local' || mode === 'both') {
+      const copyAnswer = (
+        await rl.question('Copy starter alert rules to ~/.nr-ai-observe/alerts/rules.json? [Y/n]: ')
+      )
+        .trim()
+        .toLowerCase();
+      if (copyAnswer !== 'n' && copyAnswer !== 'no') {
+        const result = copyStarterAlertRules({
+          sourcePath: defaultStarterRulesSource(),
+          destPath: ALERT_RULES_DEST,
+          logger: {
+            warn: (msg) => print(`  ! ${msg}`),
+            info: (msg) => print(`  → ${msg}`),
+          },
+        });
+        if (result.copied) {
+          print(`Starter alert rules copied to ${ALERT_RULES_DEST}`);
+        } else if (result.reason === 'exists') {
+          print(`Existing rules.json left in place (skipped — file exists).`);
+        } else {
+          print(`Could not copy starter rules: ${result.reason ?? 'unknown error'}`);
+        }
+      }
+    }
+
+    // Step 6: Hook install
+    // Config is already written above; pass no credentials to install so it only
+    // wires hooks and MCP without overwriting the config we just wrote.
+    const installHooks = (await rl.question('\nInstall Claude Code hooks now? [Y/n]: '))
+      .trim()
+      .toLowerCase();
+    if (installHooks !== 'n') {
+      print('\nRunning hook installer...');
+      await runInstallCli(['install']);
+      print('Hooks installed.');
+
+      if (verifyBinaryOnPath()) {
+        print('✓ nr-ai-observe is on your PATH');
+      } else {
+        print('\n⚠ nr-ai-observe is not on your PATH.');
+        print('  Claude Code hooks will fail with "command not found" until this is resolved.');
+        print('  Fix: run `npm link` in the project directory, or install globally:');
+        print('    npm install -g nr-ai-mcp-server');
+      }
+    }
+
+    // Step 7: Auto-update schedule (macOS only)
+    if (process.platform === 'darwin') {
+      const enableUpdate = (await rl.question('\nEnable daily auto-updates? [Y/n]: '))
+        .trim()
+        .toLowerCase();
+      if (enableUpdate !== 'n' && enableUpdate !== 'no') {
+        const timeRaw = (await rl.question('Update time (24h HH:MM) [08:00]: ')).trim();
+        const timeStr = timeRaw || '08:00';
+        const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+        const parsedHour = match ? parseInt(match[1], 10) : -1;
+        const parsedMinute = match ? parseInt(match[2], 10) : -1;
+        const validTime =
+          parsedHour >= 0 && parsedHour <= 23 && parsedMinute >= 0 && parsedMinute <= 59;
+        const hour = validTime ? parsedHour : 8;
+        const minute = validTime ? parsedMinute : 0;
+        if (!validTime && timeStr !== '08:00') {
+          print(`⚠ Invalid time "${timeStr}", using default 08:00.`);
+        }
+        const hh = String(hour).padStart(2, '0');
+        const mm = String(minute).padStart(2, '0');
+        const binaryPath = resolveBinaryPath();
+        if (binaryPath) {
+          try {
+            installSchedule(binaryPath, hour, minute);
+            print(`✓ Daily auto-update scheduled for ${hh}:${mm}`);
+          } catch {
+            print(`⚠ Could not register schedule — run: nr-ai-observe schedule --time ${hh}:${mm}`);
+          }
+        } else {
+          print('\n⚠ Cannot schedule — nr-ai-observe not found on PATH.');
+          print(`  Run nr-ai-observe schedule --time ${hh}:${mm} after fixing PATH.`);
+        }
+      }
+    }
+
+    // Step 8: Dashboard deploy — show manual command (deploy-dashboard.ts is not a library)
+    if (mode !== 'local') {
+      const regionFlag =
+        collectorHost === 'eu' ? ' --eu' : collectorHost === 'staging' ? ' --staging' : '';
+      // Mask the API key in printed commands — users copy these snippets to
+      // terminals, docs, and chat messages, and the raw key could be captured.
+      const apiKeyVar = nrApiKey
+        ? `NEW_RELIC_API_KEY=${nrApiKey.slice(0, 8)}...`
+        : 'NEW_RELIC_API_KEY=<NRAK-...>';
+      print('\nTo deploy dashboards, run:');
+      print(
+        `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts --all${regionFlag}`,
+      );
+      print(`\nFor a personal dashboard pre-filtered to you:`);
+      print(
+        `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer ${developer}${regionFlag}`,
+      );
+
+      print(`\nFor personal alerts scoped to you:`);
+      print(
+        `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-alerts.ts --developer ${developer}${regionFlag}`,
+      );
+    } else {
+      print(
+        `\nLocal mode: open the dashboard at http://127.0.0.1:${dashboardPort ?? 7777} once Claude Code starts.`,
+      );
+    }
+
+    // The MCP server is launched automatically by Claude Code based on the
+    // .mcp.json entry written above — there is no manual start step. Telling
+    // testers to run `nr-ai-mcp-server --stdio` themselves leads them to
+    // start a second process that competes with the auto-launched one for
+    // the buffer file lock and produces interleaved metrics.
+    print('\n✓ Setup complete.');
+    print('  Open Claude Code in a project — the MCP server starts automatically.');
+    if (mode === 'local') {
+      print(
+        `  Metrics will appear at http://127.0.0.1:${dashboardPort ?? 7777} within ~30 seconds of your first tool call.`,
+      );
+    } else {
+      print('  Metrics will appear in your New Relic dashboard within a few minutes.');
+    }
+    print('');
+  } finally {
+    rl.close();
   }
-
-  // Step 8: Dashboard deploy — show manual command (deploy-dashboard.ts is not a library)
-  if (mode !== 'local') {
-    const regionFlag =
-      collectorHost === 'eu' ? ' --eu' : collectorHost === 'staging' ? ' --staging' : '';
-    const apiKeyVar = nrApiKey ? `NEW_RELIC_API_KEY=${nrApiKey}` : 'NEW_RELIC_API_KEY=<NRAK-...>';
-    print('\nTo deploy dashboards, run:');
-    print(
-      `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts --all${regionFlag}`,
-    );
-    print(`\nFor a personal dashboard pre-filtered to you:`);
-    print(
-      `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer ${developer}${regionFlag}`,
-    );
-
-    print(`\nFor personal alerts scoped to you:`);
-    print(
-      `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-alerts.ts --developer ${developer}${regionFlag}`,
-    );
-  } else {
-    print(
-      `\nLocal mode: open the dashboard at http://127.0.0.1:${dashboardPort ?? 7777} once Claude Code starts.`,
-    );
-  }
-
-  rl.close();
-
-  // The MCP server is launched automatically by Claude Code based on the
-  // .mcp.json entry written above — there is no manual start step. Telling
-  // testers to run `nr-ai-mcp-server --stdio` themselves leads them to
-  // start a second process that competes with the auto-launched one for
-  // the buffer file lock and produces interleaved metrics.
-  print('\n✓ Setup complete.');
-  print('  Open Claude Code in a project — the MCP server starts automatically.');
-  if (mode === 'local') {
-    print(
-      `  Metrics will appear at http://127.0.0.1:${dashboardPort ?? 7777} within ~30 seconds of your first tool call.`,
-    );
-  } else {
-    print('  Metrics will appear in your New Relic dashboard within a few minutes.');
-  }
-  print('');
 }

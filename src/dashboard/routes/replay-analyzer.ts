@@ -17,6 +17,7 @@ export interface ReplayAnalysis {
 const THRASH_THRESHOLD = 3;
 const STUCK_LOOP_THRESHOLD = 3;
 const BLIND_EDIT_THRESHOLD = 3;
+const RE_READ_THRESHOLD = 4;
 const CRITICAL_THRESHOLD = 5;
 
 export function analyzeReplayTimeline(timeline: ReplayTimelineEntry[]): ReplayAnalysis {
@@ -243,7 +244,7 @@ function detectReReadingSegments(timeline: ReplayTimelineEntry[]): AntiPatternSe
   }
 
   for (const [file, indices] of reads) {
-    if (indices.length >= 4) {
+    if (indices.length >= RE_READ_THRESHOLD) {
       segments.push({
         type: 're_reading',
         startIndex: indices[0],

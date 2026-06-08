@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createGunzip, createInflate, createBrotliDecompress } from 'node:zlib';
+import { timingSafeEqual } from 'node:crypto';
 import { createLogger } from '../shared/index.js';
 import { validateSsrfUrl } from '../security/ssrf.js';
 
@@ -48,7 +49,9 @@ export class OtlpReceiver {
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.server = createServer((req, res) => void this.handleRequest(req, res));
-      this.server.on('error', reject);
+      // Use once() so the startup rejection handler is removed after start() resolves.
+      // A permanent on('error') handler is registered below after listen() succeeds.
+      this.server.once('error', reject);
       this.server.on('checkContinue', (req, res) => {
         res.writeContinue();
         void this.handleRequest(req, res);
@@ -56,6 +59,10 @@ export class OtlpReceiver {
       const host = this.options.bindAddress ?? '127.0.0.1';
       this.server.listen(this.options.port, host, () => {
         logger.info('OTLP receiver listening', { port: this.options.port, host });
+        // Permanent error handler for post-startup errors (e.g. EADDRINUSE on rebind).
+        this.server!.on('error', (err) =>
+          logger.error('OTLP receiver error', { error: String(err) }),
+        );
         resolve();
       });
     });
@@ -169,7 +176,8 @@ export class OtlpReceiver {
   private readBody(req: IncomingMessage): Promise<Buffer> {
     const maxBytes = this.options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
     const contentLengthHeader = req.headers['content-length'] as string | undefined;
-    const expectedBytes = contentLengthHeader ? Number(contentLengthHeader) : null;
+    const parsedContentLength = contentLengthHeader ? parseInt(contentLengthHeader, 10) : NaN;
+    const expectedBytes = Number.isFinite(parsedContentLength) ? parsedContentLength : null;
 
     return new Promise((resolve, reject) => {
       const contentEncoding =
@@ -249,7 +257,12 @@ export class OtlpReceiver {
     const authHeader = req.headers.authorization as string | undefined;
     const expectedAuth = `Bearer ${this.options.apiKey}`;
 
-    if (authHeader !== expectedAuth) {
+    // Use timing-safe comparison to prevent timing-oracle attacks on the API key
+    const match =
+      authHeader !== undefined &&
+      authHeader.length === expectedAuth.length &&
+      timingSafeEqual(Buffer.from(authHeader), Buffer.from(expectedAuth));
+    if (!match) {
       throw new AuthenticationError('Invalid or missing authentication');
     }
   }
@@ -266,7 +279,7 @@ export class OtlpReceiver {
       this.rateLimiter.set(remoteAddr, timestamps);
     }
 
-    // Prune timestamps older than the rate limit window
+    // Prune timestamps older than the rate limit window.
     while (timestamps.length > 0 && timestamps[0]! < now - RATE_LIMIT_WINDOW_MS) {
       timestamps.shift();
     }

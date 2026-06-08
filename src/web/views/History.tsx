@@ -136,8 +136,8 @@ export function History(): JSX.Element {
   const weeklyChronological = [...(weekly.data ?? [])].reverse();
   const weeklyData = weeklyChronological.map((w) => {
     const fullDate = w.weekStart ?? w.week ?? '';
-    const score = w.efficiencyScore ?? w.avgEfficiencyScore ?? 0;
-    return { week: fullDate || '?', efficiency: Math.round((score ?? 0) * 100) };
+    const score = w.efficiencyScore ?? w.avgEfficiencyScore ?? null;
+    return { week: fullDate || '?', efficiency: score !== null ? Math.round(score * 100) : null };
   });
 
   const dailyData = aggregateDailyCost(sessions.data ?? [], 30);
@@ -300,12 +300,16 @@ export function History(): JSX.Element {
                       <td className="py-1 font-medium">{m.model}</td>
                       <td className="py-1 text-right tabular-nums">{m.sessions}</td>
                       <td className="py-1 text-right tabular-nums">
-                        {m.avgEfficiency !== null ? `${Math.round(m.avgEfficiency * 100)}%` : '—'}
+                        {m.avgEfficiency !== null
+                          ? `${Math.min(100, Math.round(m.avgEfficiency * 100))}%`
+                          : '—'}
                       </td>
                       <td
                         className={`py-1 text-right tabular-nums ${m.flagged ? 'text-accent-amber' : ''}`}
                       >
-                        {m.avgSuccessRate !== null ? `${Math.round(m.avgSuccessRate * 100)}%` : '—'}
+                        {m.avgSuccessRate !== null
+                          ? `${Math.min(100, Math.round(m.avgSuccessRate * 100))}%`
+                          : '—'}
                       </td>
                       <td className="py-1 text-right tabular-nums">
                         {m.avgCost !== null ? `$${m.avgCost.toFixed(2)}` : '—'}
@@ -440,7 +444,7 @@ export function aggregateDailyCost(
     const d = new Date(r.startTime);
     // Use local-time getters so a session at 10pm UTC-5 lands on its
     // local day, not the UTC day after.
-    const day = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     byDay.set(day, (byDay.get(day) ?? 0) + r.estimatedCostUsd);
   }
   const sorted = Array.from(byDay.entries()).sort((a, b) => a[0].localeCompare(b[0]));

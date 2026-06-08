@@ -341,7 +341,7 @@ export class LocalAlertEngine {
       total += entry.count;
       matched = true;
     }
-    return matched ? total : 0;
+    return matched ? total : null;
   }
 
   private computeLatencyValue(rule: LatencyPercentileRule, snapshot: AlertSnapshot): number | null {
@@ -386,9 +386,15 @@ export class LocalAlertEngine {
     const out: AlertEvent[] = [];
     const period = budgetPeriodForRule(rule);
     const thresholds = snapshot.budgetThresholds ?? [];
-    const matching = thresholds.find(
-      (t) => t.period === period && t.thresholdPct >= rule.threshold,
-    );
+    // Find the HIGHEST matching threshold so escalation from 50% → 80% produces
+    // a new periodKey and fires again rather than being blocked by the 50% key.
+    const matching = thresholds
+      .filter((t) => t.period === period && t.thresholdPct >= rule.threshold)
+      .reduce(
+        (best: (typeof thresholds)[number] | null, t) =>
+          best === null || t.thresholdPct > best.thresholdPct ? t : best,
+        null,
+      );
 
     const state = this.getOrInitState(rule.id);
 
@@ -484,14 +490,16 @@ export class LocalAlertEngine {
       const day = String(d.getDate()).padStart(2, '0');
       return `${y}-${m}-${day}`;
     }
-    // weekly — match BudgetTracker.currentPeriodId() shape
-    const year = d.getFullYear();
-    const jan4 = new Date(year, 0, 4);
-    const weekStart = new Date(jan4);
-    weekStart.setDate(jan4.getDate() - jan4.getDay());
-    const week = Math.ceil((d.getTime() - weekStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
-    const weekNum = String(Math.max(1, week)).padStart(2, '0');
-    return `${year}-W${weekNum}`;
+    // ISO 8601 week — mirrors BudgetTracker.currentPeriodId() exactly so
+    // period keys match when comparing alert engine state to budget thresholds.
+    const utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayOfWeek = utc.getUTCDay() || 7; // 1=Mon … 7=Sun
+    utc.setUTCDate(utc.getUTCDate() + 4 - dayOfWeek); // nearest Thursday
+    const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+    const week = Math.ceil(((utc.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+    const isoYear = utc.getUTCFullYear();
+    const weekNum = String(week).padStart(2, '0');
+    return `${isoYear}-W${weekNum}`;
   }
 
   // For tests + Phase 2 hand-off: read-only view of currently firing rules.

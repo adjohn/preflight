@@ -405,11 +405,11 @@ describe('Cross-session tool handlers', () => {
       }),
     );
 
-    // Invalid date string — should not crash, returns all tasks
+    // Invalid date string — now returns isError: true (consistent with handleGetSessionHistory)
     const result = handleGetCostPerOutcome(analyzer, taskDetector, { since: 'not-a-date' });
+    expect(result.isError).toBe(true);
     const parsed = JSON.parse(result.content[0]!.text);
-
-    expect(parsed.total_tasks).toBe(1);
+    expect(parsed).toHaveProperty('error');
   });
 
   // -------------------------------------------------------------------------
@@ -780,7 +780,7 @@ describe('Cross-session tool handlers', () => {
       const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.data_points).toBeInstanceOf(Array);
       expect(parsed.metric).toBe('efficiency');
-      expect(parsed.weeks).toBe(-1);
+      expect(parsed.weeks).toBe(1); // clamped to minimum 1
     });
 
     it('handleGetTrends with weeks: 999 does not crash and returns data_points array', () => {

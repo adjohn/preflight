@@ -23,12 +23,22 @@ export function purgeOldSessions(storagePath: string, retainDays: number): numbe
     try {
       const stat = statSync(fullPath);
       if (stat.mtimeMs < cutoffMs) {
-        unlinkSync(fullPath);
-        deletedCount++;
-        logger.debug('Purged old session file', {
-          file,
-          ageDays: Math.floor((Date.now() - stat.mtimeMs) / 86_400_000),
-        });
+        try {
+          unlinkSync(fullPath);
+          deletedCount++;
+          logger.debug('Purged old session file', {
+            file,
+            ageDays: Math.floor((Date.now() - stat.mtimeMs) / 86_400_000),
+          });
+        } catch (unlinkErr) {
+          const code = (unlinkErr as NodeJS.ErrnoException).code;
+          if (code === 'ENOENT') {
+            // Already deleted by another process — still count it
+            deletedCount++;
+          } else {
+            logger.warn('Failed to delete session file', { file, error: String(unlinkErr) });
+          }
+        }
       }
     } catch (err) {
       logger.warn('Failed to check/delete session file', { file, error: String(err) });

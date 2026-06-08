@@ -335,6 +335,9 @@ export function codingTaskToNrEvent(
     build_run: task.buildRun,
     build_passed: task.buildPassed,
     estimated_cost_usd: task.estimatedCostUsd ?? 0,
+    // Distinguish genuine zero-cost from "cost was never computed" so NRQL
+    // sum(estimated_cost_usd) doesn't silently undercount.
+    cost_estimated: task.estimatedCostUsd !== null,
     tokens_used: task.tokensUsed,
     asked_user_questions: task.askedUserQuestions,
     sub_agents_spawned: task.subAgentsSpawned,
@@ -366,11 +369,13 @@ export function antiPatternToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    /** Detection wall-clock time in ms. Defaults to now if not provided. */
+    detectedAt?: number;
   },
 ): NrEventData {
   const event: NrEventData = {
     eventType: 'AiAntiPattern',
-    timestamp: Date.now(),
+    timestamp: attrs.detectedAt ?? Date.now(),
     // Field name is intentionally 'type' (not 'patternType') — used by all NRQL queries and dashboards. Do not rename.
     type: pattern.type,
     task_id: attrs.taskId,
@@ -650,7 +655,7 @@ export class NrIngestManager {
 
   ingestAntiPattern(
     pattern: AntiPattern,
-    context: { sessionId?: string; platform?: string; taskId: string },
+    context: { sessionId?: string; platform?: string; taskId: string; detectedAt?: number },
   ): void {
     const event = antiPatternToNrEvent(pattern, {
       developer: this.developer,
@@ -661,6 +666,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      detectedAt: context.detectedAt,
     });
     this.scheduler.addEvent(event);
   }
@@ -698,6 +704,8 @@ export class NrIngestManager {
   }
 
   async stop(): Promise<void> {
+    if (!this.running) return;
+
     // Emit final session gauges before clearing interval and stopping scheduler
     this.emitSessionGauges();
 
@@ -716,7 +724,12 @@ export class NrIngestManager {
     if (this.otlpEventBridge) {
       cleanupPromises.push(this.otlpEventBridge.shutdown());
     }
-    await Promise.all(cleanupPromises);
+    const results = await Promise.allSettled(cleanupPromises);
+    for (const r of results) {
+      if (r.status === 'rejected') {
+        logger.warn('Error stopping NrIngest service', { error: String(r.reason) });
+      }
+    }
   }
 
   private emitSessionGauges(): void {
@@ -746,17 +759,24 @@ export class NrIngestManager {
     if (this.costTracker || this.efficiencyScorer) {
       const developer = this.developer;
       const scheduler = this.scheduler;
-      const devAggregator = {
-        record(name: string, value: number, attrs: Record<string, string | number> = {}) {
-          scheduler.recordMetric(
-            name,
-            value,
-            sessionId != null
-              ? { developer, session_id: sessionId, ...teamAttrs, ...attrs }
-              : { developer, ...teamAttrs, ...attrs },
-          );
-        },
-      } as unknown as MetricAggregator;
+      const devAggregator = new MetricAggregator();
+      const _origRecord = devAggregator.record.bind(devAggregator);
+      // Override record() to inject developer + team attribution on every metric.
+      // The bound original is preserved so TypeScript sees the full MetricAggregator type.
+      (devAggregator as unknown as { record: typeof _origRecord }).record = (
+        name: string,
+        value: number,
+        attrs: Record<string, string | number> = {},
+      ) => {
+        scheduler.recordMetric(
+          name,
+          value,
+          sessionId != null
+            ? { developer, session_id: sessionId, ...teamAttrs, ...attrs }
+            : { developer, ...teamAttrs, ...attrs },
+        );
+        return true;
+      };
       this.costTracker?.emitMetrics(devAggregator);
       this.efficiencyScorer?.emitMetrics(devAggregator);
     }
@@ -784,7 +804,9 @@ export class NrIngestManager {
         ...teamAttrs,
       });
     }
-    for (const entry of proxyMetrics.toolPopularity) {
+    // Cap at 100 (tool, server) combinations to stay within NR Metric API cardinality limits.
+    const MAX_TOOL_POPULARITY_ENTRIES = 100;
+    for (const entry of proxyMetrics.toolPopularity.slice(0, MAX_TOOL_POPULARITY_ENTRIES)) {
       this.scheduler.recordMetric('ai.mcp.tool_popularity', entry.count, {
         tool: entry.tool,
         server: entry.server,

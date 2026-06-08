@@ -166,15 +166,18 @@ function ScoreRing({ score }: { score: number | null }): JSX.Element {
     );
   }
 
-  const color =
-    score >= 80
-      ? 'text-accent-green border-accent-green'
-      : score >= 60
-        ? 'text-accent-amber border-accent-amber'
-        : 'text-accent-red border-accent-red';
+  // Clamp score to [0, 100] so out-of-range values don't produce negative
+  // strokeDashoffset (arc overflows full circle) or > circumference (arc disappears).
+  const clampedScore = Math.max(0, Math.min(100, score));
+  const [textColor, borderColor] =
+    clampedScore >= 80
+      ? ['text-accent-green', 'border-accent-green']
+      : clampedScore >= 60
+        ? ['text-accent-amber', 'border-accent-amber']
+        : ['text-accent-red', 'border-accent-red'];
 
   const circumference = 2 * Math.PI * 34;
-  const offset = circumference - (score / 100) * circumference;
+  const offset = circumference - (clampedScore / 100) * circumference;
 
   return (
     <div className="relative w-20 h-20">
@@ -192,7 +195,7 @@ function ScoreRing({ score }: { score: number | null }): JSX.Element {
           cy="40"
           r="34"
           fill="none"
-          className={color.split(' ')[1]}
+          className={borderColor}
           stroke="currentColor"
           strokeWidth="6"
           strokeLinecap="round"
@@ -202,7 +205,7 @@ function ScoreRing({ score }: { score: number | null }): JSX.Element {
         />
       </svg>
       <div
-        className={`absolute inset-0 flex items-center justify-center text-lg font-bold ${color.split(' ')[0]}`}
+        className={`absolute inset-0 flex items-center justify-center text-lg font-bold ${textColor}`}
       >
         {score}
       </div>
@@ -327,8 +330,12 @@ export function GitEfficiency(): JSX.Element {
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-medium text-ink-base">Best Practices</h2>
             <span className="text-[11px] text-ink-muted">
-              {data.bestPractices.filter((bp) => bp.status === 'pass').length}/
-              {data.bestPractices.filter((bp) => bp.status !== 'unknown').length} passing
+              {(() => {
+                const known = data.bestPractices.filter((bp) => bp.status !== 'unknown').length;
+                if (known === 0) return 'No data yet';
+                const passing = data.bestPractices.filter((bp) => bp.status === 'pass').length;
+                return `${passing}/${known} passing`;
+              })()}
             </span>
           </div>
           {/* Passing items — compact row of chips */}
@@ -408,9 +415,9 @@ export function GitEfficiency(): JSX.Element {
                 Conflict History
               </h3>
               <div className="space-y-1">
-                {data.conflictHistory.map((c, i) => (
+                {data.conflictHistory.map((c) => (
                   <div
-                    key={i}
+                    key={`${c.timestamp}-${c.command}`}
                     className="flex items-center gap-3 text-xs py-1 border-t border-[rgba(255,255,255,0.05)]"
                   >
                     <span className="tabular-nums text-ink-subtle w-28 shrink-0">
@@ -442,7 +449,7 @@ export function GitEfficiency(): JSX.Element {
           <div className="space-y-2">
             {data.suggestions.map((s, i) => (
               <div
-                key={i}
+                key={`${s.category}-${s.severity}-${i}`}
                 className={`border-l-[3px] rounded-r-lg px-3 py-2 ${SEVERITY_STYLE[s.severity]}`}
               >
                 <div className="flex items-start gap-2">
@@ -512,9 +519,9 @@ export function GitEfficiency(): JSX.Element {
             <div className="mt-3">
               <h3 className="text-[11px] text-ink-muted uppercase tracking-wide mb-2">Activity</h3>
               <div className="flex flex-wrap gap-1.5">
-                {data.prMetrics.prActivity.map((e, i) => (
+                {data.prMetrics.prActivity.map((e) => (
                   <span
-                    key={i}
+                    key={`${e.timestamp}-${e.action}`}
                     className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                       e.action === 'create'
                         ? 'bg-accent-green/20 text-accent-green'
@@ -584,8 +591,11 @@ export function GitEfficiency(): JSX.Element {
               {[...data.gitCommandTimeline]
                 .reverse()
                 .slice(0, 30)
-                .map((e, i) => (
-                  <tr key={i} className="border-t border-[rgba(255,255,255,0.05)]">
+                .map((e) => (
+                  <tr
+                    key={`${e.type}-${e.timestamp}`}
+                    className="border-t border-[rgba(255,255,255,0.05)]"
+                  >
                     <td className="p-2 tabular-nums text-ink-subtle">
                       {new Date(e.timestamp).toLocaleTimeString(undefined, {
                         hour: 'numeric',

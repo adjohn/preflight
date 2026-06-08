@@ -17,6 +17,7 @@
 export function formatNumber(n: number): string {
   if (!Number.isFinite(n)) return '—';
   if (Math.abs(n) >= 100) return n.toFixed(0);
+  if (Math.abs(n) >= 10) return n.toFixed(1); // Smooth 1-decimal tier prevents jump at 100 boundary
   if (Number.isInteger(n)) return String(n);
   return n.toFixed(2);
 }
