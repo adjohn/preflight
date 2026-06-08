@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchGitEfficiency, qk } from '../api/client';
+import { fetchGitEfficiency, fetchGitEfficiencyRepos, qk } from '../api/client';
 import { Kpi } from '../components/Kpi';
 import { AnimatedCard } from '../components/AnimatedCard';
 import { EmptyState } from '../components/EmptyState';
@@ -220,16 +220,49 @@ export function GitEfficiency(): JSX.Element {
     refetchInterval: 5000,
   });
 
+  const { data: reposData } = useQuery<{ repos: string[]; currentRepo: string | null }>({
+    queryKey: qk.gitEfficiencyRepos,
+    queryFn: () =>
+      fetchGitEfficiencyRepos() as Promise<{ repos: string[]; currentRepo: string | null }>,
+    refetchInterval: 30000,
+  });
+
   if (isLoading) return <div className="text-ink-muted text-xs">Loading…</div>;
   if (error)
     return <div className="text-accent-red text-xs">Error loading git efficiency data.</div>;
   if (!data || data.totalGitCommands === 0) {
     return (
-      <EmptyState
-        icon="code"
-        title="No Git activity yet"
-        subtitle="Git efficiency metrics will appear here as git commands are executed during the session."
-      />
+      <>
+        {reposData && reposData.repos.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mb-4">
+            <span className="text-[10px] text-ink-muted uppercase tracking-wider mr-1">
+              Repos today:
+            </span>
+            {reposData.repos.map((repo) => {
+              const shortName = repo.split('/').pop() || repo;
+              const isCurrent = repo === reposData.currentRepo;
+              return (
+                <span
+                  key={repo}
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                    isCurrent
+                      ? 'bg-accent-green/15 text-accent-green border border-accent-green/30'
+                      : 'bg-[rgba(255,255,255,0.05)] text-ink-subtle border border-[rgba(255,255,255,0.1)]'
+                  }`}
+                  title={repo}
+                >
+                  {shortName}
+                </span>
+              );
+            })}
+          </div>
+        )}
+        <EmptyState
+          icon="code"
+          title="No Git activity yet"
+          subtitle="Git efficiency metrics will appear here as git commands are executed during the session."
+        />
+      </>
     );
   }
 
@@ -247,6 +280,33 @@ export function GitEfficiency(): JSX.Element {
                   <span className="font-mono text-ink-subtle">{data.repoContext.branch}</span>
                 </>
               )}
+            </div>
+          )}
+          <div className="mt-1 text-[10px] text-ink-muted">
+            Today&apos;s activity across all sessions
+          </div>
+          {reposData && reposData.repos.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <span className="text-[10px] text-ink-muted uppercase tracking-wider mr-1">
+                Repos today:
+              </span>
+              {reposData.repos.map((repo) => {
+                const shortName = repo.split('/').pop() || repo;
+                const isCurrent = repo === reposData.currentRepo;
+                return (
+                  <span
+                    key={repo}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-mono ${
+                      isCurrent
+                        ? 'bg-accent-green/15 text-accent-green border border-accent-green/30'
+                        : 'bg-[rgba(255,255,255,0.05)] text-ink-subtle border border-[rgba(255,255,255,0.1)]'
+                    }`}
+                    title={repo}
+                  >
+                    {shortName}
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>

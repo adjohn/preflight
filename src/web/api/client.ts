@@ -39,6 +39,8 @@ export const fetchQualityProxy = (): Promise<unknown> => getJson<unknown>('/api/
 export const fetchToolSelectionScore = (): Promise<unknown> =>
   getJson<unknown>('/api/tool-selection-score');
 export const fetchGitEfficiency = (): Promise<unknown> => getJson<unknown>('/api/git-efficiency');
+export const fetchGitEfficiencyRepos = (): Promise<unknown> =>
+  getJson<unknown>('/api/git-efficiency/repos');
 
 export const qk = {
   sessionCurrent: ['session', 'current'] as const,
@@ -58,4 +60,5 @@ export const qk = {
   qualityProxy: ['quality-proxy'] as const,
   toolSelectionScore: ['tool-selection-score'] as const,
   gitEfficiency: ['git-efficiency'] as const,
+  gitEfficiencyRepos: ['git-efficiency-repos'] as const,
 };

@@ -491,6 +491,33 @@ export function createApiHandler(
     jsonOk(res, deps.gitEfficiencyTracker.getMetrics());
   });
 
+  routes.set('GET /api/git-efficiency/repos', (_req, res) => {
+    if (!deps.sessionStore) return unavailable(res, 'sessionStore');
+    const todaySessions = deps.sessionStore.loadTodaySessions() as Array<{
+      repoName?: string | null;
+      sessionId: string;
+    }>;
+    const repoSet = new Set<string>();
+    for (const session of todaySessions) {
+      if (typeof session.repoName === 'string' && session.repoName) {
+        repoSet.add(session.repoName);
+      }
+    }
+    // Include the current repo from git efficiency tracker if available
+    let currentRepo: string | null = null;
+    if (deps.gitEfficiencyTracker) {
+      const metrics = deps.gitEfficiencyTracker.getMetrics() as {
+        repoContext?: { repoName?: string | null };
+      };
+      const trackerRepo = metrics.repoContext?.repoName ?? null;
+      if (trackerRepo) {
+        currentRepo = trackerRepo;
+        repoSet.add(trackerRepo);
+      }
+    }
+    jsonOk(res, { repos: [...repoSet].sort(), currentRepo });
+  });
+
   return async (req, res) => {
     try {
       const path = (req.url ?? '/').split('?')[0] ?? '/';

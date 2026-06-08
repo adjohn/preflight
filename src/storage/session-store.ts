@@ -31,6 +31,7 @@ const logger = createLogger('session-store');
 
 export interface FullSessionSummary extends SessionSummary {
   readonly sessionName: string | null;
+  readonly repoName: string | null;
   readonly model: string | null;
   readonly toolBreakdown: Record<string, number>;
   readonly filesRead: string[];
@@ -224,6 +225,7 @@ export interface BuildSessionSummarySources {
   antiPatternDetector?: AntiPatternDetector;
   efficiencyScorer?: EfficiencyScorer;
   developer: string;
+  repoName?: string | null;
 }
 
 export function buildSessionSummary(sources: BuildSessionSummarySources): FullSessionSummary {
@@ -314,6 +316,7 @@ export function buildSessionSummary(sources: BuildSessionSummarySources): FullSe
   return {
     sessionId: sessionMetrics.sessionId,
     sessionName: sessionMetrics.sessionName,
+    repoName: sources.repoName ?? null,
     startTime: sessionMetrics.sessionStartTime,
     endTime: now,
     // Recalculate durationMs from wall-clock times rather than trusting the
@@ -399,6 +402,7 @@ function deserializeSession(raw: string): FullSessionSummary | null {
     sessionId:
       typeof obj.sessionId === 'string' && obj.sessionId.length > 0 ? obj.sessionId : 'unknown',
     sessionName: typeof obj.sessionName === 'string' ? obj.sessionName : null,
+    repoName: typeof obj.repoName === 'string' ? obj.repoName : null,
     startTime: typeof obj.startTime === 'number' ? obj.startTime : 0,
     endTime: typeof obj.endTime === 'number' ? obj.endTime : 0,
     durationMs: typeof obj.durationMs === 'number' ? obj.durationMs : 0,

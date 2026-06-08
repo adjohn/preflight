@@ -342,6 +342,7 @@ async function main(): Promise<void> {
 
     sessionStore = new SessionStore({ storagePath: config.storagePath });
     const currentSessionId = sessionTracker.getMetrics().sessionId;
+    let currentRepoName: string | null = null;
 
     // Hydrate git efficiency tracker with today's prior sessions so the
     // dashboard shows all-day git activity, not just the current session.
@@ -394,7 +395,8 @@ async function main(): Promise<void> {
       const branch = branchResult.stdout.trim();
       // Extract repo name from remote URL (handles both HTTPS and SSH)
       const repoMatch = remoteUrl.match(/[/:]([^/]+\/[^/]+?)(?:\.git)?$/);
-      const repoName = repoMatch ? repoMatch[1] : remoteUrl || null;
+      const repoName = repoMatch ? repoMatch[1] : null;
+      currentRepoName = repoName;
       gitEfficiencyTracker.hydrateRepoContext({
         repoName,
         branch: branch || null,
@@ -890,6 +892,7 @@ async function main(): Promise<void> {
           antiPatternDetector,
           efficiencyScorer,
           developer: config.developer ?? 'unknown',
+          repoName: currentRepoName,
         });
         sessionStore.saveSession(summary);
         weeklySummaryGenerator?.checkAndGenerateLastWeek();
