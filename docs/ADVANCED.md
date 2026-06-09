@@ -1,6 +1,6 @@
 # NR AI Coding Observability — Advanced Configuration
 
-Power-user features: OTLP export, proxy mode, local alerts, per-developer alerts, and session backfill.
+Power-user features: OTLP export, proxy mode, local alerts, per-developer alerts, session backfill, and Terraform deployment.
 
 ---
 
@@ -72,6 +72,12 @@ export NR_AI_OTLP_FORWARD_HEADERS="api-key=your-license-key"
 | `otlpForwardHeaders`  | HTTP headers added to every forwarded request                                    | `{ "api-key": <licenseKey> }`                         |
 
 Point your application's OTel SDK at `http://localhost:4318`. JSON OTLP payloads are enriched; protobuf payloads are forwarded as-is.
+
+---
+
+## Setup Wizard — Environment Variable Pre-Fill
+
+If `NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_ACCOUNT_ID`, or `NEW_RELIC_API_KEY` are set in the environment when `nr-ai-observe setup` is run, the wizard pre-fills those prompts and shows the env var name as the hint (`$NEW_RELIC_LICENSE_KEY`). Pressing Enter accepts the value — no copy-paste needed. This makes the wizard scriptable in CI pipelines or Docker-based dev environments where credentials are already injected as environment variables.
 
 ---
 
@@ -172,3 +178,60 @@ The script queries NR for your past sessions, reconstructs session summaries, wr
 | `--days`      | How far back to look. Default: 30.                       |
 | `--dry-run`   | Preview output without writing any files.                |
 | `--staging`   | Target the staging NR environment instead of production. |
+
+---
+
+## Terraform Deployment
+
+A Terraform module in `terraform/` is an IaC alternative to the deploy scripts. It deploys all 7 dashboards via `newrelic_one_dashboard_json` and the full alert policy with all 10 conditions (5 shared + 5 personal). Use it for GitOps workflows or when you want Terraform state tracking.
+
+### Prerequisites
+
+Install [tfenv](https://github.com/tfutils/tfenv), then from the `terraform/` directory run:
+
+```bash
+tfenv install   # picks up terraform/.terraform-version (1.15.5)
+terraform init
+```
+
+### Usage
+
+```bash
+cd terraform
+
+TF_VAR_account_id=$NEW_RELIC_ACCOUNT_ID \
+TF_VAR_api_key=$NEW_RELIC_API_KEY \
+TF_VAR_developer=your-name \
+terraform apply
+```
+
+`TF_VAR_*` is the standard Terraform way to pass variables from environment without touching the command line or committing credentials. You can also use a `.tfvars` file (gitignored) or `-var` flags.
+
+### Variables
+
+| Variable                        | Required | Default | Description                                                    |
+| ------------------------------- | -------- | ------- | -------------------------------------------------------------- |
+| `account_id`                    | Yes      | —       | New Relic account ID                                           |
+| `api_key`                       | Yes      | —       | User API key (`NRAK-...`)                                      |
+| `region`                        | No       | `US`    | `US` or `EU`                                                   |
+| `staging`                       | No       | `false` | Target staging environment (`staging-api.newrelic.com`)        |
+| `developer`                     | No       | `""`    | Developer name — enables personal alert conditions when set    |
+| `personal_daily_cost_usd`       | No       | `10`    | Personal daily cost alert threshold (USD)                      |
+| `personal_session_cost_usd`     | No       | `5`     | Personal per-session cost alert threshold (USD)                |
+| `personal_efficiency_score_min` | No       | `40`    | Alert when efficiency score drops below this                   |
+| `personal_anti_pattern_max`     | No       | `10`    | Alert when anti-pattern count exceeds this per 5-minute window |
+| `personal_stuck_loop_max`       | No       | `3`     | Alert when stuck loop count exceeds this per 5-minute window   |
+
+### Staging accounts
+
+```bash
+TF_VAR_account_id=... TF_VAR_api_key=... TF_VAR_staging=true terraform apply
+```
+
+The `staging = true` flag routes NerdGraph calls to `staging-api.newrelic.com/graphql`. The provider emits a deprecation warning for `nerdgraph_api_url` — this is expected and intentional for NR-internal use.
+
+### Teardown
+
+```bash
+TF_VAR_account_id=... TF_VAR_api_key=... terraform destroy
+```

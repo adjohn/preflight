@@ -187,27 +187,42 @@ export async function runSetupWizard(): Promise<void> {
     let nrApiKey: string | null = null;
     let validatedEmail: string | null = null;
     if (mode !== 'local') {
+      const envAccountId = process.env.NEW_RELIC_ACCOUNT_ID?.trim() ?? '';
       const existingAccountId = typeof existing.accountId === 'string' ? existing.accountId : '';
-      const accountIdPrompt = existingAccountId
-        ? `New Relic Account ID [${existingAccountId}]: `
+      const defaultAccountId = existingAccountId || envAccountId;
+      const accountIdHint = existingAccountId
+        ? existingAccountId
+        : envAccountId
+          ? '$NEW_RELIC_ACCOUNT_ID'
+          : '';
+      const accountIdPrompt = accountIdHint
+        ? `New Relic Account ID [${accountIdHint}]: `
         : 'New Relic Account ID: ';
       accountId = (await rl.question(accountIdPrompt)).trim();
-      if (!accountId) accountId = existingAccountId;
+      if (!accountId) accountId = defaultAccountId;
       if (!/^\d{1,12}$/.test(accountId)) {
-        console.error(`Invalid account ID: "${accountId}". Must be 1–12 digits.`);
+        const src =
+          accountId === envAccountId && !existingAccountId
+            ? ' (value from $NEW_RELIC_ACCOUNT_ID)'
+            : '';
+        console.error(`Invalid account ID: "${accountId}". Must be 1–12 digits.${src}`);
         rl.close();
         process.exit(1);
       }
 
+      const envLicenseKey = process.env.NEW_RELIC_LICENSE_KEY?.trim() ?? '';
       const existingKey = typeof existing.licenseKey === 'string' ? existing.licenseKey : '';
-      const keyHint = existingKey ? '(already set)' : 'NEW_RELIC_LICENSE_KEY';
+      const defaultKey = existingKey || envLicenseKey;
+      const keyHint = existingKey
+        ? '(already set)'
+        : envLicenseKey
+          ? '$NEW_RELIC_LICENSE_KEY'
+          : 'required';
       const keyPrompt = `New Relic License Key [${keyHint}]: `;
       licenseKey = (await rl.question(keyPrompt)).trim();
-      if (!licenseKey && typeof existing.licenseKey === 'string') {
-        licenseKey = existing.licenseKey;
-      }
+      if (!licenseKey) licenseKey = defaultKey;
       if (!licenseKey) {
-        console.error('License key is required.');
+        console.error('License key is required. Set NEW_RELIC_LICENSE_KEY or enter a value above.');
         rl.close();
         process.exit(1);
       }
@@ -259,15 +274,21 @@ export async function runSetupWizard(): Promise<void> {
       }
 
       // Step 2c: NR API key (optional)
+      const envApiKey = process.env.NEW_RELIC_API_KEY?.trim() ?? '';
       const existingApiKey = typeof existing.nrApiKey === 'string' ? existing.nrApiKey : null;
-      const apiKeyHint = existingApiKey ? '(already set)' : 'optional';
+      const defaultApiKey = existingApiKey ?? (envApiKey || null);
+      const apiKeyHint = existingApiKey
+        ? '(already set)'
+        : envApiKey
+          ? '$NEW_RELIC_API_KEY'
+          : 'optional';
       const apiKeyRaw = (
         await rl.question(`New Relic API Key (NRAK-...) [${apiKeyHint}]: `)
       ).trim();
       if (apiKeyRaw) {
         nrApiKey = apiKeyRaw;
-      } else if (existingApiKey) {
-        nrApiKey = existingApiKey;
+      } else if (defaultApiKey) {
+        nrApiKey = defaultApiKey;
       }
 
       // Step 2d: Validate credentials

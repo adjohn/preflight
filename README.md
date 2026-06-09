@@ -61,6 +61,8 @@ nr-ai-observe setup
 
 The wizard asks for your license key, account ID, environment/region (US, EU, FedRAMP), and optionally a NR API key for team queries. It validates both keys live against New Relic before continuing, and pre-fills your developer name from the email on the API key. Most people are running in under 5 minutes.
 
+If `NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_ACCOUNT_ID`, or `NEW_RELIC_API_KEY` are already set in your shell environment, the wizard detects them and lets you press Enter to accept — no copy-paste needed.
+
 ### Option B — Manual setup
 
 **Step 1 — Install the hooks**
@@ -187,6 +189,10 @@ To delete the deployed dashboards, add `--teardown`. Dashboards are matched by n
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
   npx tsx scripts/deploy-dashboard.ts --all --teardown
 ```
+
+### Terraform (IaC alternative)
+
+A Terraform module in `terraform/` deploys all 7 dashboards and the full alert policy as an alternative to the deploy scripts — useful for GitOps workflows or when you want state tracking. See [ADVANCED.md — Terraform Deployment](./docs/ADVANCED.md#terraform-deployment) for usage.
 
 ---
 
@@ -419,7 +425,7 @@ Or set it in your config file as `digestWebhookUrl`.
 ## Documentation
 
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** — Development setup, architecture, conventions, testing, and end-to-end verification
-- **[ADVANCED.md](./docs/ADVANCED.md)** — OTLP export, local alerts, per-developer alerts, session backfill
+- **[ADVANCED.md](./docs/ADVANCED.md)** — OTLP export, local alerts, per-developer alerts, session backfill, Terraform deployment
 - **[COMMANDS_TABLE.md](./docs/COMMANDS_TABLE.md)** — All MCP tools with parameters and return values
 - **[METRICS_TABLE.md](./docs/METRICS_TABLE.md)** — Every event and metric sent to New Relic
 - **[SECURITY.md](./docs/SECURITY.md)** — Security practices and audit trail

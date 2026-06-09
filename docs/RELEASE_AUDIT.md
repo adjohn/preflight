@@ -35,9 +35,9 @@ The file contained credentials matching the format of real New Relic keys. The f
 ### L2. Staging API Endpoints Exposed in Source
 
 **Severity:** LOW (informational)
-**File:** `src/shared/transport/http-client.ts`
+**Files:** `src/shared/transport/http-client.ts`, `terraform/main.tf`
 
-The code references `staging-insights-collector.newrelic.com`, `staging-metric-api.newrelic.com`, and `staging-log-api.newrelic.com`. These are public-facing NR staging endpoints (not internal hostnames) used when a staging license key is detected. No action required, but external contributors will see that the project was developed against NR's staging environment.
+The code references `staging-insights-collector.newrelic.com`, `staging-metric-api.newrelic.com`, and `staging-log-api.newrelic.com` (transport layer), and `staging-api.newrelic.com/graphql` (Terraform `var.staging = true`). These are public-facing NR staging endpoints (not internal hostnames) used when a staging license key or `staging = true` is set. No action required, but external contributors will see that the project was developed against NR's staging environment.
 
 ---
 
@@ -61,6 +61,7 @@ The code references `staging-insights-collector.newrelic.com`, `staging-metric-a
 | Security practices                    | ✅ Strong    | Redaction, input validation, audit trail                                           |
 | Test coverage                         | ✅ Good      | Co-located tests, clear patterns                                                   |
 | Dashboard/alert JSON clean            | ✅ Clean     | No account-specific data                                                           |
+| Terraform state files gitignored      | ✅ Clean     | `.terraform/`, `*.tfstate`, `*.tfstate.backup`, `*.tfvars` all in `.gitignore`     |
 | No private registry references (code) | ✅ Clean     | All deps on public npm                                                             |
 | No postinstall hooks                  | ✅ Safe      |                                                                                    |
 | GitHub Actions                        | ✅ Portable  | No internal CI references                                                          |

@@ -359,6 +359,10 @@ To remove all deployed alert conditions:
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-alerts.ts --teardown
 ```
 
+### Terraform (IaC alternative)
+
+A Terraform module in `terraform/` deploys all 7 dashboards and all 10 alert conditions as an alternative to the scripts above. See [ADVANCED.md — Terraform Deployment](./docs/ADVANCED.md#terraform-deployment) for full usage, variables, and staging instructions.
+
 ---
 
 ## Verifying Your Setup

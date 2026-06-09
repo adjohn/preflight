@@ -9,3 +9,12 @@ coverage/
 .claude/
 test-results/
 playwright-report/
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/*.tfvars
+terraform/override.tf
+terraform/override.tf.json

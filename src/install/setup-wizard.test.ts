@@ -563,7 +563,9 @@ describe('setupWizard input validation', () => {
 
     await expect(runSetupWizard()).rejects.toThrow('process.exit(1)');
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith('License key is required.');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'License key is required. Set NEW_RELIC_LICENSE_KEY or enter a value above.',
+    );
     expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
   });
 
@@ -635,6 +637,84 @@ describe('setupWizard input validation', () => {
     const written = JSON.parse(writtenJson) as Record<string, unknown>;
     expect(written.licenseKey).toBe('NRLIC-existing');
     expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('uses NEW_RELIC_LICENSE_KEY env var when prompt is blank and no file config', async () => {
+    const origKey = process.env.NEW_RELIC_LICENSE_KEY;
+    process.env.NEW_RELIC_LICENSE_KEY = 'NRLIC-from-env';
+    try {
+      // cloud, accountId, blank licenseKey (→ env var), env, blank apiKey, developer, ...
+      answers('cloud', '12345', '', '', '', 'tester', '', '', '', 'n');
+      await runSetupWizard();
+      const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string) as Record<
+        string,
+        unknown
+      >;
+      expect(written.licenseKey).toBe('NRLIC-from-env');
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      if (origKey === undefined) delete process.env.NEW_RELIC_LICENSE_KEY;
+      else process.env.NEW_RELIC_LICENSE_KEY = origKey;
+    }
+  });
+
+  it('uses NEW_RELIC_ACCOUNT_ID env var when prompt is blank and no file config', async () => {
+    const origId = process.env.NEW_RELIC_ACCOUNT_ID;
+    process.env.NEW_RELIC_ACCOUNT_ID = '99999';
+    try {
+      // cloud, blank accountId (→ env var), licenseKey, env, apiKey, developer, ...
+      answers('cloud', '', 'NRLIC-test', '', '', 'tester', '', '', '', 'n');
+      await runSetupWizard();
+      const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string) as Record<
+        string,
+        unknown
+      >;
+      expect(written.accountId).toBe('99999');
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      if (origId === undefined) delete process.env.NEW_RELIC_ACCOUNT_ID;
+      else process.env.NEW_RELIC_ACCOUNT_ID = origId;
+    }
+  });
+
+  it('uses NEW_RELIC_API_KEY env var when prompt is blank and no file config', async () => {
+    const origApiKey = process.env.NEW_RELIC_API_KEY;
+    process.env.NEW_RELIC_API_KEY = 'NRAK-from-env';
+    try {
+      // cloud, accountId, licenseKey, env, blank apiKey (→ env var), developer, ...
+      answers('cloud', '12345', 'NRLIC-test', '', '', 'tester', '', '', '', 'n');
+      await runSetupWizard();
+      const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string) as Record<
+        string,
+        unknown
+      >;
+      expect(written.nrApiKey).toBe('NRAK-from-env');
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      if (origApiKey === undefined) delete process.env.NEW_RELIC_API_KEY;
+      else process.env.NEW_RELIC_API_KEY = origApiKey;
+    }
+  });
+
+  it('file config license key takes precedence over NEW_RELIC_LICENSE_KEY env var', async () => {
+    const origKey = process.env.NEW_RELIC_LICENSE_KEY;
+    process.env.NEW_RELIC_LICENSE_KEY = 'NRLIC-from-env';
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({ accountId: '12345', licenseKey: 'NRLIC-from-file' }),
+    );
+    try {
+      answers('', '', '', '', '', '', '', 'n');
+      await runSetupWizard();
+      const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string) as Record<
+        string,
+        unknown
+      >;
+      expect(written.licenseKey).toBe('NRLIC-from-file');
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      if (origKey === undefined) delete process.env.NEW_RELIC_LICENSE_KEY;
+      else process.env.NEW_RELIC_LICENSE_KEY = origKey;
+    }
   });
 });
 
