@@ -103,6 +103,9 @@ export class DashboardServer {
   }
 
   async start(): Promise<AddressInfo> {
+    if (this.server) {
+      throw new Error('DashboardServer.start() called on an already-running server');
+    }
     return await new Promise((resolve, reject) => {
       const server = createServer((req, res) => {
         void this.handle(req, res);

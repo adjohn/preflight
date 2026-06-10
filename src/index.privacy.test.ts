@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, rmSync, mkdtempSync } from 'node:fs';
+import { existsSync, rmSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
@@ -97,7 +97,7 @@ describe('privacy proof — config + tracker (mode=local)', () => {
 
   it('SessionTracker.recordToolCall makes no outbound HTTP/HTTPS requests', async () => {
     const { SessionTracker } = await import('./metrics/session-tracker.js');
-    const tracker = new SessionTracker();
+    const tracker = new SessionTracker('test-session-' + Math.random().toString(36).slice(2));
     tracker.recordToolCall({
       id: 't1',
       sessionId: 's1',
@@ -115,7 +115,7 @@ describe('privacy proof — config + tracker (mode=local)', () => {
     const { loadMcpConfig } = await import('./config.js');
     loadMcpConfig({ port: 9847, config: null, logLevel: 'info', stdio: true });
     const { SessionTracker } = await import('./metrics/session-tracker.js');
-    const tracker = new SessionTracker();
+    const tracker = new SessionTracker('test-session-' + Math.random().toString(36).slice(2));
     tracker.recordToolCall({
       id: 't2',
       sessionId: 's2',
@@ -154,6 +154,15 @@ describe('privacy proof — built binary in mode=local', () => {
 
   it('boots, runs, and shuts down cleanly', async () => {
     const tmpStorage = mkdtempSync(join(tmpdir(), 'nr-mcp-privacy-'));
+    // Provide a synthetic CLAUDE_JOB_DIR with a valid state.json so that
+    // resolveFromJobDir() resolves synchronously. Without this the binary
+    // polls indefinitely and the test times out in environments where
+    // CLAUDE_JOB_DIR is not set by a live Claude Code session.
+    const tmpJobDir = mkdtempSync(join(tmpdir(), 'nr-mcp-job-'));
+    writeFileSync(
+      resolve(tmpJobDir, 'state.json'),
+      JSON.stringify({ linkScanPath: '/tmp/privacy-test-session.jsonl' }),
+    );
     const proc = spawn(process.execPath, [distIndex, '--stdio'], {
       env: {
         ...process.env,
@@ -162,6 +171,7 @@ describe('privacy proof — built binary in mode=local', () => {
         NEW_RELIC_LICENSE_KEY: '',
         NEW_RELIC_ACCOUNT_ID: '',
         NR_AI_DASHBOARD_PORT: '0',
+        CLAUDE_JOB_DIR: tmpJobDir,
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -226,6 +236,7 @@ describe('privacy proof — built binary in mode=local', () => {
     } finally {
       if (!proc.killed) proc.kill('SIGKILL');
       rmSync(tmpStorage, { recursive: true, force: true });
+      rmSync(tmpJobDir, { recursive: true, force: true });
     }
   }, 20000);
 });

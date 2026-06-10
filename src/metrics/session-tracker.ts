@@ -6,7 +6,6 @@
  * emission (for NR ingestion via MetricAggregator).
  */
 
-import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import type { MetricAggregator } from '../shared/index.js';
 import type { ToolCallRecord } from '../storage/types.js';
@@ -113,8 +112,13 @@ export class SessionTracker {
   private timeline: TimelineEntry[] = [];
   private timelineEntryCount = 0;
 
-  constructor(sessionId?: string) {
-    this.sessionId = sessionId ?? randomUUID();
+  constructor(sessionId: string) {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      // Fix 3: the MCP no longer fabricates session_ids. Callers must pass
+      // the resolved Claude Code session_id (or a real UUID for tests).
+      throw new Error('SessionTracker requires a non-empty sessionId');
+    }
+    this.sessionId = sessionId;
     this.sessionStartTime = Date.now();
   }
 
@@ -276,8 +280,11 @@ export class SessionTracker {
     aggregator.record('ai.session.unique_files_written', this.filesWritten.size);
   }
 
-  reset(sessionId?: string): void {
-    this.sessionId = sessionId ?? randomUUID();
+  reset(sessionId: string): void {
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      throw new Error('SessionTracker.reset() requires a non-empty sessionId');
+    }
+    this.sessionId = sessionId;
     this.sessionName = null;
     this.sessionStartTime = Date.now();
     this.toolCallCount = 0;

@@ -179,8 +179,7 @@ export function toolCallToNrEvent(
   if (attrs.projectId) event.project_id = attrs.projectId;
   if (attrs.orgId) event.org_id = attrs.orgId;
 
-  const sessionId = attrs.sessionTraceId ?? record.sessionId;
-  if (sessionId != null) event.session_id = sessionId;
+  if (attrs.sessionTraceId != null) event.session_id = attrs.sessionTraceId;
   if (record.durationMs != null) event.duration_ms = record.durationMs;
   if (record.errorType != null) event.error_type = record.errorType;
   // Tool error messages occasionally include URLs from failed curl commands
@@ -250,8 +249,7 @@ export function proxyToolCallToNrEvent(
   if (attrs.projectId) event.project_id = attrs.projectId;
   if (attrs.orgId) event.org_id = attrs.orgId;
 
-  const sessionId = attrs.sessionTraceId ?? record.sessionId;
-  if (sessionId != null) event.session_id = sessionId;
+  if (attrs.sessionTraceId != null) event.session_id = attrs.sessionTraceId;
   if (record.proxyOverheadMs != null) event.proxy_overhead_ms = record.proxyOverheadMs;
   if (record.errorType != null) event.error_type = record.errorType;
   if (record.inputSizeBytes != null) event.request_size_bytes = record.inputSizeBytes;
@@ -348,8 +346,10 @@ export function codingTaskToNrEvent(
   if (attrs.projectId) event.project_id = attrs.projectId;
   if (attrs.orgId) event.org_id = attrs.orgId;
 
-  const sessionId = attrs.sessionTraceId ?? firstRecord?.sessionId ?? null;
-  if (sessionId != null) event.session_id = sessionId;
+  // Fix 3: sessionTraceId is the resolved Claude Code session_id; the
+  // firstRecord?.sessionId fallback was only meaningful when the MCP fabricated
+  // its own UUID and lost cross-reference with the tool-call records.
+  if (attrs.sessionTraceId != null) event.session_id = attrs.sessionTraceId;
 
   return event;
 }
@@ -661,7 +661,7 @@ export class NrIngestManager {
     const event = antiPatternToNrEvent(pattern, {
       developer: this.developer,
       appName: this.appName,
-      sessionId: this.sessionTraceId ?? context.sessionId,
+      sessionId: this.sessionTraceId,
       platform: context.platform,
       taskId: context.taskId,
       teamId: this.teamId,

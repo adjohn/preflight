@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { homedir } from 'node:os';
-import { normalizeDeveloperName } from '../config.js';
+import { normalizeDeveloperName, ConfigFileSchema } from '../config.js';
 import { runInstallCli, verifyBinaryOnPath } from './cli.js';
 import { installSchedule, resolveBinaryPath } from './schedule.js';
 import { validateLicenseKey, validateApiKey } from './key-validator.js';
@@ -106,11 +106,40 @@ function print(msg = ''): void {
 }
 
 function loadExisting(): Record<string, unknown> {
+  let parsed: unknown;
   try {
-    return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Record<string, unknown>;
+    parsed = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
   } catch {
     return {};
   }
+  // Validate via the same schema loadMcpConfig uses, then keep ONLY recognized
+  // top-level keys. The schema is `.passthrough()` so safeParse won't strip
+  // unknown keys for us; the explicit filter below makes sure the wizard's
+  // later spread (`...existing` in buildConfig) doesn't perpetuate stale keys
+  // back into the rewritten config file.
+  const validation = ConfigFileSchema.safeParse(parsed);
+  const knownKeys = new Set(Object.keys(ConfigFileSchema.shape));
+  if (!validation.success) {
+    // Recognized-key value is malformed (e.g. accountId is a number, not a
+    // string). Log a warning and fall back to defaults — the wizard will
+    // re-prompt for those fields rather than pre-fill bad data.
+    const issues = validation.error.issues
+      .map((issue) => `${issue.path.join('.') || 'root'}: ${issue.message}`)
+      .join('; ');
+    process.stderr.write(
+      `[setup-wizard] Existing config has invalid values; ignoring: ${issues}\n`,
+    );
+    return {};
+  }
+  // Strip unknown keys from the validated object so they don't get spread
+  // back into the rewritten config.
+  const filtered: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(validation.data as Record<string, unknown>)) {
+    if (knownKeys.has(key)) {
+      filtered[key] = value;
+    }
+  }
+  return filtered;
 }
 
 export type WizardMode = 'cloud' | 'local' | 'both';
@@ -508,16 +537,16 @@ export async function runSetupWizard(): Promise<void> {
         : 'NEW_RELIC_API_KEY=<NRAK-...>';
       print('\nTo deploy dashboards, run:');
       print(
-        `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts --all${regionFlag}`,
+        `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} nr-ai-mcp-server deploy-dashboards --all${regionFlag}`,
       );
       print(`\nFor a personal dashboard pre-filtered to you:`);
       print(
-        `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer ${developer}${regionFlag}`,
+        `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} nr-ai-mcp-server deploy-dashboards ai-coding-assistant-personal.json --developer ${developer}${regionFlag}`,
       );
 
       print(`\nFor personal alerts scoped to you:`);
       print(
-        `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} npx tsx scripts/deploy-alerts.ts --developer ${developer}${regionFlag}`,
+        `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} nr-ai-mcp-server deploy-alerts --developer ${developer}${regionFlag}`,
       );
     } else {
       print(

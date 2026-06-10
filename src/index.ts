@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import 'dotenv/config';
 
-import { randomUUID } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Command } from 'commander';
@@ -54,8 +53,13 @@ import { AlertLog } from './alerts/alert-log.js';
 import { OsNotifier } from './alerts/os-notifier.js';
 import { parseLocalAlertRules } from './alerts/local-alert-rule.js';
 import { FeedbackCollector } from './tools/workflow-tools.js';
-import { registerTools } from './tools/session-stats.js';
+import { registerTools, registerPendingTools } from './tools/session-stats.js';
 import type { ConfigSummary } from './tools/session-stats.js';
+import {
+  resolveSessionId,
+  resolveFromJobDir,
+  resolveFromBreadcrumb,
+} from './hooks/session-resolver.js';
 import { initMcpTracer } from './tracing/mcp-tracer.js';
 import { SessionSpan } from './tracing/session-span.js';
 import { TaskSpanTracker } from './tracing/task-span-tracker.js';
@@ -107,6 +111,271 @@ export function maskCredential(key: string): string {
   return key.slice(0, 4) + '...' + key.slice(-4);
 }
 
+/**
+ * Result of evaluating a dashboard-server start error.
+ *
+ * - kind: 'skip' — EADDRINUSE was observed; caller should drop the dashboard
+ *   server reference and continue without binding. The `message` field is a
+ *   human-readable INFO-level log line explaining the situation.
+ * - kind: 'rethrow' — non-EADDRINUSE error (or non-error value); caller should
+ *   re-throw `error` unchanged.
+ */
+export type DashboardStartFailure =
+  | { kind: 'skip'; message: string }
+  | { kind: 'rethrow'; error: unknown };
+
+/**
+ * Decide how to handle a failure returned from `DashboardServer.start()`.
+ *
+ * When N concurrent `nr-ai-mcp-server --stdio` instances launch (one per
+ * Claude Code session) only one can bind the dashboard port; the rest receive
+ * EADDRINUSE. Rather than fataling the whole MCP server (which would render
+ * the session's tools unusable in Claude Code's UI), we log an INFO line and
+ * continue without the dashboard. Other errors still propagate.
+ */
+export function classifyDashboardStartError(
+  err: unknown,
+  host: string,
+  port: number,
+): DashboardStartFailure {
+  if (
+    err &&
+    typeof err === 'object' &&
+    'code' in err &&
+    (err as { code?: string }).code === 'EADDRINUSE'
+  ) {
+    return {
+      kind: 'skip',
+      message:
+        `Dashboard already owned by another nr-ai-mcp-server instance at ` +
+        `http://${host}:${port}; continuing without dashboard.`,
+    };
+  }
+  return { kind: 'rethrow', error: err };
+}
+
+/**
+ * Default interval (ms) between dashboard re-bind attempts when this MCP
+ * started in headless mode (Fix 1 EADDRINUSE skip path). Overridable via
+ * NR_AI_DASHBOARD_REPOLL_MS — kept simple to avoid threading a new config
+ * field through the loader for what is essentially a knob for tests.
+ */
+export const DEFAULT_DASHBOARD_REPOLL_MS = 30_000;
+
+export function getDashboardRepollIntervalMs(): number {
+  const raw = process.env.NR_AI_DASHBOARD_REPOLL_MS;
+  if (raw === undefined || raw === '') return DEFAULT_DASHBOARD_REPOLL_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_DASHBOARD_REPOLL_MS;
+  return parsed;
+}
+
+/**
+ * Side-effects wired up once the dashboard HTTP server has bound the port.
+ * Runs on the initial-bind success path and on the re-poll takeover path so
+ * a headless MCP that later seizes the dashboard performs the same setup
+ * (orphan GC, openOnStart warning) as one that bound on first try.
+ *
+ * Returns the orphan-GC interval handle so the shutdown path can clear it.
+ */
+export interface DashboardPostBindDeps {
+  readonly localStore: LocalStore;
+  readonly liveSessionRegistry: LiveSessionRegistry | undefined;
+  readonly openOnStart: boolean;
+}
+
+export function setupDashboardPostBind(
+  addr: { address: string; port: number },
+  deps: DashboardPostBindDeps,
+): NodeJS.Timeout {
+  const log = createLogger('mcp-cli');
+  log.info(`Dashboard ready at http://${addr.address}:${addr.port}`);
+
+  // Task #18: only the dashboard owner runs orphan-buffer/breadcrumb GC —
+  // running it from every MCP would race with itself and re-archive files
+  // repeatedly. Run once at startup, then every 5 minutes. The interval is
+  // unref'd so it doesn't keep the event loop alive.
+  const { localStore, liveSessionRegistry } = deps;
+  const runGc = (): void => {
+    try {
+      localStore.gcStaleBreadcrumbs();
+      const live = localStore.getActiveSessionIdsFromHeartbeats();
+      if (liveSessionRegistry) {
+        for (const id of liveSessionRegistry.getLiveSessions()) live.add(id);
+      }
+      localStore.gcOrphanBuffers(live);
+    } catch (err) {
+      log.warn('GC pass failed', { error: String(err) });
+    }
+  };
+  runGc();
+  const interval = setInterval(runGc, 5 * 60 * 1000);
+  interval.unref?.();
+
+  // F-013: openOnStart is declared in config but auto-open isn't implemented
+  // in v1 — log a warning so a user who set it doesn't assume the feature
+  // works silently.
+  if (deps.openOnStart) {
+    log.warn(
+      'dashboard.openOnStart is not implemented in v1; the dashboard URL is logged above. ' +
+        'Open it manually in your browser.',
+    );
+  }
+
+  return interval;
+}
+
+/**
+ * Schedule periodic re-bind attempts after a headless start (Fix 1 path).
+ *
+ * After Fix 1 the first MCP to launch wins port 7777 and serves the
+ * dashboard; the rest run headless. If the owner exits while the headless
+ * MCPs are still alive, the port is freed and nobody picks it up — the
+ * dashboard goes dead. This re-poll closes that gap: every
+ * `intervalMs` (default 30s) the headless MCP retries `start()`, and the
+ * first one to succeed promotes itself to dashboard owner and runs the
+ * post-bind setup (GC interval, etc.).
+ *
+ * The interval is unref'd so a process whose only remaining handle is this
+ * timer can still exit cleanly when stdin closes (matters for stdio mode).
+ */
+export interface DashboardRepollOptions {
+  readonly dashboardServer: DashboardServer;
+  readonly host: string;
+  readonly port: number;
+  readonly intervalMs?: number;
+  readonly postBind: (addr: { address: string; port: number }) => NodeJS.Timeout;
+  readonly onTakeover?: (gcInterval: NodeJS.Timeout) => void;
+  readonly logger?: {
+    info: (msg: string, meta?: Record<string, unknown>) => void;
+    warn: (msg: string, meta?: Record<string, unknown>) => void;
+  };
+}
+
+export function startDashboardRepoll(opts: DashboardRepollOptions): NodeJS.Timeout {
+  const ms = opts.intervalMs ?? getDashboardRepollIntervalMs();
+  const log = opts.logger ?? createLogger('mcp-cli');
+  let inFlight = false;
+  const interval = setInterval(() => {
+    if (inFlight) return;
+    inFlight = true;
+    void (async () => {
+      try {
+        const addr = await opts.dashboardServer.start();
+        clearInterval(interval);
+        log.info(
+          `Dashboard ownership taken over at http://${addr.address}:${addr.port}; previous owner exited.`,
+        );
+        const gcInterval = opts.postBind({ address: addr.address, port: addr.port });
+        opts.onTakeover?.(gcInterval);
+      } catch (err) {
+        const decision = classifyDashboardStartError(err, opts.host, opts.port);
+        if (decision.kind === 'rethrow') {
+          // Non-EADDRINUSE failure (e.g. permissions) — stop polling. We
+          // can't recover by retrying and we don't want to spam the log.
+          clearInterval(interval);
+          log.warn('Dashboard re-poll stopped after unexpected error', {
+            error: String((decision as { error: unknown }).error),
+          });
+        }
+        // EADDRINUSE: port still owned — keep polling silently.
+      } finally {
+        inFlight = false;
+      }
+    })();
+  }, ms);
+  interval.unref?.();
+  return interval;
+}
+
+/**
+ * Subcommand names handled by `dispatchSubcommand` below. When `argv[2]` is one
+ * of these, we route to a dedicated handler and bypass the flag-driven main()
+ * path entirely. This lets users who installed via `npm install -g` invoke
+ * `nr-ai-mcp-server deploy-dashboards [...]` and similar without cloning the
+ * repo to run a `scripts/*.ts` file.
+ */
+const SUBCOMMAND_NAMES = ['deploy-dashboards', 'deploy-alerts'] as const;
+type SubcommandName = (typeof SUBCOMMAND_NAMES)[number];
+
+function isSubcommand(value: string | undefined): value is SubcommandName {
+  return typeof value === 'string' && (SUBCOMMAND_NAMES as readonly string[]).includes(value);
+}
+
+/**
+ * If argv[2] is a known subcommand, run it and return its exit code.
+ * Otherwise return null so main() can continue with its flag-based dispatch.
+ */
+export async function dispatchSubcommand(argv: string[]): Promise<number | null> {
+  const sub = argv[2];
+  if (!isSubcommand(sub)) return null;
+
+  const program = new Command();
+  program.name('nr-ai-mcp-server').version(VERSION);
+
+  const subargs = ['node', 'nr-ai-mcp-server', ...argv.slice(2)];
+
+  if (sub === 'deploy-dashboards') {
+    program
+      .command('deploy-dashboards')
+      .description('Deploy AI Coding Assistant dashboards to a New Relic account')
+      .option('--all', 'deploy all dashboard JSON files')
+      .option('--update', 'update existing dashboards in-place (matched by name)')
+      .option('--teardown', 'delete deployed dashboards (matched by name)')
+      .option('--print', 'print dashboard JSON with accountIds filled in (no API key required)')
+      .option('--staging', 'target the New Relic staging API')
+      .option('--eu', 'target the New Relic EU API')
+      .option(
+        '--developer <name>',
+        'inject developer name into the dashboard "developer" variable default',
+      )
+      .argument(
+        '[file]',
+        'specific dashboard JSON file (defaults to ai-coding-assistant-overview.json)',
+      )
+      .action(async (file: string | undefined, opts: Record<string, unknown>) => {
+        const { runDeployDashboards } = await import('./deploy/deploy-dashboards.js');
+        const code = await runDeployDashboards({
+          all: opts.all === true,
+          update: opts.update === true,
+          teardown: opts.teardown === true,
+          print: opts.print === true,
+          staging: opts.staging === true,
+          eu: opts.eu === true,
+          developer: typeof opts.developer === 'string' ? opts.developer : null,
+          file: file ?? null,
+        });
+        process.exitCode = code;
+      });
+  } else {
+    program
+      .command('deploy-alerts')
+      .description('Deploy AI Coding Assistant alert conditions to a New Relic account')
+      .option('--dry-run', 'print the policy + conditions that would be created and exit')
+      .option('--teardown', 'delete the alert policy and all its conditions')
+      .option('--update', 'sync conditions on an existing policy in place (matched by name)')
+      .option('--staging', 'target the New Relic staging API')
+      .option('--eu', 'target the New Relic EU API')
+      .option('--developer <name>', 'deploy a personal alert policy scoped to <name>')
+      .action(async (opts: Record<string, unknown>) => {
+        const { runDeployAlerts } = await import('./deploy/deploy-alerts.js');
+        const code = await runDeployAlerts({
+          dryRun: opts.dryRun === true,
+          teardown: opts.teardown === true,
+          update: opts.update === true,
+          staging: opts.staging === true,
+          eu: opts.eu === true,
+          developer: typeof opts.developer === 'string' ? opts.developer : null,
+        });
+        process.exitCode = code;
+      });
+  }
+
+  await program.parseAsync(subargs);
+  const code = process.exitCode;
+  return typeof code === 'number' ? code : 0;
+}
+
 export function parseArgs(argv: string[]): CliOptions {
   const program = new Command();
   program
@@ -154,6 +423,15 @@ export function parseArgs(argv: string[]): CliOptions {
 }
 
 async function main(): Promise<void> {
+  // Subcommand dispatch (e.g. `nr-ai-mcp-server deploy-dashboards --all`)
+  // happens before flag parsing — they don't share the option schema with the
+  // server modes (--stdio / --local / --validate / proxy), and they exit
+  // independently rather than booting the full pipeline.
+  const subcommandExit = await dispatchSubcommand(process.argv);
+  if (subcommandExit !== null) {
+    process.exit(subcommandExit);
+  }
+
   const options = parseArgs(process.argv);
 
   // Propagate --log-level into the env var that createLogger() reads.
@@ -208,6 +486,12 @@ async function main(): Promise<void> {
   let alertEvaluationInterval: NodeJS.Timeout | undefined;
   let alertRulesWatcher: import('node:fs').FSWatcher | undefined;
   let alertRulesWatchTimer: NodeJS.Timeout | undefined;
+  let localStoreForShutdown: LocalStore | undefined;
+  let gcInterval: NodeJS.Timeout | undefined;
+  // Task #13: when this MCP starts headless (Fix 1 EADDRINUSE skip), this
+  // interval retries dashboardServer.start() periodically so we can take
+  // over if the current owner exits. Cleared in the shutdown handler.
+  let dashboardRepollInterval: NodeJS.Timeout | undefined;
 
   let shuttingDown = false;
   const shutdown = async () => {
@@ -215,23 +499,6 @@ async function main(): Promise<void> {
     shuttingDown = true;
     logger.info('Shutting down...');
     try {
-      // Remove pidfile and port file early so status checks reflect shutdown promptly.
-      if (options.local) {
-        const { homedir: home } = await import('node:os');
-        const { join: joinPath } = await import('node:path');
-        const { unlinkSync } = await import('node:fs');
-        const stateDir = joinPath(home(), '.nr-ai-observe');
-        try {
-          unlinkSync(joinPath(stateDir, 'daemon.pid'));
-        } catch {
-          /* already gone */
-        }
-        try {
-          unlinkSync(joinPath(stateDir, 'daemon.port'));
-        } catch {
-          /* already gone */
-        }
-      }
       persistSession?.();
       if (config?.transport !== 'nr-events-api' && sessionTracker && taskDetector && sessionSpan) {
         taskSpanTracker?.closeAll();
@@ -240,6 +507,11 @@ async function main(): Promise<void> {
         sessionSpan.end(stats.toolCallCount, taskMetrics.totalTasksCompleted);
       }
       if (alertEvaluationInterval) clearInterval(alertEvaluationInterval);
+      if (gcInterval) clearInterval(gcInterval);
+      if (dashboardRepollInterval) clearInterval(dashboardRepollInterval);
+      // Task #18: remove this MCP's heartbeat so the next dashboard-owner GC
+      // pass doesn't have to mtime-archive our buffer file.
+      localStoreForShutdown?.removeHeartbeat();
       if (alertRulesWatchTimer) clearTimeout(alertRulesWatchTimer);
       if (alertRulesWatcher) {
         try {
@@ -280,7 +552,7 @@ async function main(): Promise<void> {
   process.on('SIGTERM', handleSignal);
 
   if (options.stdio || options.local) {
-    let sessionTraceId = randomUUID();
+    let sessionTraceId: string;
     if (options.stdio) {
       // Connect stdio FIRST so the MCP handshake can complete immediately.
       // Tools are registered after initialization; tool calls before that
@@ -288,9 +560,69 @@ async function main(): Promise<void> {
       mcpServer = createServer();
       await mcpServer.connectStdio();
 
+      // Register stdin shutdown handlers immediately after connecting so that
+      // shutdown() is called even if stdin closes during the session-ID
+      // resolution window (before the handlers were previously registered).
+      process.stdin.once('end', () => {
+        logger.info('stdin closed, shutting down');
+        void shutdown();
+      });
+      process.stdin.on('error', (err) => {
+        logger.warn('stdin error, shutting down', { error: String(err) });
+        void shutdown();
+      });
+
       config = loadMcpConfig(options);
-      // sessionTraceId already generated above; log it here once config is loaded
-      logger.info('Session trace ID generated', { sessionTraceId });
+
+      if (!config.enabled) {
+        logger.info('Server disabled via config — exiting');
+        await mcpServer.close();
+        process.exit(0);
+      }
+
+      // Fix 3 / D2: resolve the Claude Code session_id BEFORE constructing
+      // anything that takes sessionTraceId as input. We try the cheap
+      // synchronous paths first (CLAUDE_JOB_DIR, then a one-shot breadcrumb
+      // probe). If both miss, register a "pending" tool handler so the MCP
+      // can answer health/config requests while we poll for the breadcrumb,
+      // then await full resolution.
+      const configFilePathEarly = options.config ?? resolve(DEFAULT_STORAGE_PATH, 'config.json');
+      const configSummaryEarly: ConfigSummary = {
+        mode: config.mode,
+        developer: config.developer,
+        accountId: config.accountId ?? null,
+        licenseKeyMasked: config.licenseKey ? maskCredential(config.licenseKey) : null,
+        nrApiKeyMasked: config.nrApiKey ? maskCredential(config.nrApiKey) : null,
+        region: config.collectorHost ?? 'us',
+        storagePath: config.storagePath,
+        dashboardUrl: `http://${config.dashboard.host}:${config.dashboard.port}`,
+        configFilePath: configFilePathEarly,
+      };
+
+      const synchronouslyResolved =
+        resolveFromJobDir(process.env.CLAUDE_JOB_DIR ?? null) ??
+        resolveFromBreadcrumb(config.storagePath, process.ppid);
+      if (synchronouslyResolved) {
+        sessionTraceId = synchronouslyResolved;
+        logger.info('Session ID resolved synchronously', { sessionTraceId });
+      } else {
+        // Tools must respond with a structured error during the resolution
+        // window — registerPendingTools wires that up. Once resolved we
+        // overwrite the handlers via registerTools().
+        registerPendingTools(mcpServer.server, {
+          sessionStartMs: Date.now(),
+          developer: config.developer,
+          configSummary: configSummaryEarly,
+        });
+        logger.info('Awaiting session_id resolution (breadcrumb poll)');
+        try {
+          sessionTraceId = await resolveSessionId({ storagePath: config.storagePath });
+        } catch (err) {
+          logger.error('Session ID resolution failed; shutting down', { error: String(err) });
+          await shutdown();
+          return;
+        }
+      }
 
       if (config.transport !== 'nr-events-api') {
         initMcpTracer();
@@ -299,12 +631,6 @@ async function main(): Promise<void> {
       taskSpanTracker = new TaskSpanTracker();
       if (config.transport !== 'nr-events-api') {
         sessionSpan.start();
-      }
-
-      if (!config.enabled) {
-        logger.info('Server disabled via config — exiting');
-        await mcpServer.close();
-        process.exit(0);
       }
     } else {
       // --local: force local mode so config validation skips cloud credentials.
@@ -315,10 +641,36 @@ async function main(): Promise<void> {
         logger.info('Server disabled via config — exiting');
         process.exit(0);
       }
+
+      // --local has no owning Claude Code session — derive a deterministic
+      // identifier so the rest of the codebase can rely on a non-empty
+      // sessionTraceId without fabricating a UUID.
+      sessionTraceId = `local-${Date.now()}`;
     }
 
-    const localStore = new LocalStore(config.storagePath, config.hookBufferPath);
+    // Per-session buffer scoping: in --stdio mode the LocalStore is bound to
+    // this MCP's resolved session_id so drainBuffer() only sees this session's
+    // events. In --local mode no single session owns the buffer; we drain all
+    // buffer-*.jsonl files via drainAllBuffers() instead.
+    const localStore = options.stdio
+      ? new LocalStore(config.storagePath, sessionTraceId)
+      : new LocalStore(config.storagePath);
     localStore.initialize();
+
+    // Task #18: every MCP writes its heartbeat once it has bound a session_id
+    // so the dashboard owner's GC pass can tell which buffer files still have
+    // a live owner. Removed in the shutdown handler below. No-op in --local
+    // mode (no sessionId).
+    if (options.stdio) localStore.writeHeartbeat();
+    localStoreForShutdown = localStore;
+
+    // Migrate any pre-Fix-3 events from the legacy shared `buffer.jsonl` into
+    // per-session files. Idempotent and a no-op on fresh installs.
+    try {
+      localStore.migrateLegacyBuffer();
+    } catch (err) {
+      logger.warn('Legacy buffer migration failed (continuing)', { error: String(err) });
+    }
 
     if (config.retainSessionsDays !== null && config.retainSessionsDays > 0) {
       const { purgeOldSessions } = await import('./storage/retention.js');
@@ -328,7 +680,7 @@ async function main(): Promise<void> {
       }
     }
 
-    sessionTracker = new SessionTracker();
+    sessionTracker = new SessionTracker(sessionTraceId);
     const costTracker = new CostTracker(sessionTracker);
     taskDetector = new TaskDetector({ costTracker });
     const antiPatternDetector = new AntiPatternDetector();
@@ -612,61 +964,78 @@ async function main(): Promise<void> {
           contextTracker,
           config,
           configFilePath: options.config ?? resolve(DEFAULT_STORAGE_PATH, 'config.json'),
+          // Task #17 (D3): the dashboard owner reads every per-session
+          // buffer file in read-only mode for the Today aggregate endpoint.
+          // peekAllBuffers() returns HookEvent[] — widen at the boundary
+          // so the dashboard tree stays decoupled from storage internals.
+          localStore: {
+            peekAllBuffers: () =>
+              localStore.peekAllBuffers() as ReadonlyArray<{ readonly [key: string]: unknown }>,
+          },
         },
         alertEngine,
         alertLog,
       });
-      let addr;
+      let addr: { address: string; port: number } | undefined;
       try {
         addr = await dashboardServer.start();
       } catch (err) {
-        // F-014: rewrap EADDRINUSE with an actionable hint pointing at the
-        // env var that overrides the port. Other errors propagate untouched.
-        if (
-          err &&
-          typeof err === 'object' &&
-          'code' in err &&
-          (err as { code?: string }).code === 'EADDRINUSE'
-        ) {
-          // Pick a sensible suggestion that always lands inside the valid
-          // 1–65535 range. Adjacent ports usually work; if the user is at
-          // the top of the range we wrap to 7778 (the documented default
-          // alternative). 0 is also valid (ephemeral) but unhelpful as a
-          // hint, so avoid suggesting it.
-          const port = config.dashboard.port;
-          const suggested = port < 65535 ? port + 1 : 7778;
-          throw new Error(
-            `Dashboard port ${port} is already in use. ` +
-              `Set NR_AI_DASHBOARD_PORT to a different port (e.g. ${suggested}) ` +
-              `or stop the process using port ${port}.`,
-          );
-        }
-        throw err;
-      }
-      logger.info(`Dashboard ready at http://${addr.address}:${addr.port}`);
-
-      // Write pidfile and port file so `nr-ai-observe status/stop` can find this process.
-      if (options.local) {
-        try {
-          const { homedir: home } = await import('node:os');
-          const { mkdirSync: mkStateDir, writeFileSync: writeState } = await import('node:fs');
-          const stateDir = joinPath(home(), '.nr-ai-observe');
-          mkStateDir(stateDir, { recursive: true, mode: 0o700 });
-          writeState(joinPath(stateDir, 'daemon.pid'), String(process.pid), { mode: 0o600 });
-          writeState(joinPath(stateDir, 'daemon.port'), String(addr.port), { mode: 0o600 });
-        } catch {
-          // Non-fatal — daemon management will fall back to other detection
-        }
-      }
-
-      // F-013: openOnStart is declared in config but auto-open isn't
-      // implemented in v1 — log a warning so a user who set it doesn't
-      // assume the feature works silently.
-      if (config.dashboard.openOnStart) {
-        logger.warn(
-          'dashboard.openOnStart is not implemented in v1; the dashboard URL is logged above. ' +
-            'Open it manually in your browser.',
+        // Multi-instance launch: when several `nr-ai-mcp-server --stdio`
+        // processes start at once (e.g. one per Claude Code session) only
+        // the first can bind the dashboard port; the rest receive
+        // EADDRINUSE. Treat that case as a graceful no-op so the MCP
+        // session still serves stdio + tool handlers; other errors
+        // propagate untouched.
+        const decision = classifyDashboardStartError(
+          err,
+          config.dashboard.host,
+          config.dashboard.port,
         );
+        if (decision.kind === 'rethrow') {
+          throw decision.error;
+        }
+        // In --local mode the HTTP server IS the process — without it there is
+        // nothing to keep the event loop alive. Treat EADDRINUSE as fatal so
+        // the user gets an actionable error instead of a silent exit.
+        if (options.local) {
+          logger.error(
+            `Dashboard port ${config.dashboard.port} is already in use. ` +
+              `Stop the existing --local instance before starting another.`,
+          );
+          process.exit(1);
+        }
+        logger.info(decision.message);
+        addr = undefined;
+      }
+
+      // Capture deps for the post-bind helper. Both the initial-bind path
+      // and the re-poll takeover path call this; keeping the closure small
+      // ensures the two paths produce identical side effects (GC interval,
+      // openOnStart warning, etc. — Task #18 + #13).
+      const postBindDeps: DashboardPostBindDeps = {
+        localStore,
+        liveSessionRegistry,
+        openOnStart: config.dashboard.openOnStart,
+      };
+      const runPostBind = (boundAddr: { address: string; port: number }): NodeJS.Timeout =>
+        setupDashboardPostBind(boundAddr, postBindDeps);
+
+      if (addr) {
+        gcInterval = runPostBind(addr);
+      } else {
+        // Task #13: this MCP is headless. Schedule periodic re-bind attempts
+        // so it can take over if the current dashboard owner exits. The
+        // interval is unref'd and cleared by the shutdown handler.
+        dashboardRepollInterval = startDashboardRepoll({
+          dashboardServer,
+          host: config.dashboard.host,
+          port: config.dashboard.port,
+          postBind: runPostBind,
+          onTakeover: (handle) => {
+            gcInterval = handle;
+          },
+          logger,
+        });
       }
     }
 
@@ -738,6 +1107,9 @@ async function main(): Promise<void> {
     });
     eventProcessor = new HookEventProcessor({
       store: localStore,
+      // --local mode owns no specific Claude Code session, so drain every
+      // per-session buffer so the dashboard sees all live sessions' events.
+      drainAllSessions: !options.stdio,
       onRecord: (record) => {
         if (!config || !sessionTracker || !taskDetector) {
           logger.warn('onRecord called before full initialization; skipping');
@@ -791,13 +1163,22 @@ async function main(): Promise<void> {
         const auditRecord = auditTrail.recordToolCall(record);
         capturedNrIngest?.ingestToolCall(record, auditRecord);
 
-        liveBus.emit('tool-call', {
-          id: record.id,
-          tool: record.toolName,
-          durationMs: record.durationMs ?? 0,
-          costUsd: 0,
-          ts: record.timestamp,
-        });
+        // Task #17 (D3): SSE consumers filter by sessionId for the per-
+        // session live tail. Records without a sessionId are pre-Fix-3
+        // legacy buffer leaks during the migrateLegacyBuffer() window on
+        // first boot — skip the live emit rather than fabricate a session
+        // by falling back to the MCP's resolved sessionTraceId, which would
+        // re-introduce the fictional-session-ID bug Fix 3 removed.
+        if (record.sessionId) {
+          liveBus.emit('tool-call', {
+            id: record.id,
+            sessionId: record.sessionId,
+            tool: record.toolName,
+            durationMs: record.durationMs ?? 0,
+            costUsd: 0,
+            ts: record.timestamp,
+          });
+        }
         // Push into the alert collector's rolling tool-call buffer so
         // tool.failure rules have data to evaluate against.
         capturedAlertSnapshotCollector?.recordToolCall({
@@ -833,6 +1214,9 @@ async function main(): Promise<void> {
             sessionStartMs,
           );
           liveBus.emit('cost-update', {
+            // Task #17 (D3): MCP-owned cost totals — sessionId is always the
+            // resolved Claude Code session_id for this MCP instance.
+            sessionId: sessionTraceId,
             sessionTotalUsd: costMetrics.sessionTotalCostUsd,
             todayTotalUsd: priorDailyCostUsd + costMetrics.sessionTotalCostUsd,
             forecastEodUsd:
@@ -852,8 +1236,11 @@ async function main(): Promise<void> {
             taskSpanTracker.closeTask(task.taskId, task.toolCallCount);
           }
           const firstRecord = task.toolCalls[0];
+          // Fix 3: sessionTraceId is the resolved Claude Code session_id and is
+          // shared across the whole MCP, so we use it directly rather than
+          // peeking at the first record's sessionId (which may now be null).
           const context = {
-            sessionId: firstRecord?.sessionId ?? undefined,
+            sessionId: sessionTraceId,
             platform: typeof firstRecord?.platform === 'string' ? firstRecord.platform : undefined,
             taskId: task.taskId,
           };
@@ -862,6 +1249,9 @@ async function main(): Promise<void> {
           for (const pattern of patterns) {
             capturedNrIngest?.ingestAntiPattern(pattern, context);
             liveBus.emit('anti-pattern', {
+              // Task #17 (D3): tag with the originating session so the Today
+              // view can render a "Session: <name>" pill on each alert row.
+              sessionId: sessionTraceId,
               type: pattern.type,
               target: pattern.file ?? pattern.command ?? 'unknown',
               count:
@@ -937,6 +1327,9 @@ async function main(): Promise<void> {
             sessionStartMs,
           );
           liveBus.emit('cost-update', {
+            // Task #17 (D3): same as the per-tool-call cost-update emission —
+            // tag with the MCP's owning session_id.
+            sessionId: sessionTraceId,
             sessionTotalUsd: costMetrics.sessionTotalCostUsd,
             todayTotalUsd: priorDailyCostUsd + costMetrics.sessionTotalCostUsd,
             forecastEodUsd:
@@ -960,9 +1353,22 @@ async function main(): Promise<void> {
           developer: config.developer ?? 'unknown',
           repoName: currentRepoName,
         });
-        sessionStore.saveSession(summary);
-        weeklySummaryGenerator?.checkAndGenerateLastWeek();
-        logger.info('Session saved', { sessionId: summary.sessionId });
+        // Skip persisting the synthetic session JSON written by --local /
+        // proxy modes. These IDs (local-<ts>, proxy-<ts>) are MCP-internal
+        // bookkeeping; they don't correspond to a real Claude Code session
+        // and produce confusing `local-...` rows in the dashboard's history
+        // view that have no useful content to show.
+        const isSyntheticId =
+          summary.sessionId.startsWith('local-') || summary.sessionId.startsWith('proxy-');
+        if (isSyntheticId) {
+          logger.info('Skipping synthetic session JSON persistence', {
+            sessionId: summary.sessionId,
+          });
+        } else {
+          sessionStore.saveSession(summary);
+          weeklySummaryGenerator?.checkAndGenerateLastWeek();
+          logger.info('Session saved', { sessionId: summary.sessionId });
+        }
       } catch (err) {
         logger.warn('Failed to save session on shutdown', { error: String(err) });
       }
@@ -1034,17 +1440,8 @@ async function main(): Promise<void> {
 
       nrIngest?.start();
       logger.info('Server running on stdio transport');
-
-      process.stdin.once('end', () => {
-        logger.info('stdin closed, shutting down');
-        void shutdown();
-      });
-      // ECONNRESET/EPIPE surfaces as an 'error' event on stdin, not 'end'.
-      // Without this handler the error propagates as an unhandled exception.
-      process.stdin.on('error', (err) => {
-        logger.warn('stdin error, shutting down', { error: String(err) });
-        void shutdown();
-      });
+      // stdin 'end' and 'error' handlers are registered immediately after
+      // connectStdio() above so shutdown fires even during session-ID resolution.
     } else {
       logger.info('Server running in local dashboard mode (Ctrl+C to stop)');
       // DashboardServer HTTP listener keeps the process alive.
@@ -1067,7 +1464,10 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    const sessionTraceId = randomUUID();
+    // Proxy mode has no Claude Code session to resolve; use a deterministic
+    // identifier instead of randomUUID so we don't fabricate something that
+    // looks like a real session id (Fix 3).
+    const sessionTraceId = `proxy-${Date.now()}`;
 
     proxyManager = new ProxyManager({
       port: config.port,

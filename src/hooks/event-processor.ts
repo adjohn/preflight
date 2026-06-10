@@ -24,6 +24,14 @@ export interface HookEventProcessorOptions {
   orphanTimeoutMs?: number;
   /** Maximum pre-events held in memory awaiting a post. Defaults to 2000. */
   maxPendingEvents?: number;
+  /**
+   * When true, each poll cycle drains every per-session buffer file
+   * (`buffer-*.jsonl`) via `LocalStore.drainAllBuffers()` instead of the
+   * single per-session file. Used by `--local` mode where the dashboard
+   * owns no specific Claude Code session and must surface events from every
+   * live session.
+   */
+  drainAllSessions?: boolean;
   onRecord: (record: ToolCallRecord) => void;
   onTokenEvent?: (event: TokenEvent) => void;
 }
@@ -36,6 +44,7 @@ export class HookEventProcessor {
   private readonly store: LocalStore;
   private readonly pollIntervalMs: number;
   private readonly orphanTimeoutMs: number;
+  private readonly drainAllSessions: boolean;
   private readonly onRecord: (record: ToolCallRecord) => void;
   private readonly onTokenEvent: ((event: TokenEvent) => void) | null;
 
@@ -51,6 +60,7 @@ export class HookEventProcessor {
     this.store = options.store;
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.orphanTimeoutMs = options.orphanTimeoutMs ?? DEFAULT_ORPHAN_TIMEOUT_MS;
+    this.drainAllSessions = options.drainAllSessions ?? false;
     this.maxPendingEvents = options.maxPendingEvents ?? DEFAULT_MAX_PENDING;
     this.onRecord = options.onRecord;
     this.onTokenEvent = options.onTokenEvent ?? null;
@@ -99,7 +109,7 @@ export class HookEventProcessor {
 
       // Final drain
       try {
-        const events = this.store.drainBuffer();
+        const events = this.drainOnce();
         if (events.length > 0) {
           this.processEvents(events);
         }
@@ -150,7 +160,7 @@ export class HookEventProcessor {
 
   private poll(): void {
     try {
-      const events = this.store.drainBuffer();
+      const events = this.drainOnce();
       if (events.length > 0) {
         this.processEvents(events);
       }
@@ -160,6 +170,10 @@ export class HookEventProcessor {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  private drainOnce(): HookEvent[] {
+    return this.drainAllSessions ? this.store.drainAllBuffers() : this.store.drainBuffer();
   }
 
   private handlePreEvent(event: HookEvent): void {

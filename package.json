@@ -3,13 +3,16 @@
   "version": "0.1.0",
   "type": "module",
   "license": "Apache-2.0",
-  "private": true,
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=22.0.0"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/newrelic/nr-ai-coding-observability"
+    "url": "https://source.datanerd.us/cdehaan/nr-ai-coding-observability"
   },
   "description": "New Relic MCP server for observing AI coding assistants (Claude Code)",
   "main": "dist/index.js",
@@ -29,12 +32,14 @@
     "examples/"
   ],
   "scripts": {
-    "build:server": "tsc --build && chmod +x dist/index.js dist/hooks/collector-script.js",
+    "build:server": "tsc --build && chmod +x dist/index.js dist/hooks/collector-script.js && npm run build:copy-data",
+    "build:copy-data": "node -e \"const{cpSync,mkdirSync}=require('node:fs');mkdirSync('dist/data',{recursive:true});cpSync('alerts','dist/data/alerts',{recursive:true});cpSync('dashboards','dist/data/dashboards',{recursive:true});\"",
     "build:web": "vite build",
     "build": "npm run build:server && npm run build:web",
     "build:clean": "tsc --build --clean && rimraf dist/web",
     "dev:web": "vite",
     "test": "jest",
+    "test:integration": "jest --testPathPattern='src/multi-instance\\.integration\\.test\\.ts' --testTimeout=120000",
     "test:web": "vitest run",
     "pretest:e2e": "npm run build",
     "test:e2e": "playwright test",
@@ -42,13 +47,13 @@
     "lint": "eslint src/",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "deploy:alerts": "npx tsx scripts/deploy-alerts.ts",
-    "deploy:alerts:update": "npx tsx scripts/deploy-alerts.ts --update",
-    "deploy:alerts:teardown": "npx tsx scripts/deploy-alerts.ts --teardown",
-    "deploy:dashboard": "npx tsx scripts/deploy-dashboard.ts",
-    "deploy:dashboard:all": "npx tsx scripts/deploy-dashboard.ts --all",
-    "deploy:dashboard:update": "npx tsx scripts/deploy-dashboard.ts --all --update",
-    "deploy:dashboard:teardown": "npx tsx scripts/deploy-dashboard.ts --all --teardown",
+    "deploy:alerts": "node dist/index.js deploy-alerts",
+    "deploy:alerts:update": "node dist/index.js deploy-alerts --update",
+    "deploy:alerts:teardown": "node dist/index.js deploy-alerts --teardown",
+    "deploy:dashboard": "node dist/index.js deploy-dashboards",
+    "deploy:dashboard:all": "node dist/index.js deploy-dashboards --all",
+    "deploy:dashboard:update": "node dist/index.js deploy-dashboards --all --update",
+    "deploy:dashboard:teardown": "node dist/index.js deploy-dashboards --all --teardown",
     "backfill:sessions": "npx tsx scripts/backfill-sessions.ts",
     "sync:shared": "npx tsx scripts/sync-shared.ts",
     "check:bundle-size": "npx tsx scripts/check-bundle-size.ts",
@@ -57,7 +62,7 @@
     "dev:full": "npm run build:server && { npm run dev & BACK=$!; npm run dev:web; kill $BACK 2>/dev/null || true; }",
     "start": "node dist/index.js --stdio",
     "start:local": "node dist/index.js --local",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

@@ -54,7 +54,7 @@ export default {
   weeklyBudgetUsd: 100.0,
 
   // ── Personal alert thresholds ─────────────────────────────────────────────
-  // Used by: npx tsx scripts/deploy-alerts.ts --developer <name>
+  // Used by: nr-ai-mcp-server deploy-alerts --developer <name>
   // Defaults: dailyCostUsd: 2, sessionCostUsd: 0.50, efficiencyScoreMin: 40, stuckLoopCountMax: 2
 
   alerts: {

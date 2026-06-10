@@ -31,10 +31,27 @@ import { createHash } from 'node:crypto';
 // Lightweight config (env vars only — no file reads)
 // ---------------------------------------------------------------------------
 
-const DEFAULT_BUFFER_PATH = resolve(homedir(), '.nr-ai-observe', 'buffer.jsonl');
+const SESSION_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+const DEFAULT_STORAGE_DIR = resolve(homedir(), '.nr-ai-observe');
 
-function getBufferPath(): string {
-  return process.env.NEW_RELIC_AI_MCP_BUFFER_PATH ?? DEFAULT_BUFFER_PATH;
+/**
+ * Resolve the per-session buffer path. Validates sessionId against
+ * /^[a-zA-Z0-9_-]{1,128}$/ so a malicious session_id can't escape the storage
+ * dir. When sessionId is missing or fails validation, falls back to
+ * `buffer-unknown.jsonl` rather than the legacy shared `buffer.jsonl` — the
+ * MCP no longer reads the shared path.
+ *
+ * `NEW_RELIC_AI_MCP_BUFFER_PATH` is honored verbatim when set (used by tests
+ * and one-off configurations) and bypasses session-scoping.
+ */
+function getBufferPath(sessionId?: string): string {
+  if (process.env.NEW_RELIC_AI_MCP_BUFFER_PATH !== undefined) {
+    return process.env.NEW_RELIC_AI_MCP_BUFFER_PATH;
+  }
+  const storageDir = process.env.NEW_RELIC_AI_MCP_STORAGE_PATH ?? DEFAULT_STORAGE_DIR;
+  const safeId =
+    typeof sessionId === 'string' && SESSION_ID_RE.test(sessionId) ? sessionId : 'unknown';
+  return resolve(storageDir, `buffer-${safeId}.jsonl`);
 }
 
 // Cache only the file-read result to avoid repeated disk I/O on the hot path
@@ -202,9 +219,9 @@ function readLastAssistantUsage(transcriptPath: string): TranscriptUsage | null 
 }
 
 function getLastTranscriptSize(sessionId: string): number {
-  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(sessionId)) return 0;
+  if (!SESSION_ID_RE.test(sessionId)) return 0;
   try {
-    const bufferDir = dirname(getBufferPath());
+    const bufferDir = dirname(getBufferPath(sessionId));
     const statePath = resolve(bufferDir, `.transcript-pos-${sessionId}`);
     if (existsSync(statePath)) {
       return parseInt(readFileSync(statePath, 'utf-8').trim(), 10) || 0;
@@ -218,9 +235,9 @@ function getLastTranscriptSize(sessionId: string): number {
 let _transcriptSizeWriteFailed = false;
 
 function setLastTranscriptSize(sessionId: string, size: number): void {
-  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(sessionId)) return;
+  if (!SESSION_ID_RE.test(sessionId)) return;
   try {
-    const bufferDir = dirname(getBufferPath());
+    const bufferDir = dirname(getBufferPath(sessionId));
     if (!existsSync(bufferDir)) {
       mkdirSync(bufferDir, { recursive: true, mode: 0o700 });
     }
@@ -286,7 +303,7 @@ function collectTranscriptTokens(data: {
   tokenEvent.sessionId = sessionId;
 
   try {
-    const bufferPath = getBufferPath();
+    const bufferPath = getBufferPath(sessionId);
     const bufferDir = dirname(bufferPath);
     if (!existsSync(bufferDir)) {
       mkdirSync(bufferDir, { recursive: true, mode: 0o700 });
@@ -308,6 +325,54 @@ function collectTranscriptTokens(data: {
     setLastTranscriptSize(sessionId, currentSize);
   } catch {
     // Silent failure — never block Claude Code
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PPID breadcrumb — lets the MCP server learn the Claude Code session_id
+//
+// Claude Code spawns its MCP server and hook collector scripts as children of
+// the same process; they share a PPID. The MCP can read its own process.ppid
+// (= Claude Code's PID) and look up the matching session_id here.
+//
+// Hot-path: every PreToolUse / PostToolUse hook runs this. The
+// existsSync + content-equality short-circuit makes the steady state a single
+// stat() and one read — well under the <5ms budget.
+// ---------------------------------------------------------------------------
+
+let _breadcrumbWriteFailed = false;
+
+function writePpidBreadcrumb(sessionId: string): void {
+  if (!SESSION_ID_RE.test(sessionId)) return;
+  // process.ppid is undefined on a few exotic platforms; bail without writing.
+  const ppid = process.ppid;
+  if (typeof ppid !== 'number' || ppid <= 0) return;
+
+  try {
+    const storageDir = process.env.NEW_RELIC_AI_MCP_STORAGE_PATH ?? DEFAULT_STORAGE_DIR;
+    const breadcrumbDir = resolve(storageDir, 'session-by-ppid');
+    const breadcrumbPath = resolve(breadcrumbDir, `${ppid}.txt`);
+
+    // Steady-state short-circuit: most hook fires after the first one are
+    // no-ops because the breadcrumb already contains the right session_id.
+    if (existsSync(breadcrumbPath)) {
+      try {
+        if (readFileSync(breadcrumbPath, 'utf-8').trim() === sessionId) return;
+      } catch {
+        // Fall through and rewrite if the read failed for any reason
+      }
+    }
+
+    mkdirSync(breadcrumbDir, { recursive: true, mode: 0o700 });
+    writeFileSync(breadcrumbPath, sessionId, { mode: 0o600 });
+    _breadcrumbWriteFailed = false;
+  } catch (err) {
+    if (!_breadcrumbWriteFailed) {
+      process.stderr.write(
+        `[nr-ai-observe] Warning: cannot write PPID breadcrumb: ${String(err)}\n`,
+      );
+      _breadcrumbWriteFailed = true;
+    }
   }
 }
 
@@ -490,6 +555,14 @@ function processHook(raw: string): void {
     return; // Malformed JSON — skip silently
   }
 
+  // Drop a PPID breadcrumb at the very top so the MCP server can resolve its
+  // Claude Code session_id without an env-var or initialize-payload extension.
+  // The function itself is a no-op when sessionId is missing or invalid, and
+  // short-circuits if the breadcrumb is already current.
+  if (typeof data.session_id === 'string' && data.session_id.length > 0) {
+    writePpidBreadcrumb(data.session_id);
+  }
+
   const eventName = data.hook_event_name;
   const toolName = data.tool_name ?? 'unknown';
   const timestamp = Date.now();
@@ -562,7 +635,7 @@ function processHook(raw: string): void {
 
   // Write to buffer — wrapped in try/catch for resilience.
   try {
-    const bufferPath = getBufferPath();
+    const bufferPath = getBufferPath(data.session_id);
     const bufferDir = dirname(bufferPath);
     if (!existsSync(bufferDir)) {
       mkdirSync(bufferDir, { recursive: true, mode: 0o700 });
@@ -606,6 +679,8 @@ export {
   collectTranscriptTokens,
   readLastAssistantUsage,
   getTranscriptPath,
+  getBufferPath,
+  writePpidBreadcrumb,
 };
 
 // ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Today } from './Today';
 import { useLiveStore } from '../store/liveStore';
+import { qk } from '../api/client';
 
 function renderToday(qc?: QueryClient) {
   const client =
@@ -234,6 +235,217 @@ describe('Today header timestamp', () => {
 
     const after = container.querySelector('header span')!.textContent;
     expect(after).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task #17 (D3): cross-session aggregate KPIs and Today view UX
+// ---------------------------------------------------------------------------
+
+describe('Today view — aggregate endpoint', () => {
+  beforeEach(() => {
+    useLiveStore.setState({
+      connected: true,
+      recentToolCalls: [],
+      cost: null,
+      antiPatterns: [],
+      firingAlerts: new Map(),
+      dismissedAlerts: new Set(),
+      activeSessionId: null,
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders KPIs from /api/sessions/today/aggregate (calls + flags + spend)', async () => {
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/api/sessions/today/aggregate')) {
+        return new Response(
+          JSON.stringify({
+            toolCallCount: 42,
+            totalCostUsd: 7.75,
+            antiPatternCount: 3,
+            avgDurationMs: 80,
+            sessionCount: 2,
+            sparkline: { startTimestamp: 0, bucketSizeMs: 60_000, points: [1, 2, 3] },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    renderToday();
+    expect(await screen.findByText('42')).toBeInTheDocument();
+    expect(screen.getByText('$7.75')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+  });
+});
+
+describe('Today view — selector default + Session ended badge', () => {
+  beforeEach(() => {
+    useLiveStore.setState({
+      connected: true,
+      recentToolCalls: [],
+      cost: { sessionTotalUsd: 1, todayTotalUsd: 1, forecastEodUsd: null },
+      antiPatterns: [],
+      firingAlerts: new Map(),
+      dismissedAlerts: new Set(),
+      activeSessionId: null,
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('defaults to most-recently-active live session (server returns sorted desc)', async () => {
+    const liveSessions = [
+      { sessionId: 'newest-id', sessionName: 'frontend', startTime: 1, lastActivity: 9_000 },
+      { sessionId: 'older-id', sessionName: 'backend', startTime: 1, lastActivity: 1_000 },
+    ];
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/api/sessions/live')) {
+        return new Response(JSON.stringify(liveSessions), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/session/current')) {
+        return new Response(
+          JSON.stringify({
+            sessionId: 'newest-id',
+            liveSessions: ['newest-id', 'older-id'],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/api/sessions/today/aggregate')) {
+        return new Response(
+          JSON.stringify({
+            toolCallCount: 1,
+            totalCostUsd: 0,
+            antiPatternCount: 0,
+            avgDurationMs: 0,
+            sessionCount: 2,
+            sparkline: { startTimestamp: 0, bucketSizeMs: 60_000, points: [] },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes(`/api/sessions/newest-id/replay`)) {
+        return new Response(JSON.stringify({ sessionId: 'newest-id', timeline: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/context')) {
+        return new Response(
+          JSON.stringify({
+            turnCount: 0,
+            growth: { startTokens: 0, currentTokens: 0, deltaTokens: 0 },
+            currentBreakdown: { system: 0, tools: 0, user: 0, assistant: 0 },
+            fillPercent: 0,
+            toolContributions: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    renderToday();
+    // The "frontend" session card should appear, sourced from the live API.
+    expect(await screen.findByText('frontend')).toBeInTheDocument();
+    // activeSessionId in the store should equal the most-recently-active id.
+    await waitFor(() => {
+      expect(useLiveStore.getState().activeSessionId).toBe('newest-id');
+    });
+  });
+
+  it('shows the Session ended badge when the selected session leaves the live set', async () => {
+    // Initial: one live session.
+    let liveSessions = [
+      { sessionId: 'fading-id', sessionName: 'fading', startTime: 1, lastActivity: 1_000 },
+    ];
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/api/sessions/live')) {
+        return new Response(JSON.stringify(liveSessions), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/api/sessions/today/aggregate')) {
+        return new Response(
+          JSON.stringify({
+            toolCallCount: 1,
+            totalCostUsd: 0,
+            antiPatternCount: 0,
+            avgDurationMs: 0,
+            sessionCount: 1,
+            sparkline: { startTimestamp: 0, bucketSizeMs: 60_000, points: [] },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes(`/api/sessions/fading-id/replay`)) {
+        return new Response(
+          JSON.stringify({
+            sessionId: 'fading-id',
+            timeline: [
+              {
+                timestamp: 1,
+                toolName: 'Read',
+                durationMs: 10,
+                success: true,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/api/context')) {
+        // Valid empty ContextApiResponse — keeps ContextBar from crashing
+        // when the per-session ContextBar tries to fetch.
+        return new Response(
+          JSON.stringify({
+            turnCount: 0,
+            growth: { startTokens: 0, currentTokens: 0, deltaTokens: 0 },
+            currentBreakdown: { system: 0, tools: 0, user: 0, assistant: 0 },
+            fillPercent: 0,
+            toolContributions: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    renderToday(qc);
+    const sessionButton = await screen.findByText('fading');
+    // The user has to explicitly select the session before the "Session ended"
+    // pin behavior kicks in — we deliberately don't pin the default-selected
+    // session, only an explicit click.
+    sessionButton.click();
+    // Now simulate the session ending — it leaves the live set.
+    liveSessions = [];
+    await qc.invalidateQueries({ queryKey: qk.sessionsLive });
+    await waitFor(() => {
+      expect(screen.getByTestId('session-ended-badge')).toBeInTheDocument();
+    });
   });
 });
 

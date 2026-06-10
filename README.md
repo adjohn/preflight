@@ -22,7 +22,7 @@ You need three things before installation.
 
 This works with **Claude Code**, Cursor, Windsurf, GitHub Copilot, Zed, Continue.dev, or Amazon Q Developer. The examples below use Claude Code, which has the deepest integration.
 
-### 2. Node.js v24
+### 2. Node.js v22 or higher
 
 Open a terminal and run:
 
@@ -30,20 +30,20 @@ Open a terminal and run:
 node --version
 ```
 
-If it shows `v24.x.x`, you're set. If not, install it from [nodejs.org](https://nodejs.org) or via nvm:
+If it shows `v22.x.x` or higher, you're set. If not, install it from [nodejs.org](https://nodejs.org) or via nvm:
 
 ```bash
-nvm install 24 && nvm use 24
+nvm install 22 && nvm use 22
 ```
 
 ### 3. A New Relic account with two keys
 
 You use two different NR keys at different points:
 
-| Key              | What it does                            | Where to find it                                                                                                         |
-| ---------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **License key**  | Sends telemetry data _into_ NR (ingest) | NR One → top-right menu → API keys → create a key of type **License**. Long hex string ending in `NRAL`. Not `NRAK-`.    |
-| **User API key** | Deploys dashboards and alerts _into_ NR | NR One → top-right menu → API keys → create a key of type **User**. Starts with `NRAK-`. Only needed for deploy scripts. |
+| Key              | What it does                            | Where to find it                                                                                                              |
+| ---------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **License key**  | Sends telemetry data _into_ NR (ingest) | NR One → top-right menu → API keys → create a key of type **License**. Long hex string ending in `NRAL`. Not `NRAK-`.         |
+| **User API key** | Deploys dashboards and alerts _into_ NR | NR One → top-right menu → API keys → create a key of type **User**. Starts with `NRAK-`. Only needed for the deploy commands. |
 
 You'll also need your **Account ID** — a number visible in the URL when you're logged into NR One: `https://one.newrelic.com/nr1-core?account=`**`12345`**.
 
@@ -51,9 +51,15 @@ You'll also need your **Account ID** — a number visible in the URL when you're
 
 ## Quick Start
 
-### Option A — Interactive setup wizard (recommended for first-time setup)
+**Step 1 — Install the package globally**
 
-After cloning the repo and running `npm install && npm run build` (see [setup below](#first-time-repository-setup)), run:
+```bash
+npm install -g nr-ai-mcp-server
+```
+
+This puts `nr-ai-observe` on your PATH.
+
+**Step 2 — Run the interactive setup wizard**
 
 ```bash
 nr-ai-observe setup
@@ -63,9 +69,7 @@ The wizard asks for your license key, account ID, environment/region (US, EU, Fe
 
 If `NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_ACCOUNT_ID`, or `NEW_RELIC_API_KEY` are already set in your shell environment, the wizard detects them and lets you press Enter to accept — no copy-paste needed.
 
-### Option B — Manual setup
-
-**Step 1 — Install the hooks**
+Prefer non-interactive? Skip the wizard and run:
 
 ```bash
 nr-ai-observe install \
@@ -75,20 +79,20 @@ nr-ai-observe install \
 
 This registers a hook in your Claude Code settings so every tool call is captured automatically. You only run this once.
 
-**Step 2 — Deploy dashboards** _(optional but recommended)_
+**Step 3 — Deploy dashboards** _(optional but recommended)_
 
 Replace `NRAK-...` with your user API key and `12345` with your account ID:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-dashboard.ts --all
+  nr-ai-mcp-server deploy-dashboards --all
 ```
 
-This creates 7 dashboards in your NR account. Find them under **Dashboards** → search "AI Coding".
+This creates 7 dashboards in your NR account. Find them under **Dashboards** → search "AI Coding". The deploy commands ship with the package — both `nr-ai-mcp-server deploy-dashboards` and `nr-ai-mcp-server deploy-alerts` are available immediately after `npm install -g`.
 
 > **Staging vs production:** Use your account's license key and account ID from whichever environment you're targeting — both work. Add `--staging` if your account is on `staging-one.newrelic.com`, `--eu` for EU region accounts, or omit both flags for standard production (`one.newrelic.com`). Don't mix keys across environments (a production license key won't ingest to staging and vice versa).
 
-**Step 3 — Restart Claude Code and verify**
+**Step 4 — Restart Claude Code and verify**
 
 Restart Claude Code, then type this into the chat:
 
@@ -98,16 +102,20 @@ If you get back a response with tool call counts and timing data, it's working.
 
 ---
 
-## First-Time Repository Setup
+## From source / contributing
+
+If you'd rather run from a git clone (to develop the project, deploy dashboards/alerts, or stay on the latest unreleased changes):
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/newrelic/nr-ai-observatory
 cd nr-ai-observatory
 nvm use          # Switch to the right Node version
 npm install      # Install all dependencies
 npm run build    # Compile TypeScript
 npm link         # Register nr-ai-observe binary on PATH (required for hooks)
 ```
+
+Then run `nr-ai-observe setup` exactly as in the Quick Start.
 
 > **`npm link` permission error?** If you see `EACCES: permission denied` pointing at `/usr/local/lib/node_modules`, your system Node.js is installed in a root-owned directory. Pick one fix:
 >
@@ -124,7 +132,7 @@ npm link         # Register nr-ai-observe binary on PATH (required for hooks)
 > ```bash
 > curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 > # restart your shell, then:
-> nvm install 24 && nvm use 24
+> nvm install 22 && nvm use 22
 > npm install && npm run build && npm link
 > ```
 >
@@ -170,7 +178,7 @@ Deploy a dashboard pre-filtered to your name (it opens already showing your data
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-dashboard.ts \
+  nr-ai-mcp-server deploy-dashboards \
   ai-coding-assistant-personal.json --developer your-name
 ```
 
@@ -180,14 +188,14 @@ To replace existing dashboards in place after pulling new fixes (preserves the d
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-dashboard.ts --all --update
+  nr-ai-mcp-server deploy-dashboards --all --update
 ```
 
 To delete the deployed dashboards, add `--teardown`. Dashboards are matched by name; missing ones are skipped:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-dashboard.ts --all --teardown
+  nr-ai-mcp-server deploy-dashboards --all --teardown
 ```
 
 ### Terraform (IaC alternative)
@@ -202,7 +210,7 @@ Optional: get notified in NR when something goes wrong.
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-alerts.ts
+  nr-ai-mcp-server deploy-alerts
 ```
 
 Add `--staging` if your account is on the New Relic staging environment, or `--eu` for accounts on the EU region. This creates five alert conditions: daily cost spike, low efficiency score, stuck loop rate, anti-pattern rate, and session cost budget. To remove them, add `--teardown`.
@@ -211,14 +219,14 @@ To apply changes to alert JSONs without losing the existing policy, add `--updat
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-alerts.ts --update
+  nr-ai-mcp-server deploy-alerts --update
 ```
 
 For personal alerts scoped to your developer name:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-alerts.ts --developer your-name
+  nr-ai-mcp-server deploy-alerts --developer your-name
 ```
 
 ---
@@ -297,10 +305,10 @@ If you deployed dashboards or alerts, tear them down separately:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-dashboard.ts --all --teardown
+  nr-ai-mcp-server deploy-dashboards --all --teardown
 
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-alerts.ts --teardown
+  nr-ai-mcp-server deploy-alerts --teardown
 ```
 
 ### Removing local data
@@ -340,7 +348,7 @@ In local mode:
 
 **With Claude Code** (default): the server runs via the MCP connection (`--stdio`). You don't launch it manually — Claude Code starts it automatically when you open a session, because `nr-ai-observe install` registered it as an MCP server. The dashboard stays alive as long as your Claude Code session is open.
 
-**Standalone** (no Claude Code required): pass `--local` to run the dashboard server directly, without an MCP transport. This is useful for testing the dashboard, running it during a non-Claude session, or as a persistent background process.
+**Standalone** (no Claude Code required): pass `--local` to run the dashboard server directly, without an MCP transport. Use this to browse the dashboard when Claude Code isn't running, or to observe non-Claude-Code sources that hit the hooks (e.g. Claude Agent SDK scripts). If the per-session MCP is also installed, only one process owns the dashboard at a time — whichever started first — and the other runs headless.
 
 ```bash
 npm run build          # build once
@@ -418,7 +426,7 @@ Or set it in your config file as `digestWebhookUrl`, or configure it directly fr
 
 ## Requirements
 
-- **Node.js**: v24 (see `.nvmrc`)
+- **Node.js**: v22 or higher (`.nvmrc` pins v24 for development)
 - **New Relic account**: free tier works; you need a license key and a user API key
 - **An AI coding tool**: Claude Code, Cursor, Windsurf, Copilot, Zed, Continue.dev, or Amazon Q
 

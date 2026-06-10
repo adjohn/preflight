@@ -36,7 +36,13 @@ const config: Config = {
   // That invariant is not meaningful here — shared is inlined source, not a versioned
   // package — and the path resolution (join(__dirname, '..', 'package.json')) resolves
   // correctly in the upstream repo but to src/package.json (non-existent) in this layout.
-  testPathIgnorePatterns: ['/node_modules/', 'src/shared/index\\.test\\.ts'],
+  // Integration tests spawn real child processes and require a compiled binary
+  // (built via beforeAll). They run via `npm run test:integration` only.
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    'src/shared/index\\.test\\.ts',
+    '<rootDir>/src/multi-instance\\.integration\\.test\\.ts',
+  ],
 };
 
 export default config;

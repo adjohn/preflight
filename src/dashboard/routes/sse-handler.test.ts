@@ -63,8 +63,20 @@ describe('sse-handler', () => {
       const res = await fetch(`${server.url}/sse`);
       // Give the server a moment to attach the listener before emitting
       await new Promise((r) => setTimeout(r, 30));
-      bus.emit('tool-call', { id: 'a', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
-      bus.emit('cost-update', { sessionTotalUsd: 1, todayTotalUsd: 2, forecastEodUsd: null });
+      bus.emit('tool-call', {
+        id: 'a',
+        sessionId: 's1',
+        tool: 'Read',
+        durationMs: 1,
+        costUsd: 0,
+        ts: 1,
+      });
+      bus.emit('cost-update', {
+        sessionId: 's1',
+        sessionTotalUsd: 1,
+        todayTotalUsd: 2,
+        forecastEodUsd: null,
+      });
       const chunks = await readSseChunks(res, 2);
       const merged = chunks.join('');
       expect(merged).toContain('event: tool-call');
@@ -77,8 +89,22 @@ describe('sse-handler', () => {
 
   it('replays buffered events when Last-Event-ID header is set', async () => {
     const bus = new LiveEventBus();
-    bus.emit('tool-call', { id: 'a', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
-    bus.emit('tool-call', { id: 'b', tool: 'Edit', durationMs: 2, costUsd: 0, ts: 2 });
+    bus.emit('tool-call', {
+      id: 'a',
+      sessionId: 's1',
+      tool: 'Read',
+      durationMs: 1,
+      costUsd: 0,
+      ts: 1,
+    });
+    bus.emit('tool-call', {
+      id: 'b',
+      sessionId: 's1',
+      tool: 'Edit',
+      durationMs: 2,
+      costUsd: 0,
+      ts: 2,
+    });
     const server = await startTestServer(createSseHandler(bus));
     try {
       // seq starts at 1, so 'a' has seq=1 and 'b' has seq=2. Client has
@@ -95,8 +121,22 @@ describe('sse-handler', () => {
 
   it('Last-Event-ID: 0 replays everything (sentinel for "nothing seen")', async () => {
     const bus = new LiveEventBus();
-    bus.emit('tool-call', { id: 'a', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
-    bus.emit('tool-call', { id: 'b', tool: 'Edit', durationMs: 2, costUsd: 0, ts: 2 });
+    bus.emit('tool-call', {
+      id: 'a',
+      sessionId: 's1',
+      tool: 'Read',
+      durationMs: 1,
+      costUsd: 0,
+      ts: 1,
+    });
+    bus.emit('tool-call', {
+      id: 'b',
+      sessionId: 's1',
+      tool: 'Edit',
+      durationMs: 2,
+      costUsd: 0,
+      ts: 2,
+    });
     const server = await startTestServer(createSseHandler(bus));
     try {
       const res = await fetch(`${server.url}/sse`, { headers: { 'last-event-id': '0' } });
@@ -118,7 +158,14 @@ describe('sse-handler', () => {
     // Prime the bus with 5 events BEFORE the client connects. Their bus
     // seqs are 1..5.
     for (let i = 0; i < 5; i++) {
-      bus.emit('tool-call', { id: `pre-${i}`, tool: 'Read', durationMs: i, costUsd: 0, ts: i });
+      bus.emit('tool-call', {
+        id: `pre-${i}`,
+        sessionId: 's1',
+        tool: 'Read',
+        durationMs: i,
+        costUsd: 0,
+        ts: i,
+      });
     }
     const server = await startTestServer(createSseHandler(bus));
     try {
@@ -127,7 +174,14 @@ describe('sse-handler', () => {
       const res = await fetch(`${server.url}/sse`);
       await new Promise((r) => setTimeout(r, 30));
       // Emit one new event — should arrive with bus seq=6, not local 1.
-      bus.emit('tool-call', { id: 'post-0', tool: 'Edit', durationMs: 9, costUsd: 0, ts: 100 });
+      bus.emit('tool-call', {
+        id: 'post-0',
+        sessionId: 's1',
+        tool: 'Edit',
+        durationMs: 9,
+        costUsd: 0,
+        ts: 100,
+      });
       // Read 2 chunks: the ': stream-open\n\n' opener plus the event frame.
       const chunks = await readSseChunks(res, 2);
       const merged = chunks.join('');
@@ -149,17 +203,38 @@ describe('sse-handler', () => {
     const bus = new LiveEventBus();
     // Bus emits 100 events before the test client ever connects.
     for (let i = 0; i < 100; i++) {
-      bus.emit('tool-call', { id: `e${i}`, tool: 'Read', durationMs: i, costUsd: 0, ts: i });
+      bus.emit('tool-call', {
+        id: `e${i}`,
+        sessionId: 's1',
+        tool: 'Read',
+        durationMs: i,
+        costUsd: 0,
+        ts: i,
+      });
     }
     // Client knows it last saw seq=105 (a hypothetical post-connection
     // event that was emitted after a previous connection picked up seq=101..105).
     // To simulate that, emit 5 more events to get the bus seq to 105.
     for (let i = 100; i < 105; i++) {
-      bus.emit('tool-call', { id: `e${i}`, tool: 'Read', durationMs: i, costUsd: 0, ts: i });
+      bus.emit('tool-call', {
+        id: `e${i}`,
+        sessionId: 's1',
+        tool: 'Read',
+        durationMs: i,
+        costUsd: 0,
+        ts: i,
+      });
     }
     // Now emit one more event with seq=106 — this is the one the client
     // should receive on reconnect.
-    bus.emit('tool-call', { id: 'e105', tool: 'Edit', durationMs: 999, costUsd: 0, ts: 999 });
+    bus.emit('tool-call', {
+      id: 'e105',
+      sessionId: 's1',
+      tool: 'Edit',
+      durationMs: 999,
+      costUsd: 0,
+      ts: 999,
+    });
 
     const server = await startTestServer(createSseHandler(bus));
     try {
@@ -185,8 +260,22 @@ describe('sse-handler', () => {
   // Last-Event-ID: 0 then replayed the entire bus buffer.
   it('Last-Event-ID: -1 does not trigger replay (F-010 regression)', async () => {
     const bus = new LiveEventBus();
-    bus.emit('tool-call', { id: 'a', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
-    bus.emit('tool-call', { id: 'b', tool: 'Edit', durationMs: 2, costUsd: 0, ts: 2 });
+    bus.emit('tool-call', {
+      id: 'a',
+      sessionId: 's1',
+      tool: 'Read',
+      durationMs: 1,
+      costUsd: 0,
+      ts: 1,
+    });
+    bus.emit('tool-call', {
+      id: 'b',
+      sessionId: 's1',
+      tool: 'Edit',
+      durationMs: 2,
+      costUsd: 0,
+      ts: 2,
+    });
     const server = await startTestServer(createSseHandler(bus));
     try {
       const res = await fetch(`${server.url}/sse`, {
@@ -194,7 +283,14 @@ describe('sse-handler', () => {
       });
       await new Promise((r) => setTimeout(r, 30));
       // Trigger a live event so the readSseChunks call resolves.
-      bus.emit('tool-call', { id: 'live', tool: 'Read', durationMs: 1, costUsd: 0, ts: 3 });
+      bus.emit('tool-call', {
+        id: 'live',
+        sessionId: 's1',
+        tool: 'Read',
+        durationMs: 1,
+        costUsd: 0,
+        ts: 3,
+      });
       const chunks = await readSseChunks(res, 2);
       const merged = chunks.join('');
       // Only the live event arrives — the buffered 'a' and 'b' must NOT replay.
@@ -208,15 +304,36 @@ describe('sse-handler', () => {
 
   it('Last-Event-ID: not-a-number does not trigger replay (F-010 regression)', async () => {
     const bus = new LiveEventBus();
-    bus.emit('tool-call', { id: 'a', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
-    bus.emit('tool-call', { id: 'b', tool: 'Edit', durationMs: 2, costUsd: 0, ts: 2 });
+    bus.emit('tool-call', {
+      id: 'a',
+      sessionId: 's1',
+      tool: 'Read',
+      durationMs: 1,
+      costUsd: 0,
+      ts: 1,
+    });
+    bus.emit('tool-call', {
+      id: 'b',
+      sessionId: 's1',
+      tool: 'Edit',
+      durationMs: 2,
+      costUsd: 0,
+      ts: 2,
+    });
     const server = await startTestServer(createSseHandler(bus));
     try {
       const res = await fetch(`${server.url}/sse`, {
         headers: { 'last-event-id': 'not-a-number' },
       });
       await new Promise((r) => setTimeout(r, 30));
-      bus.emit('tool-call', { id: 'live', tool: 'Read', durationMs: 1, costUsd: 0, ts: 3 });
+      bus.emit('tool-call', {
+        id: 'live',
+        sessionId: 's1',
+        tool: 'Read',
+        durationMs: 1,
+        costUsd: 0,
+        ts: 3,
+      });
       const chunks = await readSseChunks(res, 2);
       const merged = chunks.join('');
       expect(merged).toContain('"id":"live"');
@@ -270,6 +387,97 @@ describe('sse-handler', () => {
     expect(offSpy).toHaveBeenCalledTimes(5);
   });
 
+  // Task #17 (D3): server-side sessionId filtering for the per-session
+  // live tail. When `?sessionId=` is present, frames with a sessionId that
+  // doesn't match are dropped before being written; events with no sessionId
+  // (e.g. system-level alerts) and the heartbeat keepalive always pass.
+  it('filters live frames by ?sessionId= when set', async () => {
+    const bus = new LiveEventBus();
+    const server = await startTestServer(createSseHandler(bus));
+    try {
+      const res = await fetch(`${server.url}/sse?sessionId=keep-me`);
+      await new Promise((r) => setTimeout(r, 30));
+      bus.emit('tool-call', {
+        id: 'a',
+        sessionId: 'drop-me',
+        tool: 'Read',
+        durationMs: 1,
+        costUsd: 0,
+        ts: 1,
+      });
+      bus.emit('tool-call', {
+        id: 'b',
+        sessionId: 'keep-me',
+        tool: 'Edit',
+        durationMs: 2,
+        costUsd: 0,
+        ts: 2,
+      });
+      const chunks = await readSseChunks(res, 2);
+      const merged = chunks.join('');
+      expect(merged).toContain('"id":"b"');
+      expect(merged).not.toContain('"id":"a"');
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('replay also honours ?sessionId= filter', async () => {
+    const bus = new LiveEventBus();
+    bus.emit('tool-call', {
+      id: 'old-mine',
+      sessionId: 'mine',
+      tool: 'Read',
+      durationMs: 1,
+      costUsd: 0,
+      ts: 1,
+    });
+    bus.emit('tool-call', {
+      id: 'old-other',
+      sessionId: 'other',
+      tool: 'Read',
+      durationMs: 1,
+      costUsd: 0,
+      ts: 2,
+    });
+    const server = await startTestServer(createSseHandler(bus));
+    try {
+      const res = await fetch(`${server.url}/sse?sessionId=mine`, {
+        headers: { 'last-event-id': '0' },
+      });
+      const chunks = await readSseChunks(res, 2);
+      const merged = chunks.join('');
+      expect(merged).toContain('"id":"old-mine"');
+      expect(merged).not.toContain('"id":"old-other"');
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('rejects malformed ?sessionId= by falling open to no filter', async () => {
+    const bus = new LiveEventBus();
+    const server = await startTestServer(createSseHandler(bus));
+    try {
+      // Path-traversal-ish — fails the SESSION_ID_RE pattern.
+      const res = await fetch(`${server.url}/sse?sessionId=../etc/passwd`);
+      await new Promise((r) => setTimeout(r, 30));
+      bus.emit('tool-call', {
+        id: 'one',
+        sessionId: 'real-session',
+        tool: 'Read',
+        durationMs: 1,
+        costUsd: 0,
+        ts: 1,
+      });
+      const chunks = await readSseChunks(res, 2);
+      const merged = chunks.join('');
+      // No filter applied → every event passes through.
+      expect(merged).toContain('"id":"one"');
+    } finally {
+      await server.close();
+    }
+  });
+
   it('heartbeat frame id is non-numeric ("hb-<ts>") and does not affect bus seq', async () => {
     const bus = new LiveEventBus();
     // Construct an SSE handler with a 50ms heartbeat by NOT using the
@@ -280,7 +488,14 @@ describe('sse-handler', () => {
     try {
       const res = await fetch(`${server.url}/sse`);
       await new Promise((r) => setTimeout(r, 30));
-      bus.emit('tool-call', { id: 'live-1', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
+      bus.emit('tool-call', {
+        id: 'live-1',
+        sessionId: 's1',
+        tool: 'Read',
+        durationMs: 1,
+        costUsd: 0,
+        ts: 1,
+      });
       // 2 chunks: ': stream-open\n\n' + event frame.
       const chunks = await readSseChunks(res, 2);
       const merged = chunks.join('');

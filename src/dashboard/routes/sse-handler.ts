@@ -1,8 +1,24 @@
 import { IncomingMessage, ServerResponse } from 'node:http';
 
-import { LiveEventBus, LiveEventName, SeqEntry } from '../live-event-bus.js';
+import { LiveEventBus, LiveEventMap, LiveEventName, SeqEntry } from '../live-event-bus.js';
 
 const HEARTBEAT_MS = 30_000;
+// Task #17 (D3): only validate the same character class the rest of the
+// codebase uses for session_id (collector-script.ts, local-store.ts).
+// A bad input is silently ignored — the filter falls open to "all events"
+// rather than 400ing, since SSE clients can't easily react to a 4xx.
+const SESSION_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+// Narrow a payload to its sessionId field if present. ToolCall, AntiPattern,
+// CostUpdate, and ContextUpdate all expose `sessionId: string`; AlertEvent has
+// it as `sessionId?: string`. HeartbeatEvent has none (and is unfiltered).
+function extractSessionId(payload: LiveEventMap[LiveEventName]): string | undefined {
+  if (payload && typeof payload === 'object' && 'sessionId' in payload) {
+    const sid = (payload as { sessionId?: unknown }).sessionId;
+    if (typeof sid === 'string' && sid.length > 0) return sid;
+  }
+  return undefined;
+}
 
 // Frame id is `string | number` so heartbeats can use a non-numeric id like
 // "hb-<ts>". The browser sends it back as Last-Event-ID on reconnect; the
@@ -26,6 +42,18 @@ export function createSseHandler(
     });
     res.write(': stream-open\n\n');
 
+    // Task #17 (D3): optional `?sessionId=` query parameter scopes the stream
+    // to events emitted from a single Claude Code session. Events without a
+    // `sessionId` field (heartbeat) and AlertEvents whose sessionId is unset
+    // are always delivered — heartbeat is a connection keepalive and
+    // unscoped alerts are system-level. An invalid sessionId is treated as
+    // "no filter" so a typo in the query string degrades to the existing
+    // global stream behavior rather than a permanently silent connection.
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    const rawSessionId = url.searchParams.get('sessionId');
+    const filterSessionId =
+      rawSessionId !== null && SESSION_ID_RE.test(rawSessionId) ? rawSessionId : null;
+
     // Parse Last-Event-ID. Heartbeats use string ids like "hb-<ts>" which
     // produce NaN here, falling through to no replay. Negative or invalid
     // values also fall through. See F-010 in docs/CODE_REVIEW.md.
@@ -39,6 +67,10 @@ export function createSseHandler(
       // counter caused reconnect to either miss events or replay
       // pre-connection history.
       for (const entry of bus.replayFrom(replaySeq)) {
+        const sid = extractSessionId(entry.payload);
+        if (filterSessionId !== null && sid !== undefined && sid !== filterSessionId) {
+          continue;
+        }
         res.write(frame(entry.event, entry.seq, entry.payload));
       }
     }
@@ -50,10 +82,17 @@ export function createSseHandler(
     res.on('error', () => cleanup());
 
     // Live frames carry the bus's global seq (delivered via onWithSeq).
+    // Skip frames whose sessionId doesn't match the optional filter — events
+    // without a sessionId pass through (heartbeat, system-level alerts).
     const onAny =
       <E extends LiveEventName>(event: E) =>
       (entry: SeqEntry<E>): void => {
-        if (!res.destroyed) res.write(frame(event, entry.seq, entry.payload));
+        if (res.destroyed) return;
+        if (filterSessionId !== null) {
+          const sid = extractSessionId(entry.payload);
+          if (sid !== undefined && sid !== filterSessionId) return;
+        }
+        res.write(frame(event, entry.seq, entry.payload));
       };
 
     const handlers = {

@@ -102,7 +102,7 @@ const DEFAULT_REDACTION_PATTERNS: RegExp[] = [
   /\b(?:vercel_|heroku_|dd_|pk_)[A-Za-z0-9_-]{20,}\b/gi,
 ];
 
-const ConfigFileSchema = z
+export const ConfigFileSchema = z
   .object({
     licenseKey: z.string().optional(),
     accountId: z.string().optional(),
@@ -149,6 +149,7 @@ const ConfigFileSchema = z
             stuckLoopCountMax: z.number().optional(),
             antiPatternCountMax: z.number().optional(),
           })
+          .passthrough()
           .optional(),
         enabled: z.boolean().optional(),
         evaluationIntervalSeconds: z.number().int().min(5).max(300).optional(),
@@ -156,6 +157,7 @@ const ConfigFileSchema = z
         logRetentionMb: z.number().min(1).max(1024).optional(),
         rulesPath: z.string().nullable().optional(),
       })
+      .passthrough()
       .optional(),
     dashboard: z
       .object({
@@ -163,9 +165,16 @@ const ConfigFileSchema = z
         host: z.string().optional(),
         openOnStart: z.boolean().optional(),
       })
+      .passthrough()
       .optional(),
   })
-  .strict();
+  // Pre-launch we want graceful tolerance of unknown keys so that an older
+  // ~/.nr-ai-observe/config.json doesn't brick the server on upgrade. Unknown
+  // keys at every level (top-level, alerts, dashboard) are reported via
+  // logger.warn at load time (see loadMcpConfig) so users still get a hint
+  // without a fatal crash. Nested objects also use .passthrough() so the
+  // warn block can see typos like `dashboard.openOnStarrt`.
+  .passthrough();
 
 // N-07: strip control chars and truncate before the value reaches any NR event field or log
 export function sanitizeDeveloper(raw: string): string {
@@ -419,6 +428,71 @@ function parseProxyUpstreams(
 export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpServerConfig> {
   const configFilePath = cliOptions?.config ?? resolve(DEFAULT_STORAGE_PATH, 'config.json');
   const file = loadConfigFile(configFilePath);
+
+  // Warn (don't crash) when the user's config file contains keys we don't
+  // recognize. Schema is `.passthrough()` at every level so unknown keys come
+  // through intact — surface them in logs so a typo or stale field is visible
+  // to the user without bricking the server on upgrade.
+  const knownTopKeys = new Set(Object.keys(ConfigFileSchema.shape));
+  const unknownTopKeys = Object.keys(file).filter((k) => !knownTopKeys.has(k));
+  if (unknownTopKeys.length > 0) {
+    logger.warn('Unknown keys in config file (ignored)', {
+      unknownKeys: unknownTopKeys,
+      path: configFilePath,
+    });
+  }
+  // Nested objects: alerts, dashboard. Hardcoded known-key sets keep this
+  // simple and avoid Zod schema introspection (the typed shape requires
+  // unwrapping .optional() and .passthrough()). If you add a new field to
+  // these schemas, add it here too.
+  const knownAlertsKeys = new Set([
+    'personal',
+    'enabled',
+    'evaluationIntervalSeconds',
+    'osNotifications',
+    'logRetentionMb',
+    'rulesPath',
+  ]);
+  const knownAlertsPersonalKeys = new Set([
+    'dailyCostUsd',
+    'sessionCostUsd',
+    'efficiencyScoreMin',
+    'stuckLoopCountMax',
+    'antiPatternCountMax',
+  ]);
+  const knownDashboardKeys = new Set(['port', 'host', 'openOnStart']);
+  if (file.alerts && typeof file.alerts === 'object') {
+    const alerts = file.alerts as Record<string, unknown>;
+    const unknownAlertsKeys = Object.keys(alerts).filter((k) => !knownAlertsKeys.has(k));
+    if (unknownAlertsKeys.length > 0) {
+      logger.warn('Unknown keys in alerts config (ignored)', {
+        unknownKeys: unknownAlertsKeys,
+        path: configFilePath,
+      });
+    }
+    if (alerts.personal && typeof alerts.personal === 'object') {
+      const personal = alerts.personal as Record<string, unknown>;
+      const unknownAlertsPersonalKeys = Object.keys(personal).filter(
+        (k) => !knownAlertsPersonalKeys.has(k),
+      );
+      if (unknownAlertsPersonalKeys.length > 0) {
+        logger.warn('Unknown keys in alerts.personal config (ignored)', {
+          unknownKeys: unknownAlertsPersonalKeys,
+          path: configFilePath,
+        });
+      }
+    }
+  }
+  if (file.dashboard && typeof file.dashboard === 'object') {
+    const dashboard = file.dashboard as Record<string, unknown>;
+    const unknownDashboardKeys = Object.keys(dashboard).filter((k) => !knownDashboardKeys.has(k));
+    if (unknownDashboardKeys.length > 0) {
+      logger.warn('Unknown keys in dashboard config (ignored)', {
+        unknownKeys: unknownDashboardKeys,
+        path: configFilePath,
+      });
+    }
+  }
 
   // --- Resolve mode early so we can gate licenseKey/accountId requirements ---
   // File mode is already validated by the zod schema in loadConfigFile.

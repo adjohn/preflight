@@ -116,4 +116,103 @@ describe('useLiveEvents', () => {
     });
     expect(useLiveStore.getState().antiPatterns).toHaveLength(1);
   });
+
+  describe('staleness watchdog', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('flips connected=false when no event arrives within the staleness window', () => {
+      renderHook(() => useLiveEvents());
+      act(() => {
+        FakeEventSource.instances[0].onopen?.();
+      });
+      expect(useLiveStore.getState().connected).toBe(true);
+
+      // Advance past the 75s staleness window. Watchdog ticks every 10s
+      // and should detect the stall on its next tick.
+      act(() => {
+        vi.advanceTimersByTime(80_000);
+      });
+      expect(useLiveStore.getState().connected).toBe(false);
+    });
+
+    it('keeps connected=true while heartbeats keep arriving', () => {
+      renderHook(() => useLiveEvents());
+      act(() => {
+        FakeEventSource.instances[0].onopen?.();
+      });
+
+      // Heartbeat every 30s for 2 minutes — should never go stale.
+      for (let i = 0; i < 4; i++) {
+        act(() => {
+          vi.advanceTimersByTime(30_000);
+          FakeEventSource.instances[0].emit('heartbeat', { ts: Date.now() });
+        });
+      }
+      expect(useLiveStore.getState().connected).toBe(true);
+    });
+
+    it('data events do NOT reset the staleness clock — heartbeat is the contract', () => {
+      // Regression guard: a busy session (lots of tool-call events) where
+      // heartbeats stop arriving must still be flagged as stale. Liveness
+      // is proven by the heartbeat protocol, not by data flow.
+      renderHook(() => useLiveEvents());
+      act(() => {
+        FakeEventSource.instances[0].onopen?.();
+      });
+
+      // Stream a tool-call every 10s for 80s — plenty of data, no heartbeat.
+      for (let i = 0; i < 8; i++) {
+        act(() => {
+          vi.advanceTimersByTime(10_000);
+          FakeEventSource.instances[0].emit('tool-call', {
+            id: `t${i}`,
+            tool: 'Read',
+            durationMs: 1,
+            costUsd: 0,
+            ts: i,
+          });
+        });
+      }
+      expect(useLiveStore.getState().connected).toBe(false);
+    });
+
+    it('a heartbeat after a stale period restores connected=true', () => {
+      // A reconnect (without onopen firing) is the realistic recovery path
+      // for transient proxy hiccups. The first heartbeat after the gap
+      // proves liveness has resumed.
+      renderHook(() => useLiveEvents());
+      act(() => {
+        FakeEventSource.instances[0].onopen?.();
+      });
+      act(() => {
+        vi.advanceTimersByTime(80_000);
+      });
+      expect(useLiveStore.getState().connected).toBe(false);
+
+      act(() => {
+        FakeEventSource.instances[0].emit('heartbeat', { ts: Date.now() });
+      });
+      expect(useLiveStore.getState().connected).toBe(true);
+    });
+
+    it('clears the watchdog interval on unmount', () => {
+      const { unmount } = renderHook(() => useLiveEvents());
+      act(() => {
+        FakeEventSource.instances[0].onopen?.();
+      });
+      unmount();
+      // After unmount, advancing time must not flip connection state —
+      // a leaked interval would mutate the store post-cleanup.
+      useLiveStore.setState({ connected: true });
+      act(() => {
+        vi.advanceTimersByTime(120_000);
+      });
+      expect(useLiveStore.getState().connected).toBe(true);
+    });
+  });
 });

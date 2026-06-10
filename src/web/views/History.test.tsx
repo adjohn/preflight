@@ -8,6 +8,7 @@ import {
   buildAntiPatternSeries,
   aggregateModelPerformance,
   aggregateToolUsage,
+  padDailyCostWindow,
 } from './History';
 
 const SAMPLE_WEEKLY = [
@@ -417,6 +418,78 @@ describe('History data helpers', () => {
           totalTasks: 0,
         }),
       ).toEqual([]);
+    });
+
+    it('drops outcomes with totalCost === 0', () => {
+      // Recharts auto-domains a horizontal BarChart whose only data points
+      // are zero into a default [0,4] X axis, producing a phantom-looking
+      // full-width bar. We filter zeros so the empty-state branch handles it.
+      expect(
+        buildOutcomeData({
+          outcomeDistribution: {
+            feature: { count: 1, totalCost: 0, avgCost: 0 },
+          },
+          wasteRatio: 0,
+          totalCost: 0,
+          totalTasks: 1,
+        }),
+      ).toEqual([]);
+    });
+
+    it('keeps non-zero outcomes when mixed with zero-cost ones', () => {
+      const out = buildOutcomeData({
+        outcomeDistribution: {
+          feature: { count: 1, totalCost: 0, avgCost: 0 },
+          bug_fix: { count: 2, totalCost: 4.5, avgCost: 2.25 },
+        },
+        wasteRatio: 0,
+        totalCost: 4.5,
+        totalTasks: 3,
+      });
+      expect(out).toEqual([{ outcome: 'bug fix', totalCost: 4.5, count: 2 }]);
+    });
+  });
+
+  describe('padDailyCostWindow', () => {
+    it('pads sparse data with zero-cost days across the requested window', () => {
+      const today = new Date('2026-06-09T12:00:00');
+      const out = padDailyCostWindow([{ day: '2026-06-09', cost: 30.12 }], 5, today);
+      // 5 days ending today: 06-05, 06-06, 06-07, 06-08, 06-09
+      expect(out).toEqual([
+        { day: '2026-06-05', cost: 0 },
+        { day: '2026-06-06', cost: 0 },
+        { day: '2026-06-07', cost: 0 },
+        { day: '2026-06-08', cost: 0 },
+        { day: '2026-06-09', cost: 30.12 },
+      ]);
+    });
+
+    it('preserves real costs for days that have data', () => {
+      const today = new Date('2026-06-09T12:00:00');
+      const out = padDailyCostWindow(
+        [
+          { day: '2026-06-07', cost: 5 },
+          { day: '2026-06-09', cost: 12.5 },
+        ],
+        4,
+        today,
+      );
+      expect(out).toEqual([
+        { day: '2026-06-06', cost: 0 },
+        { day: '2026-06-07', cost: 5 },
+        { day: '2026-06-08', cost: 0 },
+        { day: '2026-06-09', cost: 12.5 },
+      ]);
+    });
+
+    it('returns a fully-zero window when given no data', () => {
+      const today = new Date('2026-06-09T12:00:00');
+      const out = padDailyCostWindow([], 3, today);
+      expect(out).toEqual([
+        { day: '2026-06-07', cost: 0 },
+        { day: '2026-06-08', cost: 0 },
+        { day: '2026-06-09', cost: 0 },
+      ]);
     });
   });
 

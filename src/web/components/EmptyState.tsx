@@ -1,4 +1,4 @@
-type EmptyIcon = 'radar' | 'code' | 'timeline' | 'checkmark';
+type EmptyIcon = 'radar' | 'code' | 'timeline' | 'checkmark' | 'clock';
 
 interface EmptyStateProps {
   readonly icon: EmptyIcon;
@@ -143,11 +143,34 @@ function CheckmarkIcon(): JSX.Element {
   );
 }
 
+function ClockIcon(): JSX.Element {
+  return (
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <circle
+        cx="24"
+        cy="24"
+        r="18"
+        stroke="var(--color-ink-muted)"
+        strokeWidth="1"
+        opacity="0.3"
+      />
+      <path
+        d="M24 14 L24 24 L31 28"
+        stroke="var(--color-ink-subtle)"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const ICON_MAP: Record<EmptyIcon, () => JSX.Element> = {
   radar: RadarIcon,
   code: CodeIcon,
   timeline: TimelineIcon,
   checkmark: CheckmarkIcon,
+  clock: ClockIcon,
 };
 
 export function EmptyState({ icon, title, subtitle }: EmptyStateProps): JSX.Element {

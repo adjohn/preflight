@@ -105,9 +105,10 @@ nr-ai-observatory/
     digest/        # Slack digest formatter and sender
     install/       # nr-ai-observe install / setup CLI
     alerts/        # Alert TS types (JSON files live in alerts/ at repo root)
-  alerts/          # Alert policy + condition JSON definitions
-  dashboards/      # Pre-built NR dashboard JSON files
-  scripts/         # sync-shared.ts, deploy-dashboard.ts, deploy-alerts.ts, backfill-sessions.ts
+    deploy/        # `deploy-dashboards` and `deploy-alerts` subcommands
+  alerts/          # Alert policy + condition JSON definitions (bundled into dist/data/alerts/)
+  dashboards/      # Pre-built NR dashboard JSON files (bundled into dist/data/dashboards/)
+  scripts/         # sync-shared.ts, backfill-sessions.ts, check-bundle-size.ts
 ```
 
 For a complete annotated tree, see [CLAUDE.md](./CLAUDE.md).
@@ -305,7 +306,7 @@ The MCP server automatically detects and supports multiple AI coding platforms:
 ### Dashboards
 
 ```bash
-NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-dashboard.ts --all
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 nr-ai-mcp-server deploy-dashboards --all
 ```
 
 Add `--staging` if your account is on the New Relic staging environment (`staging-one.newrelic.com`). Deploys all seven pre-built dashboards. Use `--print` to output JSON for manual import via the NR UI.
@@ -314,27 +315,27 @@ For a self-reflection dashboard pre-filtered to your identity:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-dashboard.ts ai-coding-assistant-personal.json --developer <your-name>
+  nr-ai-mcp-server deploy-dashboards ai-coding-assistant-personal.json --developer <your-name>
 ```
 
 To replace existing dashboards in place (preserves GUID and URL), add `--update`:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-dashboard.ts --all --update
+  nr-ai-mcp-server deploy-dashboards --all --update
 ```
 
 To remove all deployed dashboards:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-dashboard.ts --all --teardown
+  nr-ai-mcp-server deploy-dashboards --all --teardown
 ```
 
 ### Alert conditions
 
 ```bash
-NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-alerts.ts
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 nr-ai-mcp-server deploy-alerts
 ```
 
 Add `--staging` if your account is on the staging environment. Deploys the "AI Coding Assistant Alerts" policy with five NRQL conditions. Use `--dry-run` to preview without hitting the API.
@@ -342,14 +343,14 @@ Add `--staging` if your account is on the staging environment. Deploys the "AI C
 To sync conditions in place on an existing policy (preserves policy ID; matches conditions by name to update, creates new ones, deletes removed ones):
 
 ```bash
-NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-alerts.ts --update
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 nr-ai-mcp-server deploy-alerts --update
 ```
 
 For per-developer alerts scoped to one identity:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-alerts.ts --developer <your-name>
+  nr-ai-mcp-server deploy-alerts --developer <your-name>
 ```
 
 This creates a separate policy `AI Coding — Personal — <name>` from `alerts/conditions-personal/`, with `developer = '<name>'` injected into every NRQL query. Use `--teardown --developer <name>` to remove just the personal policy.
@@ -357,7 +358,7 @@ This creates a separate policy `AI Coding — Personal — <name>` from `alerts/
 To remove all deployed alert conditions:
 
 ```bash
-NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 npx tsx scripts/deploy-alerts.ts --teardown
+NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 nr-ai-mcp-server deploy-alerts --teardown
 ```
 
 ### Terraform (IaC alternative)
@@ -466,11 +467,11 @@ Expected: a `re_reading` entry for `README.md` with `read_count: 3`.
 ```bash
 # Dashboards
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-dashboard.ts --all --staging
+  nr-ai-mcp-server deploy-dashboards --all --staging
 
 # Alerts (optional)
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-alerts.ts --staging
+  nr-ai-mcp-server deploy-alerts --staging
 ```
 
 > Re-deploying? Use `--update` to sync in place and avoid creating duplicates.
@@ -487,9 +488,9 @@ rm -rf ~/.nr-ai-observe
 
 # Cloud: remove dashboards and alerts from NR
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-dashboard.ts --all --teardown --staging
+  nr-ai-mcp-server deploy-dashboards --all --teardown --staging
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-alerts.ts --teardown --staging
+  nr-ai-mcp-server deploy-alerts --teardown --staging
 ```
 
 Then restart Claude Code.

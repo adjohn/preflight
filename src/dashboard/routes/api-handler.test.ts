@@ -858,3 +858,290 @@ describe('api-handler GET /api/personal-coach', () => {
     expect(status()).toBe(503);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task #17 (D3): cross-session aggregate + live session list
+// ---------------------------------------------------------------------------
+
+describe('api-handler GET /api/sessions/live', () => {
+  it('returns sessions sorted most-recently-active first', async () => {
+    const ids = ['old', 'newest', 'mid'];
+    const lastActivityMap: Record<string, number> = {
+      old: 1_000_000,
+      newest: 9_000_000,
+      mid: 5_000_000,
+    };
+    const handler = createApiHandler({
+      liveSessionRegistry: {
+        getLiveSessions: () => ids,
+        getSessionName: (id: string) => (id === 'newest' ? 'frontend' : null),
+        getLastActivity: (id: string) => lastActivityMap[id] ?? null,
+      },
+      toolCallBuffer: {
+        getRecords: () => [
+          { sessionId: 'old', timestamp: 100, toolName: 'Read' } as never,
+          { sessionId: 'newest', timestamp: 200, toolName: 'Read' } as never,
+        ],
+      },
+    });
+    const req = { method: 'GET', url: '/api/sessions/live' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as Array<{
+      sessionId: string;
+      sessionName: string | null;
+      startTime: number;
+      lastActivity: number;
+    }>;
+    expect(parsed.map((p) => p.sessionId)).toEqual(['newest', 'mid', 'old']);
+    expect(parsed[0]!.sessionName).toBe('frontend');
+    expect(parsed[0]!.lastActivity).toBe(9_000_000);
+  });
+
+  it('filters synthetic session IDs (local- and proxy- prefixes) from the response', async () => {
+    const ids = ['local-1234567890', 'real-session-abc', 'proxy-9876543210'];
+    const handler = createApiHandler({
+      liveSessionRegistry: {
+        getLiveSessions: () => ids,
+        getSessionName: () => null,
+        getLastActivity: () => null,
+      },
+      toolCallBuffer: { getRecords: () => [] },
+    });
+    const req = { method: 'GET', url: '/api/sessions/live' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as Array<{ sessionId: string }>;
+    expect(parsed.map((p) => p.sessionId)).toEqual(['real-session-abc']);
+  });
+
+  it('returns 503 when liveSessionRegistry is missing', async () => {
+    const handler = createApiHandler({});
+    const req = { method: 'GET', url: '/api/sessions/live' } as IncomingMessage;
+    const { res, status } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(503);
+  });
+});
+
+describe('api-handler GET /api/sessions/today/aggregate', () => {
+  it('aggregates tool calls and costs across buffer + persisted sessions', async () => {
+    const now = Date.now();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const startMs = startOfDay.getTime();
+
+    const handler = createApiHandler({
+      // Two live tool calls in the per-session buffers (post events only).
+      localStore: {
+        peekAllBuffers: () => [
+          { mode: 'post', sessionId: 's1', timestamp: startMs + 60_000, durationMs: 100 },
+          { mode: 'pre', sessionId: 's1', timestamp: startMs + 60_001 },
+          { mode: 'post', sessionId: 's2', timestamp: startMs + 120_000, durationMs: 200 },
+          // Yesterday — must be ignored.
+          { mode: 'post', sessionId: 's3', timestamp: startMs - 1, durationMs: 999 },
+        ],
+      },
+      sessionStore: {
+        loadTodaySessions: () => [
+          {
+            sessionId: 'persisted-1',
+            estimatedCostUsd: 0.42,
+            antiPatterns: [{ type: 'thrashing', count: 2 }],
+            timeline: [
+              { timestamp: startMs + 30_000, durationMs: 50, toolName: 'Read', success: true },
+              { timestamp: startMs + 90_000, durationMs: 75, toolName: 'Edit', success: true },
+            ],
+          },
+        ],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+      antiPatternDetector: {
+        getCurrentPatterns: () => [{ type: 'rereading', readCount: 4 }],
+      } as unknown as Parameters<typeof createApiHandler>[0]['antiPatternDetector'],
+      liveSessionRegistry: {
+        getLiveSessions: () => ['s1', 's2'],
+        getSessionName: () => null,
+      },
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as {
+      toolCallCount: number;
+      totalCostUsd: number;
+      antiPatternCount: number;
+      avgDurationMs: number;
+      sessionCount: number;
+      sparkline: { startTimestamp: number; bucketSizeMs: number; points: number[] };
+    };
+    // 2 buffer post events + 2 timeline events (persisted-1 not in live set)
+    expect(parsed.toolCallCount).toBe(4);
+    // 1 (persisted) + 2 (live, but no antiPatternCount entry) +
+    // antiPatternDetector currentPatterns (1)
+    expect(parsed.antiPatternCount).toBe(2);
+    expect(parsed.totalCostUsd).toBe(0.42);
+    // average of 100, 200, 50, 75 = 106.25 → 106
+    expect(parsed.avgDurationMs).toBe(106);
+    // s1, s2, persisted-1
+    expect(parsed.sessionCount).toBeGreaterThanOrEqual(3);
+    expect(parsed.sparkline.bucketSizeMs).toBe(60_000);
+    expect(parsed.sparkline.startTimestamp).toBe(startMs);
+    expect(parsed.sparkline.points.length).toBeGreaterThan(0);
+  });
+
+  it('returns zeros when no data is present', async () => {
+    const handler = createApiHandler({
+      localStore: { peekAllBuffers: () => [] },
+      sessionStore: {
+        loadTodaySessions: () => [],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as { toolCallCount: number; totalCostUsd: number };
+    expect(parsed.toolCallCount).toBe(0);
+    expect(parsed.totalCostUsd).toBe(0);
+  });
+
+  it('skips events older than the start of today', async () => {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const handler = createApiHandler({
+      localStore: {
+        peekAllBuffers: () => [
+          // Yesterday — must NOT be counted.
+          { mode: 'post', sessionId: 's1', timestamp: startOfDay.getTime() - 60_000 },
+          // Today
+          { mode: 'post', sessionId: 's1', timestamp: startOfDay.getTime() + 1_000 },
+        ],
+      },
+      sessionStore: {
+        loadTodaySessions: () => [],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as { toolCallCount: number };
+    expect(parsed.toolCallCount).toBe(1);
+  });
+
+  // Bug 1 regression: a session that ran earlier in the day, persisted at
+  // shutdown, and was then resumed (same sessionId, new buffer events) used
+  // to drop its ENTIRE persisted timeline because the live-session check
+  // skipped the inner loop. Persisted timeline + buffer cover disjoint time
+  // ranges, so both must be counted. The persisted entries are strictly
+  // older than any live buffer entry for the same sessionId.
+  it('counts persisted timeline entries even when the session is currently live', async () => {
+    const now = Date.now();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const startMs = startOfDay.getTime();
+
+    // Persisted timeline: 200 entries between 10:00 and 12:00 (relative to
+    // start of day). Buffer: 5 post events at 13:00. Same sessionId.
+    const persistedTimeline = Array.from({ length: 200 }, (_, i) => ({
+      timestamp: startMs + 10 * 3_600_000 + i * 1_000,
+      durationMs: 10,
+      toolName: 'Read',
+      success: true,
+    }));
+    const bufferEvents = Array.from({ length: 5 }, (_, i) => ({
+      mode: 'post' as const,
+      sessionId: 'long-session',
+      timestamp: startMs + 13 * 3_600_000 + i * 1_000,
+      durationMs: 20,
+    }));
+
+    const handler = createApiHandler({
+      localStore: { peekAllBuffers: () => bufferEvents },
+      sessionStore: {
+        loadTodaySessions: () => [
+          {
+            sessionId: 'long-session',
+            estimatedCostUsd: 0,
+            antiPatterns: [],
+            timeline: persistedTimeline,
+          },
+        ],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+      liveSessionRegistry: {
+        getLiveSessions: () => ['long-session'],
+        getSessionName: () => null,
+      },
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as { toolCallCount: number };
+    // 200 persisted timeline entries + 5 buffer post events = 205.
+    // Pre-fix this returned 5.
+    expect(parsed.toolCallCount).toBe(205);
+  });
+
+  // Bug 2: dashboards poll this endpoint every 5–10s. A 5-second TTL cache
+  // collapses bursty repeat reads to one disk fan-out per bucket. Within the
+  // same bucket the response payload must be identical AND we must not
+  // re-invoke the disk reads.
+  it('caches the aggregate response within the same 5-second bucket', async () => {
+    const peekSpy = jest.fn(() => [] as never[]);
+    const loadTodaySpy = jest.fn(() => [] as never[]);
+    const handler = createApiHandler({
+      localStore: { peekAllBuffers: peekSpy },
+      sessionStore: {
+        loadTodaySessions: loadTodaySpy,
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+    });
+
+    const req1 = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const r1 = fakeRes();
+    await handler(req1, r1.res);
+    expect(r1.status()).toBe(200);
+    const body1 = r1.body();
+
+    expect(peekSpy).toHaveBeenCalledTimes(1);
+    expect(loadTodaySpy).toHaveBeenCalledTimes(1);
+
+    // Second call within the same bucket — must return identical payload
+    // without re-reading disk.
+    const req2 = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const r2 = fakeRes();
+    await handler(req2, r2.res);
+    expect(r2.status()).toBe(200);
+    expect(r2.body()).toBe(body1);
+    expect(peekSpy).toHaveBeenCalledTimes(1);
+    expect(loadTodaySpy).toHaveBeenCalledTimes(1);
+
+    // A third call after the TTL window must hit disk again. Simulate by
+    // monkey-patching Date.now forward by 5 seconds.
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5_001;
+    try {
+      const req3 = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+      const r3 = fakeRes();
+      await handler(req3, r3.res);
+      expect(r3.status()).toBe(200);
+      expect(peekSpy).toHaveBeenCalledTimes(2);
+      expect(loadTodaySpy).toHaveBeenCalledTimes(2);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+});

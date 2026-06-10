@@ -10,6 +10,7 @@ import type { ToolCallRecord } from '../storage/types.js';
 import type { ProxyToolCallRecord } from '../proxy/types.js';
 import type { LocalStore } from '../storage/local-store.js';
 import { redactSensitive } from '../config.js';
+import { isSyntheticSessionId } from '../hooks/session-resolver.js';
 
 const logger = createLogger('audit-trail');
 
@@ -300,7 +301,7 @@ export class AuditTrailManager {
     const rawCommand = record.command as string | undefined;
     const auditRecord: AuditRecord = {
       timestamp: record.timestamp,
-      sessionId: record.sessionId ?? this.sessionId,
+      sessionId: record.sessionId ?? (isSyntheticSessionId(this.sessionId) ? null : this.sessionId),
       action,
       tool: record.toolName,
       detail,
@@ -344,7 +345,7 @@ export class AuditTrailManager {
 
     const auditRecord: AuditRecord = {
       timestamp: record.timestamp,
-      sessionId: record.sessionId ?? this.sessionId,
+      sessionId: record.sessionId ?? (isSyntheticSessionId(this.sessionId) ? null : this.sessionId),
       action: 'McpToolCall',
       tool: record.toolName,
       detail,

@@ -10,6 +10,7 @@ import { GanttTimeline } from '../components/GanttTimeline';
 import { ConcurrencyIndicator, type ConcurrencyData } from '../components/ConcurrencyIndicator';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { GeoBanner } from '../components/GeoBanner';
+import { ContextBar } from '../components/ContextBar';
 import {
   fetchRecentAlerts,
   fetchCost,
@@ -23,6 +24,8 @@ import {
   fetchActivityHeatmap,
   fetchLatency,
   fetchModelUsage,
+  fetchLiveSessions,
+  fetchTodayAggregate,
   NotFoundError,
   qk,
 } from '../api/client';
@@ -86,6 +89,31 @@ interface SessionSummary {
   readonly toolSuccessRate?: number | null;
 }
 
+// Task #17 (D3): cross-session aggregate KPI shape returned by
+// /api/sessions/today/aggregate. The dashboard owner reads every per-session
+// buffer file plus persisted today sessions to produce one global view.
+interface TodayAggregateApiResponse {
+  readonly toolCallCount: number;
+  readonly totalCostUsd: number;
+  readonly antiPatternCount: number;
+  readonly avgDurationMs: number;
+  readonly sessionCount: number;
+  readonly sparkline: {
+    readonly startTimestamp: number;
+    readonly bucketSizeMs: number;
+    readonly points: readonly number[];
+  };
+}
+
+// Task #17 (D3): /api/sessions/live response — currently-live sessions sorted
+// most-recently-active first.
+interface LiveSessionApiEntry {
+  readonly sessionId: string;
+  readonly sessionName: string | null;
+  readonly startTime: number;
+  readonly lastActivity: number;
+}
+
 interface QualityProxyMetrics {
   readonly totalSignals: number;
   readonly diffApplyRate: number | null;
@@ -122,9 +150,19 @@ export function Today(): JSX.Element {
     queryKey: qk.cost,
     queryFn: () => fetchCost() as Promise<CostApiResponse>,
   });
+  // Task #17 (D3): the dashboard owner's session_current is arbitrary across
+  // N concurrent sessions, so we keep the call only for the efficiencyScore
+  // KPI (which is local to whichever MCP holds the dashboard). All other
+  // KPIs now derive from the aggregate endpoint, which fans out across every
+  // per-session buffer + persisted session.
   const { data: sessionCurrent } = useQuery<SessionCurrentApiResponse>({
     queryKey: qk.sessionCurrent,
     queryFn: () => fetchSessionCurrent() as Promise<SessionCurrentApiResponse>,
+    refetchInterval: 10_000,
+  });
+  const { data: aggregate, isPending: aggregatePending } = useQuery<TodayAggregateApiResponse>({
+    queryKey: qk.sessionsTodayAggregate,
+    queryFn: () => fetchTodayAggregate() as Promise<TodayAggregateApiResponse>,
     refetchInterval: 10_000,
   });
   const { data: todaySessions, isPending: sessionsPending } = useQuery<SessionSummary[]>({
@@ -145,6 +183,13 @@ export function Today(): JSX.Element {
     queryFn: () => fetchActivityHeatmap('today') as Promise<HeatmapApiResponse>,
     refetchInterval: 30_000,
   });
+  // Task #17 (D3): live-session list — drives the selector default and the
+  // "Session ended" badge logic when the selected session goes stale.
+  const { data: liveSessions } = useQuery<LiveSessionApiEntry[]>({
+    queryKey: qk.sessionsLive,
+    queryFn: () => fetchLiveSessions() as Promise<LiveSessionApiEntry[]>,
+    refetchInterval: 10_000,
+  });
 
   const persistedTodaySpend = useMemo(
     () => computeTodaySpend(todaySessions ?? []),
@@ -159,16 +204,30 @@ export function Today(): JSX.Element {
     [todaySessions],
   );
 
-  const calls = persistedTodayCalls;
-  const spendLoading = (costPending || sessionsPending) && !cost && persistedTodaySpend === 0;
-  // The sessions list API already includes the live session with its current
-  // cost, so persistedTodaySpend covers all sessions including the active one.
-  // Take the max of SSE-pushed total (which may be more current) vs. the REST
-  // sum to handle startup lag in either direction.
-  const todayTotal = Math.max(cost?.todayTotalUsd ?? 0, persistedTodaySpend);
+  // Task #17 (D3): prefer the cross-session aggregate when present; fall
+  // back to the legacy persisted-sessions math during the loading window so
+  // the KPIs don't blink to zero on first paint.
+  const calls = aggregate?.toolCallCount ?? persistedTodayCalls;
+  const spendLoading =
+    (costPending || sessionsPending || aggregatePending) &&
+    !cost &&
+    persistedTodaySpend === 0 &&
+    aggregate === undefined;
+  const todayTotal = Math.max(
+    cost?.todayTotalUsd ?? 0,
+    aggregate?.totalCostUsd ?? 0,
+    persistedTodaySpend,
+  );
 
+  // Aggregate flags = anti-patterns from every live + persisted session today.
+  // Falls back to the legacy persisted+live-session math during the loading
+  // window. The `currentSessionFlags` line is preserved so SSE-driven
+  // anti-pattern bursts still bump the KPI before the next aggregate refetch.
   const currentSessionFlags = Math.max(apiAntiPatterns?.length ?? 0, antiPatterns.length);
-  const flagsCount = persistedTodayFlags + currentSessionFlags;
+  const flagsCount = Math.max(
+    aggregate?.antiPatternCount ?? 0,
+    persistedTodayFlags + currentSessionFlags,
+  );
   const [headerTimestamp, setHeaderTimestamp] = useState(() =>
     new Date().toLocaleString(undefined, HEADER_TIMESTAMP_FORMAT),
   );
@@ -194,6 +253,7 @@ export function Today(): JSX.Element {
 
   const noActivityToday =
     !spendLoading &&
+    !aggregatePending &&
     !sessionsPending &&
     !antiPatternsPending &&
     calls === 0 &&
@@ -293,6 +353,13 @@ export function Today(): JSX.Element {
                     <span className="text-ink-muted"> — </span>
                     <span>{antiPatterns[0].count}× on </span>
                     <code className="bg-bg-line px-1 rounded">{antiPatterns[0].target}</code>
+                    {/* Task #17 (D3): per-session pill so users can identify
+                        which of N concurrent sessions triggered the alert. */}
+                    {antiPatterns[0].sessionId && (
+                      <span className="ml-2 inline-flex items-center bg-bg-line px-1.5 py-0.5 rounded text-[10px] text-ink-muted">
+                        Session: {sessionPillLabel(antiPatterns[0].sessionId, liveSessions ?? [])}
+                      </span>
+                    )}
                   </>
                 ) : apiAntiPatterns && apiAntiPatterns.length > 0 ? (
                   <>
@@ -323,8 +390,14 @@ export function Today(): JSX.Element {
           </AnimatedCard>
 
           <AnimatedCard index={4}>
-            <LiveSessionPane sessions={todaySessions ?? []} />
+            <LiveSessionPane sessions={todaySessions ?? []} liveSessions={liveSessions ?? []} />
           </AnimatedCard>
+
+          {/* Task #17 (D3): per-session ContextBar tied to the selected
+              session. Stays per-session (not aggregate) — context-window
+              fill is a per-session concept and aggregating it across N
+              sessions wouldn't be meaningful. */}
+          <ActiveSessionContextBar liveSessions={liveSessions ?? []} />
 
           {todayHeatmap && todayHeatmap.buckets?.length > 0 && (
             <AnimatedCard index={5} className="glass-card p-3 mb-3">
@@ -648,11 +721,22 @@ function fmtElapsed(ms: number): string {
   return `${min}:${String(sec).padStart(2, '0')}`;
 }
 
-function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Element {
+function LiveSessionPane({
+  sessions,
+  liveSessions,
+}: {
+  sessions: SessionSummary[];
+  liveSessions: LiveSessionApiEntry[];
+}): JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'gantt' | 'list'>('list');
   const [, navigate] = useLocation();
+  const setActiveSession = useLiveStore((s) => s.setActiveSession);
 
+  // Task #17 (D3): live-session ids from /api/sessions/live (already sorted
+  // most-recently-active first by the server). Falls back to /api/session/
+  // current's `liveSessions` array during the loading window so the pane
+  // populates immediately on first paint instead of waiting an interval.
   const { data: current } = useQuery<{ sessionId: string; liveSessions?: string[] }>({
     queryKey: qk.sessionCurrent,
     queryFn: () => fetchSessionCurrent() as Promise<{ sessionId: string; liveSessions?: string[] }>,
@@ -660,17 +744,40 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
 
   const liveSessionIds = useMemo(() => {
     const set = new Set<string>();
-    if (current?.liveSessions?.length) {
-      for (const id of current.liveSessions) set.add(id);
-    } else if (current?.sessionId) {
-      set.add(current.sessionId);
+    for (const ls of liveSessions) set.add(ls.sessionId);
+    if (set.size === 0) {
+      // Fall back to the legacy session/current array while the live query
+      // is still loading on first mount.
+      if (current?.liveSessions?.length) {
+        for (const id of current.liveSessions) set.add(id);
+      } else if (current?.sessionId) {
+        set.add(current.sessionId);
+      }
     }
     return set;
-  }, [current]);
+  }, [liveSessions, current]);
 
-  const firstLiveId = liveSessionIds.size > 0 ? [...liveSessionIds][0]! : null;
+  // Most-recently-active live session — sorted server-side. Falls back to the
+  // first id in the liveSessionIds set when the API didn't supply ordering
+  // (e.g. during the legacy fallback path).
+  const mostRecentlyActiveId = liveSessions.length > 0 ? liveSessions[0]!.sessionId : null;
+  const firstLiveId =
+    mostRecentlyActiveId ?? (liveSessionIds.size > 0 ? [...liveSessionIds][0]! : null);
   const activeId = selectedId ?? firstLiveId;
   const isLive = activeId !== null && liveSessionIds.has(activeId);
+  // Task #17 (D3): "Session ended" badge — true when the user explicitly
+  // selected a session that was previously live but is no longer in the live
+  // set (e.g. the owning Claude Code window closed). We deliberately don't
+  // auto-switch to a different session: that's jarring, and the user might be
+  // mid-investigation. Instead we pin the selection and surface a badge.
+  const sessionEnded = selectedId !== null && !liveSessionIds.has(selectedId);
+
+  // Task #17 (D3): keep the global liveStore in sync with the local selector
+  // so the rest of the dashboard (and any per-session caches) re-key when
+  // the user switches. Empty deps + activeId in array — fires only on change.
+  useEffect(() => {
+    setActiveSession(activeId);
+  }, [activeId, setActiveSession]);
 
   const { data: replay } = useQuery<ReplayData>({
     queryKey: activeId ? qk.sessionReplay(activeId) : ['replay', 'none'],
@@ -687,13 +794,31 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
     }
   }, [replay?.timeline.length, isLive]);
 
-  // Sort today's sessions by startTime descending (newest first), limit to 10
+  // Sort today's sessions by startTime descending (newest first), then merge
+  // in any live sessions that haven't yet persisted to disk so the selector
+  // shows them immediately. Limit to 10.
   const todaySessions = useMemo(() => {
-    return sessions
-      .filter((s) => s.startTime && isToday(s.startTime))
-      .sort((a, b) => (b.startTime ?? 0) - (a.startTime ?? 0))
-      .slice(0, 10);
-  }, [sessions]);
+    const byId = new Map<string, SessionSummary>();
+    for (const s of sessions) {
+      // Skip malformed entries — defensive against `[]`-style fixtures and
+      // fetch mocks that may not include sessionId on every record.
+      if (!s.sessionId) continue;
+      if (s.startTime && isToday(s.startTime)) byId.set(s.sessionId, s);
+    }
+    for (const ls of liveSessions) {
+      if (!ls.sessionId) continue;
+      if (!byId.has(ls.sessionId)) {
+        byId.set(ls.sessionId, {
+          sessionId: ls.sessionId,
+          sessionName: ls.sessionName,
+          startTime: ls.startTime,
+          toolCallCount: 0,
+          estimatedCostUsd: null,
+        });
+      }
+    }
+    return [...byId.values()].sort((a, b) => (b.startTime ?? 0) - (a.startTime ?? 0)).slice(0, 10);
+  }, [sessions, liveSessions]);
 
   const timeline = replay?.timeline ?? [];
   const firstTs = timeline.length > 0 ? timeline[0]!.timestamp : 0;
@@ -775,13 +900,26 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
                 List
               </button>
             </div>
-            <button
-              type="button"
-              onClick={() => navigate(`/sessions?id=${activeId}`)}
-              className="text-[10px] text-accent-cyan hover:underline"
-            >
-              full session &rarr;
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Task #17 (D3): "Session ended" badge — pinned to the selected
+                  session even after it leaves the live set, so the user can
+                  finish reviewing without an auto-switch. */}
+              {sessionEnded && (
+                <span
+                  data-testid="session-ended-badge"
+                  className="inline-flex items-center bg-bg-line text-ink-muted text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                >
+                  Session ended
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => navigate(`/sessions?id=${activeId}`)}
+                className="text-[10px] text-accent-cyan hover:underline"
+              >
+                full session &rarr;
+              </button>
+            </div>
           </div>
         )}
         <div ref={tailRef} className="overflow-auto flex-1 p-2">
@@ -845,6 +983,38 @@ function LiveSessionPane({ sessions }: { sessions: SessionSummary[] }): JSX.Elem
         </div>
       </div>
     </div>
+  );
+}
+
+// Task #17 (D3): label resolver for the per-session pill on anti-pattern
+// alerts. Falls back to the truncated session id when no friendly name is
+// known yet — sessionName is only set after the live registry has seen a
+// `cwd` from the first hook event.
+function sessionPillLabel(sessionId: string, liveSessions: LiveSessionApiEntry[]): string {
+  const match = liveSessions.find((ls) => ls.sessionId === sessionId);
+  if (match?.sessionName) return match.sessionName;
+  return sessionId.slice(0, 8);
+}
+
+// Task #17 (D3): wraps the existing ContextBar component for the Today view's
+// "active session" slot. The selected session_id lives in the local LiveStore
+// (set by LiveSessionPane); when nothing is selected (no live sessions yet)
+// we render nothing rather than a sad empty bar.
+function ActiveSessionContextBar({
+  liveSessions,
+}: {
+  liveSessions: LiveSessionApiEntry[];
+}): JSX.Element | null {
+  const activeSessionId = useLiveStore((s) => s.activeSessionId);
+  if (!activeSessionId) return null;
+  // Hide if this session ended — the context numbers are stale and the
+  // live SSE feed won't be updating them anymore.
+  const isLive = liveSessions.some((ls) => ls.sessionId === activeSessionId);
+  if (!isLive) return null;
+  return (
+    <AnimatedCard index={5}>
+      <ContextBar sessionId={activeSessionId} />
+    </AnimatedCard>
   );
 }
 

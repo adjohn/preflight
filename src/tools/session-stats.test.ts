@@ -686,3 +686,80 @@ describe('Cross-session tool registration', () => {
     await server.close();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fix 3: pre-resolution gating via registerPendingTools()
+// ---------------------------------------------------------------------------
+
+describe('registerPendingTools()', () => {
+  it('returns "session_id not yet resolved" structured error for non-health tools', async () => {
+    const { registerPendingTools } = await import('./session-stats.js');
+
+    const server = createServer({ name: 'pending', version: '0.0.1' });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'test', version: '1.0.0' });
+    registerPendingTools(server.server, { sessionStartMs: Date.now(), developer: 'tester' });
+    await Promise.all([server.server.connect(st), client.connect(ct)]);
+
+    // List should expose only the health tool while pending
+    const tools = await client.listTools();
+    expect(tools.tools.map((t) => t.name)).toEqual(['nr_observe_health']);
+
+    // Health still works
+    const health = await client.callTool({ name: 'nr_observe_health', arguments: {} });
+    const healthBody = JSON.parse((health.content as Array<{ text: string }>)[0].text);
+    expect(healthBody.status).toBe('ok');
+    expect(healthBody.session_id).toBeNull();
+
+    // Any other tool returns the structured "not yet resolved" error
+    const unresolved = await client.callTool({
+      name: 'nr_observe_get_session_stats',
+      arguments: {},
+    });
+    expect(unresolved.isError).toBe(true);
+    const errBody = JSON.parse((unresolved.content as Array<{ text: string }>)[0].text);
+    expect(errBody.error).toBe('session_id not yet resolved');
+    expect(errBody.hint).toContain('Make any tool call');
+
+    await client.close();
+    await server.close();
+  });
+
+  it('exposes nr_observe_get_config when configSummary is provided', async () => {
+    const { registerPendingTools } = await import('./session-stats.js');
+    const server = createServer({ name: 'pending2', version: '0.0.1' });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'test', version: '1.0.0' });
+
+    const summary: ConfigSummary = {
+      mode: 'local',
+      developer: 'tester',
+      accountId: null,
+      licenseKeyMasked: null,
+      nrApiKeyMasked: null,
+      region: 'us',
+      storagePath: '/tmp/x',
+      dashboardUrl: 'http://127.0.0.1:7777',
+      configFilePath: '/tmp/x/config.json',
+    };
+    registerPendingTools(server.server, {
+      sessionStartMs: Date.now(),
+      developer: 'tester',
+      configSummary: summary,
+    });
+    await Promise.all([server.server.connect(st), client.connect(ct)]);
+
+    const tools = await client.listTools();
+    const names = tools.tools.map((t) => t.name);
+    expect(names).toContain('nr_observe_health');
+    expect(names).toContain('nr_observe_get_config');
+
+    const cfg = await client.callTool({ name: 'nr_observe_get_config', arguments: {} });
+    const cfgBody = JSON.parse((cfg.content as Array<{ text: string }>)[0].text);
+    expect(cfgBody.developer).toBe('tester');
+    expect(cfgBody.mode).toBe('local');
+
+    await client.close();
+    await server.close();
+  });
+});

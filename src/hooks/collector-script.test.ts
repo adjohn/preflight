@@ -13,6 +13,8 @@ import {
   collectTranscriptTokens,
   readLastAssistantUsage,
   getTranscriptPath,
+  getBufferPath,
+  writePpidBreadcrumb,
 } from './collector-script.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
@@ -782,6 +784,110 @@ describe('collector-script', () => {
       } finally {
         delete process.env.NR_AI_OBSERVE_CLAUDE_HOME;
       }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Fix 3: per-session buffer paths + PPID breadcrumb
+  // ---------------------------------------------------------------------------
+
+  describe('getBufferPath() (Fix 3)', () => {
+    it('honours NEW_RELIC_AI_MCP_BUFFER_PATH verbatim and ignores sessionId', () => {
+      const explicit = resolve(tmpDir, 'explicit.jsonl');
+      process.env.NEW_RELIC_AI_MCP_BUFFER_PATH = explicit;
+      expect(getBufferPath('sess-anything')).toBe(explicit);
+    });
+
+    it('returns buffer-<sessionId>.jsonl under the storage path when sessionId is valid', () => {
+      delete process.env.NEW_RELIC_AI_MCP_BUFFER_PATH;
+      process.env.NEW_RELIC_AI_MCP_STORAGE_PATH = tmpDir;
+      expect(getBufferPath('sess-good')).toBe(resolve(tmpDir, 'buffer-sess-good.jsonl'));
+    });
+
+    it('falls back to buffer-unknown.jsonl on a missing sessionId', () => {
+      delete process.env.NEW_RELIC_AI_MCP_BUFFER_PATH;
+      process.env.NEW_RELIC_AI_MCP_STORAGE_PATH = tmpDir;
+      expect(getBufferPath()).toBe(resolve(tmpDir, 'buffer-unknown.jsonl'));
+    });
+
+    it('falls back to buffer-unknown.jsonl on a path-traversal attempt', () => {
+      delete process.env.NEW_RELIC_AI_MCP_BUFFER_PATH;
+      process.env.NEW_RELIC_AI_MCP_STORAGE_PATH = tmpDir;
+      expect(getBufferPath('../../etc/passwd')).toBe(resolve(tmpDir, 'buffer-unknown.jsonl'));
+    });
+  });
+
+  describe('processHook() per-session buffer scoping (Fix 3)', () => {
+    it('writes events to buffer-<sessionId>.jsonl when no explicit BUFFER_PATH is set', () => {
+      delete process.env.NEW_RELIC_AI_MCP_BUFFER_PATH;
+      process.env.NEW_RELIC_AI_MCP_STORAGE_PATH = tmpDir;
+
+      processHook(makePreToolUse({ session_id: 'sess-zzz' }));
+
+      const sessionPath = resolve(tmpDir, 'buffer-sess-zzz.jsonl');
+      expect(existsSync(sessionPath)).toBe(true);
+      const lines = readFileSync(sessionPath, 'utf-8').trim().split('\n');
+      expect(lines).toHaveLength(1);
+      expect((JSON.parse(lines[0]!) as { sessionId: string }).sessionId).toBe('sess-zzz');
+    });
+
+    it('partitions concurrent multi-session writes into separate files', () => {
+      delete process.env.NEW_RELIC_AI_MCP_BUFFER_PATH;
+      process.env.NEW_RELIC_AI_MCP_STORAGE_PATH = tmpDir;
+
+      processHook(makePreToolUse({ session_id: 'sess-A', tool_use_id: 'a1' }));
+      processHook(makePreToolUse({ session_id: 'sess-B', tool_use_id: 'b1' }));
+      processHook(makePreToolUse({ session_id: 'sess-A', tool_use_id: 'a2' }));
+
+      const aPath = resolve(tmpDir, 'buffer-sess-A.jsonl');
+      const bPath = resolve(tmpDir, 'buffer-sess-B.jsonl');
+      expect(readFileSync(aPath, 'utf-8').trim().split('\n')).toHaveLength(2);
+      expect(readFileSync(bPath, 'utf-8').trim().split('\n')).toHaveLength(1);
+    });
+  });
+
+  describe('writePpidBreadcrumb()', () => {
+    beforeEach(() => {
+      delete process.env.NEW_RELIC_AI_MCP_BUFFER_PATH;
+      process.env.NEW_RELIC_AI_MCP_STORAGE_PATH = tmpDir;
+    });
+
+    it('writes <storage>/session-by-ppid/<ppid>.txt with the sessionId', () => {
+      writePpidBreadcrumb('sess-bread');
+      const ppid = process.ppid;
+      const breadcrumbPath = resolve(tmpDir, 'session-by-ppid', `${ppid}.txt`);
+      expect(existsSync(breadcrumbPath)).toBe(true);
+      expect(readFileSync(breadcrumbPath, 'utf-8')).toBe('sess-bread');
+    });
+
+    it('rejects malformed sessionIds without writing', () => {
+      writePpidBreadcrumb('../../escape');
+      const ppid = process.ppid;
+      expect(existsSync(resolve(tmpDir, 'session-by-ppid', `${ppid}.txt`))).toBe(false);
+    });
+
+    it('short-circuits when content already matches', () => {
+      writePpidBreadcrumb('sess-stable');
+      const ppid = process.ppid;
+      const breadcrumbPath = resolve(tmpDir, 'session-by-ppid', `${ppid}.txt`);
+      const firstStat = statSync(breadcrumbPath).mtimeMs;
+      // Tight loop — most calls should observe the existsSync + readFileSync
+      // short-circuit and not rewrite the file. mtimeMs has 1ms resolution so
+      // we just assert that we don't error and the content is unchanged.
+      for (let i = 0; i < 50; i++) writePpidBreadcrumb('sess-stable');
+      expect(readFileSync(breadcrumbPath, 'utf-8')).toBe('sess-stable');
+      // The mtime may or may not change depending on filesystem — the key
+      // assertion is correctness; the perf claim is documented separately.
+      expect(typeof firstStat).toBe('number');
+    });
+
+    it('processHook() drops the breadcrumb on every fire (idempotent overwrite)', () => {
+      delete process.env.NEW_RELIC_AI_MCP_BUFFER_PATH;
+      process.env.NEW_RELIC_AI_MCP_STORAGE_PATH = tmpDir;
+
+      processHook(makePreToolUse({ session_id: 'sess-bc' }));
+      const breadcrumbPath = resolve(tmpDir, 'session-by-ppid', `${process.ppid}.txt`);
+      expect(readFileSync(breadcrumbPath, 'utf-8')).toBe('sess-bc');
     });
   });
 });

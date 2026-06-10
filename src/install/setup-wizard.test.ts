@@ -384,6 +384,63 @@ describe('F-138: setup-wizard idempotency and env-detection', () => {
     expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
   });
 
+  // task #22: loadExisting() must validate via ConfigFileSchema and strip
+  // unknown top-level keys, so wizard's later spread (`...existing`) doesn't
+  // perpetuate stale fields. Recognized keys still pass through.
+  it('strips unknown top-level keys from existing config (task #22)', async () => {
+    const existingConfig = {
+      accountId: '12345',
+      licenseKey: 'NRLIC-existing',
+      developer: 'alice',
+      // Unknown / removed keys — must NOT round-trip through buildConfig:
+      legacyDeprecatedField: 'remove-me',
+      futureField: { nested: true },
+    };
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(existingConfig));
+    sequenceAnswers('', '', '', '', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+    const written = JSON.parse(writtenJson) as Record<string, unknown>;
+    expect(Object.keys(written)).not.toContain('legacyDeprecatedField');
+    expect(Object.keys(written)).not.toContain('futureField');
+    // Recognized keys still survive.
+    expect(written.accountId).toBe('12345');
+    expect(written.licenseKey).toBe('NRLIC-existing');
+  });
+
+  // task #22: validation failure on a recognized key (e.g. malformed type)
+  // logs a warning and falls back to defaults rather than carrying bad data
+  // forward via the spread.
+  it('falls back to defaults when recognized key has invalid value (task #22)', async () => {
+    const stderrWriteSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      // accountId must be a string; passing a number triggers safeParse failure.
+      const badConfig = {
+        accountId: 12345,
+        licenseKey: 'NRLIC-existing',
+      };
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify(badConfig));
+      // mode=cloud, accountId, licenseKey, env, apiKey, developer, team, project, budget, hooks
+      sequenceAnswers('cloud', '99999', 'NRLIC-new', '', '', 'newdev', '', '', '', 'n');
+
+      await runSetupWizard();
+
+      // Wizard wrote with the freshly-prompted values, not the bad ones.
+      const writtenJson = mockedFs.writeFileSync.mock.calls[0][1] as string;
+      const written = JSON.parse(writtenJson) as Record<string, unknown>;
+      expect(written.accountId).toBe('99999');
+      expect(written.licenseKey).toBe('NRLIC-new');
+
+      // A warning was emitted to stderr.
+      const stderrOutput = stderrWriteSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+      expect(stderrOutput).toMatch(/setup-wizard.*invalid values/i);
+    } finally {
+      stderrWriteSpy.mockRestore();
+    }
+  });
+
   it('malformed JSON in existing config does not crash the wizard', async () => {
     mockedFs.readFileSync.mockReturnValue('not-valid-json{{{');
     // Malformed config → no existing mode → defaults 'local'; force 'cloud' explicitly so

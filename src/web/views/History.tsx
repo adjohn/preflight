@@ -164,7 +164,7 @@ export function History(): JSX.Element {
     return { week: fullDate || '?', efficiency: score !== null ? Math.round(score * 100) : null };
   });
 
-  const dailyData = aggregateDailyCost(sessions.data ?? [], 30);
+  const dailyData = padDailyCostWindow(aggregateDailyCost(sessions.data ?? [], 30), 30);
   const outcomeData = buildOutcomeData(costPerOutcome.data);
   const antiPatternSeries = buildAntiPatternSeries(weeklyChronological);
   const modelPerf = aggregateModelPerformance(sessions.data ?? []);
@@ -221,9 +221,24 @@ export function History(): JSX.Element {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" />
-                <XAxis dataKey="day" tick={TICK_STYLE} stroke={GRID_STROKE} />
+                <XAxis
+                  dataKey="day"
+                  tick={TICK_STYLE}
+                  stroke={GRID_STROKE}
+                  tickFormatter={shortMonthDay}
+                  interval="preserveStartEnd"
+                  minTickGap={20}
+                />
                 <YAxis tick={TICK_STYLE} stroke={GRID_STROKE} unit="$" />
-                <Tooltip contentStyle={TOOLTIP_STYLE} />
+                {/* cursor={false}: with 30 days padded, most bars are zero.
+                    Recharts' default cursor draws a full-height rectangle
+                    over the hovered slot, which reads as a phantom bar on
+                    empty days. The tooltip already labels the date. */}
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  labelFormatter={shortMonthDay}
+                  cursor={false}
+                />
                 <Bar dataKey="cost" fill="url(#costGradient)" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -408,16 +423,29 @@ export function History(): JSX.Element {
           </Panel>
         )}
 
-        {hasConcurrencyData && (
-          <div className="glass-card p-4 flex flex-col">
-            <div className="text-[11px] text-ink-muted uppercase tracking-wider font-medium mb-3">
-              Peak sessions · all-time: {Math.max(...concurrencyData.map((d) => d.peak))}
-            </div>
+        {/* Always render the panel so it doesn't silently disappear on
+            a fresh install with no historical concurrency yet — the
+            dashboard previously omitted the entire Panel when every
+            day's peak was 0, which read as a missing feature. */}
+        <div className="glass-card p-4 flex flex-col">
+          <div className="text-[11px] text-ink-muted uppercase tracking-wider font-medium mb-3">
+            Peak concurrent sessions ·{' '}
+            {hasConcurrencyData
+              ? `all-time: ${Math.max(...concurrencyData.map((d) => d.peak))}`
+              : 'last 30 days'}
+          </div>
+          {hasConcurrencyData ? (
             <div className="flex-1 flex items-end justify-center">
               <ConcurrencyBlockChart data={concurrencyData} />
             </div>
-          </div>
-        )}
+          ) : (
+            <EmptyState
+              icon="code"
+              title="No concurrent sessions yet"
+              subtitle="Run two or more Claude Code sessions at the same time to populate this chart."
+            />
+          )}
+        </div>
       </div>
 
       <div className="mt-3">
@@ -507,13 +535,43 @@ export function buildOutcomeData(
   resp: CostPerOutcomeResponse | undefined,
 ): Array<{ outcome: string; totalCost: number; count: number }> {
   if (!resp) return [];
-  return Object.entries(resp.outcomeDistribution)
-    .map(([outcome, b]) => ({
-      outcome: outcome.replace(/_/g, ' '),
-      totalCost: Number(b.totalCost.toFixed(2)),
-      count: b.count,
-    }))
-    .sort((a, b) => b.totalCost - a.totalCost);
+  return (
+    Object.entries(resp.outcomeDistribution)
+      .map(([outcome, b]) => ({
+        outcome: outcome.replace(/_/g, ' '),
+        totalCost: Number(b.totalCost.toFixed(2)),
+        count: b.count,
+      }))
+      // Drop zero-cost outcomes. Recharts auto-domains a horizontal bar chart
+      // whose only data points are zero into a default [0,4] range, which
+      // renders an empty plot area that visually reads as a full-width bar
+      // even though the underlying value is 0. Filtering here lets the
+      // existing `outcomeData.length === 0` empty-state branch take over.
+      .filter((d) => d.totalCost > 0)
+      .sort((a, b) => b.totalCost - a.totalCost)
+  );
+}
+
+/**
+ * Pad daily-cost data to a fixed window of `days` columns ending today.
+ * Days with no recorded cost are emitted with `cost: 0` so the chart
+ * renders a 30-column bar chart instead of stretching a single bar to
+ * fill the entire plot area.
+ */
+export function padDailyCostWindow(
+  data: Array<{ day: string; cost: number }>,
+  days: number,
+  today: Date = new Date(),
+): Array<{ day: string; cost: number }> {
+  const byDay = new Map(data.map((d) => [d.day, d.cost]));
+  const out: Array<{ day: string; cost: number }> = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    out.push({ day: key, cost: byDay.get(key) ?? 0 });
+  }
+  return out;
 }
 
 export function buildAntiPatternSeries(weeks: WeeklyRow[]): Array<{ week: string; count: number }> {

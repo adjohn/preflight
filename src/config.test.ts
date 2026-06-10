@@ -340,19 +340,58 @@ describe('loadMcpConfig()', () => {
     expect(stderrOutput).toMatch(/validation failed/);
   });
 
-  it('rejects unknown fields in config file (F-036)', () => {
+  // Pre-launch: schema-evolution friendliness. Unknown keys must NOT brick
+  // the server on upgrade. We log a warning and keep going (the unknown key
+  // is dropped from the resolved config).
+  it('tolerates unknown top-level fields in config file and warns (task #22)', () => {
     const path = resolve(tmpDir, 'unknown-fields.json');
     writeFileSync(
       path,
       JSON.stringify({
         licenseKey: 'test-key',
         accountId: '12345',
-        unknownField: 'should-fail',
+        unknownField: 'should-be-ignored',
+        anotherFutureField: 42,
       }),
     );
     process.env.NEW_RELIC_LICENSE_KEY = 'ignored';
     process.env.NEW_RELIC_ACCOUNT_ID = '12345';
-    expect(() => loadMcpConfig({ config: path })).toThrow(/Config file validation failed/);
+    expect(() => loadMcpConfig({ config: path })).not.toThrow();
+    const stderrOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(stderrOutput).toMatch(/Unknown keys in config file/);
+    expect(stderrOutput).toContain('unknownField');
+    expect(stderrOutput).toContain('anotherFutureField');
+  });
+
+  it('loads an empty {} config file successfully (task #22)', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const path = resolve(tmpDir, 'empty.json');
+    writeFileSync(path, JSON.stringify({}));
+    const config = loadMcpConfig({ config: path });
+    expect(config.licenseKey).toBe('test-key');
+    expect(config.accountId).toBe('12345');
+    // No unknown-keys warning when file is empty
+    const stderrOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(stderrOutput).not.toMatch(/Unknown keys in config file/);
+  });
+
+  it('does not warn for recognized keys in config file (task #22)', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const path = resolve(tmpDir, 'all-known.json');
+    writeFileSync(
+      path,
+      JSON.stringify({
+        licenseKey: 'test-key',
+        accountId: '12345',
+        mode: 'local',
+        sessionBudgetUsd: 5,
+      }),
+    );
+    loadMcpConfig({ config: path });
+    const stderrOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(stderrOutput).not.toMatch(/Unknown keys in config file/);
   });
 
   it('accepts valid config file with all optional numeric fields (F-036)', () => {

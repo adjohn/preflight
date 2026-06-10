@@ -122,7 +122,7 @@ To deploy alert conditions scoped to a single developer identity — with separa
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-alerts.ts --developer <your-name>
+  nr-ai-mcp-server deploy-alerts --developer <your-name>
 ```
 
 This creates a separate policy `AI Coding — Personal — <name>` from the JSON files in `alerts/conditions-personal/`, with `developer = '<name>'` injected into every NRQL query. Running without `--developer` deploys only the team policy; running with it deploys only the personal policy.
@@ -131,7 +131,7 @@ To remove just the personal policy:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
-  npx tsx scripts/deploy-alerts.ts --teardown --developer <your-name>
+  nr-ai-mcp-server deploy-alerts --teardown --developer <your-name>
 ```
 
 ### Override personal thresholds

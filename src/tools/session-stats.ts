@@ -418,7 +418,52 @@ const FeedbackSchema = z.object({
  * @deprecated Use `registerTools()` instead. Kept for backward compatibility.
  */
 export function registerSessionTools(server: Server, sessionTracker: SessionTracker): void {
-  registerTools(server, { sessionTracker });
+  registerTools(server, { sessionTracker: sessionTracker });
+}
+
+/**
+ * Pre-resolution stand-in: registers `tools/list` with just the health and
+ * config tools, and a `tools/call` handler that returns a structured "session
+ * not yet resolved" error for everything else. Replaced by `registerTools()`
+ * once the Claude Code session_id is known.
+ */
+export function registerPendingTools(
+  server: Server,
+  options: {
+    sessionStartMs?: number;
+    developer?: string;
+    configSummary?: ConfigSummary;
+  },
+): void {
+  const tools: (typeof HEALTH_TOOL)[] = [HEALTH_TOOL];
+  if (options.configSummary) tools.push(CONFIG_TOOL);
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name } = request.params;
+    if (name === 'nr_observe_health') {
+      return handleHealth({
+        sessionStartMs: options.sessionStartMs,
+        developer: options.developer,
+        sessionId: undefined,
+      });
+    }
+    if (name === 'nr_observe_get_config' && options.configSummary) {
+      return handleGetConfig(options.configSummary);
+    }
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify({
+            error: 'session_id not yet resolved',
+            hint: 'Make any tool call (Bash, Read, etc.) to populate the session breadcrumb.',
+          }),
+        },
+      ],
+      isError: true,
+    };
+  });
 }
 
 export function registerTools(server: Server, options: ToolRegistrationOptions): void {

@@ -333,8 +333,8 @@ describe('Personal dashboard', () => {
 // Deploy script validation
 // ---------------------------------------------------------------------------
 
-describe('Deploy script', () => {
-  const scriptPath = resolve(__dirname, '..', 'scripts', 'deploy-dashboard.ts');
+describe('Deploy module (src/deploy/deploy-dashboards.ts)', () => {
+  const scriptPath = resolve(__dirname, 'deploy', 'deploy-dashboards.ts');
   const scriptSource = readFileSync(scriptPath, 'utf-8');
 
   it('contains dashboardCreate mutation', () => {
@@ -348,8 +348,10 @@ describe('Deploy script', () => {
   });
 
   it('supports CLI flags for dashboard selection and print mode', () => {
-    expect(scriptSource).toContain('--print');
-    expect(scriptSource).toContain('--all');
+    // The CLI surface lives in src/index.ts (see deploy-dashboards subcommand);
+    // here we just confirm the deploy module honours --print/--all by name.
+    expect(scriptSource).toContain('opts.print');
+    expect(scriptSource).toContain('opts.all');
     expect(scriptSource).toContain('ai-coding-assistant-overview.json');
   });
 

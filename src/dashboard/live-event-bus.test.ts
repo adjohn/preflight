@@ -5,8 +5,17 @@ describe('LiveEventBus', () => {
     const bus = new LiveEventBus();
     const received: unknown[] = [];
     bus.on('tool-call', (e) => received.push(e));
-    bus.emit('tool-call', { id: 'a', tool: 'Read', durationMs: 12, costUsd: 0.001, ts: 1 });
-    expect(received).toEqual([{ id: 'a', tool: 'Read', durationMs: 12, costUsd: 0.001, ts: 1 }]);
+    bus.emit('tool-call', {
+      id: 'a',
+      sessionId: 's1',
+      tool: 'Read',
+      durationMs: 12,
+      costUsd: 0.001,
+      ts: 1,
+    });
+    expect(received).toEqual([
+      { id: 'a', sessionId: 's1', tool: 'Read', durationMs: 12, costUsd: 0.001, ts: 1 },
+    ]);
   });
 
   it('supports multiple event types independently', () => {
@@ -15,8 +24,20 @@ describe('LiveEventBus', () => {
     const costs: unknown[] = [];
     bus.on('tool-call', (e) => tools.push(e));
     bus.on('cost-update', (e) => costs.push(e));
-    bus.emit('tool-call', { id: 'a', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
-    bus.emit('cost-update', { sessionTotalUsd: 0.5, todayTotalUsd: 1.0, forecastEodUsd: 2.0 });
+    bus.emit('tool-call', {
+      id: 'a',
+      sessionId: 's1',
+      tool: 'Read',
+      durationMs: 1,
+      costUsd: 0,
+      ts: 1,
+    });
+    bus.emit('cost-update', {
+      sessionId: 's1',
+      sessionTotalUsd: 0.5,
+      todayTotalUsd: 1.0,
+      forecastEodUsd: 2.0,
+    });
     expect(tools).toHaveLength(1);
     expect(costs).toHaveLength(1);
   });
@@ -27,14 +48,28 @@ describe('LiveEventBus', () => {
     const handler = (e: unknown) => received.push(e);
     bus.on('tool-call', handler);
     bus.off('tool-call', handler);
-    bus.emit('tool-call', { id: 'a', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
+    bus.emit('tool-call', {
+      id: 'a',
+      sessionId: 's1',
+      tool: 'Read',
+      durationMs: 1,
+      costUsd: 0,
+      ts: 1,
+    });
     expect(received).toHaveLength(0);
   });
 
   it('keeps a ring buffer of the last 100 events for replay', () => {
     const bus = new LiveEventBus({ replayBufferSize: 100 });
     for (let i = 0; i < 150; i++) {
-      bus.emit('tool-call', { id: String(i), tool: 'Read', durationMs: 1, costUsd: 0, ts: i });
+      bus.emit('tool-call', {
+        id: String(i),
+        sessionId: 's1',
+        tool: 'Read',
+        durationMs: 1,
+        costUsd: 0,
+        ts: i,
+      });
     }
     const replay = bus.replayFrom(0);
     expect(replay.length).toBe(100);
@@ -45,7 +80,14 @@ describe('LiveEventBus', () => {
   it('replayFrom(seq) returns events with seq > given', () => {
     const bus = new LiveEventBus();
     for (let i = 0; i < 10; i++) {
-      bus.emit('tool-call', { id: String(i), tool: 'Read', durationMs: 1, costUsd: 0, ts: i });
+      bus.emit('tool-call', {
+        id: String(i),
+        sessionId: 's1',
+        tool: 'Read',
+        durationMs: 1,
+        costUsd: 0,
+        ts: i,
+      });
     }
     // seq starts at 1, so events have seq 1..10. replayFrom(5) returns 6..10.
     const replay = bus.replayFrom(5);
@@ -55,11 +97,83 @@ describe('LiveEventBus', () => {
 
   it('first emitted event has seq=1 so replayFrom(0) returns it', () => {
     const bus = new LiveEventBus();
-    bus.emit('tool-call', { id: 'first', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
+    bus.emit('tool-call', {
+      id: 'first',
+      sessionId: 's1',
+      tool: 'Read',
+      durationMs: 1,
+      costUsd: 0,
+      ts: 1,
+    });
     const replay = bus.replayFrom(0);
     expect(replay).toHaveLength(1);
     expect(replay[0]!.seq).toBe(1);
     expect((replay[0]!.payload as { id: string }).id).toBe('first');
+  });
+
+  // Task #17 (D3): the live event schema requires sessionId on the events
+  // that have a single owning session. The compile-time test below would
+  // fail to type-check if the sessionId field were ever removed; the runtime
+  // test confirms the bus carries the field through to subscribers.
+  it('carries sessionId on tool-call, cost-update, anti-pattern, and context-update', () => {
+    const bus = new LiveEventBus();
+    const received: Array<{ event: string; sessionId?: string }> = [];
+    bus.on('tool-call', (e) => received.push({ event: 'tool-call', sessionId: e.sessionId }));
+    bus.on('cost-update', (e) => received.push({ event: 'cost-update', sessionId: e.sessionId }));
+    bus.on('anti-pattern', (e) => received.push({ event: 'anti-pattern', sessionId: e.sessionId }));
+    bus.on('context-update', (e) =>
+      received.push({ event: 'context-update', sessionId: e.sessionId }),
+    );
+    bus.emit('tool-call', {
+      id: 'a',
+      sessionId: 'sX',
+      tool: 'Read',
+      durationMs: 1,
+      costUsd: 0,
+      ts: 1,
+    });
+    bus.emit('cost-update', {
+      sessionId: 'sY',
+      sessionTotalUsd: 0.5,
+      todayTotalUsd: 1.0,
+      forecastEodUsd: null,
+    });
+    bus.emit('anti-pattern', { sessionId: 'sZ', type: 'thrashing', target: 'auth.ts', count: 3 });
+    bus.emit('context-update', {
+      sessionId: 'sQ',
+      turnNumber: 1,
+      totalTokens: 100,
+      fillPercent: 0.1,
+      breakdown: { system: 10, tools: 20, user: 30, assistant: 40 },
+      growth: { startTokens: 0, currentTokens: 100, delta: 100 },
+      topTools: [],
+    });
+    expect(received).toEqual([
+      { event: 'tool-call', sessionId: 'sX' },
+      { event: 'cost-update', sessionId: 'sY' },
+      { event: 'anti-pattern', sessionId: 'sZ' },
+      { event: 'context-update', sessionId: 'sQ' },
+    ]);
+  });
+
+  // Task #17 (D3): AlertEvent.sessionId is optional — system-level alerts
+  // (e.g. dashboard-server health) have no owning session.
+  it('AlertEvent.sessionId is optional', () => {
+    const bus = new LiveEventBus();
+    const received: unknown[] = [];
+    bus.on('alert', (e) => received.push(e));
+    bus.emit('alert', {
+      id: 'system-alert',
+      // no sessionId
+      state: 'firing',
+      severity: 'info',
+      title: 'System',
+      description: 'no session',
+      value: 1,
+      threshold: 0,
+      firedAt: 1,
+    });
+    expect(received).toHaveLength(1);
   });
 
   it('delivers and replays alert events', () => {

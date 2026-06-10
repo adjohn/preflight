@@ -352,13 +352,18 @@ describe('SessionTracker', () => {
       expect(metrics.toolCallTimeline).toHaveLength(0);
     });
 
-    it('generates new sessionId when none provided', () => {
+    it('throws when reset is called without a sessionId', () => {
       const tracker = new SessionTracker('old-session');
-      tracker.reset();
+      // Cast through unknown to force the bad-call shape; runtime guard must throw.
+      expect(() => (tracker as unknown as { reset: () => void }).reset()).toThrow(
+        /requires a non-empty sessionId/,
+      );
+    });
 
-      const metrics = tracker.getMetrics();
-      expect(metrics.sessionId).not.toBe('old-session');
-      expect(metrics.sessionId).toMatch(/^[0-9a-f-]{36}$/);
+    it('throws when constructed without a sessionId', () => {
+      expect(() => new (SessionTracker as unknown as new () => SessionTracker)()).toThrow(
+        /requires a non-empty sessionId/,
+      );
     });
   });
 

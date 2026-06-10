@@ -28,6 +28,7 @@ describe('liveStore', () => {
       antiPatterns: [],
       firingAlerts: new Map(),
       dismissedAlerts: new Set(),
+      activeSessionId: null,
     });
   });
 
@@ -84,6 +85,7 @@ describe('liveStore alert slice', () => {
       antiPatterns: [],
       firingAlerts: new Map(),
       dismissedAlerts: new Set(),
+      activeSessionId: null,
     });
   });
 
@@ -195,5 +197,87 @@ describe('liveStore alert slice', () => {
 
   it('selectMaxSeverity returns null when no alerts are firing', () => {
     expect(selectMaxSeverity(useLiveStore.getState())).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task #17 (D3): activeSessionId + setActiveSession
+// ---------------------------------------------------------------------------
+
+describe('liveStore — setActiveSession', () => {
+  beforeEach(() => {
+    useLiveStore.setState({
+      connected: false,
+      recentToolCalls: [],
+      cost: null,
+      antiPatterns: [],
+      firingAlerts: new Map(),
+      dismissedAlerts: new Set(),
+      activeSessionId: null,
+    });
+  });
+
+  it('starts with null activeSessionId', () => {
+    expect(useLiveStore.getState().activeSessionId).toBeNull();
+  });
+
+  it('setActiveSession sets the active id', () => {
+    useLiveStore.getState().setActiveSession('sess-A');
+    expect(useLiveStore.getState().activeSessionId).toBe('sess-A');
+  });
+
+  it('clears tool calls and anti-patterns from non-matching sessions on switch', () => {
+    const { pushToolCall, pushAntiPattern, setActiveSession } = useLiveStore.getState();
+    pushToolCall({ id: 'a', sessionId: 'sess-A', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
+    pushToolCall({ id: 'b', sessionId: 'sess-B', tool: 'Read', durationMs: 1, costUsd: 0, ts: 2 });
+    pushAntiPattern({ sessionId: 'sess-A', type: 'thrashing', target: 'a.ts', count: 1 });
+    pushAntiPattern({ sessionId: 'sess-B', type: 'rereading', target: 'b.ts', count: 2 });
+
+    setActiveSession('sess-A');
+    const s = useLiveStore.getState();
+    expect(s.recentToolCalls.map((t) => t.id)).toEqual(['a']);
+    expect(s.antiPatterns.map((a) => a.target)).toEqual(['a.ts']);
+  });
+
+  it('clears cost from a non-matching session on switch', () => {
+    const { setCost, setActiveSession } = useLiveStore.getState();
+    setCost({
+      sessionId: 'sess-other',
+      sessionTotalUsd: 1.0,
+      todayTotalUsd: 1.0,
+      forecastEodUsd: null,
+    });
+    setActiveSession('sess-mine');
+    expect(useLiveStore.getState().cost).toBeNull();
+  });
+
+  it('keeps cost when its sessionId matches the new active id', () => {
+    const { setCost, setActiveSession } = useLiveStore.getState();
+    setCost({
+      sessionId: 'sess-A',
+      sessionTotalUsd: 5.0,
+      todayTotalUsd: 5.0,
+      forecastEodUsd: null,
+    });
+    setActiveSession('sess-A');
+    expect(useLiveStore.getState().cost?.sessionTotalUsd).toBe(5.0);
+  });
+
+  it('is a no-op when activeSessionId is unchanged', () => {
+    const { pushToolCall, setActiveSession } = useLiveStore.getState();
+    pushToolCall({ id: 'a', sessionId: 'sess-A', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
+    setActiveSession('sess-A');
+    const beforeRef = useLiveStore.getState().recentToolCalls;
+    setActiveSession('sess-A');
+    // Reference should not change — the early-return path skips the set().
+    expect(useLiveStore.getState().recentToolCalls).toBe(beforeRef);
+  });
+
+  it('drops sessionId-less events when switching to a real session', () => {
+    const { pushToolCall, setActiveSession } = useLiveStore.getState();
+    // Legacy fixture without sessionId.
+    pushToolCall({ id: 'legacy', tool: 'Read', durationMs: 1, costUsd: 0, ts: 1 });
+    setActiveSession('sess-A');
+    expect(useLiveStore.getState().recentToolCalls).toEqual([]);
   });
 });

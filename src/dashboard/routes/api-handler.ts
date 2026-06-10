@@ -11,6 +11,7 @@ import {
 import { getIsoWeekId } from '../../storage/weekly-summary.js';
 import { analyzeReplayTimeline } from './replay-analyzer.js';
 import type { ReplayTimelineEntry, ToolCallRecord } from '../../storage/types.js';
+import { isSyntheticSessionId } from '../../hooks/session-resolver.js';
 
 // ---------------------------------------------------------------------------
 // Aggregate quality-proxy metrics from today's persisted sessions so the
@@ -205,6 +206,10 @@ export interface ApiHandlerDeps {
   readonly liveSessionRegistry?: {
     getLiveSessions: () => string[];
     getSessionName: (sessionId: string) => string | null;
+    // Optional: introduced for /api/sessions/live so the Today selector can
+    // default to the most-recently-active session. Older fakes / mocks that
+    // don't implement it still work — `?.` falls back to undefined.
+    getLastActivity?: (sessionId: string) => number | null;
   };
   readonly concurrencyTracker?: {
     getConcurrentCount: () => number;
@@ -214,6 +219,11 @@ export interface ApiHandlerDeps {
   readonly contextTracker?: { getMetrics: (sessionId?: string) => unknown };
   readonly config?: McpServerConfig;
   readonly configFilePath?: string;
+  // Task #17 (D3): the dashboard owner reads every per-session buffer file
+  // in read-only mode for the cross-session aggregate endpoint.
+  // `peekAllBuffers()` does NOT drain — only the owning MCP's own
+  // `drainBuffer()` consumes events for ingestion.
+  readonly localStore?: { peekAllBuffers: () => readonly { readonly [key: string]: unknown }[] };
 }
 
 type RouteFn = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
@@ -353,52 +363,6 @@ function computeDailyPeakConcurrency(
   return result;
 }
 
-function computeHourlyConcurrency(
-  sessions: readonly unknown[],
-): Array<{ timestamp: number; count: number }> {
-  const now = Date.now();
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
-  const startMs = startOfDay.getTime();
-
-  // Build activity windows from actual tool call timestamps
-  const events: Array<{ ts: number; delta: number }> = [];
-  for (const s of sessions) {
-    const session = s as { timeline?: readonly { timestamp: number }[] };
-    if (!session.timeline || session.timeline.length === 0) continue;
-
-    const windows = mergeActivityWindows(session.timeline);
-
-    for (const w of windows) {
-      events.push({ ts: w.start, delta: 1 }, { ts: w.end, delta: -1 });
-    }
-  }
-
-  if (events.length === 0) return [];
-  events.sort((a, b) => a.ts - b.ts || b.delta - a.delta);
-
-  // Compute peak concurrent within each 30-min window
-  const windowMs = 1_800_000; // 30 minutes
-  const currentWindow = Math.floor((now - startMs) / windowMs);
-  const peaks = new Array<number>(currentWindow + 1).fill(0);
-
-  let concurrent = 0;
-  for (const e of events) {
-    concurrent += e.delta;
-    if (e.ts >= startMs) {
-      const windowIdx = Math.min(Math.floor((e.ts - startMs) / windowMs), currentWindow);
-      if (concurrent > peaks[windowIdx]!) {
-        peaks[windowIdx] = concurrent;
-      }
-    }
-  }
-
-  return peaks.map((count, i) => ({
-    timestamp: startMs + i * windowMs,
-    count,
-  }));
-}
-
 function toolCallToTimelineEntry(tc: ToolCallRecord): ReplayTimelineEntry {
   return {
     timestamp: tc.timestamp,
@@ -461,6 +425,31 @@ function buildReplayResponse(sessionId: string, deps: ApiHandlerDeps): unknown |
     }
   }
 
+  // Final fallback: scan the in-memory tool call buffer for events matching
+  // sessionId. TaskDetector only emits records once they're attributed to a
+  // task; tool calls that fire before a task starts (or for sessions other
+  // than the dashboard owner's) live in the buffer but not in TaskDetector.
+  // Today's live tail reads via SSE so it sees these immediately; without
+  // this fallback the Sessions detail view shows "No tool calls" for a
+  // newly-live session that hasn't yet completed a task.
+  if (deps.toolCallBuffer) {
+    const records = deps.toolCallBuffer.getRecords();
+    const sessionCalls = records.filter(
+      (c) => (c as { sessionId?: string | null }).sessionId === sessionId,
+    ) as ToolCallRecord[];
+    if (sessionCalls.length > 0) {
+      sessionCalls.sort((a, b) => a.timestamp - b.timestamp);
+      const timeline = sessionCalls.map(toolCallToTimelineEntry);
+      const analysis = analyzeReplayTimeline(timeline);
+      return {
+        sessionId,
+        timeline,
+        segments: analysis.segments,
+        worstSegment: analysis.worstSegment,
+      };
+    }
+  }
+
   return null;
 }
 
@@ -496,18 +485,28 @@ export function createApiHandler(
     const allSessions = deps.sessionStore.loadAllSessions
       ? deps.sessionStore.loadAllSessions()
       : deps.sessionStore.listSessions();
-    const withActivity = (allSessions as unknown[]).filter(
-      (s) => ((s as { toolCallCount?: number }).toolCallCount ?? 0) > 0,
-    );
+    // Filter synthetic IDs (`local-<ts>`, `proxy-<ts>`) from the historical
+    // list. They're MCP-internal bookkeeping IDs persisted incidentally by
+    // older builds; they appear as confusing "duplicate" rows next to real
+    // Claude Code sessions. The synthetic-shutdown filter in src/index.ts
+    // prevents new ones from being persisted, but stale ones from before
+    // that filter shipped need to be hidden at read time.
+    const withActivity = (allSessions as unknown[]).filter((s) => {
+      const sid = (s as { sessionId?: string }).sessionId;
+      const calls = (s as { toolCallCount?: number }).toolCallCount ?? 0;
+      return calls > 0 && (!sid || !isSyntheticSessionId(sid));
+    });
     const sliced = withActivity.slice(-limit);
 
-    // Append the current live session so it appears in the list before shutdown
+    // Append the current live session so it appears in the list before
+    // shutdown — but skip synthetic sessionTraceIds from --local / proxy
+    // modes (the same filter as for persisted entries above).
     if (deps.sessionTracker) {
       const live = deps.sessionTracker.getMetrics();
       const alreadyPersisted = sliced.some(
         (s) => (s as { sessionId?: string }).sessionId === live.sessionId,
       );
-      if (!alreadyPersisted && live.toolCallCount > 0) {
+      if (!alreadyPersisted && live.toolCallCount > 0 && !isSyntheticSessionId(live.sessionId)) {
         sliced.push({
           sessionId: live.sessionId,
           sessionName: live.sessionName ?? null,
@@ -554,7 +553,238 @@ export function createApiHandler(
       }
     }
 
-    jsonOk(res, sliced.length > limit ? sliced.slice(-limit) : sliced);
+    // Strip heavy per-session fields the list view doesn't render. Without
+    // this, /api/sessions returns ~90KB per session × N sessions; first
+    // paint blocks on parsing 200KB+ of JSON the list never reads.
+    // The detail endpoint /api/sessions/:id returns the full session.
+    const HEAVY_FIELDS = new Set(['timeline', 'filesRead', 'filesModified']);
+    const slimmed = sliced.map((s) => {
+      const o = s as Record<string, unknown>;
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(o)) {
+        if (!HEAVY_FIELDS.has(k)) out[k] = o[k];
+      }
+      return out;
+    });
+    jsonOk(res, slimmed.length > limit ? slimmed.slice(-limit) : slimmed);
+  });
+
+  // Task #17 (D3): currently-live session list with metadata. Sourced from
+  // LiveSessionRegistry (touch-based liveness within a 3-minute window) so
+  // the Today selector can default to the most-recently-active session even
+  // when nothing has been persisted to disk yet. The dashboard owner sees
+  // every live session — Fix 3 partitioned per-session buffer files but the
+  // registry is in-memory and shared via this MCP, so the data is one
+  // authoritative read.
+  //
+  // Falls back to the in-memory tool call buffer for `startTime` (oldest
+  // observed timestamp for that session) since the registry only tracks
+  // last-activity. When a session's first event hasn't reached the buffer
+  // yet, startTime defaults to lastActivity (or now() if both are missing).
+  routes.set('GET /api/sessions/live', (_req, res) => {
+    if (!deps.liveSessionRegistry) return unavailable(res, 'liveSessionRegistry');
+    // Filter out synthetic session identities used by --local / proxy modes
+    // (`local-<ts>`, `proxy-<ts>`). They're MCP-internal bookkeeping IDs,
+    // not real Claude Code sessions, so they shouldn't appear as clickable
+    // rows in the dashboard's live-sessions selector. The real user sessions
+    // (with proper session_ids resolved via the breadcrumb / CLAUDE_JOB_DIR
+    // path) are what users want to see and click.
+    const ids = deps.liveSessionRegistry
+      .getLiveSessions()
+      .filter((id) => !isSyntheticSessionId(id));
+    const records = deps.toolCallBuffer?.getRecords() ?? [];
+    const perSession = new Map<string, { firstTs: number; lastTs: number }>();
+    for (const r of records) {
+      const sid = (r as { sessionId?: string | null }).sessionId;
+      if (!sid) continue;
+      const ts = (r as { timestamp?: number }).timestamp ?? 0;
+      if (!ts) continue;
+      const entry = perSession.get(sid);
+      if (entry) {
+        if (ts < entry.firstTs) entry.firstTs = ts;
+        if (ts > entry.lastTs) entry.lastTs = ts;
+      } else {
+        perSession.set(sid, { firstTs: ts, lastTs: ts });
+      }
+    }
+    const sessions = ids.map((id) => {
+      const stats = perSession.get(id);
+      const lastActivity =
+        deps.liveSessionRegistry?.getLastActivity?.(id) ?? stats?.lastTs ?? Date.now();
+      return {
+        sessionId: id,
+        sessionName: deps.liveSessionRegistry?.getSessionName(id) ?? null,
+        startTime: stats?.firstTs ?? lastActivity,
+        lastActivity,
+      };
+    });
+    // Most-recently-active first so the Today selector can default to
+    // sessions[0] without re-sorting on the client.
+    sessions.sort((a, b) => b.lastActivity - a.lastActivity);
+    jsonOk(res, sessions);
+  });
+
+  // Task #17 (D3): cross-session aggregate KPIs for the Today view. Reads:
+  //   1. every per-session buffer-*.jsonl in read-only mode (post-Fix-3
+  //      each MCP only drains its own; the dashboard owner needs the union)
+  //   2. completed session JSONs at ~/.nr-ai-observe/sessions/ (loaded via
+  //      sessionStore.loadTodaySessions())
+  //   3. the in-memory tool call buffer (events from this MCP that have
+  //      already been processed but not yet persisted)
+  //
+  // The minute-bucketed sparkline starts at 00:00 local and runs through
+  // the current minute. Aggregate `avgDurationMs` is the simple mean over
+  // every observed durationMs across all three sources.
+  //
+  // Caching: dashboards poll this endpoint every 5–10s; both reads (peek
+  // every buffer-*.jsonl + load every today-session JSON) hit disk and
+  // walk the full result. Cache the response in a 5-second bucket so a
+  // single tab burst plus a couple of mirror tabs collapses to one
+  // computation per bucket. TTL is short enough that the live-feel KPI
+  // (sparkline tail, tool-call count) lags by at most ~5s.
+  const AGGREGATE_TTL_MS = 5_000;
+  let aggregateCache: { bucket: number; payload: unknown } | null = null;
+
+  routes.set('GET /api/sessions/today/aggregate', (_req, res) => {
+    const now = Date.now();
+    const currentBucket = Math.floor(now / AGGREGATE_TTL_MS);
+    if (aggregateCache && aggregateCache.bucket === currentBucket) {
+      jsonOk(res, aggregateCache.payload);
+      return;
+    }
+
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const startMs = startOfDay.getTime();
+    const minuteBuckets = Math.max(1, Math.ceil((now - startMs) / 60_000));
+    const sparkline = new Array<number>(minuteBuckets).fill(0);
+
+    let toolCallCount = 0;
+    let totalDurationMs = 0;
+    let durationSamples = 0;
+    let totalCostUsd = 0;
+    let antiPatternCount = 0;
+    const sessionsSeen = new Set<string>();
+
+    // (1) live, undrained per-session buffer events
+    const peeked = deps.localStore?.peekAllBuffers() ?? [];
+    // Per-live-session earliest buffer timestamp (today only). Used as a
+    // cutoff against the persisted timeline below: persisted timeline
+    // entries strictly OLDER than the buffer's earliest event for the same
+    // sessionId are pre-resume (drained before persistence and replayed via
+    // saved JSON); entries at-or-after that cutoff are live buffer events
+    // we already counted in step (1) and must not double-count.
+    //
+    // In practice the resume-after-shutdown flow doesn't keep the buffer
+    // alive across restarts (each MCP starts fresh), so this dedup is a
+    // belt-and-suspenders safety net rather than a load-bearing invariant.
+    const bufferStartBySession = new Map<string, number>();
+    for (const ev of peeked) {
+      const ts = typeof ev.timestamp === 'number' ? ev.timestamp : 0;
+      if (ts < startMs) continue;
+      const sid = ev.sessionId;
+      if (typeof sid === 'string' && sid.length > 0) {
+        sessionsSeen.add(sid);
+        const prev = bufferStartBySession.get(sid);
+        if (prev === undefined || ts < prev) bufferStartBySession.set(sid, ts);
+      }
+      // Hook events come through as either `pre`/`post`/`token`. We only
+      // count `post` events as completed tool calls — `pre` is the start
+      // marker and `token` is a cost event with no tool-call semantics.
+      if (ev.mode === 'post') {
+        toolCallCount++;
+        const idx = Math.floor((ts - startMs) / 60_000);
+        if (idx >= 0 && idx < sparkline.length) sparkline[idx]++;
+        const dur = typeof ev.durationMs === 'number' ? ev.durationMs : null;
+        if (dur !== null) {
+          totalDurationMs += dur;
+          durationSamples++;
+        }
+      }
+    }
+
+    // Hoist the live-session set out of the inner loop so we don't pay
+    // O(timeline × liveSessions) lookups per aggregate request.
+    const liveSet = new Set<string>(deps.liveSessionRegistry?.getLiveSessions() ?? []);
+
+    // (2) completed sessions persisted today
+    const todaySessions = deps.sessionStore?.loadTodaySessions() ?? [];
+    for (const raw of todaySessions) {
+      const session = raw as {
+        sessionId?: string;
+        toolCallCount?: number;
+        estimatedCostUsd?: number | null;
+        antiPatterns?: ReadonlyArray<unknown>;
+        timeline?: ReadonlyArray<{ timestamp: number; durationMs: number | null }>;
+      };
+      if (typeof session.sessionId === 'string') sessionsSeen.add(session.sessionId);
+      totalCostUsd += session.estimatedCostUsd ?? 0;
+      antiPatternCount += session.antiPatterns?.length ?? 0;
+
+      // Walk timeline entries within today. Persisted timelines and the
+      // buffer cover disjoint time ranges by construction (persistence
+      // runs at shutdown, after all events have been processed; buffer
+      // contents are undrained events). Even in the resume-after-shutdown
+      // case, the persisted JSON holds pre-shutdown events while the
+      // buffer holds post-resume events — disjoint timestamps. Use a
+      // per-session timestamp cutoff (earliest buffer event for that
+      // sessionId) as a defensive dedup so we never double-count if the
+      // ranges ever DO overlap.
+      if (session.timeline) {
+        const sid = session.sessionId ?? '';
+        const bufferCutoff = liveSet.has(sid) ? bufferStartBySession.get(sid) : undefined;
+        for (const entry of session.timeline) {
+          if (entry.timestamp < startMs) continue;
+          if (bufferCutoff !== undefined && entry.timestamp >= bufferCutoff) continue;
+          toolCallCount++;
+          const idx = Math.floor((entry.timestamp - startMs) / 60_000);
+          if (idx >= 0 && idx < sparkline.length) sparkline[idx]++;
+          if (entry.durationMs !== null) {
+            totalDurationMs += entry.durationMs;
+            durationSamples++;
+          }
+        }
+      }
+    }
+
+    // (3) include this MCP's own session_total cost from the cost tracker
+    // when present. This is the only authoritative source for the dashboard
+    // owner's session because per-session buffer events don't carry rolled-up
+    // pricing — token events hit the cost tracker, not the buffer.
+    // Single snapshot of the live session ID — used by both the cost and
+    // anti-pattern guards below to avoid calling getMetrics() twice and
+    // risking two different snapshots in the same request.
+    const liveSid = deps.sessionTracker?.getMetrics().sessionId;
+    const liveAlreadyPersisted = todaySessions.some(
+      (s) => (s as { sessionId?: string }).sessionId === liveSid,
+    );
+
+    const sessionCost = deps.costTracker?.getMetrics().sessionTotalCostUsd ?? null;
+    if (typeof sessionCost === 'number' && !liveAlreadyPersisted) {
+      totalCostUsd += sessionCost;
+    }
+
+    // Live session anti-patterns (in-memory, not yet persisted).
+    // Mirror the alreadyPersisted guard used for cost above: if this MCP's
+    // session is already in todaySessions, its anti-patterns were counted in
+    // the loop above — don't double-count.
+    if (deps.antiPatternDetector && !liveAlreadyPersisted) {
+      const live = deps.antiPatternDetector.getCurrentPatterns() as ReadonlyArray<unknown>;
+      antiPatternCount += live.length;
+    }
+
+    const avgDurationMs = durationSamples > 0 ? totalDurationMs / durationSamples : 0;
+
+    const payload = {
+      toolCallCount,
+      totalCostUsd: Math.round(totalCostUsd * 1000) / 1000,
+      antiPatternCount,
+      avgDurationMs: Math.round(avgDurationMs),
+      sessionCount: sessionsSeen.size,
+      sparkline: { startTimestamp: startMs, bucketSizeMs: 60_000, points: sparkline },
+    };
+    aggregateCache = { bucket: currentBucket, payload };
+    jsonOk(res, payload);
   });
 
   routes.set('GET /api/cost', (_req, res) => {
@@ -685,7 +915,6 @@ export function createApiHandler(
       const todaySessions = deps.sessionStore?.loadTodaySessions() ?? [];
       const historicalPeak = computeTodayPeakConcurrency(todaySessions);
       const livePeak = deps.concurrencyTracker.getPeakConcurrent();
-      const hourlySeries = computeHourlyConcurrency(todaySessions);
 
       const url = new URL(req.url ?? '/', 'http://localhost');
       const view = url.searchParams.get('view');
@@ -697,6 +926,16 @@ export function createApiHandler(
         since.setHours(0, 0, 0, 0);
         const allSessions = deps.sessionStore?.loadAllSessions?.({ since }) ?? [];
         const dailyPeaks = computeDailyPeakConcurrency(allSessions, days);
+        // Override today's bucket with the live peak — disk-derived
+        // concurrency only sees persisted (completed) sessions, so a
+        // dashboard with active concurrent sessions but nothing flushed
+        // to disk yet would otherwise report peak=0 for today.
+        if (dailyPeaks.length > 0 && livePeak > 0) {
+          const today = dailyPeaks[dailyPeaks.length - 1];
+          if (today.peak < livePeak) {
+            dailyPeaks[dailyPeaks.length - 1] = { ...today, peak: livePeak };
+          }
+        }
         jsonOk(res, { dailyPeaks });
         return;
       }
@@ -708,7 +947,11 @@ export function createApiHandler(
         current: deps.concurrencyTracker.getConcurrentCount(),
         peak: Math.max(livePeak, historicalPeak),
         allTimePeak: Math.max(livePeak, historicalPeak, allTimePeak),
-        timeSeries: hourlySeries,
+        // Live 30-second samples from LiveSessionRegistry. The previous
+        // implementation derived this from disk-persisted sessions only
+        // and reported empty until sessions ended — leaving the chart
+        // blank during exactly the windows it's most useful.
+        timeSeries: deps.concurrencyTracker.getConcurrencyTimeSeries(),
       });
     } catch {
       res.writeHead(500, { 'content-type': 'application/json' });
