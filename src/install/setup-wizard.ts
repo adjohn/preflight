@@ -567,10 +567,8 @@ export async function runSetupWizard(): Promise<void> {
       print(
         `  ${apiKeyVar} NEW_RELIC_ACCOUNT_ID=${accountId} nr-ai-mcp-server deploy-alerts --developer ${developer}${regionFlag}`,
       );
-    } else {
-      print(
-        `\nLocal mode: open the dashboard at http://127.0.0.1:${dashboardPort ?? 7777} once Claude Code starts.`,
-      );
+    } else if (mode === 'local') {
+      print(`\nLocal mode selected — dashboard and metrics will be available locally.`);
     }
 
     // The MCP server is launched automatically by Claude Code based on the
@@ -579,11 +577,12 @@ export async function runSetupWizard(): Promise<void> {
     // start a second process that competes with the auto-launched one for
     // the buffer file lock and produces interleaved metrics.
     print('\n✓ Setup complete.');
-    print('  Open Claude Code in a project — the MCP server starts automatically.');
-    if (mode === 'local') {
+    print('  Open or restart Claude Code — the MCP server starts automatically on launch.');
+    if (mode !== 'cloud') {
       print(
-        `  Metrics will appear at http://127.0.0.1:${dashboardPort ?? 7777} within ~30 seconds of your first tool call.`,
+        `  Dashboard is available at http://127.0.0.1:${dashboardPort ?? 7777} once Claude Code starts.`,
       );
+      print('  Metrics populate within ~30 seconds of your first tool call.');
     } else {
       print('  Metrics will appear in your New Relic dashboard within a few minutes.');
     }
