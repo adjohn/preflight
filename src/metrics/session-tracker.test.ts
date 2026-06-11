@@ -211,6 +211,35 @@ describe('SessionTracker', () => {
       expect(metrics.bashExitCodes).toEqual({});
     });
 
+    it('accumulates bashCallsByCategory across multiple Bash calls', () => {
+      const tracker = new SessionTracker('test-session');
+
+      tracker.recordToolCall(makeRecord({ toolName: 'Bash', bashCategory: 'git' }));
+      tracker.recordToolCall(makeRecord({ toolName: 'Bash', bashCategory: 'git' }));
+      tracker.recordToolCall(makeRecord({ toolName: 'Bash', bashCategory: 'test-runner' }));
+      tracker.recordToolCall(makeRecord({ toolName: 'Bash', bashCategory: 'build' }));
+      // Non-Bash with stray bashCategory should NOT contribute.
+      tracker.recordToolCall(makeRecord({ toolName: 'Read', bashCategory: 'git' }));
+      // Bash without a category should NOT crash and should NOT add to map.
+      tracker.recordToolCall(makeRecord({ toolName: 'Bash' }));
+
+      const metrics = tracker.getMetrics();
+      expect(metrics.bashCallsByCategory).toEqual({
+        git: 2,
+        'test-runner': 1,
+        build: 1,
+      });
+    });
+
+    it('clears bashCallsByCategory on reset', () => {
+      const tracker = new SessionTracker('test-session');
+      tracker.recordToolCall(makeRecord({ toolName: 'Bash', bashCategory: 'git' }));
+      expect(tracker.getMetrics().bashCallsByCategory).toEqual({ git: 1 });
+
+      tracker.reset('new-session');
+      expect(tracker.getMetrics().bashCallsByCategory).toEqual({});
+    });
+
     it('handles Bash commands without exitCode field', () => {
       const tracker = new SessionTracker('test-session');
 

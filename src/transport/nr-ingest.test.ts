@@ -173,6 +173,27 @@ describe('toolCallToNrEvent()', () => {
     expect(event.isBuildCommand).toBe(false);
   });
 
+  it('serializes bash classifier fields onto the AiToolCall event', () => {
+    // The whole point of the classifier is that its output reaches NR. The
+    // serializer relies on the index-signature spread loop, so this test
+    // proves the contract end-to-end.
+    const record = makeRecord({
+      toolName: 'Bash',
+      command: 'jest --watch',
+      bashCategory: 'test-runner',
+      bashLeading: 'jest',
+      bashDestructive: false,
+      bashNetwork: false,
+    } as Partial<ToolCallRecord>);
+
+    const event = toolCallToNrEvent(record, { developer: 'd', appName: 'a' });
+
+    expect(event.bashCategory).toBe('test-runner');
+    expect(event.bashLeading).toBe('jest');
+    expect(event.bashDestructive).toBe(false);
+    expect(event.bashNetwork).toBe(false);
+  });
+
   it('includes platform attribute defaulting to claude-code', () => {
     const record = makeRecord();
     const event = toolCallToNrEvent(record, { developer: 'd', appName: 'a' });

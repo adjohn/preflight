@@ -102,6 +102,24 @@ describe('handleGetSessionStats()', () => {
     expect(stats.avg_tool_duration_ms).toBe(Math.round((40 + 60 + 30 + 200 + 10) / 5));
   });
 
+  it('includes bash_calls_by_category in the response', () => {
+    const tracker = new SessionTracker('cat-session');
+    tracker.recordToolCall(
+      makeRecord({ toolName: 'Bash', bashCategory: 'git' } as Partial<ToolCallRecord>),
+    );
+    tracker.recordToolCall(
+      makeRecord({ toolName: 'Bash', bashCategory: 'git' } as Partial<ToolCallRecord>),
+    );
+    tracker.recordToolCall(
+      makeRecord({ toolName: 'Bash', bashCategory: 'test-runner' } as Partial<ToolCallRecord>),
+    );
+
+    const result = handleGetSessionStats(tracker);
+    const stats = JSON.parse(result.content[0].text);
+
+    expect(stats.bash_calls_by_category).toEqual({ git: 2, 'test-runner': 1 });
+  });
+
   it('returns zero avg_tool_duration_ms when no durations recorded', () => {
     const tracker = new SessionTracker('empty-session');
     tracker.recordToolCall(makeRecord({ durationMs: null }));

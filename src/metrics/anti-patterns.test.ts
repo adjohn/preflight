@@ -221,6 +221,67 @@ describe('Stuck loop detection', () => {
     expect(stuck[0].command).toBe('npm test');
     expect(stuck[0].repeatCount).toBe(4);
   });
+
+  it('attaches bashCategory to the stuck_loop pattern', () => {
+    const detector = new AntiPatternDetector();
+    const calls: ToolCallRecord[] = Array.from({ length: 4 }, () =>
+      makeRecord({
+        toolName: 'Bash',
+        command: 'npm test',
+        bashCategory: 'test-runner',
+      }),
+    );
+
+    const result = detector.analyze(calls);
+    const stuck = result.patterns.filter((p) => p.type === 'stuck_loop');
+    expect(stuck).toHaveLength(1);
+    expect(stuck[0].bashCategory).toBe('test-runner');
+  });
+
+  it('uses category-specific suggestion when bashCategory is test-runner', () => {
+    const detector = new AntiPatternDetector();
+    const calls: ToolCallRecord[] = Array.from({ length: 4 }, () =>
+      makeRecord({
+        toolName: 'Bash',
+        command: 'npm test',
+        bashCategory: 'test-runner',
+      }),
+    );
+
+    const result = detector.analyze(calls);
+    const stuck = result.patterns.filter((p) => p.type === 'stuck_loop');
+    expect(stuck[0].suggestion).toMatch(/test/i);
+    expect(stuck[0].suggestion).not.toMatch(/^The same command/);
+  });
+
+  it('uses category-specific suggestion for git stuck loops', () => {
+    const detector = new AntiPatternDetector();
+    const calls: ToolCallRecord[] = Array.from({ length: 4 }, () =>
+      makeRecord({
+        toolName: 'Bash',
+        command: 'git status',
+        bashCategory: 'git',
+      }),
+    );
+
+    const result = detector.analyze(calls);
+    const stuck = result.patterns.filter((p) => p.type === 'stuck_loop');
+    expect(stuck[0].suggestion).toMatch(/git/i);
+  });
+
+  it('falls back to generic suggestion when bashCategory is missing', () => {
+    const detector = new AntiPatternDetector();
+    const calls: ToolCallRecord[] = Array.from({ length: 4 }, () =>
+      makeRecord({ toolName: 'Bash', command: 'unknown-thing --flag' }),
+    );
+
+    const result = detector.analyze(calls);
+    const stuck = result.patterns.filter((p) => p.type === 'stuck_loop');
+    expect(stuck[0].bashCategory).toBeUndefined();
+    expect(stuck[0].suggestion).toBe(
+      'The same command is being run repeatedly — try a different approach',
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

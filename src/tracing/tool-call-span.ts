@@ -13,6 +13,13 @@ export function emitToolCallSpan(
   const tracer = getMcpTracer();
   const spanName = `mcp.tool.${record.toolName}`;
 
+  const isBash = record.toolName === 'Bash';
+  const bashCategory = typeof record.bashCategory === 'string' ? record.bashCategory : undefined;
+  const bashLeading = typeof record.bashLeading === 'string' ? record.bashLeading : undefined;
+  const bashDestructive =
+    typeof record.bashDestructive === 'boolean' ? record.bashDestructive : undefined;
+  const bashNetwork = typeof record.bashNetwork === 'boolean' ? record.bashNetwork : undefined;
+
   const span = tracer.startSpan(
     spanName,
     {
@@ -29,6 +36,10 @@ export function emitToolCallSpan(
           'mcp.tool.output_size_bytes': record.outputSizeBytes,
         }),
         ...(taskId && { 'ai.task.id': taskId }),
+        ...(isBash && bashCategory !== undefined && { 'bash.category': bashCategory }),
+        ...(isBash && bashLeading !== undefined && { 'bash.leading': bashLeading }),
+        ...(isBash && bashDestructive !== undefined && { 'bash.destructive': bashDestructive }),
+        ...(isBash && bashNetwork !== undefined && { 'bash.network': bashNetwork }),
       },
     },
     parentContext,

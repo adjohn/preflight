@@ -62,6 +62,7 @@ nr-ai-observatory/
       collector-script.ts           # nr-ai-observe binary (hook event collector)
       event-processor.ts            # Pairs pre/post hook events into ToolCallRecords
       tool-parsers.ts               # INPUT_PARSERS / OUTPUT_PARSERS for tool fields
+      bash-classifier.ts            # classifyBash() — coarse Bash command classifier (category/leading/isDestructive/isNetwork)
     metrics/                        # 19 analyzer classes
       session-tracker.ts            # Per-session tool call tracking
       cost-tracker.ts               # Token cost calculation (per-model)

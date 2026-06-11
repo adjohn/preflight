@@ -157,14 +157,27 @@ function detectSecurityAlert(
 ): SecurityAlert | undefined {
   const command = record.command as string | undefined;
   const filePath = record.filePath as string | undefined;
+  // Defense in depth: the classifier's verdict and the pattern lists are
+  // OR-ed together. Either layer flagging is enough to alert. We deliberately
+  // do NOT short-circuit on `bashDestructive === false` — the two layers can
+  // diverge (the classifier and the audit pattern list maintain independent
+  // regexes), so treating the classifier as authoritative would let a
+  // narrower classifier silently suppress a hit the audit list would have
+  // caught. Treat the classifier as additive, not authoritative, for
+  // security-critical decisions.
+  const classifierDestructive = record.bashDestructive === true;
+  const classifierNetwork = record.bashNetwork === true;
 
   // Destructive commands (critical) — check first, highest priority
-  if (command && matchesAny(command, destructivePatterns)) {
-    return {
-      severity: 'critical',
-      alertType: 'destructive_command',
-      description: `Destructive command detected: ${redactSensitive(command)}`,
-    };
+  if (command) {
+    const isDestructive = classifierDestructive || matchesAny(command, destructivePatterns);
+    if (isDestructive) {
+      return {
+        severity: 'critical',
+        alertType: 'destructive_command',
+        description: `Destructive command detected: ${redactSensitive(command)}`,
+      };
+    }
   }
 
   // Sensitive file access (high)
@@ -177,12 +190,15 @@ function detectSecurityAlert(
   }
 
   // External network request (medium) — only for Bash commands
-  if (command && matchesAny(command, networkPatterns)) {
-    return {
-      severity: 'medium',
-      alertType: 'external_network',
-      description: `External network request: ${redactSensitive(command)}`,
-    };
+  if (command) {
+    const isNetwork = classifierNetwork || matchesAny(command, networkPatterns);
+    if (isNetwork) {
+      return {
+        severity: 'medium',
+        alertType: 'external_network',
+        description: `External network request: ${redactSensitive(command)}`,
+      };
+    }
   }
 
   return undefined;

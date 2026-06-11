@@ -231,6 +231,7 @@ export function handleGetSessionStats(sessionTracker: SessionTracker, sessionTra
     unique_files_read: metrics.uniqueFilesRead,
     unique_files_modified: metrics.uniqueFilesWritten,
     bash_commands_run: metrics.bashCommandsRun,
+    bash_calls_by_category: metrics.bashCallsByCategory,
     search_queries: metrics.searchQueries,
     avg_tool_duration_ms: avgToolDurationMs,
   };

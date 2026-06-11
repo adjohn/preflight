@@ -31,6 +31,8 @@ export interface AntiPattern {
   readonly type: AntiPatternType;
   readonly file?: string;
   readonly command?: string;
+  /** Coarse Bash category (e.g. 'test-runner', 'build', 'git') when the pattern originates from a Bash call. */
+  readonly bashCategory?: string;
   readonly iterations?: number;
   readonly readCount?: number;
   readonly repeatCount?: number;
@@ -62,6 +64,25 @@ const DEFAULT_RE_READ_THRESHOLD = 3;
 const DEFAULT_STUCK_LOOP_THRESHOLD = 3;
 const DEFAULT_BLIND_EDIT_THRESHOLD = 3;
 const DEFAULT_OVER_DELEGATION_THRESHOLD = 3;
+
+// ---------------------------------------------------------------------------
+// Per-category guidance for stuck-loop detection
+// ---------------------------------------------------------------------------
+
+function stuckLoopSuggestion(bashCategory: string | undefined): string {
+  switch (bashCategory) {
+    case 'test-runner':
+      return 'Same test command keeps running — read the failure output before re-running, or change the test/code being verified';
+    case 'build':
+      return 'Same build command keeps running — re-running rarely fixes a build error; address the reported error';
+    case 'git':
+      return 'Same git command keeps running — re-running git commands rarely changes their output; check the working tree state';
+    case 'network':
+      return 'Same network request keeps being made — check the response body or change the request shape rather than retrying';
+    default:
+      return 'The same command is being run repeatedly — try a different approach';
+  }
+}
 
 // ---------------------------------------------------------------------------
 // AntiPatternDetector
@@ -206,22 +227,25 @@ export class AntiPatternDetector {
   // ---------------------------------------------------------------------------
 
   private detectStuckLoop(toolCalls: ToolCallRecord[]): AntiPattern[] {
-    const flagged = new Map<string, number>();
+    const flagged = new Map<string, { repeatCount: number; bashCategory?: string }>();
 
     let lastCommand: string | null = null;
+    let lastCategory: string | undefined;
     let consecutiveCount = 0;
 
     for (const call of toolCalls) {
       if (call.toolName === 'Bash') {
         const command = call.command as string | undefined;
+        const category = typeof call.bashCategory === 'string' ? call.bashCategory : undefined;
         if (command != null) {
           if (command === lastCommand) {
             consecutiveCount++;
             if (consecutiveCount >= this.stuckLoopThreshold) {
-              flagged.set(command, consecutiveCount);
+              flagged.set(command, { repeatCount: consecutiveCount, bashCategory: lastCategory });
             }
           } else {
             lastCommand = command;
+            lastCategory = category;
             consecutiveCount = 1;
           }
         }
@@ -231,12 +255,13 @@ export class AntiPatternDetector {
     }
 
     const patterns: AntiPattern[] = [];
-    for (const [command, repeatCount] of flagged) {
+    for (const [command, { repeatCount, bashCategory }] of flagged) {
       patterns.push({
         type: 'stuck_loop',
         command,
         repeatCount,
-        suggestion: 'The same command is being run repeatedly — try a different approach',
+        bashCategory,
+        suggestion: stuckLoopSuggestion(bashCategory),
       });
     }
 

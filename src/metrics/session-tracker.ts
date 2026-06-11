@@ -46,6 +46,8 @@ export interface SessionMetrics {
   uniqueFilesWritten: number;
   bashCommandsRun: number;
   bashExitCodes: Record<string, number>;
+  /** Per-bash-category call counts (e.g. git, test-runner, build). Only populated for Bash tool calls. */
+  bashCallsByCategory: Record<string, number>;
   searchQueries: number;
   toolCallTimeline: TimelineEntry[];
   /** True when the timeline was capped at MAX_TIMELINE_ENTRIES; callers should not assume they have the full history. */
@@ -109,6 +111,7 @@ export class SessionTracker {
   private readonly filesRead = new Set<string>();
   private readonly filesWritten = new Set<string>();
   private readonly bashExitCodes = new Map<number, number>();
+  private readonly bashCallsByCategory = new Map<string, number>();
   private timeline: TimelineEntry[] = [];
   private timelineEntryCount = 0;
 
@@ -185,6 +188,10 @@ export class SessionTracker {
       if (exitCode != null) {
         this.bashExitCodes.set(exitCode, (this.bashExitCodes.get(exitCode) ?? 0) + 1);
       }
+      const category = record.bashCategory as string | undefined;
+      if (typeof category === 'string' && category.length > 0) {
+        this.bashCallsByCategory.set(category, (this.bashCallsByCategory.get(category) ?? 0) + 1);
+      }
     }
 
     // Search tracking
@@ -231,6 +238,11 @@ export class SessionTracker {
       bashExitCodes[String(code)] = count;
     }
 
+    const bashCallsByCategory: Record<string, number> = {};
+    for (const [category, count] of this.bashCallsByCategory) {
+      bashCallsByCategory[category] = count;
+    }
+
     const overallSuccessRate =
       this.toolCallCount > 0 ? this.successCount / this.toolCallCount : null;
 
@@ -250,6 +262,7 @@ export class SessionTracker {
       uniqueFilesWritten: this.filesWritten.size,
       bashCommandsRun: this.bashCommandsRun,
       bashExitCodes,
+      bashCallsByCategory,
       searchQueries: this.searchQueries,
       toolCallTimeline: [...this.timeline],
       timelineTruncated: this.timelineEntryCount > this.timeline.length,
@@ -272,6 +285,12 @@ export class SessionTracker {
     for (const [tool, entry] of this.toolSuccessByTool) {
       const rate = entry.total > 0 ? entry.success / entry.total : 1;
       aggregator.record('ai.tool.success_rate', rate, { tool });
+    }
+
+    // Per-bash-category breakdown — emitted separately from generic tool
+    // counts so dashboards can split git vs test-runner vs build vs ...
+    for (const [category, count] of this.bashCallsByCategory) {
+      aggregator.record('ai.bash.call_count', count, { category });
     }
 
     // Session-level metrics
@@ -299,6 +318,7 @@ export class SessionTracker {
     this.filesRead.clear();
     this.filesWritten.clear();
     this.bashExitCodes.clear();
+    this.bashCallsByCategory.clear();
     this.timeline = [];
     this.timelineEntryCount = 0;
   }

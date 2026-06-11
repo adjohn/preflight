@@ -152,4 +152,58 @@ describe('emitToolCallSpan', () => {
     const attributes = (callArgs[1] as { attributes?: Record<string, unknown> })?.attributes;
     expect(attributes).not.toHaveProperty('ai.task.id');
   });
+
+  test('emits bash.* attributes for Bash tool call when classifier fields are present', () => {
+    const record = makeRecord({
+      toolName: 'Bash',
+      bashCategory: 'test-runner',
+      bashLeading: 'jest',
+      bashDestructive: false,
+      bashNetwork: false,
+    });
+    emitToolCallSpan(record, context.active());
+
+    const callArgs = mockTracer.startSpan.mock.calls[0] as unknown[];
+    const attributes = (callArgs[1] as { attributes?: Record<string, unknown> })?.attributes;
+    expect(attributes).toMatchObject({
+      'bash.category': 'test-runner',
+      'bash.leading': 'jest',
+      'bash.destructive': false,
+      'bash.network': false,
+    });
+  });
+
+  test('does NOT emit bash.* attributes for non-Bash tool calls (gating)', () => {
+    // Even if a stray bashCategory landed on a non-Bash record (it shouldn't,
+    // but defense in depth), the span must not advertise bash.* attributes.
+    const record = makeRecord({
+      toolName: 'Read',
+      bashCategory: 'git',
+      bashLeading: 'git',
+      bashDestructive: true,
+      bashNetwork: true,
+    });
+    emitToolCallSpan(record, context.active());
+
+    const callArgs = mockTracer.startSpan.mock.calls[0] as unknown[];
+    const attributes = (callArgs[1] as { attributes?: Record<string, unknown> })?.attributes;
+    expect(attributes).not.toHaveProperty('bash.category');
+    expect(attributes).not.toHaveProperty('bash.leading');
+    expect(attributes).not.toHaveProperty('bash.destructive');
+    expect(attributes).not.toHaveProperty('bash.network');
+  });
+
+  test('omits bash.* attributes for Bash calls that have no classifier fields', () => {
+    // If a Bash record arrives without bashCategory etc. (older recorder,
+    // proxy/replay path), no bash.* attrs should be emitted.
+    const record = makeRecord({ toolName: 'Bash' });
+    emitToolCallSpan(record, context.active());
+
+    const callArgs = mockTracer.startSpan.mock.calls[0] as unknown[];
+    const attributes = (callArgs[1] as { attributes?: Record<string, unknown> })?.attributes;
+    expect(attributes).not.toHaveProperty('bash.category');
+    expect(attributes).not.toHaveProperty('bash.leading');
+    expect(attributes).not.toHaveProperty('bash.destructive');
+    expect(attributes).not.toHaveProperty('bash.network');
+  });
 });

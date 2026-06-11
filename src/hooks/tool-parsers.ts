@@ -9,6 +9,8 @@
  * parsing error is caught and returns {}.
  */
 
+import { classifyBash } from './bash-classifier.js';
+
 type ToolFields = Record<string, string | number | boolean>;
 
 // ---------------------------------------------------------------------------
@@ -88,6 +90,15 @@ function parseBash(input: Record<string, unknown>): ToolFields {
     fields.isTestCommand = TEST_COMMAND_RE.test(input.command);
     fields.isBuildCommand = BUILD_COMMAND_RE.test(input.command);
     fields.isLintCommand = LINT_COMMAND_RE.test(input.command);
+
+    // Coarse classification for downstream telemetry: turns the polymorphic
+    // command string into a fixed category (git / test-runner / build / ...)
+    // so dashboards and trackers can bucket Bash by shape, not just by name.
+    const classification = classifyBash(input.command);
+    fields.bashCategory = classification.category;
+    fields.bashLeading = classification.leading;
+    fields.bashDestructive = classification.isDestructive;
+    fields.bashNetwork = classification.isNetwork;
   }
   if (typeof input.description === 'string') fields.commandDescription = input.description;
   if (typeof input.timeout === 'number') fields.commandTimeout = input.timeout;

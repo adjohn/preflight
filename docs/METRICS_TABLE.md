@@ -42,29 +42,38 @@ These events are emitted by the MCP server (`nr-ai-mcp-server`) when Claude Code
 
 Emitted for every tool call captured by the hook collector.
 
-| Field               | Type    | Description                                                                                               |
-| ------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
-| `eventType`         | string  | Always `"AiToolCall"`                                                                                     |
-| `timestamp`         | number  | Unix epoch milliseconds                                                                                   |
-| `tool`              | string  | Tool name (e.g., `Read`, `Edit`, `Bash`, `Grep`)                                                          |
-| `tool_use_id`       | string  | Unique tool use identifier from the AI assistant                                                          |
-| `success`           | boolean | Whether the tool call succeeded                                                                           |
-| `developer`         | string  | Developer identifier                                                                                      |
-| `app_name`          | string  | Application name (default: `nr-ai-mcp-server`)                                                            |
-| `session_id`        | string  | Session identifier (if available)                                                                         |
-| `team_id`           | string  | Team identifier (if configured)                                                                           |
-| `project_id`        | string  | Project identifier (derived from git remote or configured)                                                |
-| `org_id`            | string  | Organization identifier (if configured)                                                                   |
-| `platform`          | string  | Platform attribution (default: `claude-code`)                                                             |
-| `duration_ms`       | number  | Tool call duration in milliseconds (if available)                                                         |
-| `error_type`        | string  | Error classification (if failed)                                                                          |
-| `error`             | string  | Error message (if failed)                                                                                 |
-| `input_size_bytes`  | number  | Size of tool input (if available)                                                                         |
-| `output_size_bytes` | number  | Size of tool output (if available)                                                                        |
-| `input_hash`        | string  | Hash of tool input for deduplication (if available)                                                       |
-| `*`                 | varies  | Tool-specific fields from input/output parsers (e.g., `filePath`, `command`, `exitCode`, `isTestCommand`) |
+| Field               | Type    | Description                                                                                                                                                                |
+| ------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eventType`         | string  | Always `"AiToolCall"`                                                                                                                                                      |
+| `timestamp`         | number  | Unix epoch milliseconds                                                                                                                                                    |
+| `tool`              | string  | Tool name (e.g., `Read`, `Edit`, `Bash`, `Grep`)                                                                                                                           |
+| `tool_use_id`       | string  | Unique tool use identifier from the AI assistant                                                                                                                           |
+| `success`           | boolean | Whether the tool call succeeded                                                                                                                                            |
+| `developer`         | string  | Developer identifier                                                                                                                                                       |
+| `app_name`          | string  | Application name (default: `nr-ai-mcp-server`)                                                                                                                             |
+| `session_id`        | string  | Session identifier (if available)                                                                                                                                          |
+| `team_id`           | string  | Team identifier (if configured)                                                                                                                                            |
+| `project_id`        | string  | Project identifier (derived from git remote or configured)                                                                                                                 |
+| `org_id`            | string  | Organization identifier (if configured)                                                                                                                                    |
+| `platform`          | string  | Platform attribution (default: `claude-code`)                                                                                                                              |
+| `duration_ms`       | number  | Tool call duration in milliseconds (if available)                                                                                                                          |
+| `error_type`        | string  | Error classification (if failed)                                                                                                                                           |
+| `error`             | string  | Error message (if failed)                                                                                                                                                  |
+| `input_size_bytes`  | number  | Size of tool input (if available)                                                                                                                                          |
+| `output_size_bytes` | number  | Size of tool output (if available)                                                                                                                                         |
+| `input_hash`        | string  | Hash of tool input for deduplication (if available)                                                                                                                        |
+| `*`                 | varies  | Tool-specific fields from input/output parsers (e.g., `filePath`, `command`, `exitCode`, `isTestCommand`, `bashCategory`, `bashLeading`, `bashDestructive`, `bashNetwork`) |
 
 Source: `src/transport/nr-ingest.ts` — `toolCallToNrEvent()`
+
+Bash tool calls additionally carry four classifier fields:
+
+- `bashCategory` — one of `git`, `package-manager`, `test-runner`, `build`, `container`, `network`, `fs-op`, `search`, `custom-script`, `shell-other`
+- `bashLeading` — the resolved leading argv0 (after sudo / env-var stripping)
+- `bashDestructive` — `true` for recursive rm, force-push, dd, mkfs, drop/truncate, chmod 777, pipe-to-shell, etc. (`--force-with-lease` and `--force-if-includes` are NOT flagged)
+- `bashNetwork` — `true` when the leading command is a network client (curl/wget/ssh/...)
+
+Source: `src/hooks/bash-classifier.ts` — `classifyBash()`
 
 #### `AiMcpToolCall`
 
@@ -161,9 +170,9 @@ Emitted only when a security alert is triggered (subset of audit events).
 
 Security alert triggers:
 
-- **`destructive_command`** (critical): `rm -rf`, `git push --force`, `DROP TABLE`, pipe-to-shell patterns
+- **`destructive_command`** (critical): `rm -rf` (any recursive flag combo), `git push --force` (but NOT `--force-with-lease` / `--force-if-includes`), `DROP TABLE`, pipe-to-shell, etc. Detection is the OR of the bash classifier (`record.bashDestructive`) and the regex pattern list — defense in depth, neither layer alone is authoritative.
 - **`sensitive_file`** (high): `.env`, `.pem`, `.key`, `credentials`, `secret`, `.ssh`, `.npmrc`, `.pypirc`, `password`, `token` (path-boundary anchored)
-- **`external_network`** (medium): `curl`, `wget`, `nc`, `ssh` commands
+- **`external_network`** (medium): `curl`, `wget`, `nc`, `ssh` commands. Detection is the OR of the bash classifier (`record.bashNetwork`) and the regex pattern list.
 
 Source: `src/security/audit-trail.ts` — `securityAlertToNrEvent()`
 
@@ -300,13 +309,14 @@ Source: `src/transport/nr-ingest.ts` — `ingestContextSnapshot()`
 
 Recorded for each tool call as it happens.
 
-| Metric Name                        | Value      | Attributes                                            | How Computed                            |
-| ---------------------------------- | ---------- | ----------------------------------------------------- | --------------------------------------- |
-| `ai.tool.call_count`               | `1`        | `{tool, session_id?, team_id?, project_id?, org_id?}` | Incremented once per tool call          |
-| `ai.tool.duration_ms`              | duration   | `{tool, session_id?, team_id?, project_id?, org_id?}` | From `ToolCallRecord.durationMs`        |
-| `ai.tool.success`                  | `0` or `1` | `{tool, session_id?, team_id?, project_id?, org_id?}` | `record.success ? 1 : 0`                |
-| `ai.mcp.proxy_request_count`       | `1`        | `{server, method}`                                    | Incremented per proxy discovery request |
-| `ai.mcp.proxy_request_duration_ms` | duration   | `{server}`                                            | From `ProxyRequestRecord.durationMs`    |
+| Metric Name                        | Value      | Attributes                                                | How Computed                                                                                                                   |
+| ---------------------------------- | ---------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `ai.tool.call_count`               | `1`        | `{tool, session_id?, team_id?, project_id?, org_id?}`     | Incremented once per tool call                                                                                                 |
+| `ai.tool.duration_ms`              | duration   | `{tool, session_id?, team_id?, project_id?, org_id?}`     | From `ToolCallRecord.durationMs`                                                                                               |
+| `ai.tool.success`                  | `0` or `1` | `{tool, session_id?, team_id?, project_id?, org_id?}`     | `record.success ? 1 : 0`                                                                                                       |
+| `ai.bash.call_count`               | count      | `{category, session_id?, team_id?, project_id?, org_id?}` | Per-`bashCategory` call count for Bash tool calls (e.g. `git`, `test-runner`, `build`). Source: `SessionTracker.emitMetrics()` |
+| `ai.mcp.proxy_request_count`       | `1`        | `{server, method}`                                        | Incremented per proxy discovery request                                                                                        |
+| `ai.mcp.proxy_request_duration_ms` | duration   | `{server}`                                                | From `ProxyRequestRecord.durationMs`                                                                                           |
 
 Source: `src/transport/nr-ingest.ts` — `ingestToolCall()`, `ingestProxyRequest()`
 

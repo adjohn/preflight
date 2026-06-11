@@ -285,6 +285,29 @@ describe('handleGetAntiPatterns()', () => {
     expect(thrashing.suggestion).toBeDefined();
   });
 
+  it('includes bash_category on stuck_loop patterns', () => {
+    const taskDetector = new TaskDetector();
+    const antiPatterns = new AntiPatternDetector();
+
+    for (let i = 0; i < 4; i++) {
+      taskDetector.recordToolCall(
+        makeRecord({
+          toolName: 'Bash',
+          command: 'npm test',
+          bashCategory: 'test-runner',
+        } as Partial<ToolCallRecord>),
+      );
+    }
+    taskDetector.recordToolCall(makeRecord({ toolName: 'AskUserQuestion' }));
+
+    const result = handleGetAntiPatterns(taskDetector, antiPatterns);
+    const body = JSON.parse(result.content[0].text);
+
+    const stuck = body.find((p: { type: string }) => p.type === 'stuck_loop');
+    expect(stuck).toBeDefined();
+    expect(stuck.bash_category).toBe('test-runner');
+  });
+
   it('returns empty array when no tasks exist', () => {
     const taskDetector = new TaskDetector();
     const antiPatterns = new AntiPatternDetector();

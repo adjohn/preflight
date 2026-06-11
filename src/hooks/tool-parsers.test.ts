@@ -174,6 +174,52 @@ describe('parseToolSpecificFields', () => {
       expect(fields.commandTimeout).toBe(30000);
       expect(fields.runInBackground).toBe(true);
     });
+
+    it('attaches bashCategory / bashLeading / bashDestructive / bashNetwork from the classifier', () => {
+      const fields = parseToolSpecificFields('Bash', { command: 'git status' }, undefined);
+      expect(fields.bashCategory).toBe('git');
+      expect(fields.bashLeading).toBe('git');
+      expect(fields.bashDestructive).toBe(false);
+      expect(fields.bashNetwork).toBe(false);
+    });
+
+    it('flags destructive bash commands via bashDestructive', () => {
+      const fields = parseToolSpecificFields('Bash', { command: 'rm -rf /tmp/foo' }, undefined);
+      expect(fields.bashCategory).toBe('fs-op');
+      expect(fields.bashDestructive).toBe(true);
+    });
+
+    it('flags network bash commands via bashNetwork', () => {
+      const fields = parseToolSpecificFields(
+        'Bash',
+        { command: 'curl https://example.com' },
+        undefined,
+      );
+      expect(fields.bashCategory).toBe('network');
+      expect(fields.bashNetwork).toBe(true);
+    });
+
+    it.each([
+      ['cat foo.txt | grep bar', 'fs-op', 'cat'],
+      ['sudo rm -rf /tmp/x', 'fs-op', 'rm'],
+      ['NODE_ENV=test npm test', 'test-runner', 'npm'],
+      ['docker compose up && docker compose logs', 'container', 'docker'],
+      ['./scripts/deploy.sh', 'custom-script', './scripts/deploy.sh'],
+    ])('parser routes %s → category=%s, leading=%s through the classifier', (cmd, cat, leading) => {
+      const fields = parseToolSpecificFields('Bash', { command: cmd }, undefined);
+      expect(fields.bashCategory).toBe(cat);
+      expect(fields.bashLeading).toBe(leading);
+    });
+
+    it('parser does not flag git commit messages with quoted destructive substrings', () => {
+      const fields = parseToolSpecificFields(
+        'Bash',
+        { command: 'git commit -m "rm -rf legacy"' },
+        undefined,
+      );
+      expect(fields.bashCategory).toBe('git');
+      expect(fields.bashDestructive).toBe(false);
+    });
   });
 
   describe('Grep parser', () => {
