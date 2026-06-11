@@ -22,7 +22,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [],
-                "query": "SELECT sum(ai.cost.session_total_usd.sum) FROM Metric WHERE developer = {{developer}} SINCE 30 days ago TIMESERIES 1 day"
+                "query": "FROM AiCodingTask SELECT sum(estimated_cost_usd) AS 'Total Spend (USD)' WHERE developer = {{developer}} SINCE 30 DAYS AGO TIMESERIES 1 DAY"
               }
             ]
           }
@@ -42,7 +42,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [],
-                "query": "SELECT average(ai.efficiency.score.sum) FROM Metric WHERE developer = {{developer}} SINCE 30 days ago TIMESERIES 1 day"
+                "query": "FROM Metric SELECT average(ai.efficiency.score) AS 'Avg Efficiency Score' WHERE developer = {{developer}} SINCE 30 DAYS AGO TIMESERIES 1 DAY"
               }
             ]
           }
@@ -122,7 +122,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [],
-                "query": "SELECT sum(ai.cost.session_total_usd.sum) AS 'Total Spend (USD)' FROM Metric WHERE developer = {{developer}} SINCE 30 days ago"
+                "query": "FROM AiCodingTask SELECT sum(estimated_cost_usd) AS 'Total Spend (USD)' WHERE developer = {{developer}} SINCE 30 DAYS AGO"
               }
             ]
           }
@@ -142,7 +142,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [],
-                "query": "SELECT average(ai.efficiency.score.sum) AS 'Avg Efficiency Score' FROM Metric WHERE developer = {{developer}} SINCE 7 days ago"
+                "query": "FROM Metric SELECT average(ai.efficiency.score) AS 'Avg Efficiency Score' WHERE developer = {{developer}} SINCE THIS WEEK"
               }
             ]
           }
@@ -354,7 +354,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [],
-                "query": "SELECT max(ai.efficiency.score.max) AS 'Personal Best' FROM Metric WHERE developer = {{developer}} SINCE 90 days ago"
+                "query": "FROM Metric SELECT max(ai.efficiency.score) AS 'Personal Best' WHERE developer = {{developer}} SINCE 90 DAYS AGO"
               }
             ]
           }

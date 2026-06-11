@@ -22,7 +22,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [],
-                "query": "SELECT latest(ai.session.duration_ms.sum) / 60000 AS 'Minutes' FROM Metric WHERE session_id = {{session_id}} SINCE 1 hour ago"
+                "query": "FROM Metric SELECT latest(ai.session.duration_ms[sum]) / 60000 AS 'Minutes' WHERE session_id = {{session_id}} SINCE 1 hour ago"
               }
             ]
           }

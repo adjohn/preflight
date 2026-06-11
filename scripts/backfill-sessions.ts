@@ -289,14 +289,14 @@ async function main(): Promise<void> {
     runNrql(
       apiKey,
       accountId,
-      `SELECT average(ai.efficiency.score.sum) AS efficiencyScore ` +
-        `FROM Metric WHERE ${devFilter} SINCE ${since} FACET session_id LIMIT MAX`,
+      `FROM Metric SELECT average(ai.efficiency.score) AS efficiencyScore ` +
+        `WHERE ${devFilter} SINCE ${since} FACET session_id LIMIT MAX`,
     ),
     runNrql(
       apiKey,
       accountId,
-      `SELECT sum(ai.cost.session_total_usd.sum) AS estimatedCostUsd ` +
-        `FROM Metric WHERE ${devFilter} SINCE ${since} FACET session_id LIMIT MAX`,
+      `FROM Metric SELECT sum(ai.cost.session_total_usd) AS estimatedCostUsd ` +
+        `WHERE ${devFilter} SINCE ${since} FACET session_id LIMIT MAX`,
     ),
   ]);
   const efficiencyScores = new Map<string, number>();
