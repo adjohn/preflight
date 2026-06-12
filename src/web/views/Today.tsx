@@ -59,6 +59,7 @@ const SEVERITY_DOT: Record<AlertEvent['severity'], string> = {
 interface CostApiResponse {
   readonly cost: { readonly sessionTotalCostUsd?: number | null; readonly model?: string | null };
   readonly forecast: { readonly forecastEndOfDayUsd?: number | null } | null;
+  readonly sessionTodayUsd?: number | null;
 }
 
 interface HeatmapApiResponse {
@@ -342,7 +343,9 @@ export function Today(): JSX.Element {
                   ? null
                   : (cost?.forecastEodUsd ??
                     (costApi?.forecast?.forecastEndOfDayUsd != null
-                      ? persistedTodaySpend + costApi.forecast.forecastEndOfDayUsd
+                      ? todayTotal +
+                        costApi.forecast.forecastEndOfDayUsd -
+                        (costApi.sessionTodayUsd ?? 0)
                       : null))
               }
               hourlySpend={hourlySpend}
@@ -1167,7 +1170,10 @@ function computeTodaySpend(sessions: SessionSummary[]): number {
 function computeTodayToolCalls(sessions: SessionSummary[]): number {
   let total = 0;
   for (const s of sessions) {
-    if (s.startTime && isToday(s.startTime)) {
+    // isToday fast-path includes sessions that started today regardless of cost
+    // (cost may be null before token data arrives). todayPortionOfSession > 0
+    // additionally picks up cross-midnight sessions with non-null cost.
+    if ((s.startTime && isToday(s.startTime)) || todayPortionOfSession(s) > 0) {
       total += s.toolCallCount ?? 0;
     }
   }
@@ -1177,7 +1183,7 @@ function computeTodayToolCalls(sessions: SessionSummary[]): number {
 function computeTodayFlags(sessions: SessionSummary[]): number {
   let total = 0;
   for (const s of sessions) {
-    if (s.startTime && isToday(s.startTime)) {
+    if ((s.startTime && isToday(s.startTime)) || todayPortionOfSession(s) > 0) {
       total += s.antiPatterns?.length ?? 0;
     }
   }

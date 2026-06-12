@@ -981,7 +981,12 @@ export function createApiHandler(
     if (!deps.costTracker) return unavailable(res, 'costTracker');
     const cost = deps.costTracker.getMetrics();
     const forecast = deps.costForecast?.() ?? null;
-    jsonOk(res, { cost, forecast });
+    // sessionTodayUsd lets the client compute the correct EoD forecast fallback:
+    //   todayTotal + (forecastEndOfDayUsd − sessionTodayUsd) = todayTotal + projected
+    // Without it, the client would add persistedTodaySpend to forecastEndOfDayUsd and
+    // risk double-counting the live session when its snapshot is already in persisted data.
+    const sessionTodayUsd = deps.costTracker.getCostForDay?.(localDateKey(Date.now())) ?? null;
+    jsonOk(res, { cost, forecast, sessionTodayUsd });
   });
 
   routes.set('GET /api/anti-patterns', (_req, res) => {

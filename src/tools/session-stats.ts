@@ -458,7 +458,7 @@ export function registerPendingTools(
           type: 'text' as const,
           text: JSON.stringify({
             error: 'session_id not yet resolved',
-            hint: 'Make any tool call (Bash, Read, etc.) to populate the session breadcrumb.',
+            hint: 'Make any tool call (Bash, Read, etc.) to write the session breadcrumb. If only nr_observe_health and nr_observe_get_config are still visible after a tool call, exit and start a new Claude Code session — hooks installed during a running session do not take effect until a fresh start.',
           }),
         },
       ],

@@ -84,9 +84,13 @@ export function buildCostForecastFromInputs(
   const dayEndMs = dayStartMs + 86_400_000;
   const msUntilEndOfDay = Math.max(0, dayEndMs - nowMs);
 
-  // Daily-anchored EoD forecast when caller supplies today's spend +
-  // first-activity-of-day. Falls back to session rate otherwise.
-  let forecastEndOfDayUsd: number;
+  // Daily-anchored EoD/EoW forecast when caller supplies today's spend +
+  // first-activity-of-day. Both the day and week projections use the same
+  // effective rate and base so they are internally consistent: the week
+  // forecast is simply the day forecast extended to the full remaining week.
+  // Falls back to session rate/base when the daily anchor is absent.
+  let effectiveRateUsdPerMs: number;
+  let effectiveBaseUsd: number;
   if (
     typeof dailySpentUsd === 'number' &&
     dailySpentUsd >= 0 &&
@@ -94,11 +98,13 @@ export function buildCostForecastFromInputs(
     dailyFirstActivityMs > 0
   ) {
     const dailyElapsedMs = Math.max(1, nowMs - dailyFirstActivityMs);
-    const dailyRate = dailySpentUsd / dailyElapsedMs;
-    forecastEndOfDayUsd = dailySpentUsd + dailyRate * msUntilEndOfDay;
+    effectiveRateUsdPerMs = dailySpentUsd / dailyElapsedMs;
+    effectiveBaseUsd = dailySpentUsd;
   } else {
-    forecastEndOfDayUsd = sessionSpentUsd + sessionRateUsdPerMs * msUntilEndOfDay;
+    effectiveRateUsdPerMs = sessionRateUsdPerMs;
+    effectiveBaseUsd = sessionSpentUsd;
   }
+  const forecastEndOfDayUsd = effectiveBaseUsd + effectiveRateUsdPerMs * msUntilEndOfDay;
 
   // ISO week ends on Sunday. Convert local getDay() (0=Sun…6=Sat) to ISO day (1=Mon…7=Sun)
   // then compute remaining days: Sunday → 0 remaining, Monday → 6, …, Saturday → 1.
@@ -107,7 +113,7 @@ export function buildCostForecastFromInputs(
   const dayOfWeek = now.getDay();
   const isoDay = dayOfWeek === 0 ? 7 : dayOfWeek;
   const msUntilEndOfWeek = ((7 - isoDay) % 7) * 86_400_000 + msUntilEndOfDay;
-  const forecastEndOfWeekUsd = sessionSpentUsd + sessionRateUsdPerMs * msUntilEndOfWeek;
+  const forecastEndOfWeekUsd = effectiveBaseUsd + effectiveRateUsdPerMs * msUntilEndOfWeek;
 
   const SESSION_TARGET_MS = 8 * 60 * 60 * 1000;
   const msUntilSessionEnd = Math.max(0, SESSION_TARGET_MS - elapsedMs);

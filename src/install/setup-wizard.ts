@@ -577,12 +577,17 @@ export async function runSetupWizard(): Promise<void> {
     // start a second process that competes with the auto-launched one for
     // the buffer file lock and produces interleaved metrics.
     print('\n✓ Setup complete.');
-    print('  Open or restart Claude Code — the MCP server starts automatically on launch.');
+    print('  Start a new Claude Code session — the MCP server and hooks are loaded at session');
+    print('  start. If you ran this setup inside an existing session, exit and start a fresh one');
+    print('  for the hooks to take effect.');
     if (mode !== 'cloud') {
       print(
         `  Dashboard is available at http://127.0.0.1:${dashboardPort ?? 7777} once Claude Code starts.`,
       );
-      print('  Metrics populate within ~30 seconds of your first tool call.');
+      print(
+        '  On first launch you will see only nr_observe_health and nr_observe_get_config until',
+      );
+      print('  the first tool call fires the hook — all tools appear automatically after that.');
     } else {
       print('  Metrics will appear in your New Relic dashboard within a few minutes.');
     }

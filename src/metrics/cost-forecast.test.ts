@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { buildCostForecast } from './cost-forecast.js';
+import { buildCostForecast, buildCostForecastFromInputs } from './cost-forecast.js';
 
 describe('buildCostForecast', () => {
   it('returns null forecasts when elapsed time is < 1 ms', () => {
@@ -65,6 +65,42 @@ describe('buildCostForecast', () => {
     const startMs = Date.now() - elapsedMs;
     const f = buildCostForecast(1.0, startMs);
     expect(f.elapsedMs).toBeCloseTo(elapsedMs, -2);
+  });
+
+  describe('daily-anchored forecast', () => {
+    it('uses daily rate for both EoD and EoW when daily anchor is supplied', () => {
+      // Session started yesterday; today's activity started 2 h ago at $1/h daily rate.
+      const nowMs = new Date('2024-01-03T14:00:00.000Z').getTime(); // Wednesday 14:00 UTC
+      const sessionStartMs = nowMs - 16 * 60 * 60_000; // 16 h ago (crossed midnight)
+      const dailyFirstActivityMs = nowMs - 2 * 60 * 60_000; // 2 h ago
+      const dailySpentUsd = 2; // $1/h × 2 h
+      const f = buildCostForecastFromInputs(
+        { sessionSpentUsd: 10, sessionStartMs, dailySpentUsd, dailyFirstActivityMs },
+        nowMs,
+      );
+      // EoD and EoW must use the same daily rate — week remaining ≥ day remaining.
+      expect(f.forecastEndOfWeekUsd!).toBeGreaterThan(f.forecastEndOfDayUsd!);
+      // Both forecasts share the same base (dailySpentUsd=$2) and daily rate ($1/h).
+      // EoD: $2 + $1/h * msUntilEoD.  EoW: $2 + $1/h * msUntilEoW.
+      // Difference = $1/h * (msUntilEoW - msUntilEoD) = $1/h * daysRemaining * 24h.
+      // Wednesday → 4 days remaining (Thu + Fri + Sat + Sun).
+      const dailyRatePerMs = dailySpentUsd / (2 * 60 * 60_000);
+      const diff = f.forecastEndOfWeekUsd! - f.forecastEndOfDayUsd!;
+      const expectedDiff = dailyRatePerMs * 4 * 86_400_000;
+      expect(diff).toBeCloseTo(expectedDiff, 0);
+    });
+
+    it('EoD and EoW use session rate when daily anchor is absent', () => {
+      const nowMs = Date.now();
+      const sessionStartMs = nowMs - 60 * 60_000; // 1 h
+      const f = buildCostForecastFromInputs({ sessionSpentUsd: 1, sessionStartMs }, nowMs);
+      // Without anchor, session rate is used for both projections.
+      expect(f.rateUsdPerMs).toBeCloseTo(1 / (60 * 60_000), 10);
+      // EoD ≥ current spend (there is time remaining in the day).
+      expect(f.forecastEndOfDayUsd!).toBeGreaterThanOrEqual(f.spentUsd);
+      // EoW ≥ EoD (the week has at least as much time remaining as the day).
+      expect(f.forecastEndOfWeekUsd!).toBeGreaterThanOrEqual(f.forecastEndOfDayUsd!);
+    });
   });
 
   // ISO week (Mon–Sun) end-of-week math — one test per weekday.
