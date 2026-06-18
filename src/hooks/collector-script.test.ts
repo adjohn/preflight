@@ -402,7 +402,14 @@ describe('collector-script', () => {
     });
 
     it('redact() replaces GitHub tokens', () => {
-      expect(redact('ghp_1234567890abcdef')).toBe('[REDACTED]');
+      expect(redact('ghp_1234567890abcdef01234567890abcdef01')).toBe('[REDACTED]');
+    });
+
+    it('redact() replaces GitHub Apps installation tokens (ghs_)', () => {
+      const token = 'ghs_16C7e42F292c6912E7710c838347Ae178B4a';
+      expect(redact(token)).toBe('[REDACTED]');
+      expect(redact(`Authorization: ${token}`)).toContain('[REDACTED]');
+      expect(redact(`Authorization: ${token}`)).not.toContain(token);
     });
 
     it('redact() leaves normal text unchanged', () => {

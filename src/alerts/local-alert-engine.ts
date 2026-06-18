@@ -452,7 +452,9 @@ export class LocalAlertEngine {
         if (storedPeriodKey !== currentPeriodKey || sessionReset) {
           state.status = 'idle';
           const lastFiredAt = state.lastFiredAt;
-          state.lastFiredAt = now;
+          // Do not update lastFiredAt here — it must reflect the fire time so
+          // that the deduplicateSeconds window for the new period is measured
+          // from when the rule last fired, not when it cleared.
           state.firedPeriodKey = undefined;
           state.firedSpentUsd = undefined;
           out.push({

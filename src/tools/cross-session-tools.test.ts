@@ -836,6 +836,51 @@ describe('Cross-session tool handlers', () => {
     });
   });
 
+  // -------------------------------------------------------------------------
+  // Findings #1 & #2: team summary NRQL must not use cumulative gauge rollups
+  // -------------------------------------------------------------------------
+
+  describe('team summary NRQL uses correct attributes', () => {
+    it('cost query uses AiCodingTask not cumulative gauge sum', async () => {
+      const bodies: string[] = [];
+      const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
+        if (typeof init?.body === 'string') bodies.push(init.body);
+        return {
+          ok: true,
+          json: async () => ({ data: { actor: { account: { nrql: { results: [] } } } } }),
+        } as Response;
+      });
+      try {
+        await handleGetTeamSummary({ teamId: 'my-team', accountId: '12345', nrApiKey: 'test-key' });
+        const allBodies = bodies.join('\n');
+        expect(allBodies).not.toContain('ai.cost.session_total_usd.sum');
+        expect(allBodies).toContain('AiCodingTask');
+        expect(allBodies).toContain('ai.estimated_cost_usd');
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('efficiency query does not reference non-existent .sum rollup attribute', async () => {
+      const bodies: string[] = [];
+      const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
+        if (typeof init?.body === 'string') bodies.push(init.body);
+        return {
+          ok: true,
+          json: async () => ({ data: { actor: { account: { nrql: { results: [] } } } } }),
+        } as Response;
+      });
+      try {
+        await handleGetTeamSummary({ teamId: 'my-team', accountId: '12345', nrApiKey: 'test-key' });
+        const allBodies = bodies.join('\n');
+        expect(allBodies).not.toContain('ai.efficiency.score.sum');
+        expect(allBodies).toContain('ai.efficiency.score');
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+  });
+
   describe('toFiniteNumber (F-012)', () => {
     it('converts valid numbers', () => {
       expect(toFiniteNumber(123)).toBe(123);

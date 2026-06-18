@@ -5,7 +5,7 @@
 // The web test suite is primarily run via `npx vitest run` (see vitest.config.ts),
 // but this also passes under Jest when jest-environment-jsdom is available.
 
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { useAnimatedValue } from './useAnimatedValue';
 
 // jsdom does not implement matchMedia, so supportsAnimation() returns false
@@ -35,5 +35,57 @@ describe('useAnimatedValue', () => {
 
     rerender({ target: 20 });
     expect(result.current).toBe('20');
+  });
+
+  it('re-triggers animation on each target change (hasAnimated must reset)', () => {
+    // Enable animation by providing a matchMedia that reports no reduced-motion preference.
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query !== '(prefers-reduced-motion: reduce)',
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => true,
+    })) as typeof window.matchMedia;
+
+    // rAF: capture callbacks so we can invoke them manually
+    const rafCallbacks: Array<(t: number) => void> = [];
+    const originalRaf = window.requestAnimationFrame;
+    const originalCancelRaf = window.cancelAnimationFrame;
+    window.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = (() => undefined) as typeof window.cancelAnimationFrame;
+
+    try {
+      const { result, rerender } = renderHook(({ target }) => useAnimatedValue(target), {
+        initialProps: { target: 100 },
+      });
+
+      // First animation: fire one rAF frame at t=0 (start, value = 0)
+      expect(rafCallbacks.length).toBeGreaterThan(0);
+      const firstFrameCount = rafCallbacks.length;
+
+      // Rerender with new target — with the bug, no new rAF is scheduled
+      rerender({ target: 200 });
+
+      // Fix: a new rAF must have been scheduled for the second animation
+      expect(rafCallbacks.length).toBeGreaterThan(firstFrameCount);
+
+      // Snap to final value by running the last callback at t >> duration
+      const lastCb = rafCallbacks[rafCallbacks.length - 1]!;
+      act(() => {
+        lastCb(performance.now() + 100_000);
+      });
+      expect(result.current).toBe('200');
+    } finally {
+      window.matchMedia = originalMatchMedia;
+      window.requestAnimationFrame = originalRaf;
+      window.cancelAnimationFrame = originalCancelRaf;
+    }
   });
 });

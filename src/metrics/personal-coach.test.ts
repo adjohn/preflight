@@ -109,19 +109,38 @@ describe('PersonalCoach', () => {
     }
   });
 
-  it('highlights improvement when efficiency is above baseline', () => {
+  it('highlights improvement when efficiency is above baseline ([0,1] scale values)', () => {
+    // avgEfficiencyScore is stored as [0,1] (raw EfficiencyScorer output).
+    // delta = 0.80 - 0.60 = 0.20 which is >= 0.05 (5 percentage-point improvement).
+    // The threshold in code must compare against the scaled delta (×100), not raw delta.
     const summaries = [
-      makeWeeklySummary('2026-W04', developer, { avgEfficiencyScore: 80 }),
-      makeWeeklySummary('2026-W03', developer, { avgEfficiencyScore: 60 }),
-      makeWeeklySummary('2026-W02', developer, { avgEfficiencyScore: 60 }),
-      makeWeeklySummary('2026-W01', developer, { avgEfficiencyScore: 60 }),
+      makeWeeklySummary('2026-W04', developer, { avgEfficiencyScore: 0.8 }),
+      makeWeeklySummary('2026-W03', developer, { avgEfficiencyScore: 0.6 }),
+      makeWeeklySummary('2026-W02', developer, { avgEfficiencyScore: 0.6 }),
+      makeWeeklySummary('2026-W01', developer, { avgEfficiencyScore: 0.6 }),
     ];
     const gen = makeSummaryGenerator(summaries);
     const coach = new PersonalCoach(gen, developer);
     const result = coach.generate();
+    expect(result.status).toBe('ok');
     if (result.status === 'ok') {
-      expect(result.highlights.length).toBeGreaterThan(0);
-      expect(result.highlights[0]).toContain('efficiency');
+      expect(result.highlights.some((h) => h.toLowerCase().includes('efficiency'))).toBe(true);
+    }
+  });
+
+  it('flags efficiency regression against baseline ([0,1] scale values)', () => {
+    const summaries = [
+      makeWeeklySummary('2026-W04', developer, { avgEfficiencyScore: 0.5 }),
+      makeWeeklySummary('2026-W03', developer, { avgEfficiencyScore: 0.7 }),
+      makeWeeklySummary('2026-W02', developer, { avgEfficiencyScore: 0.7 }),
+      makeWeeklySummary('2026-W01', developer, { avgEfficiencyScore: 0.7 }),
+    ];
+    const gen = makeSummaryGenerator(summaries);
+    const coach = new PersonalCoach(gen, developer);
+    const result = coach.generate();
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.regressions.some((r) => r.toLowerCase().includes('efficiency'))).toBe(true);
     }
   });
 
@@ -169,6 +188,39 @@ describe('PersonalCoach', () => {
     }
   });
 
+  it('topRecommendation returns efficiency-specific message when score drops 5+ points vs baseline', () => {
+    // baseline avg = 0.75, this week = 0.60 → drop of 0.15 = 15 points on 0–100 scale (>5)
+    const summaries = [
+      makeWeeklySummary('2026-W04', developer, { avgEfficiencyScore: 0.6 }),
+      makeWeeklySummary('2026-W03', developer, { avgEfficiencyScore: 0.75 }),
+      makeWeeklySummary('2026-W02', developer, { avgEfficiencyScore: 0.75 }),
+      makeWeeklySummary('2026-W01', developer, { avgEfficiencyScore: 0.75 }),
+    ];
+    const gen = makeSummaryGenerator(summaries);
+    const coach = new PersonalCoach(gen, developer);
+    const result = coach.generate();
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.topRecommendation).toContain('Efficiency is below');
+    }
+  });
+
+  it('topRecommendation returns positive reinforcement when efficiency >= 70/100', () => {
+    const summaries = [
+      makeWeeklySummary('2026-W04', developer, { avgEfficiencyScore: 0.85 }),
+      makeWeeklySummary('2026-W03', developer, { avgEfficiencyScore: 0.85 }),
+      makeWeeklySummary('2026-W02', developer, { avgEfficiencyScore: 0.85 }),
+      makeWeeklySummary('2026-W01', developer, { avgEfficiencyScore: 0.85 }),
+    ];
+    const gen = makeSummaryGenerator(summaries);
+    const coach = new PersonalCoach(gen, developer);
+    const result = coach.generate();
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.topRecommendation).toContain('Strong week');
+    }
+  });
+
   it('ignores weeks where the developer has no sessions', () => {
     const summaryWithoutDev: WeeklySummary = {
       ...makeWeeklySummary('2026-W03', 'other_developer'),
@@ -198,6 +250,8 @@ describe('PersonalCoach', () => {
     const coach = new PersonalCoach(gen, developer);
     const result = coach.generate();
     if (result.status === 'ok') {
+      expect(typeof result.topRecommendation).toBe('string');
+      expect(result.topRecommendation.length).toBeGreaterThan(0);
       // Verify all numeric baseline metrics are finite numbers (not NaN or Infinity)
       expect(Number.isFinite(result.baseline.totalCostUsd)).toBe(true);
       expect(Number.isFinite(result.baseline.avgCostPerSession)).toBe(true);

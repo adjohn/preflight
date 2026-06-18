@@ -206,12 +206,12 @@ export class PersonalCoach {
   ): string[] {
     const highlights: string[] = [];
 
-    // Efficiency improvement vs baseline
+    // Efficiency improvement vs baseline (scores are [0,1]; scale to 0–100 for comparison)
     if (thisWeek.avgEfficiencyScore !== null && baseline.avgEfficiencyScore !== null) {
-      const delta = thisWeek.avgEfficiencyScore - baseline.avgEfficiencyScore;
+      const delta = (thisWeek.avgEfficiencyScore - baseline.avgEfficiencyScore) * 100;
       if (delta >= 5) {
         highlights.push(
-          `Your efficiency score this week (${thisWeek.avgEfficiencyScore.toFixed(0)}) is ${delta.toFixed(0)} points above your historical average.`,
+          `Your efficiency score this week (${(thisWeek.avgEfficiencyScore * 100).toFixed(0)}) is ${delta.toFixed(0)} points above your historical average.`,
         );
       }
     }
@@ -247,12 +247,12 @@ export class PersonalCoach {
   ): string[] {
     const regressions: string[] = [];
 
-    // Efficiency drop vs baseline
+    // Efficiency drop vs baseline (scores are [0,1]; scale to 0–100 for comparison)
     if (thisWeek.avgEfficiencyScore !== null && baseline.avgEfficiencyScore !== null) {
-      const delta = thisWeek.avgEfficiencyScore - baseline.avgEfficiencyScore;
+      const delta = (thisWeek.avgEfficiencyScore - baseline.avgEfficiencyScore) * 100;
       if (delta <= -5) {
         regressions.push(
-          `Efficiency score this week (${thisWeek.avgEfficiencyScore.toFixed(0)}) is ${Math.abs(delta).toFixed(0)} points below your historical average (${baseline.avgEfficiencyScore.toFixed(0)}).`,
+          `Efficiency score this week (${(thisWeek.avgEfficiencyScore * 100).toFixed(0)}) is ${Math.abs(delta).toFixed(0)} points below your historical average (${(baseline.avgEfficiencyScore * 100).toFixed(0)}).`,
         );
       }
     }
@@ -341,7 +341,7 @@ export class PersonalCoach {
       if (
         thisWeek.avgEfficiencyScore !== null &&
         baseline.avgEfficiencyScore !== null &&
-        thisWeek.avgEfficiencyScore < baseline.avgEfficiencyScore - 5
+        thisWeek.avgEfficiencyScore < baseline.avgEfficiencyScore - 0.05
       ) {
         return 'Efficiency is below your average. Try writing more specific task descriptions before starting a session.';
       }
@@ -349,7 +349,7 @@ export class PersonalCoach {
     }
 
     // No regressions — give a positive reinforcement message
-    if (thisWeek.avgEfficiencyScore !== null && thisWeek.avgEfficiencyScore >= 70) {
+    if (thisWeek.avgEfficiencyScore !== null && thisWeek.avgEfficiencyScore >= 0.7) {
       return 'Strong week. Consider documenting what worked well in your CLAUDE.md to lock in these patterns.';
     }
 

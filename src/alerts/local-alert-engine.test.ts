@@ -296,6 +296,76 @@ describe('LocalAlertEngine — budget rules', () => {
     expect(engine.getFiringRuleIds()).toEqual([]);
   });
 
+  it('does not spuriously clear when same-session cost equals firedSpentUsd (no false positive)', () => {
+    // sessionUsd can only increase within a session. If cost stays exactly at
+    // firedSpentUsd (no new spend since the fire), the rule must NOT clear.
+    // The sessionReset check uses strict < so same-session equality doesn't trigger.
+    const engine = new LocalAlertEngine();
+    engine.loadRules([makeBudgetRule({ threshold: 80 })]);
+
+    const t0 = 1700000000000;
+    // Fire at $4 (firedSpentUsd = 4)
+    engine.evaluate(
+      makeSnapshot({
+        cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 },
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
+      }),
+      t0,
+    );
+
+    // Next tick: same session, still $4, BudgetTracker deduped and didn't re-emit
+    const events = engine.evaluate(
+      makeSnapshot({ cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 } }),
+      t0 + 1000,
+    );
+    expect(events).toEqual([]);
+    expect(engine.getFiringRuleIds()).toEqual(['session-budget']);
+  });
+
+  it('re-fires in the new session after a clear', () => {
+    // After a session-reset clear, the engine is back to 'idle'. A new threshold
+    // crossing must fire a new event and set up fresh period tracking so subsequent
+    // duplicate crossings within the same new period are deduped correctly.
+    const engine = new LocalAlertEngine();
+    engine.loadRules([makeBudgetRule({ threshold: 80, deduplicateSeconds: 300 })]);
+
+    const t0 = 1700000000000;
+    engine.evaluate(
+      makeSnapshot({
+        cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 },
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
+      }),
+      t0,
+    );
+
+    // Session resets → clears
+    engine.evaluate(
+      makeSnapshot({ cost: { sessionUsd: 0, todayUsd: 0, weekUsd: 0 } }),
+      t0 + 10_000,
+    );
+
+    // New session crosses threshold — re-fire expected
+    const refireEvents = engine.evaluate(
+      makeSnapshot({
+        cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 },
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
+      }),
+      t0 + 30_000,
+    );
+    expect(refireEvents).toHaveLength(1);
+    expect(refireEvents[0]!.state).toBe('firing');
+
+    // Immediate duplicate crossing in the same new period must be deduped
+    const dupeEvents = engine.evaluate(
+      makeSnapshot({
+        cost: { sessionUsd: 4, todayUsd: 0, weekUsd: 0 },
+        budgetThresholds: [{ period: 'session', thresholdPct: 80, spentUsd: 4, budgetUsd: 5 }],
+      }),
+      t0 + 30_001,
+    );
+    expect(dupeEvents).toHaveLength(0);
+  });
+
   it('does not clear session rule while session cost stays above firing spentUsd', () => {
     const engine = new LocalAlertEngine();
     engine.loadRules([makeBudgetRule({ threshold: 80 })]);

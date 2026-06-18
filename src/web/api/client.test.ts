@@ -1,4 +1,4 @@
-import { fetchSessionCurrent, fetchAuditLog, qk } from './client';
+import { fetchSessionCurrent, fetchAuditLog, patchSettings, postDigestSend, qk } from './client';
 
 describe('api/client', () => {
   let originalFetch: typeof globalThis.fetch;
@@ -40,6 +40,26 @@ describe('api/client', () => {
     }) as unknown as typeof globalThis.fetch;
     await fetchAuditLog();
     expect(calledWith).toBe('/api/audit');
+  });
+
+  it('patchSettings throws HTTP status error when server returns non-JSON error body', async () => {
+    globalThis.fetch = (() =>
+      Promise.resolve(
+        new Response('<html>Bad Gateway</html>', { status: 502, statusText: 'Bad Gateway' }),
+      )) as typeof globalThis.fetch;
+    // Should throw an error with the HTTP status, not a SyntaxError from r.json()
+    await expect(patchSettings({ developer: 'test' })).rejects.toThrow(/502/);
+  });
+
+  it('postDigestSend throws HTTP status error when server returns non-JSON error body', async () => {
+    globalThis.fetch = (() =>
+      Promise.resolve(
+        new Response('<html>Service Unavailable</html>', {
+          status: 503,
+          statusText: 'Service Unavailable',
+        }),
+      )) as typeof globalThis.fetch;
+    await expect(postDigestSend()).rejects.toThrow(/503/);
   });
 
   it('qk produces stable React Query keys', () => {

@@ -185,6 +185,21 @@ describe('ToolSelectionScorer', () => {
     expect(metrics.unusedOutputCount).toBe(1);
   });
 
+  it('large Bash input following a Read does not falsely mark the Read as referenced', () => {
+    // A Bash call with a large script (>500 bytes) after a Read should NOT be treated as
+    // evidence that the Read output was incorporated. Without the fix, the size heuristic
+    // returns true and unusedOutputCount stays at 0 (false negative penalty).
+    const scorer = new ToolSelectionScorer({ unusedOutputSizeThreshold: 1000 });
+    const calls = [
+      makeRecord({ toolName: 'Read', filePath: '/config.ts', outputSizeBytes: 3000 }),
+      // Large Bash script — unrelated to the Read above
+      makeRecord({ toolName: 'Bash', inputSizeBytes: 2000, outputSizeBytes: 200 }),
+    ];
+
+    const metrics = scorer.scoreSession(calls);
+    expect(metrics.unusedOutputCount).toBe(1);
+  });
+
   it('does not penalize failed calls even with large output', () => {
     const scorer = new ToolSelectionScorer({ unusedOutputSizeThreshold: 1000 });
     const calls = [makeRecord({ toolName: 'Bash', success: false, outputSizeBytes: 5000 })];

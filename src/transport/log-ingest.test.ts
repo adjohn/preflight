@@ -199,6 +199,83 @@ describe('LogIngestManager', () => {
     expect(sentLogs[0]!.message).toBe('critical event');
   });
 
+  it('requeueBatch does not overflow when batch.length equals maxBufferSize', async () => {
+    // When batch.length === maxBufferSize, maxNew = 0 and slice(-0) === slice(0) returns
+    // the full array instead of []. The fix must guard against this.
+    const manager = new LogIngestManager(makeLogIngestOptions());
+    type PrivateManager = {
+      buffer: Array<{ timestamp: number; message: string; attributes: Record<string, unknown> }>;
+      maxBufferSize: number;
+      requeueBatch(
+        batch: Array<{ timestamp: number; message: string; attributes: Record<string, unknown> }>,
+      ): void;
+    };
+    const priv = manager as unknown as PrivateManager;
+    priv.maxBufferSize = 4;
+    // Buffer has 2 new entries
+    priv.buffer = [
+      { timestamp: 1, message: 'new-1', attributes: {} },
+      { timestamp: 2, message: 'new-2', attributes: {} },
+    ];
+    // Batch exactly fills the cap (batch.length === maxBufferSize === 4)
+    const failedBatch = [
+      { timestamp: 0, message: 'old-1', attributes: {} },
+      { timestamp: 0, message: 'old-2', attributes: {} },
+      { timestamp: 0, message: 'old-3', attributes: {} },
+      { timestamp: 0, message: 'old-4', attributes: {} },
+    ];
+    priv.requeueBatch(failedBatch);
+
+    // Buffer must not exceed maxBufferSize
+    expect(priv.buffer.length).toBeLessThanOrEqual(4);
+    // All 4 failed-batch entries should be present (batch fills the cap exactly)
+    const messages = priv.buffer.map((e) => e.message);
+    expect(messages).toContain('old-1');
+    expect(messages).toContain('old-4');
+  });
+
+  it('requeueBatch overflow drops new buffer entries, not the failed batch', async () => {
+    const manager = new LogIngestManager(makeLogIngestOptions());
+    // Force a tiny buffer so overflow is easy to trigger
+    type PrivateManager = {
+      buffer: Array<{ timestamp: number; message: string; attributes: Record<string, unknown> }>;
+      maxBufferSize: number;
+      requeueBatch(
+        batch: Array<{ timestamp: number; message: string; attributes: Record<string, unknown> }>,
+      ): void;
+    };
+    const priv = manager as unknown as PrivateManager;
+    priv.maxBufferSize = 5;
+
+    // Simulate: 3 "new" entries were added to the buffer while a send was in-flight
+    priv.buffer = [
+      { timestamp: 1, message: 'new-1', attributes: {} },
+      { timestamp: 2, message: 'new-2', attributes: {} },
+      { timestamp: 3, message: 'new-3', attributes: {} },
+    ];
+
+    // The failed batch has 4 entries that must be retried — higher priority than new entries
+    const failedBatch = [
+      { timestamp: 0, message: 'old-1', attributes: {} },
+      { timestamp: 0, message: 'old-2', attributes: {} },
+      { timestamp: 0, message: 'old-3', attributes: {} },
+      { timestamp: 0, message: 'old-4', attributes: {} },
+    ];
+    priv.requeueBatch(failedBatch);
+
+    // Total would be 7; trimmed to 5. All 4 failed-batch entries must survive.
+    // Only new entries overflow — newest kept: new-3.
+    const messages = priv.buffer.map((e) => e.message);
+    expect(messages).toContain('old-1');
+    expect(messages).toContain('old-2');
+    expect(messages).toContain('old-3');
+    expect(messages).toContain('old-4');
+    expect(messages).toContain('new-3');
+    expect(messages).not.toContain('new-1');
+    expect(messages).not.toContain('new-2');
+    expect(priv.buffer).toHaveLength(5);
+  });
+
   it('caps buffer at maxBufferSize on overflow', async () => {
     mockSendLogs.mockResolvedValue({ success: false, statusCode: 500, retryCount: 0 });
 

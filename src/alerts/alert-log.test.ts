@@ -156,6 +156,35 @@ describe('AlertLog — rotation', () => {
   });
 });
 
+describe('AlertLog — readRecent serialization', () => {
+  it('append called after readRecent waits for the read to finish', async () => {
+    // Verify this.pending is reassigned by readRecent: an append queued
+    // after readRecent must not start until doReadRecent completes.
+    const path = join(tmpDir, 'order-log.jsonl');
+    const log = new AlertLog({ path });
+    await log.append(makeEvent({ id: 'seed', firedAt: 1 }));
+
+    const order: string[] = [];
+
+    // Start a read — it should chain onto pending
+    const readPromise = log.readRecent(10).then((r) => {
+      order.push('read-done');
+      return r;
+    });
+
+    // Queue an append right after; it should wait for the read
+    const appendPromise = log.append(makeEvent({ id: 'after-read', firedAt: 2 })).then(() => {
+      order.push('append-done');
+    });
+
+    await Promise.all([readPromise, appendPromise]);
+
+    // read must complete before append (append waited for read via pending)
+    expect(order[0]).toBe('read-done');
+    expect(order[1]).toBe('append-done');
+  });
+});
+
 describe('AlertLog — file permissions', () => {
   it('creates the file with mode 0o600', async () => {
     const path = join(tmpDir, 'log.jsonl');

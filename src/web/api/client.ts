@@ -89,16 +89,14 @@ export const patchSettings = (body: SettingsPatch): Promise<unknown> =>
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   }).then(async (r) => {
-    const json = (await r.json()) as unknown;
     if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-    return json;
+    return (await r.json()) as unknown;
   });
 
 export const postDigestSend = (): Promise<unknown> =>
   fetch('/api/digest/send', { method: 'POST' }).then(async (r) => {
-    const json = (await r.json()) as unknown;
     if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-    return json;
+    return (await r.json()) as unknown;
   });
 
 export const qk = {

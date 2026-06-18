@@ -648,7 +648,7 @@ describe('api-handler GET /api/latency', () => {
 describe('api-handler GET /api/cost-per-outcome', () => {
   it('classifies sessions and returns outcome distribution', async () => {
     const fakeSessions = [
-      // failed_attempt: tests run but none passed
+      // failed_attempt: test command ran (testRunCount > 0) but exited non-zero (testPassCount === 0)
       {
         testRunCount: 2,
         testPassCount: 0,

@@ -1,5 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { writeFileSync, readFileSync, existsSync, statSync, unlinkSync, mkdirSync } from 'node:fs';
+import {
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  statSync,
+  accessSync,
+  constants,
+  unlinkSync,
+  mkdirSync,
+} from 'node:fs';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -112,7 +121,10 @@ export function resolveBinaryPath(): string | null {
   for (const dir of pathDirs) {
     const candidate = join(dir, 'nr-ai-observe');
     try {
-      if (statSync(candidate).isFile()) return candidate;
+      if (statSync(candidate).isFile()) {
+        accessSync(candidate, constants.X_OK);
+        return candidate;
+      }
     } catch {
       continue;
     }

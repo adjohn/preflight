@@ -425,8 +425,8 @@ export async function runDeployAlerts(opts: AlertsDeployOptions): Promise<number
     return 1;
   }
   const accountId = parseInt(accountIdStr, 10);
-  if (Number.isNaN(accountId)) {
-    out.write(`Error: NEW_RELIC_ACCOUNT_ID must be a number. Got: "${accountIdStr}"\n`);
+  if (Number.isNaN(accountId) || accountId <= 0 || String(accountId) !== accountIdStr.trim()) {
+    out.write(`Error: NEW_RELIC_ACCOUNT_ID must be a positive integer. Got: "${accountIdStr}"\n`);
     return 1;
   }
 

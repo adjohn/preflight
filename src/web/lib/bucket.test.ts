@@ -1,4 +1,5 @@
 import { bucketTimeline, autoBucketSize, buildDailyGrid } from './bucket.js';
+import { localDateKey } from '../../lib/date.js';
 
 describe('bucketTimeline', () => {
   it('distributes entries into correct buckets', () => {
@@ -56,9 +57,21 @@ describe('buildDailyGrid', () => {
       { startTime: today.getTime(), toolCallCount: 5 },
     ];
     const result = buildDailyGrid(sessions, 1);
-    const todayKey = today.toISOString().slice(0, 10);
+    const todayKey = localDateKey(today.getTime());
     const todayEntry = result.days.find((d) => d.date === todayKey);
     expect(todayEntry?.count).toBe(15);
+  });
+
+  it('attributes sessions to local day, not UTC day', () => {
+    // Create a local-midnight-spanning timestamp: 23:30 local time on a specific day.
+    // The UTC date may differ from the local date in offset timezones.
+    const localDay = new Date(2026, 0, 15, 23, 30, 0, 0); // Jan 15 23:30 local
+    const expectedKey = localDateKey(localDay.getTime()); // local date key
+    const sessions = [{ startTime: localDay.getTime(), toolCallCount: 7 }];
+    // Use a wide window so the day is always included
+    const result = buildDailyGrid(sessions, 52);
+    const entry = result.days.find((d) => d.date === expectedKey);
+    expect(entry?.count).toBe(7);
   });
 
   it('returns maxCount of at least 1', () => {

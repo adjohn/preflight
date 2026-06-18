@@ -173,6 +173,11 @@ async function nerdgraphRequest<T>(
   return json.data as T;
 }
 
+/** Escape a string for use in a Lucene query value (single-quoted). */
+export function escapeLuceneValue(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 async function findDashboardGuid(
   apiKey: string,
   url: string,
@@ -187,7 +192,7 @@ async function findDashboardGuid(
     url,
     FIND_DASHBOARD_QUERY,
     {
-      query: `type = 'DASHBOARD' AND name = '${name.replace(/'/g, "\\'")}' AND accountId = ${accountId}`,
+      query: `type = 'DASHBOARD' AND name = '${escapeLuceneValue(name)}' AND accountId = ${accountId}`,
     },
     fetchImpl,
   );
@@ -387,8 +392,8 @@ export async function runDeployDashboards(opts: DashboardDeployOptions): Promise
     return 1;
   }
   const accountId = parseInt(accountIdStr, 10);
-  if (Number.isNaN(accountId)) {
-    out.write(`Error: NEW_RELIC_ACCOUNT_ID must be a number, got: ${accountIdStr}\n`);
+  if (Number.isNaN(accountId) || accountId <= 0 || String(accountId) !== accountIdStr.trim()) {
+    out.write(`Error: NEW_RELIC_ACCOUNT_ID must be a positive integer, got: ${accountIdStr}\n`);
     return 1;
   }
 

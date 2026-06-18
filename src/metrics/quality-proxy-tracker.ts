@@ -66,6 +66,7 @@ export class QualityProxyTracker {
   private readonly events: QualityEvent[] = [];
   private lastEditFile: string | null = null;
   private lastEditTurn = 0;
+  private lastEditSuccess = false;
 
   constructor(options?: QualityProxyOptions) {
     this.bucketSize = options?.bucketSize ?? DEFAULT_BUCKET_SIZE;
@@ -91,11 +92,19 @@ export class QualityProxyTracker {
       }
     }
 
-    // Detect backtrack: Read of a file we recently edited
+    // Detect backtrack: Read of a recently-edited file only when the edit failed
+    // or a test failure prompted the re-read. A normal post-edit verification read
+    // (edit succeeded, no test failure) is not a backtrack.
     if (record.toolName === 'Read' && this.lastEditFile !== null) {
       const filePath = record.filePath as string | undefined;
       if (filePath === this.lastEditFile && turn - this.lastEditTurn <= 2) {
-        this.addEvent('backtrack', turn, record.toolName);
+        const recentTestFail = this.events.some(
+          (e) =>
+            e.signal === 'test_fail' && e.turnNumber > this.lastEditTurn && e.turnNumber < turn,
+        );
+        if (!this.lastEditSuccess || recentTestFail) {
+          this.addEvent('backtrack', turn, record.toolName);
+        }
       }
     }
 
@@ -107,6 +116,7 @@ export class QualityProxyTracker {
       }
       this.lastEditFile = (record.filePath as string) ?? null;
       this.lastEditTurn = turn;
+      this.lastEditSuccess = record.success ?? false;
     }
 
     if (record.toolName === 'Bash') {
@@ -166,6 +176,7 @@ export class QualityProxyTracker {
     this.events.length = 0;
     this.lastEditFile = null;
     this.lastEditTurn = 0;
+    this.lastEditSuccess = false;
   }
 
   private addEvent(signal: QualitySignal, turnNumber: number, toolName: string): void {

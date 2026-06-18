@@ -2,7 +2,8 @@ import type { WeeklySummary } from '../storage/weekly-summary.js';
 
 export function formatSlackDigest(summary: WeeklySummary): Record<string, unknown> {
   const totalCost = summary.totalCostUsd?.toFixed(4) ?? '—';
-  const avgEfficiency = summary.avgEfficiencyScore?.toFixed(1) ?? '—';
+  const avgEfficiency =
+    summary.avgEfficiencyScore != null ? (summary.avgEfficiencyScore * 100).toFixed(1) : '—';
   const topAntiPatternEntry = Object.entries(summary.antiPatternCounts ?? {}).sort(
     ([, a], [, b]) => b - a,
   )[0];

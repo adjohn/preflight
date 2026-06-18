@@ -245,14 +245,6 @@ export class ToolSelectionScorer {
       }
     }
 
-    // For any tool: if subsequent calls have non-trivial input that likely
-    // incorporates this output, consider it referenced. Check the next 5 calls.
-    const lookAhead = subsequentCalls.slice(0, 5);
-    for (const call of lookAhead) {
-      const inputSize = call.inputSizeBytes ?? 0;
-      if (inputSize > 500) return true;
-    }
-
     return false;
   }
 }

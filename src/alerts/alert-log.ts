@@ -70,6 +70,20 @@ export class AlertLog {
 
   async readRecent(limit: number): Promise<AlertEvent[]> {
     if (limit <= 0) return [];
+    // Chain through pending AND reassign it so subsequent appends wait for
+    // this read to finish. Without the reassignment, an append queued after
+    // readRecent() can still race: both chain off the same resolved predecessor
+    // and run concurrently — the append's rotation can then be observed by
+    // doReadRecent mid-rename.
+    const result = this.pending.then(() => this.doReadRecent(limit));
+    this.pending = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  private async doReadRecent(limit: number): Promise<AlertEvent[]> {
     const readLines = async (filePath: string): Promise<string[]> => {
       try {
         const data = await fs.readFile(filePath, 'utf8');

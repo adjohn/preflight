@@ -1,12 +1,16 @@
 import { jest, describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
-import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import * as nodeOs from 'node:os';
 import { join } from 'node:path';
 
 // Prevent real launchctl calls.
 jest.mock('node:child_process', () => ({ execFileSync: jest.fn(), execSync: jest.fn() }));
 // Point homedir() at a throw-away temp tree.
 const TEST_HOME = `/tmp/nr-schedule-test-${process.pid}`;
-jest.mock('node:os', () => ({ homedir: () => TEST_HOME }));
+jest.mock('node:os', () => {
+  const real = jest.requireActual<typeof import('node:os')>('node:os');
+  return { ...real, homedir: () => TEST_HOME };
+});
 
 import * as childProcess from 'node:child_process';
 import {
@@ -160,5 +164,17 @@ describe('resolveBinaryPath', () => {
     // This is a smoke test: we just verify the return type contract.
     const result = resolveBinaryPath();
     expect(typeof result === 'string' || result === null).toBe(true);
+  });
+
+  it('returns null for a non-executable file (mode 0o644)', () => {
+    const tmpDir = mkdtempSync(join(nodeOs.tmpdir(), 'schedule-test-'));
+    try {
+      const binaryPath = join(tmpDir, 'nr-ai-observe');
+      writeFileSync(binaryPath, '#!/usr/bin/env node\n', { mode: 0o644 });
+      process.env.PATH = tmpDir;
+      expect(resolveBinaryPath()).toBeNull();
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

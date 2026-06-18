@@ -171,12 +171,16 @@ export class LogIngestManager {
   }
 
   private requeueBatch(batch: NrLogEntry[]): void {
-    // Prepend failed batch so it retries before any new entries (FIFO order)
-    this.buffer = [...batch, ...this.buffer];
-    if (this.buffer.length > this.maxBufferSize) {
-      const dropped = this.buffer.length - this.maxBufferSize;
-      this.buffer = this.buffer.slice(-this.maxBufferSize);
-      logger.warn('Log buffer overflow — oldest entries dropped', { dropped });
+    // Trim new entries first so the failed batch (higher retry priority) is preserved.
+    // If the batch itself exceeds the cap, keep its most-recent entries.
+    const maxNew = Math.max(0, this.maxBufferSize - batch.length);
+    // Guard: slice(-0) === slice(0) returns the full array in JS; use [] when maxNew is 0.
+    const trimmedNew = maxNew === 0 ? [] : this.buffer.slice(-maxNew);
+    const trimmedBatch = batch.slice(-this.maxBufferSize);
+    const dropped = this.buffer.length - trimmedNew.length + (batch.length - trimmedBatch.length);
+    this.buffer = [...trimmedBatch, ...trimmedNew];
+    if (dropped > 0) {
+      logger.warn('Log buffer overflow — entries dropped', { dropped });
     }
   }
 }

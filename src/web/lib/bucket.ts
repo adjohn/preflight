@@ -42,21 +42,22 @@ export function buildDailyGrid(
   weeks: number,
 ): DailyGridResult {
   const now = new Date();
-  const startDate = new Date(now);
-  startDate.setUTCDate(startDate.getUTCDate() - weeks * 7);
-  startDate.setUTCHours(0, 0, 0, 0);
+  // Use local-time arithmetic so day boundaries match the server-side localDateKey() used
+  // for session bucketing. UTC boundaries would misattribute sessions near local midnight.
+  const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - weeks * 7);
 
   const dayMap = new Map<string, number>();
   const cursor = new Date(startDate);
   while (cursor <= now) {
-    dayMap.set(cursor.toISOString().slice(0, 10), 0);
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+    dayMap.set(key, 0);
+    cursor.setDate(cursor.getDate() + 1);
   }
 
   for (const s of sessions) {
     if (!s.startTime) continue;
     const d = new Date(typeof s.startTime === 'number' ? s.startTime : s.startTime);
-    const key = d.toISOString().slice(0, 10);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (dayMap.has(key)) {
       dayMap.set(key, (dayMap.get(key) ?? 0) + (s.toolCallCount ?? 0));
     }

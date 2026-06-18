@@ -217,6 +217,42 @@ describe('runDeployAlerts', () => {
     expect(out.text()).toContain('NEW_RELIC_ACCOUNT_ID');
   });
 
+  it('rejects negative NEW_RELIC_ACCOUNT_ID', async () => {
+    process.env.NEW_RELIC_ACCOUNT_ID = '-1';
+    const out = new CapturedStdout();
+    const code = await runDeployAlerts({
+      dryRun: false,
+      teardown: false,
+      update: false,
+      staging: false,
+      eu: false,
+      developer: null,
+      dataDir,
+      personalThresholdsOverride: PERSONAL_THRESHOLDS,
+      stdout: out,
+    });
+    expect(code).toBe(1);
+    expect(out.text()).toMatch(/account/i);
+  });
+
+  it('rejects partial-parse NEW_RELIC_ACCOUNT_ID (123abc)', async () => {
+    process.env.NEW_RELIC_ACCOUNT_ID = '123abc';
+    const out = new CapturedStdout();
+    const code = await runDeployAlerts({
+      dryRun: false,
+      teardown: false,
+      update: false,
+      staging: false,
+      eu: false,
+      developer: null,
+      dataDir,
+      personalThresholdsOverride: PERSONAL_THRESHOLDS,
+      stdout: out,
+    });
+    expect(code).toBe(1);
+    expect(out.text()).toMatch(/account/i);
+  });
+
   it('errors when NEW_RELIC_API_KEY is missing (non-dry-run)', async () => {
     process.env.NEW_RELIC_ACCOUNT_ID = '12345';
     delete process.env.NEW_RELIC_API_KEY;

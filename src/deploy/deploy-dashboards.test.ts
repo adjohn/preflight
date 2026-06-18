@@ -5,7 +5,26 @@ import {
   runDeployDashboards,
   injectAccountId,
   injectDeveloperDefault,
+  escapeLuceneValue,
 } from './deploy-dashboards.js';
+
+describe('escapeLuceneValue', () => {
+  it('escapes backslashes before single quotes', () => {
+    expect(escapeLuceneValue('AI\\Coding')).toBe('AI\\\\Coding');
+  });
+
+  it('escapes single quotes', () => {
+    expect(escapeLuceneValue("O'Brien")).toBe("O\\'Brien");
+  });
+
+  it('escapes backslash then single quote in the same string', () => {
+    expect(escapeLuceneValue("a\\'b")).toBe("a\\\\\\'b");
+  });
+
+  it('leaves plain names unchanged', () => {
+    expect(escapeLuceneValue('AI Coding Assistant')).toBe('AI Coding Assistant');
+  });
+});
 
 interface MockResponse {
   ok: boolean;

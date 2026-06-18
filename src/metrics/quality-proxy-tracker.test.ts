@@ -50,9 +50,29 @@ describe('QualityProxyTracker', () => {
     expect(metrics.testPassRate).toBeCloseTo(0.667, 2);
   });
 
-  it('detects backtracking (Read after Edit of same file)', () => {
+  it('does NOT count post-edit verification Read as backtrack when edit succeeded', () => {
+    // Edit(success) → Read same file within 2 turns is a normal verification, not a backtrack.
     const tracker = new QualityProxyTracker();
     tracker.recordToolCall(makeRecord({ toolName: 'Edit', filePath: '/a.ts', success: true }));
+    tracker.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/a.ts', success: true }));
+
+    const metrics = tracker.getMetrics();
+    expect(metrics.backtrackCount).toBe(0);
+  });
+
+  it('counts Read after failed Edit as backtrack', () => {
+    const tracker = new QualityProxyTracker();
+    tracker.recordToolCall(makeRecord({ toolName: 'Edit', filePath: '/a.ts', success: false }));
+    tracker.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/a.ts', success: true }));
+
+    const metrics = tracker.getMetrics();
+    expect(metrics.backtrackCount).toBe(1);
+  });
+
+  it('counts Read after successful Edit + test failure as backtrack', () => {
+    const tracker = new QualityProxyTracker();
+    tracker.recordToolCall(makeRecord({ toolName: 'Edit', filePath: '/a.ts', success: true }));
+    tracker.recordToolCall(makeRecord({ toolName: 'Bash', isTestCommand: true, success: false }));
     tracker.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/a.ts', success: true }));
 
     const metrics = tracker.getMetrics();

@@ -763,12 +763,12 @@ export async function handleGetTeamSummary(options: {
   try {
     [costRows, effRows, antiPatternRows] = await Promise.all([
       runNrql(
-        `SELECT sum(ai.cost.session_total_usd.sum) AS totalCost
-         FROM Metric WHERE team_id = '${safeTeamId}'
+        `SELECT sum(ai.estimated_cost_usd) AS totalCost
+         FROM AiCodingTask WHERE team_id = '${safeTeamId}'
          SINCE ${since} FACET developer LIMIT 50`,
       ),
       runNrql(
-        `SELECT average(ai.efficiency.score.sum) AS avgScore
+        `SELECT average(ai.efficiency.score) AS avgScore
          FROM Metric WHERE team_id = '${safeTeamId}'
          SINCE ${since} FACET developer LIMIT 50`,
       ),

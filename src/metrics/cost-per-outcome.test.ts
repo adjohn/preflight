@@ -555,7 +555,9 @@ describe('CostPerOutcomeAnalyzer', () => {
 });
 
 describe('classifySessionOutcome', () => {
-  it('returns failed_attempt when tests run but none pass', () => {
+  it('returns failed_attempt when test command ran but did not pass (non-zero exit)', () => {
+    // testRunCount/testPassCount track Bash test command runs, not individual test cases.
+    // testRunCount > 0 && testPassCount === 0 means the test command exited non-zero.
     const r = classifySessionOutcome({
       testRunCount: 3,
       testPassCount: 0,

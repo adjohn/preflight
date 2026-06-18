@@ -35,6 +35,13 @@ describe('formatSlackDigest', () => {
     expect(text).toContain('2.5000');
   });
 
+  it('displays efficiency score scaled to 0–100 (raw score is [0,1])', () => {
+    const payload = formatSlackDigest(makeWeeklySummary({ avgEfficiencyScore: 0.8 }));
+    const text = JSON.stringify(payload);
+    expect(text).toContain('80.0/100');
+    expect(text).not.toContain('0.8/100');
+  });
+
   it('handles null efficiency score gracefully', () => {
     const payload = formatSlackDigest(makeWeeklySummary({ avgEfficiencyScore: null }));
     expect(JSON.stringify(payload)).not.toContain('undefined');

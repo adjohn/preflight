@@ -40,7 +40,7 @@ export interface TrendData {
 export interface WeekComparison {
   readonly weekA: string;
   readonly weekB: string;
-  readonly efficiencyDelta: number;
+  readonly efficiencyDelta: number | null;
   readonly efficiencyPctChange: number | null;
   readonly costDelta: number;
   readonly costPctChange: number | null;
@@ -246,9 +246,8 @@ export class TrendAnalyzer {
     return {
       weekA,
       weekB,
-      efficiencyDelta: round((effB ?? 0) - (effA ?? 0), 3),
-      efficiencyPctChange:
-        effA === null && effB === null ? null : percentChange(effA ?? 0, effB ?? 0),
+      efficiencyDelta: effA !== null && effB !== null ? round(effB - effA, 3) : null,
+      efficiencyPctChange: effA !== null && effB !== null ? percentChange(effA, effB) : null,
       costDelta: round(aggB.cost - aggA.cost, 4),
       costPctChange: percentChange(aggA.cost, aggB.cost),
       taskSuccessDelta: round(aggB.taskSuccess - aggA.taskSuccess, 3),
@@ -337,8 +336,7 @@ export class TrendAnalyzer {
       if (hasPrev && prevAgg.cost > 0) {
         const pct = percentChange(prevAgg.cost, agg.cost);
         if (pct !== null) {
-          // Lower cost = improvement, so flip arrow
-          const arrow = pct <= 0 ? '\u2191' : '\u2193';
+          const arrow = pct >= 0 ? '\u2191' : '\u2193';
           costStr += ` (${arrow}${Math.abs(pct)}% vs prev)`;
         }
       }

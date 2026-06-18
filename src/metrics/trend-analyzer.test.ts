@@ -193,6 +193,36 @@ describe('TrendAnalyzer', () => {
     expect(comparison.taskSuccessDelta).toBe(0.25);
   });
 
+  it('compareWeeks returns null efficiencyPctChange when week A has no efficiency data', () => {
+    const analyzer = new TrendAnalyzer({ sessionStore: store });
+    const { start: startA } = getWeekDateRange('2026-W15');
+    const { start: startB } = getWeekDateRange('2026-W16');
+
+    // Week A: no efficiency score (efficiencyScore: null)
+    store.saveSession(
+      makeSummary({
+        sessionId: 'a-null-eff',
+        startTime: startA.getTime() + 43_200_000,
+        efficiencyScore: null,
+        estimatedCostUsd: 0.5,
+      }),
+    );
+    // Week B: has real efficiency data
+    store.saveSession(
+      makeSummary({
+        sessionId: 'b-real-eff',
+        startTime: startB.getTime() + 43_200_000,
+        efficiencyScore: 0.8,
+        estimatedCostUsd: 0.4,
+      }),
+    );
+
+    const comparison = analyzer.compareWeeks('2026-W15', '2026-W16');
+    // Both fields are null when one side has no data — no meaningful comparison is possible.
+    expect(comparison.efficiencyPctChange).toBeNull();
+    expect(comparison.efficiencyDelta).toBeNull();
+  });
+
   // ---------------------------------------------------------------------------
   // compareDeveloperToTeam
   // ---------------------------------------------------------------------------
@@ -314,10 +344,12 @@ describe('TrendAnalyzer', () => {
     expect(summary).toContain('Week 2026-W16');
     expect(summary).toContain('avg efficiency 0.72');
     expect(summary).toContain('total cost $0.84');
-    // Efficiency went up → ↑
-    expect(summary).toContain('\u2191');
-    // Cost went down → ↑ (improvement)
     expect(summary).toContain('vs prev');
+    // Efficiency went up → ↑ (value increased)
+    expect(summary).toContain('efficiency 0.72 (↑');
+    // Cost went DOWN (0.84 < 1.0) → directional arrow is ↓, not ↑ (old code flipped it).
+    expect(summary).toContain('cost $0.84 (↓');
+    expect(summary).not.toContain('cost $0.84 (↑');
   });
 
   // ---------------------------------------------------------------------------

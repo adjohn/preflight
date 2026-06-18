@@ -17,16 +17,14 @@ export function useAnimatedValue(target: number, options: AnimatedValueOptions =
   const shouldAnimate = enabled && supportsAnimation();
 
   const [current, setCurrent] = useState<number>(() => (shouldAnimate ? 0 : target));
-  const hasAnimated = useRef(false);
   const rafRef = useRef<number>(0);
 
   useEffect(() => {
-    if (!shouldAnimate || hasAnimated.current) {
+    if (!shouldAnimate) {
       setCurrent(target);
       return;
     }
 
-    hasAnimated.current = true;
     const start = performance.now();
 
     function tick(now: number): void {
