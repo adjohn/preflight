@@ -1,37 +1,94 @@
-import { existsSync, renameSync } from 'node:fs';
+import { existsSync, renameSync, cpSync, rmSync, readSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { DEFAULT_STORAGE_PATH } from '../config.js';
+
+function promptYesNo(question: string): boolean {
+  process.stderr.write(question);
+  const buf = Buffer.alloc(256);
+  const n = readSync(0, buf, 0, buf.length, null);
+  return buf.subarray(0, n).toString().trim().toLowerCase().startsWith('y');
+}
 
 /**
  * One-time migration: rename ~/.nr-ai-observe → ~/.newrelic-preflight when the
  * new path doesn't exist yet. Safe to call from any entry point (install,
  * update, setup wizard, server startup). Runs silently on success; warns on
  * failure but never aborts the caller.
+ *
+ * Pass interactive=true from CLI entry points (install, setup wizard) to
+ * prompt before merging when both paths exist. Non-interactive callers
+ * (server startup, update) print a notice instead.
  */
-export function migrateStoragePath(): void {
+export function migrateStoragePath(interactive = false): void {
   const oldPath = resolve(homedir(), '.nr-ai-observe');
   const newPath = DEFAULT_STORAGE_PATH;
   if (!existsSync(oldPath)) return;
   if (existsSync(newPath)) {
-    // Both paths exist — newPath may have been created by `preflight install`
-    // before the server was ever started. Warn whenever the old directory has
-    // ANY content (config.json, sessions/, alerts/, etc.) so the user can
-    // manually merge rather than silently losing configuration or history.
+    // Both paths exist — newPath was likely created by `preflight install` or
+    // server startup before migration ran.
     const hasOldContent =
       existsSync(resolve(oldPath, 'config.json')) ||
       existsSync(resolve(oldPath, 'sessions')) ||
       existsSync(resolve(oldPath, 'alerts')) ||
       existsSync(resolve(oldPath, 'weekly_summaries'));
-    if (hasOldContent) {
+    if (!hasOldContent) return;
+    if (!interactive || !process.stdin.isTTY) {
+      // Non-interactive or non-TTY stdin (server startup, launchd update, CI):
+      // surface the notice so the user sees it next time they run `preflight install`.
+      // Never prompt when stdin is not a TTY — readSync returns 0 on EOF rather
+      // than throwing, which would produce a misleading "Migration skipped" message.
       process.stderr.write(
         `[preflight] Notice: found old data at ${oldPath} but ${newPath} already exists.\n` +
-          `  To migrate your config, sessions, and alert rules, run:\n` +
+          `  Run \`preflight install\` in an interactive terminal to migrate your sessions, config, and alert rules.\n`,
+      );
+      return;
+    }
+    let confirmed = false;
+    try {
+      confirmed = promptYesNo(
+        `[preflight] Found old storage data at ${oldPath}.\n` +
+          `  Merge into ${newPath}? Existing files in the new location will not be overwritten. [y/N] `,
+      );
+    } catch {
+      // Unexpected stdin error — treat as "no"
+    }
+    if (!confirmed) {
+      process.stderr.write(
+        `[preflight] Migration skipped. To migrate manually:\n` +
+          `    cp -rn "${oldPath}/." "${newPath}/" || true\n` +
+          `    rm -r "${oldPath}"\n`,
+      );
+      return;
+    }
+    try {
+      cpSync(oldPath, newPath, { recursive: true, force: false, errorOnExist: false });
+    } catch (err) {
+      process.stderr.write(
+        `[preflight] Could not merge storage directories. To migrate manually:\n` +
           `    cp -rn "${oldPath}/." "${newPath}/" || true\n` +
           `    rm -r "${oldPath}"\n` +
-          `  (The || true suppresses exit code 1 from cp on macOS when files are skipped.)\n`,
+          `  Error: ${err instanceof Error ? err.message : String(err)}\n`,
       );
+      return;
     }
+    try {
+      rmSync(oldPath, { recursive: true, force: true });
+    } catch (err) {
+      // Copy succeeded — data is safe in newPath. Only cleanup failed.
+      process.stderr.write(
+        `[preflight] Sessions merged into ${newPath} but old directory could not be removed.\n` +
+          `  Safe to delete manually: rm -r "${oldPath}"\n` +
+          `  Error: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      return;
+    }
+    process.stderr.write(
+      `[preflight] Merged storage directory:\n` +
+        `  ${oldPath}\n` +
+        `  → ${newPath}\n` +
+        `  Your sessions, config, and alert rules have been moved automatically.\n`,
+    );
     return;
   }
   try {

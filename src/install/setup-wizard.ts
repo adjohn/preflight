@@ -188,7 +188,7 @@ function parseModeAnswer(raw: string, fallback: WizardMode): WizardMode {
 }
 
 export async function runSetupWizard(): Promise<void> {
-  migrateStoragePath();
+  migrateStoragePath(true);
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
   try {

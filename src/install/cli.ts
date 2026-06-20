@@ -220,7 +220,7 @@ function handleInstall(options: {
   accountId?: string;
   project?: boolean;
 }): void {
-  migrateStoragePath();
+  migrateStoragePath(true);
   const scope = options.project ? 'project' : 'user';
 
   // Resolve the full binary path at install time so hooks work in non-login
