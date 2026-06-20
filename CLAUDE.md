@@ -123,6 +123,7 @@ preflight/
     install/                        # Claude Code hook installation CLI
       cli.ts                        # preflight install/uninstall commands
       setup-wizard.ts               # preflight setup interactive wizard
+      migrate.ts                    # migrateStoragePath() — one-time rename ~/.nr-ai-observe → ~/.newrelic-preflight
     alerts/                         # Alert TypeScript types + validation tests
       types.ts                      # AlertConditionDefinition, AlertPolicyDefinition interfaces
       alerts.test.ts                # JSON structure validation (reads from ../alerts/)
@@ -309,7 +310,7 @@ See [COMMANDS_TABLE.md](./docs/COMMANDS_TABLE.md) for complete tool specificatio
 
 Config loading priority: **CLI > environment variables > config file > defaults**.
 
-The config file path defaults to `~/.preflight/config.json` or can be passed via `--config`.
+The config file path defaults to `~/.newrelic-preflight/config.json` or can be passed via `--config`.
 
 Key config interfaces:
 
@@ -382,7 +383,7 @@ SDK agent wrappers now support 6 AI providers:
 
 ## Storage
 
-All local persistence lives under `~/.preflight/` by default:
+All local persistence lives under `~/.newrelic-preflight/` by default:
 
 | Path                | Format     | Purpose                                                        |
 | ------------------- | ---------- | -------------------------------------------------------------- |

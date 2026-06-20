@@ -13,7 +13,7 @@ import { z } from 'zod';
 // ---------------------------------------------------------------------------
 
 const HOOK_MATCHER = '';
-const MCP_SERVER_KEY = 'preflight';
+const MCP_SERVER_KEY = 'newrelic-preflight';
 const MCP_SERVER_COMMAND = 'preflight';
 const COLLECTOR_COMMAND = 'preflight-collector';
 // Matches the hook commands this installer writes, in both bare-name and
@@ -226,6 +226,12 @@ export function mergeMcpConfig(
       ? { ...(result.mcpServers as Record<string, unknown>) }
       : {};
 
+  // Remove stale keys from previous installs so ~/.mcp.json doesn't accumulate
+  // duplicate server entries under old names.
+  for (const staleKey of ['preflight', 'nr-ai-observability']) {
+    delete mcpServers[staleKey];
+  }
+
   if (binPath !== null && binPath !== undefined) {
     // Resolved path available: merge new command/args into existing entry,
     // preserving any user-added fields (env, timeout, etc.).
@@ -288,6 +294,11 @@ export function removeMcpConfig(existing: Record<string, unknown>): Record<strin
   if (typeof result.mcpServers === 'object' && result.mcpServers !== null) {
     const mcpServers = { ...(result.mcpServers as Record<string, unknown>) };
     delete mcpServers[MCP_SERVER_KEY];
+    // Also remove stale keys from prior installs so uninstall is complete even
+    // when the user never ran `preflight install` after upgrading.
+    for (const staleKey of ['preflight', 'nr-ai-observability']) {
+      delete mcpServers[staleKey];
+    }
 
     if (Object.keys(mcpServers).length > 0) {
       result.mcpServers = mcpServers;

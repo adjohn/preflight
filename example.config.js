@@ -1,7 +1,7 @@
 /**
  * Example configuration for preflight.
  *
- * Copy this file to ~/.nr-ai-observe/config.json (as JSON, without comments)
+ * Copy this file to ~/.newrelic-preflight/config.json (as JSON, without comments)
  * and fill in your values. Every field is optional except licenseKey and accountId.
  *
  * Load priority: CLI flags > environment variables > config file > defaults.
@@ -84,8 +84,8 @@ export default {
 
   // Root directory for local storage (sessions, buffer, weekly summaries).
   // Env: NEW_RELIC_AI_MCP_STORAGE_PATH
-  // Default: ~/.nr-ai-observe
-  storagePath: '~/.nr-ai-observe',
+  // Default: ~/.newrelic-preflight
+  storagePath: '~/.newrelic-preflight',
 
   // Auto-purge session files older than this many days. null = keep forever.
   // Env: NEW_RELIC_AI_RETAIN_SESSIONS_DAYS

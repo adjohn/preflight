@@ -134,7 +134,7 @@ The foundation layer is synced from `nr-ai-typescript-shared`. Provides:
 
 - **Proxy** (`src/proxy/`) — HTTP proxy layer that forwards requests to upstream MCP servers while recording latency and tool call metrics.
 
-- **Storage** (`src/storage/`) — Local file persistence for session summaries and weekly aggregations under `~/.preflight/`.
+- **Storage** (`src/storage/`) — Local file persistence for session summaries and weekly aggregations under `~/.newrelic-preflight/`.
 
 - **Security** (`src/security/`) — Audit trail that classifies tool calls and flags sensitive file access or destructive commands; SSRF validation for outbound URLs.
 
@@ -403,7 +403,7 @@ preflight setup
 
 For cloud path, choose `cloud` and supply your license key, account ID, and (optionally) your user API key. For local path, choose `local`.
 
-**Checkpoint:** `cat ~/.preflight/config.json` shows the values you entered.
+**Checkpoint:** `cat ~/.newrelic-preflight/config.json` shows the values you entered.
 
 ### 3. Restart Claude Code
 
@@ -484,7 +484,7 @@ To remove all hooks and start fresh:
 
 ```bash
 preflight uninstall
-rm -rf ~/.preflight
+rm -rf ~/.newrelic-preflight
 
 # Cloud: remove dashboards and alerts from NR
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \

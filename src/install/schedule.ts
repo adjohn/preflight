@@ -27,7 +27,7 @@ function plistPath(): string {
 }
 
 function updateLogPath(): string {
-  return resolve(homedir(), '.nr-ai-observe', 'update.log');
+  return resolve(homedir(), '.newrelic-preflight', 'update.log');
 }
 
 function buildPlist(binaryPath: string, hour: number, minute: number): string {

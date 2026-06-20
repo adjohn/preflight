@@ -29,6 +29,7 @@ import {
   generateNrConfig,
 } from './install-helper.js';
 import { validateConfigFile, DEFAULT_STORAGE_PATH } from '../config.js';
+import { migrateStoragePath } from './migrate.js';
 import {
   installSchedule,
   removeSchedule,
@@ -36,7 +37,7 @@ import {
   resolveBinaryPath,
 } from './schedule.js';
 
-const NR_CONFIG_DIR = resolve(homedir(), '.nr-ai-observe');
+const NR_CONFIG_DIR = resolve(homedir(), '.newrelic-preflight');
 const NR_CONFIG_PATH = resolve(NR_CONFIG_DIR, 'config.json');
 
 function print(msg = ''): void {
@@ -128,6 +129,7 @@ function findRepoRoot(): string | null {
 // ---------------------------------------------------------------------------
 
 function handleUpdate(): void {
+  migrateStoragePath();
   const repoRoot = findRepoRoot();
   if (!repoRoot) {
     print(
@@ -143,7 +145,9 @@ function handleUpdate(): void {
     execFileSync('git', ['pull'], { cwd: repoRoot, stdio: 'inherit' });
     print('\n→ npm run build');
     execFileSync('npm', ['run', 'build'], { cwd: repoRoot, stdio: 'inherit' });
-    print('\n✓ Update complete. Restart Claude Code to pick up the new version.');
+    print('\n✓ Update complete.');
+    print('  Restart Claude Code to pick up the new version.');
+    print('  Run `preflight install` to update the MCP server key in ~/.mcp.json.');
   } catch {
     print('\n✗ Update failed. Check the output above for details.');
     process.exit(1);
@@ -188,7 +192,7 @@ function handleSchedule(options: { time?: string; disable?: boolean }): void {
     const hh = String(hour).padStart(2, '0');
     const mm = String(minute).padStart(2, '0');
     print(`✓ Daily auto-update scheduled for ${hh}:${mm}.`);
-    print(`  Log: ${homedir()}/.nr-ai-observe/update.log`);
+    print(`  Log: ${homedir()}/.newrelic-preflight/update.log`);
     return;
   }
 
@@ -216,6 +220,7 @@ function handleInstall(options: {
   accountId?: string;
   project?: boolean;
 }): void {
+  migrateStoragePath();
   const scope = options.project ? 'project' : 'user';
 
   // Resolve the full binary path at install time so hooks work in non-login
@@ -408,7 +413,7 @@ export function createInstallProgram(): Command {
   program
     .command('validate')
     .description('Check the config file for unknown fields, type errors, and typos')
-    .option('--config <path>', 'Path to config file (default: ~/.nr-ai-observe/config.json)')
+    .option('--config <path>', 'Path to config file (default: ~/.newrelic-preflight/config.json)')
     .action(handleValidate);
 
   program

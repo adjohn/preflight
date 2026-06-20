@@ -87,7 +87,7 @@ describe('generateMcpServerEntry', () => {
     const entry = generateMcpServerEntry();
 
     expect(entry).toEqual({
-      preflight: { command: 'preflight', args: ['--stdio'] },
+      'newrelic-preflight': { command: 'preflight', args: ['--stdio'] },
     });
   });
 
@@ -95,14 +95,14 @@ describe('generateMcpServerEntry', () => {
     const entry = generateMcpServerEntry('/usr/local/bin/preflight');
 
     expect(entry).toEqual({
-      preflight: { command: '/usr/local/bin/preflight', args: ['--stdio'] },
+      'newrelic-preflight': { command: '/usr/local/bin/preflight', args: ['--stdio'] },
     });
   });
 
   it('falls back to bare command when binPath is null', () => {
     const entry = generateMcpServerEntry(null);
 
-    expect(entry['preflight']).toEqual({
+    expect(entry['newrelic-preflight']).toEqual({
       command: 'preflight',
       args: ['--stdio'],
     });
@@ -336,7 +336,7 @@ describe('mergeMcpConfig', () => {
 
     expect(result.mcpServers).toBeDefined();
     const servers = result.mcpServers as Record<string, unknown>;
-    expect(servers['preflight']).toEqual({
+    expect(servers['newrelic-preflight']).toEqual({
       command: 'preflight',
       args: ['--stdio'],
     });
@@ -353,7 +353,7 @@ describe('mergeMcpConfig', () => {
 
     const servers = result.mcpServers as Record<string, unknown>;
     expect(servers['my-server']).toEqual({ command: 'my-mcp', args: [] });
-    expect(servers['preflight']).toBeDefined();
+    expect(servers['newrelic-preflight']).toBeDefined();
   });
 
   it('is idempotent', () => {
@@ -370,7 +370,7 @@ describe('mergeMcpConfig', () => {
 
     const servers = withAbsolute.mcpServers as Record<string, unknown>;
     expect(Object.keys(servers)).toHaveLength(1);
-    expect(servers['preflight']).toEqual({
+    expect(servers['newrelic-preflight']).toEqual({
       command: '/usr/local/bin/preflight',
       args: ['--stdio'],
     });
@@ -381,7 +381,7 @@ describe('mergeMcpConfig', () => {
     const withNew = mergeMcpConfig(withOld, '/new/path/preflight');
 
     const servers = withNew.mcpServers as Record<string, unknown>;
-    expect(servers['preflight']).toEqual({
+    expect(servers['newrelic-preflight']).toEqual({
       command: '/new/path/preflight',
       args: ['--stdio'],
     });
@@ -390,7 +390,7 @@ describe('mergeMcpConfig', () => {
   it('preserves user-added fields when upgrading the MCP command', () => {
     const existing = {
       mcpServers: {
-        preflight: {
+        'newrelic-preflight': {
           command: 'preflight',
           args: ['--stdio', '--config', '/custom/config.json'],
           env: { MY_VAR: 'value' },
@@ -401,7 +401,7 @@ describe('mergeMcpConfig', () => {
     const result = mergeMcpConfig(existing, '/usr/local/bin/preflight');
 
     const servers = result.mcpServers as Record<string, unknown>;
-    expect(servers['preflight']).toEqual({
+    expect(servers['newrelic-preflight']).toEqual({
       command: '/usr/local/bin/preflight',
       args: ['--stdio'],
       env: { MY_VAR: 'value' },
@@ -413,7 +413,7 @@ describe('mergeMcpConfig', () => {
     const reInstalled = mergeMcpConfig(withAbsolute, null);
 
     const servers = reInstalled.mcpServers as Record<string, unknown>;
-    expect(servers['preflight']).toEqual({
+    expect(servers['newrelic-preflight']).toEqual({
       command: '/usr/local/bin/preflight',
       args: ['--stdio'],
     });
@@ -430,7 +430,7 @@ describe('mergeMcpConfig', () => {
 
     const servers = result.mcpServers as Record<string, unknown>;
     expect(servers['remote-server']).toEqual({ url: 'https://example.com/mcp', transport: 'sse' });
-    expect(servers['preflight']).toBeDefined();
+    expect(servers['newrelic-preflight']).toBeDefined();
   });
 });
 
@@ -439,11 +439,27 @@ describe('mergeMcpConfig', () => {
 // ---------------------------------------------------------------------------
 
 describe('removeMcpConfig', () => {
-  it('removes preflight, keeps other servers', () => {
+  it('removes newrelic-preflight, keeps other servers', () => {
+    const config = {
+      mcpServers: {
+        'my-server': { command: 'my-mcp', args: [] },
+        'newrelic-preflight': { command: 'preflight', args: ['--stdio'] },
+      },
+    };
+
+    const result = removeMcpConfig(config);
+
+    const servers = result.mcpServers as Record<string, unknown>;
+    expect(servers['my-server']).toBeDefined();
+    expect(servers['newrelic-preflight']).toBeUndefined();
+  });
+
+  it('removes stale preflight and nr-ai-observability keys on uninstall', () => {
     const config = {
       mcpServers: {
         'my-server': { command: 'my-mcp', args: [] },
         preflight: { command: 'preflight', args: ['--stdio'] },
+        'nr-ai-observability': { command: 'nr-ai-observe', args: ['--stdio'] },
       },
     };
 
@@ -452,6 +468,7 @@ describe('removeMcpConfig', () => {
     const servers = result.mcpServers as Record<string, unknown>;
     expect(servers['my-server']).toBeDefined();
     expect(servers['preflight']).toBeUndefined();
+    expect(servers['nr-ai-observability']).toBeUndefined();
   });
 
   it('removes mcpServers key when empty', () => {
@@ -508,7 +525,7 @@ describe('integration: install/uninstall cycle', () => {
     const mcp = JSON.parse(readFileSync(mcpPath, 'utf-8')) as Record<string, unknown>;
     expect(mcp.mcpServers).toBeDefined();
     const servers = mcp.mcpServers as Record<string, unknown>;
-    expect(servers['preflight']).toEqual({
+    expect(servers['newrelic-preflight']).toEqual({
       command: 'preflight',
       args: ['--stdio'],
     });
@@ -550,7 +567,7 @@ describe('integration: install/uninstall cycle', () => {
     const readBackMcp = JSON.parse(readFileSync(mcpPath, 'utf-8')) as Record<string, unknown>;
     const servers = readBackMcp.mcpServers as Record<string, unknown>;
     expect(servers['keep-server']).toBeDefined();
-    expect(servers['preflight']).toBeUndefined();
+    expect(servers['newrelic-preflight']).toBeUndefined();
   });
 
   it('generateNrConfig produces valid config file content', () => {

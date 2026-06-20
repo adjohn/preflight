@@ -472,13 +472,13 @@ export class NrIngestManager {
         endpoint: options.otlpEndpoint,
         headers: options.otlpHeaders,
         appName: options.appName,
-        clientName: 'preflight',
+        clientName: 'newrelic-preflight',
       });
       otlpEventBridge = new OtlpEventBridge({
         endpoint: options.otlpEndpoint,
         headers: options.otlpHeaders,
         appName: options.appName,
-        clientName: 'preflight',
+        clientName: 'newrelic-preflight',
       });
       // OtlpTransport no longer has an explicit start() — providers initialise in the constructor.
     }
@@ -516,7 +516,7 @@ export class NrIngestManager {
 
     const transportOptions: TransportOptions = {
       ...options.transportOptions,
-      clientName: 'preflight',
+      clientName: 'newrelic-preflight',
     };
 
     this.scheduler = new HarvestScheduler({

@@ -12,11 +12,12 @@ import {
 import { resolve, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { normalizeDeveloperName, ConfigFileSchema } from '../config.js';
+import { migrateStoragePath } from './migrate.js';
 import { runInstallCli, verifyBinaryOnPath } from './cli.js';
 import { installSchedule, resolveBinaryPath } from './schedule.js';
 import { validateLicenseKey, validateApiKey } from './key-validator.js';
 
-const DEFAULT_STORAGE_PATH = resolve(homedir(), '.nr-ai-observe');
+const DEFAULT_STORAGE_PATH = resolve(homedir(), '.newrelic-preflight');
 const CONFIG_PATH = resolve(DEFAULT_STORAGE_PATH, 'config.json');
 const ALERT_RULES_DEST = resolve(DEFAULT_STORAGE_PATH, 'alerts', 'rules.json');
 
@@ -50,7 +51,7 @@ function defaultStarterRulesSource(): string {
 export interface CopyStarterAlertRulesOptions {
   /** Path to the source examples/local-alert-rules.json. */
   readonly sourcePath: string;
-  /** Destination path (default: ~/.nr-ai-observe/alerts/rules.json). */
+  /** Destination path (default: ~/.newrelic-preflight/alerts/rules.json). */
   readonly destPath: string;
   /** Optional logger; otherwise no-op. */
   readonly logger?: WizardLogger;
@@ -187,6 +188,7 @@ function parseModeAnswer(raw: string, fallback: WizardMode): WizardMode {
 }
 
 export async function runSetupWizard(): Promise<void> {
+  migrateStoragePath();
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
   try {
@@ -471,7 +473,9 @@ export async function runSetupWizard(): Promise<void> {
     // overwrites a user-edited rules file.
     if (mode === 'local' || mode === 'both') {
       const copyAnswer = (
-        await rl.question('Copy starter alert rules to ~/.nr-ai-observe/alerts/rules.json? [Y/n]: ')
+        await rl.question(
+          'Copy starter alert rules to ~/.newrelic-preflight/alerts/rules.json? [Y/n]: ',
+        )
       )
         .trim()
         .toLowerCase();

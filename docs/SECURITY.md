@@ -116,7 +116,7 @@ License key and account ID must never appear in logger calls. The debug config l
 
 ### Storage permissions
 
-All directories and files created under `~/.preflight/` use restrictive permissions so other users on the same machine cannot read session data or tool call history:
+All directories and files created under `~/.newrelic-preflight/` use restrictive permissions so other users on the same machine cannot read session data or tool call history:
 
 ```typescript
 // Directories

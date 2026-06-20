@@ -32,7 +32,7 @@ import { createHash } from 'node:crypto';
 // ---------------------------------------------------------------------------
 
 const SESSION_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
-const DEFAULT_STORAGE_DIR = resolve(homedir(), '.nr-ai-observe');
+const DEFAULT_STORAGE_DIR = resolve(homedir(), '.newrelic-preflight');
 
 /**
  * Resolve the per-session buffer path. Validates sessionId against
@@ -59,14 +59,18 @@ function getBufferPath(sessionId?: string): string {
 // so runtime changes in tests (and future dynamic config) are respected.
 // This also eliminates the TOCTOU window between existsSync and readFileSync.
 const HIGH_SECURITY_FROM_FILE: boolean = (() => {
-  try {
-    const configPath = resolve(homedir(), '.nr-ai-observe', 'config.json');
-    if (existsSync(configPath)) {
-      const config = JSON.parse(readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
-      return config.highSecurity === true;
+  // Check new path first; fall back to legacy path during the migration window
+  // (between upgrade and first server startup that runs migrateStoragePath).
+  for (const dir of ['.newrelic-preflight', '.nr-ai-observe']) {
+    try {
+      const configPath = resolve(homedir(), dir, 'config.json');
+      if (existsSync(configPath)) {
+        const config = JSON.parse(readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
+        return config.highSecurity === true;
+      }
+    } catch {
+      // Silently ignore config read errors
     }
-  } catch {
-    // Silently ignore config read errors
   }
   return false;
 })();

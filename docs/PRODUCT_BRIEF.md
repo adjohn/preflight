@@ -565,7 +565,7 @@ The current product surface is dashboards + alerts + MCP tools + NRQL — no cus
 The original brief assumed an account-level entitlement, an activation UI showing projected billing, and per-developer / per-AI-tool opt-in gated by that entitlement. Labs assets work differently:
 
 - **No entitlement** — Labs assets don't use entitlements; any New Relic customer can install the asset from GitHub at any time. (Resolved in §8.)
-- **No activation UI** — Labs assets typically use config files and setup scripts, not in-platform UIs. The product's `~/.preflight/config.json` plus the `preflight install` / `preflight setup` CLIs serve this role. (§6 has been reframed accordingly.)
+- **No activation UI** — Labs assets typically use config files and setup scripts, not in-platform UIs. The product's `~/.newrelic-preflight/config.json` plus the `preflight install` / `preflight setup` CLIs serve this role. (§6 has been reframed accordingly.)
 - **Per-developer / per-tool activation already exists at the config level** — the `developer` field is normalised per-machine; AI client hooks are installed per-client; opt-in scope is per-tool by virtue of which adapters the customer enables.
 
 Net: the activation gaps in the original brief disappear once you reframe activation as "configure and install" rather than "click through an entitlement UI." The brief's §6 and §8 sections have been updated.

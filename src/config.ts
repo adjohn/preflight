@@ -70,7 +70,7 @@ export interface McpServerConfig {
   /**
    * Local-alerts engine config block. Defaults: enabled=true when mode is
    * not 'cloud', interval=30s, OS notifications off, log retention 10 MB,
-   * rules file at ~/.nr-ai-observe/alerts/rules.json.
+   * rules file at ~/.newrelic-preflight/alerts/rules.json.
    */
   readonly alerts: {
     readonly enabled: boolean;
@@ -81,7 +81,7 @@ export interface McpServerConfig {
   };
 }
 
-export const DEFAULT_STORAGE_PATH = resolve(homedir(), '.nr-ai-observe');
+export const DEFAULT_STORAGE_PATH = resolve(homedir(), '.newrelic-preflight');
 
 const DEFAULT_REDACTION_PATTERNS: RegExp[] = [
   /(?<![a-zA-Z])(?:API_KEY|SECRET|TOKEN|PASSWORD|PASSPHRASE|PRIVATE_KEY)(?![a-zA-Z])[\s]*[=:]\s*\S+/gi,
@@ -169,7 +169,7 @@ export const ConfigFileSchema = z
       .optional(),
   })
   // Pre-launch we want graceful tolerance of unknown keys so that an older
-  // ~/.nr-ai-observe/config.json doesn't brick the server on upgrade. Unknown
+  // ~/.newrelic-preflight/config.json doesn't brick the server on upgrade. Unknown
   // keys at every level (top-level, alerts, dashboard) are reported via
   // logger.warn at load time (see loadMcpConfig) so users still get a hint
   // without a fatal crash. Nested objects also use .passthrough() so the

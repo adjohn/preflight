@@ -244,7 +244,7 @@ NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
 
 ## Configuration
 
-The easiest way to configure is through the setup wizard (`preflight setup`). To edit manually, open `~/.preflight/config.json`:
+The easiest way to configure is through the setup wizard (`preflight setup`). To edit manually, open `~/.newrelic-preflight/config.json`:
 
 ```json
 {
@@ -341,10 +341,10 @@ NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
 
 ### Removing local data
 
-Session history and configuration are stored in `~/.preflight/`. To remove everything:
+Session history and configuration are stored in `~/.newrelic-preflight/`. To remove everything:
 
 ```bash
-rm -rf ~/.preflight
+rm -rf ~/.newrelic-preflight
 ```
 
 ### Unlinking the binary
@@ -371,7 +371,7 @@ In local mode:
 
 - The MCP server does **not** construct `NrIngestManager` and never makes outbound HTTP calls to NR.
 - An embedded dashboard boots at **http://127.0.0.1:7777** (configurable via `dashboard.port` or `NR_AI_DASHBOARD_PORT`).
-- All telemetry stays in `~/.preflight/` on your machine.
+- All telemetry stays in `~/.newrelic-preflight/` on your machine.
 - `licenseKey` and `accountId` are not required.
 
 **With Claude Code** (default): the server runs via the MCP connection (`--stdio`). You don't launch it manually — Claude Code starts it automatically when you open a session, because `preflight install` registered it as an MCP server. The dashboard stays alive as long as your Claude Code session is open.
@@ -404,7 +404,7 @@ Run `preflight setup` to choose a mode interactively.
 
 ## Local Alerts
 
-Local-mode users get threshold alerting evaluated in-process — no New Relic dependency. Rules live at `~/.preflight/alerts/rules.json`; a starter set is copied into place by the setup wizard.
+Local-mode users get threshold alerting evaluated in-process — no New Relic dependency. Rules live at `~/.newrelic-preflight/alerts/rules.json`; a starter set is copied into place by the setup wizard.
 
 For the full list of rule types, channel options, alert log configuration, and live reload behavior, see [ADVANCED.md](./docs/ADVANCED.md#local-alerts).
 

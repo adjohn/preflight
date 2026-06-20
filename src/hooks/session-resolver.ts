@@ -23,7 +23,7 @@ import { createLogger } from '../shared/index.js';
 const logger = createLogger('session-resolver');
 
 const SESSION_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
-const DEFAULT_STORAGE_DIR = resolve(homedir(), '.nr-ai-observe');
+const DEFAULT_STORAGE_DIR = resolve(homedir(), '.newrelic-preflight');
 const POLL_SCHEDULE_MS = [100, 200, 500, 1000, 2000];
 const STEADY_POLL_MS = 2000;
 const WARN_AFTER_MS = 60_000;

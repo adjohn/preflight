@@ -152,7 +152,7 @@ export interface AlertsDeployOptions {
   readonly fetchImpl?: typeof fetch;
   /**
    * Override personal thresholds. Production reads from
-   * `~/.preflight/config.json`; tests inject directly.
+   * `~/.newrelic-preflight/config.json`; tests inject directly.
    */
   readonly personalThresholdsOverride?: PersonalAlertThresholds;
   /** Stream for stdout writes — defaults to process.stdout. */
@@ -251,7 +251,7 @@ export function loadPersonalDefinitions(
 }
 
 export function loadPersonalThresholds(): PersonalAlertThresholds {
-  const configPath = resolve(homedir(), '.preflight', 'config.json');
+  const configPath = resolve(homedir(), '.newrelic-preflight', 'config.json');
   try {
     const file = JSON.parse(readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
     const alertsSection = file.alerts;

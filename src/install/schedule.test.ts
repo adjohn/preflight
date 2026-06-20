@@ -59,7 +59,7 @@ describe('installSchedule', () => {
   it('redirects stdout and stderr to update.log', () => {
     installSchedule('/usr/local/bin/preflight', 8, 0);
     const content = readFileSync(PLIST_PATH, 'utf-8');
-    expect(content).toContain('\.nr-ai-observe/update.log');
+    expect(content).toContain('.newrelic-preflight/update.log');
   });
 
   it('calls launchctl unload then load', () => {
@@ -115,9 +115,9 @@ const FIXTURE_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
     <integer>45</integer>
   </dict>
   <key>StandardOutPath</key>
-  <string>/Users/testuser/\.nr-ai-observe/update.log</string>
+  <string>/Users/testuser/.newrelic-preflight/update.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/testuser/\.nr-ai-observe/update.log</string>
+  <string>/Users/testuser/.newrelic-preflight/update.log</string>
   <key>RunAtLoad</key>
   <false/>
 </dict>

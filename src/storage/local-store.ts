@@ -49,7 +49,7 @@ export class LocalStore {
   private readonly sessionId: string | null;
 
   /**
-   * @param storagePath The base storage directory (e.g. ~/.nr-ai-observe).
+   * @param storagePath The base storage directory (e.g. ~/.newrelic-preflight).
    * @param bufferPathOrSessionId Either an explicit absolute buffer path
    *   (legacy / test override; takes precedence over sessionId) or a sessionId
    *   that scopes the per-session buffer file (`buffer-<sessionId>.jsonl`).

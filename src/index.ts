@@ -66,6 +66,7 @@ import { SessionSpan } from './tracing/session-span.js';
 import { TaskSpanTracker } from './tracing/task-span-tracker.js';
 import { emitToolCallSpan } from './tracing/tool-call-span.js';
 import type { CliOptions } from './types.js';
+import { migrateStoragePath } from './install/migrate.js';
 
 export { VERSION };
 export { NrMcpServer, createServer } from './server.js';
@@ -449,6 +450,8 @@ async function main(): Promise<void> {
     process.exit(subcommandExit);
   }
 
+  migrateStoragePath();
+
   const options = parseArgs(process.argv);
 
   // Propagate --log-level into the env var that createLogger() reads.
@@ -815,7 +818,7 @@ async function main(): Promise<void> {
     //   - cross-midnight prior sessions contribute only their today-portion
     //     (todayPortionOfSessionCost pro-rates by timeline overlap)
     //
-    // Cache TTL is 30 s so the disk scan over ~/.nr-ai-observe/sessions/ runs
+    // Cache TTL is 30 s so the disk scan over ~/.newrelic-preflight/sessions/ runs
     // at most twice a minute even when cost-updates fire on every token event.
     const PRIOR_COST_CACHE_TTL_MS = 30_000;
     // Capture a non-null reference so the refresh closures don't have to

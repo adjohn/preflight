@@ -53,9 +53,9 @@ Show the current server configuration with sensitive fields masked.
   "licenseKeyMasked": "175cae4b...NRAL",
   "nrApiKeyMasked": "NRAK-****",
   "region": "US",
-  "storagePath": "/Users/alice/.preflight",
+  "storagePath": "/Users/alice/.newrelic-preflight",
   "dashboardUrl": "https://one.newrelic.com/dashboards/...",
-  "configFilePath": "/Users/alice/.preflight/config.json"
+  "configFilePath": "/Users/alice/.newrelic-preflight/config.json"
 }
 ```
 
@@ -416,7 +416,7 @@ Source: `src/tools/workflow-tools.ts`
 
 ## Cross-Session Tools
 
-These tools query persisted session data from disk (`~/.preflight/sessions/`). They are only registered when `SessionStore` and related analyzers are available.
+These tools query persisted session data from disk (`~/.newrelic-preflight/sessions/`). They are only registered when `SessionStore` and related analyzers are available.
 
 ### `nr_observe_get_session_history`
 
@@ -454,7 +454,7 @@ Paginated list of past sessions with summary metrics.
 
 **Data source:** `SessionStore`
 
-**How it works:** Loads all session summary JSON files from `~/.preflight/sessions/`, applies optional date and developer filters, returns the last N sessions ordered by start time.
+**How it works:** Loads all session summary JSON files from `~/.newrelic-preflight/sessions/`, applies optional date and developer filters, returns the last N sessions ordered by start time.
 
 **Requires:** `SessionStore`
 
@@ -1584,7 +1584,7 @@ Register a Slack webhook URL to receive weekly AI coding cost and efficiency sum
 }
 ```
 
-**Data source:** Config file (`~/.preflight/config.json`)
+**Data source:** Config file (`~/.newrelic-preflight/config.json`)
 
 **How it works:**
 
@@ -1618,7 +1618,7 @@ Remove the registered Slack webhook for weekly digests.
 }
 ```
 
-**Data source:** Config file (`~/.preflight/config.json`)
+**Data source:** Config file (`~/.newrelic-preflight/config.json`)
 
 **How it works:**
 
