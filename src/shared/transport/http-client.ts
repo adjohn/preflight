@@ -35,7 +35,7 @@ function newRequestId(): string {
  * - `us` — default/global region (insights-collector.newrelic.com)
  * - `eu` — EU data center (insights-collector.eu01.nr-data.net)
  * - `gov` — FedRAMP / US gov cloud (gov-* hostnames)
- * - `staging` — internal staging environment (NR-internal use)
+ * - `staging` — New Relic staging environment (staging-api.newrelic.com)
  *
  * License-key prefix mapping: `us01` → us, `eu01` → eu, `gov01` → gov.
  * Legacy keys (no recognizable region prefix) default to `us`.
