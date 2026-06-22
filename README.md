@@ -456,7 +456,7 @@ Or set it in your config file as `digestWebhookUrl`, or configure it directly fr
 
 - **Node.js**: v22 or higher (`.nvmrc` pins v24 for development)
 - **New Relic account**: free tier works; you need a license key and a user API key
-- **An AI coding tool**: Claude Code, Cursor, Windsurf, Copilot, Zed, Continue.dev, or Amazon Q
+- **An AI coding tool**: Claude Code, Cursor, Windsurf, GitHub Copilot, Zed, Continue.dev, or Amazon Q
 
 ---
 
