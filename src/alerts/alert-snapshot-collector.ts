@@ -18,8 +18,8 @@ const logger = createLogger('alert-snapshot-collector');
  * - `toolFailures` is one entry per (tool, windowMs) tuple, same matching
  *   rule.
  *
- * Cost is currently session-cumulative (not a rolling window). v1.1 ships
- * with this approximation; v1.2 will add a true rolling-hour cost window.
+ * Cost is currently session-cumulative (not a rolling window). A true
+ * rolling-hour cost window is not yet implemented.
  */
 export interface AlertSnapshot {
   readonly timestamp: number;
@@ -74,8 +74,8 @@ export interface AlertSnapshotCollectorDeps {
   };
   /**
    * Thunk that returns the rolling cost forecast snapshot. Currently unused
-   * by the snapshot path (kept for symmetry with index.ts wiring); v1.2
-   * may consume it for true rolling-window cost.
+   * by the snapshot path (kept for symmetry with index.ts wiring); may be
+   * consumed in the future for true rolling-window cost.
    */
   readonly costForecast?: () => unknown;
   readonly efficiencyScorer?: {

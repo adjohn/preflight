@@ -53,7 +53,7 @@ export class AlertLog {
         // rotateIfNeeded() can rename log.jsonl → log.jsonl.1 and
         // a process crash before the appendFile below would lose the
         // current event (not in .1, not in the new file). Acceptable for
-        // v1.1 because: (a) rotation is rare — tens of MB of alert
+        // Acceptable trade-off: (a) rotation is rare — tens of MB of alert
         // history per device — so the crash window is small; (b) the
         // alternative (write-temp + rename + append) doubles the I/O
         // cost on every append. Revisit if audit-trail compliance ever
