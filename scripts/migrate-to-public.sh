@@ -65,23 +65,11 @@ check_excluded_files() {
   fi
 }
 
-check_codeowners() {
-  if [[ ! -f ".github/CODEOWNERS" ]]; then
-    check_pass "CODEOWNERS absent (no required reviewers)"
-    return
-  fi
-  if grep -q "@cdehaan" .github/CODEOWNERS; then
-    check_fail "CODEOWNERS still contains '@cdehaan' — update or remove before pushing"
-  else
-    check_pass "CODEOWNERS does not reference @cdehaan"
-  fi
-}
-
 check_nr_experimental_badge() {
   if grep -q "opensource-website.*Experimental" README.md 2>/dev/null; then
     check_pass "NR Experimental badge present in README"
   else
-    check_fail "NR Experimental badge missing from README (required by OSPO)"
+    check_warn "NR Experimental badge not in README (recommended for newrelic-experimental repos, not blocking)"
   fi
 }
 
@@ -179,7 +167,6 @@ echo ""
 
 require_clean_branch
 check_excluded_files
-check_codeowners
 check_nr_experimental_badge
 check_staging_internal_refs
 check_internal_repo_refs
@@ -260,13 +247,16 @@ jobs:
         with:
           generate_release_notes: true
 WORKFLOW_EOF
-  git add .github/workflows/release.yml
+  # Rewrite CODEOWNERS to public GitHub username
+  printf '* @chrisdhaan\n' > .github/CODEOWNERS
+
+  git add .github/workflows/release.yml .github/CODEOWNERS
   if git diff --cached --quiet; then
-    echo "  Release workflow already present — skipping commit."
+    echo "  Post-migration files already up to date — skipping commit."
   else
-    git commit -m "Chore: add GitHub Actions release workflow"
+    git commit -m "Chore: add release workflow and update CODEOWNERS for public repo"
     git push origin main
-    echo "  Release workflow committed and pushed."
+    echo "  Release workflow and CODEOWNERS committed and pushed."
   fi
   cd "$PRIVATE_REPO_DIR"
 else
