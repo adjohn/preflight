@@ -12,9 +12,7 @@ There are two main integration points:
 
 1. **MCP Server (this repo)** — Hooks into Claude Code via the Model Context Protocol. Captures every tool call, computes metrics like efficiency scores and anti-pattern detection, and exposes MCP tools that Claude Code can query directly.
 
-2. **SDK Agent** — A companion SDK agent (not yet publicly available). Wraps Anthropic, Google Gemini, OpenAI, AWS Bedrock, Mistral, and Cohere SDK clients so every API call is automatically instrumented.
-
-Both projects share a common transport layer (`src/shared/`, vendored in `src/shared/`) that handles event buffering, metric aggregation, and HTTP delivery to New Relic's APIs.
+The MCP server uses a common transport layer (`src/shared/`) for event buffering, metric aggregation, and HTTP delivery to New Relic's APIs.
 
 ---
 

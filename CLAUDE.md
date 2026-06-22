@@ -348,33 +348,6 @@ All MCP server events (`AiToolCall`, `AiCodingTask`, `AiAntiPattern`, `AiMcpTool
 - `project_id` — project identifier (auto-derived or configured)
 - `org_id` — organization identifier (from config)
 
-### SDK Agent Events
-
-_(Emitted by the companion SDK agent.)_
-
-Emitted by the companion SDK agent from its intelligence modules:
-
-| Event Type               | Emitted By             | Cadence         | Use Case                                                        |
-| ------------------------ | ---------------------- | --------------- | --------------------------------------------------------------- |
-| `AiCostGrowthAlert`      | `CostForecaster`       | On threshold    | Monthly cost growth rate exceeded configured threshold          |
-| `AiCostForecastAlert`    | `CostForecaster`       | On threshold    | Projected monthly cost exceeds configured budget                |
-| `AiExperimentSummary`    | `ExperimentTracker`    | Every 6 hours   | Per-experiment results snapshot with per-variant stats          |
-| `AiExperimentConclusion` | `ExperimentTracker`    | On conclusion   | Winner declared or end date reached — fires once per experiment |
-| `AiRecommendation`       | `RecommendationEngine` | Every 5 minutes | Automated optimization recommendations (cache, model, context)  |
-
-### Provider Support
-
-_(The companion SDK agent is not yet publicly available.)_
-
-SDK agent wrappers now support 6 AI providers:
-
-- `anthropic` — Anthropic Claude models
-- `google` — Google Gemini models
-- `openai` — OpenAI GPT/o1/o3 models
-- `bedrock` — AWS Bedrock models
-- `mistral` — Mistral AI models
-- `cohere` — Cohere models
-
 ## Storage
 
 All local persistence lives under `~/.newrelic-preflight/` by default:
