@@ -7,7 +7,7 @@ export interface EventBufferOptions {
 const DEFAULT_MAX_SIZE = 1000;
 
 /**
- * Bounded in-memory event queue with head-drop overflow (CODE_REVIEW §4.1).
+ * Bounded in-memory event queue with head-drop overflow.
  *
  * When `add()` is called on a full buffer, the OLDEST event is discarded to
  * make room for the new one. This preserves recency, which matters for
@@ -29,7 +29,7 @@ export class EventBuffer {
 
   constructor(options?: EventBufferOptions) {
     const maxSize = options?.maxSize ?? DEFAULT_MAX_SIZE;
-    // CODE_REVIEW §4.4: validate maxSize at construction. Pre-fix, values like
+    // 4: validate maxSize at construction. Pre-fix, values like
     // 0 / negative / NaN turned the buffer into a silent /dev/null because the
     // overflow comparison `buffer.length >= maxSize` is never true (NaN) or
     // immediately true with no event ever stored (0 / negative). All
@@ -50,7 +50,7 @@ export class EventBuffer {
    *
    * Returns `true` when the event was added without evicting another, and
    * `false` when the buffer was already at `maxSize` and the oldest event
-   * was head-dropped to make room (CODE_REVIEW §4.22). Callers ignoring
+   * was head-dropped to make room. Callers ignoring
    * the return value see the same behavior as before; callers that want
    * backpressure feedback can use it to throttle producers.
    */

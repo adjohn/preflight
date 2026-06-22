@@ -10,7 +10,7 @@ const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
 };
 
 /**
- * CODE_REVIEW §7.9 — type-safe narrowing helper. The previous
+ * type-safe narrowing helper. The previous
  * `envLevel in LOG_LEVEL_ORDER` check + `as LogLevel` cast was sound at
  * runtime today but the cast hid the gap: TS can't narrow `string` to a
  * literal union via `in`, so a refactor that broadened `LOG_LEVEL_ORDER`
@@ -33,7 +33,7 @@ function resolveLogLevel(): LogLevel {
 }
 
 /**
- * Cached resolved log level (CODE_REVIEW §7.5).
+ * Cached resolved log level.
  *
  * Pre-§7.5, every `createLogger()` call re-read `NEW_RELIC_AI_LOG_LEVEL`
  * from the env. If a process changed the env between two calls — common
@@ -74,7 +74,7 @@ export interface Logger {
   error(message: string, data?: Record<string, unknown>): void;
   /**
    * Return a child logger that pre-binds `context` onto every emitted entry
-   * (CODE_REVIEW §7.6). Per-call `data` still wins on key collision. Useful
+   *. Per-call `data` still wins on key collision. Useful
    * for tracing one harvest cycle / one request through multiple log lines
    * without manually threading the same `requestId` through every call.
    *
@@ -99,7 +99,7 @@ export interface Logger {
  * @param component  Identifier emitted as `component` on every log entry.
  *                   Convention: kebab-case module name (e.g. `'harvest-scheduler'`).
  * @param levelOverride
- *   Optional per-component minimum level (CODE_REVIEW §7.8). Pins this
+ *   Optional per-component minimum level. Pins this
  *   logger to the specified level for its lifetime, ignoring the
  *   process-wide `NEW_RELIC_AI_LOG_LEVEL` env var. Use this when one
  *   noisy module needs to be quieter (or louder) than the rest of the
@@ -109,7 +109,7 @@ export interface Logger {
  *
  *   makes the http-client module emit only errors regardless of how the
  *   rest of the process is configured. Without an override, the level
- *   resolves from the env (cached, see CODE_REVIEW §7.5) and tracks
+ *   resolves from the env (cached, see 5) and tracks
  *   process-wide changes via `__resetLogLevelCache()`.
  */
 export function createLogger(component: string, levelOverride?: LogLevel): Logger {
@@ -121,7 +121,7 @@ function createLoggerInternal(
   levelOverride: LogLevel | undefined,
   boundContext: Record<string, unknown> | undefined,
 ): Logger {
-  // CODE_REVIEW §7.5: when no override is supplied, the minimum level is
+  // 5: when no override is supplied, the minimum level is
   // resolved per-log-call via the cached `getMinLevel()` so a process-wide
   // log-level change (env mutation + cache reset) takes effect immediately
   // for already-constructed loggers — without a Map lookup penalty in the

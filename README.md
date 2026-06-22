@@ -16,7 +16,7 @@ Think of it like Google Analytics for your AI pair programmer.
 
 ## Before You Start
 
-Two things are required. A New Relic account is optional — the tool works in [local mode](#local-mode) without one.
+Three things are required. A New Relic account is optional — the tool works in [local mode](#local-mode) without one.
 
 ### 1. An AI coding tool
 
@@ -60,7 +60,7 @@ You'll also need your **Account ID** — a number visible in the URL when you're
 > ```bash
 > git clone https://github.com/newrelic-experimental/preflight
 > cd preflight
-> nvm use        # Node 22+
+> nvm use        # Node 24 (from .nvmrc)
 > npm install
 > npm run build
 > npm link       # puts preflight on your PATH

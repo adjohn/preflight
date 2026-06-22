@@ -35,7 +35,7 @@ export interface ModelPricing {
    *   models providers that charge a higher rate purely for excess context.
    *
    * No currently wrapped provider needs `'marginal'`; the mode exists for
-   * forward compatibility (CODE_REVIEW §2.4).
+   * forward compatibility.
    */
   readonly tierMode?: 'flat' | 'marginal';
 }
@@ -74,7 +74,7 @@ const DATED_SUFFIX_RE = /-\d{8}$/;
 // outright — silently accepting them produces wildly inflated cost telemetry.
 const MAX_REASONABLE_RATE_PER_MTOK = 10_000;
 
-// Maximum allowed size of a custom pricing JSON file (CODE_REVIEW §2.9).
+// Maximum allowed size of a custom pricing JSON file.
 // A pricing table is a small dictionary; even with hundreds of model entries
 // the file is well under 100 KB. The 1 MB cap is a defensive ceiling that
 // prevents `readFileSync` from happily slurping a multi-gigabyte file the
@@ -215,7 +215,7 @@ function validatePricingEntry(model: string, entry: unknown): ModelPricing | nul
   }
 
   // Construct a fresh `ModelPricing` object that contains ONLY recognized
-  // fields (CODE_REVIEW §2.10). Returning `e` directly leaks any typo'd or
+  // fields. Returning `e` directly leaks any typo'd or
   // future / unknown keys from the user's JSON into the merged table, where
   // they would surface in serialization (`Object.entries(...)`) and risk
   // future code mistaking them for valid pricing fields. Built as a single
@@ -243,14 +243,14 @@ function validatePricingEntry(model: string, entry: unknown): ModelPricing | nul
  * Load a custom pricing override file from disk.
  *
  * **This function is synchronous (`readFileSync` / `statSync`) and is intended
- * for startup-time use only** (CODE_REVIEW §2.8). Calling it from a hot path
+ * for startup-time use only**. Calling it from a hot path
  * — for example, a SIGHUP-triggered reload while the process is also serving
  * inference traffic — will block the event loop for the duration of the read
  * and parse. If you need reload-on-signal, schedule it from a worker thread
  * or wrap it in `setImmediate` so the surrounding tick can complete first.
  *
  * Files larger than {@link MAX_PRICING_FILE_BYTES} are rejected without being
- * read (CODE_REVIEW §2.9) — a pricing table is a small dictionary, and a
+ * read — a pricing table is a small dictionary, and a
  * mis-pointed multi-GB file would OOM `JSON.parse`.
  *
  * Returns the parsed override map on success, or `null` when the file is
@@ -325,7 +325,7 @@ export function loadCustomPricing(filePath: string): Record<string, ModelPricing
 }
 
 /**
- * Deep-clone a pricing table (CODE_REVIEW §8.10).
+ * Deep-clone a pricing table.
  *
  * `{ ...DEFAULT_PRICING_TABLE }` is a shallow copy — the inner `ModelPricing`
  * objects share references. With the default-singleton pattern, that means a
@@ -356,7 +356,7 @@ function clonePricingTable(
 }
 
 // ---------------------------------------------------------------------------
-// PricingTable — instance-based pricing (CODE_REVIEW §2.7)
+// PricingTable — instance-based pricing
 // ---------------------------------------------------------------------------
 
 /**
@@ -521,7 +521,7 @@ const defaultTable = new PricingTable();
  * Call with `null`/`undefined` to reset to the built-in defaults.
  *
  * **Synchronous I/O — startup-only.** Reads the custom file with `readFileSync`
- * (CODE_REVIEW §2.8); calling this on a hot path (e.g. a SIGHUP-triggered
+ *; calling this on a hot path (e.g. a SIGHUP-triggered
  * reload while the process is serving inference traffic) blocks the event
  * loop. Schedule reloads from a worker thread or wrap in `setImmediate`.
  *

@@ -214,7 +214,7 @@ export function setupDashboardPostBind(
   const interval = setInterval(runGc, 5 * 60 * 1000);
   interval.unref?.();
 
-  // F-013: openOnStart is declared in config but auto-open isn't implemented
+  // openOnStart is declared in config but auto-open isn't implemented
   // in v1 — log a warning so a user who set it doesn't assume the feature
   // works silently.
   if (deps.openOnStart) {
@@ -1632,9 +1632,9 @@ function loadAlertRulesFromDisk(engine: LocalAlertEngine, rulesPath: string): vo
     // Warn about cost.window rules with today/week period — v1.1's snapshot
     // collector only populates sessionUsd, so today/week rules always read 0
     // and never fire. Fires for both explicitly-configured AND defaulted
-    // values (default is now 'session' per F-008, but if a rules.json sets
+    // values (default is now 'session' but if a rules.json sets
     // 'today' or 'week' explicitly, we still want the user to know it
-    // silently no-ops). See F-008 in docs/CODE_REVIEW.md.
+    // silently no-ops)..
     for (const rule of valid) {
       if (rule.type === 'cost.window' && rule.costPeriod !== 'session') {
         logger.warn(

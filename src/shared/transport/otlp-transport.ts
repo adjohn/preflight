@@ -22,8 +22,8 @@ export interface OtlpTransportOptions {
   requestTimeoutMs?: number;
   /**
    * Identifies the consuming client in the `User-Agent` header and as the
-   * OTel instrumentation scope name (CODE_REVIEW §10.7). Defaults to
-   * `'ai-telemetry'` when not provided. Pass `'preflight'`, `'nr-ai-agent'`,
+   * OTel instrumentation scope name. Defaults to
+   * `'ai-telemetry'` when not provided. Pass `'preflight'`, `'my-agent'`,
    * etc. so telemetry from different consumers is distinguishable.
    */
   clientName?: string;
@@ -41,7 +41,7 @@ export class OtlpTransport {
   private hasWarnedNoAuth = false;
   /**
    * Resource attributes shared by both the SDK-driven path (tracer/meter
-   * providers) and the manual `exportMetrics` payload (CODE_REVIEW §5.22).
+   * providers) and the manual `exportMetrics` payload.
    * Keeping a single resolved attribute map prevents `service.name` from
    * drifting between the two paths — previously `this.appName` was stored
    * separately and re-encoded into the OTLP envelope, which would silently
@@ -99,7 +99,7 @@ export class OtlpTransport {
   /**
    * Return an OTel `Tracer` for the given instrumentation name. The returned
    * value is the `Tracer` interface from `@opentelemetry/api`
-   * (CODE_REVIEW §8.6); consumers that bind to the type explicitly should
+   *; consumers that bind to the type explicitly should
    * `import type { Tracer } from '@opentelemetry/api'`. `@opentelemetry/api`
    * is already a regular dependency of this package, so no extra install is
    * required. The type is intentionally NOT re-exported from this package's
@@ -155,7 +155,7 @@ export class OtlpTransport {
       attributes: otlpAttributes(m.attributes),
     });
 
-    // CODE_REVIEW §4.9 — summary is now a first-class type with a structured
+    // summary is now a first-class type with a structured
     // value `{ count, sum, min, max }`. OTLP doesn't have a single
     // "Summary"-shaped metric kind; the closest faithful mapping is OTLP
     // Histogram with explicit `count` and `sum` fields plus per-data-point
@@ -232,7 +232,7 @@ export class OtlpTransport {
       ],
     };
 
-    // CODE_REVIEW §4.17 — exportMetrics MUST surface failures so
+    // exportMetrics MUST surface failures so
     // HarvestScheduler.sendMetricsToOtlp can catch and requeue into
     // retryOtlpMetricBatch. Previously this method swallowed errors with
     // a logger.warn and resolved successfully, which silently dropped

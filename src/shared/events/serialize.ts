@@ -16,7 +16,7 @@ const serializeLogger = createLogger('events-serialize');
 
 /**
  * NR-reserved attribute names + library-internal namespaces a custom
- * attribute key must NOT collide with (CODE_REVIEW §6.12). The `custom.`
+ * attribute key must NOT collide with. The `custom.`
  * prefix already scopes most user-supplied keys safely, but we enforce a
  * deny-list against the bare key (pre-prefix) so callers can't smuggle a
  * reserved attribute name in via `customAttributes` and confuse NRQL
@@ -34,7 +34,7 @@ const serializeLogger = createLogger('events-serialize');
  *     top level. Reject the bare-key form to avoid the cognitive trap.
  *   - `schemaVersion` (§6.10) — reserved for the library's own use.
  *   - `type` — easy to confuse with NR's `eventType`; many dashboards
- *     use `type` for log/event categorization (CODE_REVIEW §6.2 history).
+ *     use `type` for log/event categorization (2 history).
  */
 const RESERVED_CUSTOM_KEYS: ReadonlySet<string> = new Set([
   'eventType',
@@ -117,7 +117,7 @@ function truncate(s: string): string {
   return truncateToBytes(s, NR_VALUE_MAX_BYTES);
 }
 
-// CODE_REVIEW §3.3.5 — `customAttributes` is the one channel that lets a
+// `customAttributes` is the one channel that lets a
 // caller smuggle arbitrary string content into telemetry. In high-security
 // mode we clip every string custom attribute to 256 chars so a misuse like
 // `customAttributes: { lastUserMessage: <whole prompt> }` cannot exfiltrate
@@ -125,7 +125,7 @@ function truncate(s: string): string {
 // `toolNames`, `contentBlockTypes`, and `description` are NOT clipped —
 // they are bounded enum/identifier metadata, not free-form user input.
 //
-// CODE_REVIEW §6.3 — Even in normal mode, a string custom attribute that
+// Even in normal mode, a string custom attribute that
 // exceeds NR's per-attribute byte cap (4096) gets the entire event rejected
 // or silently truncated by the Events API. Apply NR_VALUE_MAX as a floor on
 // every string custom attribute so callers cannot accidentally drop their
@@ -136,7 +136,7 @@ function clipCustomAttribute(
   value: string | number | boolean,
   options?: SerializeOptions,
 ): string | number | boolean {
-  // CODE_REVIEW §6.9 — booleans pass through alongside strings and numbers.
+  // booleans pass through alongside strings and numbers.
   if (typeof value !== 'string') return value;
   const maxBytes = options?.highSecurity === true ? CUSTOM_ATTR_MAX_HS_BYTES : NR_VALUE_MAX_BYTES;
   if (Buffer.byteLength(value, 'utf8') <= maxBytes) return value;
@@ -144,7 +144,7 @@ function clipCustomAttribute(
 }
 
 /**
- * High-security mode field-suppression contract (CODE_REVIEW §3.3.5, §6.4).
+ * High-security mode field-suppression contract.
  *
  * When `highSecurity: true` is passed to a serializer, the resulting
  * NrEventData has the following content-bearing fields suppressed:
@@ -160,7 +160,7 @@ function clipCustomAttribute(
  *     attributes pass through unchanged. Applies to **all** serializers.
  *     In normal mode (highSecurity: false / omitted), string values are
  *     still truncated at 4000 chars so a long attribute cannot push the
- *     event past NR's 4096-byte per-attribute cap (CODE_REVIEW §6.3).
+ *     event past NR's 4096-byte per-attribute cap.
  *
  * Structural / metadata fields are intentionally NOT suppressed in
  * high-security mode — they are bounded identifiers, not free-form
@@ -184,7 +184,7 @@ export interface SerializeOptions {
 /**
  * Maps the library's internal `AiProvider` literal to the canonical
  * `gen_ai.provider.name` value defined by the OpenTelemetry GenAI semantic
- * conventions (CODE_REVIEW §6.16). The wire field is still emitted as
+ * conventions. The wire field is still emitted as
  * `gen_ai.system` for backward-compat with existing NR dashboards — that
  * was the previous OTel attribute name (the spec renamed `gen_ai.system`
  * to `gen_ai.provider.name` but the value enum is the same registry).
@@ -218,7 +218,7 @@ const PROVIDER_TO_GENAI_SYSTEM: Record<AiProvider, string> = {
 
 /**
  * Maps the library's `AiRequestMethod` literal onto the canonical
- * `gen_ai.operation.name` value (CODE_REVIEW §6.17). Predefined OTel
+ * `gen_ai.operation.name` value. Predefined OTel
  * values today are `chat`, `generate_content`, `embeddings`, plus
  * `text_completion`. Method names that don't match any entry fall
  * through and the `gen_ai.operation.name` attribute is omitted from
@@ -250,7 +250,7 @@ const METHOD_TO_GENAI_OPERATION: Partial<Record<AiRequestMethod, string>> = {
 };
 
 /**
- * Event schema version (CODE_REVIEW §6.10). Bump whenever the wire-format
+ * Event schema version. Bump whenever the wire-format
  * shape of any serializer changes in a way that downstream NR dashboards
  * built on the previous shape would silently mis-render. The current value
  * is stamped on every emitted event (`schemaVersion: 1`) so dashboards can
@@ -328,7 +328,7 @@ export function aiResponseToNrEvent(event: AiResponse, options?: SerializeOption
     'nr.appName': event['nr.appName'],
   };
 
-  // CODE_REVIEW §6.8 — emit `nr.entityGuid` so AiResponse events route to the
+  // emit `nr.entityGuid` so AiResponse events route to the
   // owning NR entity surface, matching `aiRequestToNrEvent`. Without this the
   // factory's entityGuid input was silently dropped at serialization time
   // even though the AiResponse interface declared the field.
@@ -419,7 +419,7 @@ export function aiMessageToNrEvent(event: AiMessage, options?: SerializeOptions)
     'nr.appName': event['nr.appName'],
   };
 
-  // CODE_REVIEW §6.8 — emit `nr.entityGuid` so AiMessage events route to the
+  // emit `nr.entityGuid` so AiMessage events route to the
   // owning NR entity surface, matching `aiRequestToNrEvent` / `aiResponseToNrEvent`.
   if (event['nr.entityGuid'] !== null) data['nr.entityGuid'] = event['nr.entityGuid'];
 
@@ -429,7 +429,7 @@ export function aiMessageToNrEvent(event: AiMessage, options?: SerializeOptions)
 }
 
 /**
- * CODE_REVIEW §6.14 — dotted-key naming convention for the four newer
+ * dotted-key naming convention for the four newer
  * agent-shaped event types (`AiAgentTaskSummary`, `AiAntiPattern`,
  * `AiAgentMessage`, `AiContextReset`). These serializers emit attributes
  * with a `<namespace>.<field>` shape (e.g. `ai.agent.task_duration_ms`,

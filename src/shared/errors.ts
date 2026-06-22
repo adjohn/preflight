@@ -5,7 +5,7 @@ import type { AiProvider } from './events/types.js';
  * {@link classifyErrorDetailed}.
  *
  * Implemented as a `const` object plus derived string-literal union
- * (CODE_REVIEW §7.20) rather than a TypeScript `enum`, so that:
+ * rather than a TypeScript `enum`, so that:
  *   - runtime usage (`AiErrorClassification.RATE_LIMIT`) keeps working
  *     identically for existing call sites;
  *   - the type is a string-literal union, matching every other
@@ -87,7 +87,7 @@ function extractCode(error: unknown): string | undefined {
  * one of the canonical {@link AiErrorClassification} categories. The
  * decision routes through HTTP status (when present), Node `code` for
  * network/timeout cases, and provider-specific 400 disambiguation
- * (CODE_REVIEW §7.14) — content policy vs. context length vs. generic.
+ * — content policy vs. context length vs. generic.
  *
  * Designed for retry-loop consumption — see {@link isRetryable} and
  * {@link RETRYABLE} for the policy applied downstream. For UI / logging
@@ -188,7 +188,7 @@ export function classifyError(error: unknown, provider: AiProvider): AiErrorClas
 
 // Provider-typed error codes (body-level `error.code` or `error.type`). Prefer
 // these over message substring matching — SDKs expose stable typed codes that
-// don't drift with version-to-version wording changes (CODE_REVIEW §7.14).
+// don't drift with version-to-version wording changes.
 const CONTENT_POLICY_TYPED_CODES = new Set<string>([
   // OpenAI
   'content_filter',
@@ -341,7 +341,7 @@ function readHeader(headers: unknown, names: readonly string[]): string | null {
 /**
  * Extract rate-limit metadata from a provider error's `headers` field.
  *
- * Returns `null` when the error carries no `headers` at all (CODE_REVIEW §7.17),
+ * Returns `null` when the error carries no `headers` at all,
  * letting callers distinguish "no headers in the response" from "headers
  * present but no rate-limit headers parsed". When `headers` is present but
  * none of the recognized rate-limit headers parse, returns a `RateLimitInfo`
@@ -392,7 +392,7 @@ export function extractRateLimitHeaders(error: unknown): RateLimitInfo | null {
  *
  * The minimum effective `maxLength` is 4 — a shorter cap is silently
  * clamped to 4 so the result is always at least `'X...'` for some single
- * character of the original message (CODE_REVIEW §7.16).
+ * character of the original message.
  *
  * Examples:
  * ```
@@ -420,7 +420,7 @@ export function truncateErrorMessage(message: string, maxLength = 1024): string 
 /**
  * Rich classification result that pairs the {@link AiErrorClassification}
  * enum value with the original error context — message, HTTP status, and
- * Node system code (CODE_REVIEW §7.15, §E6).
+ * Node system code (15, §E6).
  *
  * `code` is the Node system-level error code (e.g. `'ECONNREFUSED'`,
  * `'ETIMEDOUT'`), extracted by walking the cause chain. It is NOT the

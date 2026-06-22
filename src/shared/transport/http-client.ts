@@ -8,7 +8,7 @@ import { DEFAULT_CLIENT_NAME } from './otlp-shared.js';
 
 /**
  * Builds the `User-Agent` header value for outbound NR ingest requests
- * (CODE_REVIEW §10.7). NR's collector logs the UA, so identifying the
+ *. NR's collector logs the UA, so identifying the
  * consuming client by name and version makes operator-side investigation
  * tractable (e.g. "which client version is producing the malformed payload?").
  */
@@ -21,7 +21,7 @@ const logger = createLogger('transport');
 
 /**
  * Generate a short correlation ID for an outbound batch
- * (CODE_REVIEW §5.14 / §10.5). Eight hex chars derived from a v4 UUID is
+ * (14 / §10.5). Eight hex chars derived from a v4 UUID is
  * enough entropy to disambiguate concurrent retries in stderr without
  * adding meaningful payload weight or scanning friction.
  */
@@ -112,7 +112,7 @@ function isLiteralHostname(collectorHost: string | null | undefined): boolean {
 }
 
 /**
- * Per-region NR ingest hostnames (CODE_REVIEW §5.23 / §5.24).
+ * Per-region NR ingest hostnames (23 / §5.24).
  *
  * Single source of truth — the three URL builders below all read from this
  * table instead of inlining the same nested-ternary three times. To add a
@@ -158,7 +158,7 @@ export function getEventsApiUrl(
   region: Region,
   collectorHost?: string | null,
 ): string {
-  // CODE_REVIEW F3: defensive guard against an empty/null/undefined accountId
+  // F3: defensive guard against an empty/null/undefined accountId
   // that bypassed `loadConfig`'s fail-fast (e.g. a JS caller, an explicit
   // `accountId: config.accountId!` non-null assertion, or a custom config
   // path that didn't go through loadConfig). Without this, the URL becomes
@@ -191,7 +191,7 @@ export function getLogsApiUrl(region: Region, collectorHost?: string | null): st
 }
 
 /**
- * gzip-compress a JSON-serializable payload (CODE_REVIEW §5.17).
+ * gzip-compress a JSON-serializable payload.
  *
  * Node 18+'s `zlib.gzip` accepts a string directly and performs UTF-8
  * encoding internally, so we hand it `JSON.stringify(data)` and skip the
@@ -213,7 +213,7 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * AWS-recommended decorrelated-jitter exponential backoff (CODE_REVIEW §5.13).
+ * AWS-recommended decorrelated-jitter exponential backoff.
  *
  *   sleep = min(maxDelayMs, random_between(baseDelayMs, prevSleepMs * 3))
  *
@@ -270,7 +270,7 @@ function parseRetryAfterMs(response: Response): number | null {
 export async function sendWithRetry(options: HttpSendOptions): Promise<TransportResult> {
   const { url, body, licenseKey, maxRetries, baseDelayMs, maxDelayMs, requestTimeoutMs } = options;
 
-  // Per-request correlation ID (CODE_REVIEW §5.14 / §10.5). Stamped on every
+  // Per-request correlation ID (14 / §10.5). Stamped on every
   // log line emitted from this call so concurrent retries to different
   // batches can be disambiguated in stderr.
   const requestId = newRequestId();
@@ -284,7 +284,7 @@ export async function sendWithRetry(options: HttpSendOptions): Promise<Transport
     return { success: false, statusCode: null, retryCount: 0, error: `gzip failed: ${message}` };
   }
 
-  // Decorrelated jitter (CODE_REVIEW §5.13) tracks the previous sleep across
+  // Decorrelated jitter tracks the previous sleep across
   // attempts so each subsequent retry samples from a wider [base, prev*3] band.
   // Initialize to baseDelayMs so the first retry samples [base, base*3].
   let prevSleepMs = baseDelayMs;
@@ -367,7 +367,7 @@ export async function sendWithRetry(options: HttpSendOptions): Promise<Transport
         if (attempt < maxRetries) {
           // Respect server-supplied Retry-After when present; cap at maxDelayMs
           // to avoid pathological values. Otherwise use decorrelated-jitter
-          // exponential backoff (CODE_REVIEW §5.13).
+          // exponential backoff.
           const retryAfter = parseRetryAfterMs(response);
           let waitMs: number;
           if (retryAfter !== null) {

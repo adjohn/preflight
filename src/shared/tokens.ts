@@ -29,7 +29,7 @@ type MutableTokenUsage = { -readonly [K in keyof TokenUsage]: TokenUsage[K] };
  * Floors fractional values (e.g. `safeInt(10.7) === 10`). When truncation
  * actually drops a fractional part, emits a debug-level log so operators can
  * diagnose buggy provider stubs that return non-integer token counts
- * (CODE_REVIEW §3.1.4). The log is debug, not warn — token counts are
+ *. The log is debug, not warn — token counts are
  * provider-controlled and a single fractional value is not a library bug.
  */
 export function safeInt(value: unknown): number {
@@ -47,7 +47,7 @@ export function safeInt(value: unknown): number {
  * Frozen zero-valued `TokenUsage` template. Use `{ ...EMPTY_USAGE }` (a
  * spread copy) when constructing a fresh mutable accumulator — the spread
  * is intentional: `TokenAccumulator` mutates `latestUsage` in place across
- * stream chunks (CODE_REVIEW §3.1.7). The frozen master is shared across
+ * stream chunks. The frozen master is shared across
  * call sites so a misuse like `(EMPTY_USAGE as TokenUsage).inputTokens = 5`
  * throws in strict mode rather than silently corrupting future returns.
  */
@@ -132,7 +132,7 @@ export function extractGeminiTokens(response: GeminiResponse): TokenUsage {
   let totalTokens: number;
   if (meta.totalTokenCount !== undefined) {
     const apiTotal = safeInt(meta.totalTokenCount);
-    // CODE_REVIEW §3.1.2 — Gemini's totalTokenCount is authoritative per
+    // Gemini's totalTokenCount is authoritative per
     // the API spec and may legitimately diverge from the component sum
     // (e.g. billable-vs-counted distinctions, deduplication). Use the API
     // value, but emit a debug log on divergence so operators can spot drift
@@ -164,7 +164,7 @@ export function extractGeminiTokens(response: GeminiResponse): TokenUsage {
 }
 
 // ---------------------------------------------------------------------------
-// OpenAI extraction (CODE_REVIEW F1)
+// OpenAI extraction
 // ---------------------------------------------------------------------------
 
 interface OpenAIPromptTokensDetails {
@@ -233,7 +233,7 @@ export function extractOpenAITokens(response: OpenAIResponse): TokenUsage {
 }
 
 // ---------------------------------------------------------------------------
-// Cohere extraction (CODE_REVIEW F1 follow-up)
+// Cohere extraction
 //
 // Targets Cohere's v2 Chat API. The usage object exposes counts under both
 // `tokens` (actual counts — what we want for token-rate cost calculation)
@@ -281,7 +281,7 @@ export function extractCohereTokens(response: CohereResponse): TokenUsage {
 }
 
 // ---------------------------------------------------------------------------
-// Mistral extraction (CODE_REVIEW F1 follow-up)
+// Mistral extraction
 //
 // Mistral La Plateforme's Chat Completions API uses an OpenAI-compatible
 // usage shape (`prompt_tokens` / `completion_tokens` / `total_tokens`). The
@@ -325,7 +325,7 @@ export function extractMistralTokens(response: MistralResponse): TokenUsage {
 }
 
 // ---------------------------------------------------------------------------
-// Bedrock extraction (CODE_REVIEW F1 follow-up)
+// Bedrock extraction
 //
 // Targets AWS Bedrock's unified Converse / ConverseStream APIs. The legacy
 // per-provider InvokeModel response shapes (e.g. `anthropic.claude-*` raw
@@ -381,7 +381,7 @@ export function extractBedrockTokens(response: BedrockResponse): TokenUsage {
 
 /**
  * Track providers we've already warned about for unsupported streaming token
- * extraction (CODE_REVIEW F1). One-shot per process — a noisy provider
+ * extraction One-shot per process — a noisy provider
  * shouldn't flood stderr, but the first call is loud enough to be discovered.
  */
 const unsupportedProvidersWarned = new Set<AiProvider>();
@@ -585,7 +585,7 @@ export class TokenAccumulator {
 
   /**
    * Reset the accumulator so it can be reused for a new stream
-   * (CODE_REVIEW §3.1.5). Zeroes the latest usage snapshot and clears the
+   *. Zeroes the latest usage snapshot and clears the
    * `finalized` flag. The provider binding is preserved — to track a
    * different provider, construct a new `TokenAccumulator`.
    *

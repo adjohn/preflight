@@ -157,7 +157,7 @@ Claude Code
                  ├─ nr_observe_get_cost_breakdown
                  ├─ nr_observe_get_anti_patterns
                  ├─ nr_observe_get_recommendations
-                 └─ ... (36 tools total)
+                 └─ ... (tools listed below)
 ```
 
 ### Package Dependencies
@@ -239,7 +239,7 @@ Tools are registered in `src/tools/session-stats.ts` via `registerTools()`, whic
 
 Tools are conditionally registered based on available dependencies (e.g., cross-session tools only register when `SessionStore` + `WeeklySummaryGenerator` are available).
 
-### MCP Tools (36 total)
+### MCP Tools
 
 **Session Tools:**
 
@@ -334,15 +334,15 @@ Key config interfaces:
 | `otlpForwardEndpoint` | `NR_AI_OTLP_FORWARD_ENDPOINT`       | string \| null                        | Where the receiver forwards enriched payloads. Defaults to NR US OTLP when `licenseKey` is set; `null` to receive and enrich only.                                                                     |
 | `otlpForwardHeaders`  | `NR_AI_OTLP_FORWARD_HEADERS`        | Record\<string, string\>              | HTTP headers added to every forwarded OTLP request. Defaults to `{ 'api-key': licenseKey }`.                                                                                                           |
 
-### New Event Types
+### Event Types
 
 | Event Type        | Emitted By      | Use Case                                  |
 | ----------------- | --------------- | ----------------------------------------- |
 | `AiBudgetWarning` | `BudgetTracker` | Budget threshold crossed (50%, 80%, 100%) |
 
-### Enhanced Events
+### Team Attribution Fields
 
-All MCP server events (`AiToolCall`, `AiCodingTask`, `AiAntiPattern`, `AiMcpToolCall`, `AiProxyRequest`, `AiAuditEvent`) now include team attribution fields:
+All MCP server events (`AiToolCall`, `AiCodingTask`, `AiAntiPattern`, `AiMcpToolCall`, `AiProxyRequest`, `AiAuditEvent`) include team attribution fields:
 
 - `team_id` — team identifier (from config)
 - `project_id` — project identifier (auto-derived or configured)

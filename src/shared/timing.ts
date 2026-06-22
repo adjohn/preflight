@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // RequestTimer — high-precision latency measurement for AI SDK calls
 //
-// Lifecycle invariant (CODE_REVIEW §3.2.1, §3.2.2):
+// Lifecycle invariant:
 //   start()
 //     → [optional] markThinkingStart() → markThinkingEnd() (one or more pairs)
 //     → markFirstToken()              ← first NON-thinking content token
@@ -10,11 +10,11 @@
 // The timer assumes thinking phases do NOT overlap with content generation.
 // All providers we currently wrap (Anthropic extended thinking, Gemini thought
 // summaries) emit thinking as one or more discrete blocks before any content
-// tokens. Multiple thinking phases (CODE_REVIEW §3.2.4) are supported via
+// tokens. Multiple thinking phases are supported via
 // repeated markThinkingStart/markThinkingEnd pairs; thinkingDurationMs is the
 // sum of the closed phase durations.
 //
-// Idempotency policy (CODE_REVIEW §3.2.3): all event-marking methods are
+// Idempotency policy: all event-marking methods are
 // first-write-wins. For markThinkingStart/markThinkingEnd "first-write-wins"
 // applies WITHIN an open-phase state — once a phase is closed (markThinkingEnd
 // has been called), a subsequent markThinkingStart opens a NEW phase rather
@@ -47,7 +47,7 @@ export interface RequestTimerMetrics {
   /**
    * Closed thinking phases as recorded, in start-order. Empty when no phases
    * were marked. Useful for OTel span emission where each phase becomes its
-   * own child span (CODE_REVIEW §3.2.4).
+   * own child span.
    */
   readonly thinkingPhases: readonly ThinkingPhase[];
   /**
@@ -116,9 +116,9 @@ export class RequestTimer {
    *
    * - First call (or first call after `markThinkingEnd`): opens a new phase.
    * - Subsequent call WITHOUT a matching `markThinkingEnd` first: debug log
-   *   and ignored — first-write-wins (CODE_REVIEW §3.2.3) within the open phase.
+   *   and ignored — first-write-wins within the open phase.
    *
-   * Multiple phases per request are supported (CODE_REVIEW §3.2.4); each
+   * Multiple phases per request are supported; each
    * (start, end) pair appears in `metrics.thinkingPhases`.
    */
   markThinkingStart(): void {
@@ -212,13 +212,13 @@ export class RequestTimer {
 
     const generationDurationMs = Math.max(0, durationMs - (thinkingDurationMs ?? 0));
 
-    // CODE_REVIEW §6.6: align tokensPerSecond semantics with `factory.ts` —
+    // 6: align tokensPerSecond semantics with `factory.ts` —
     // return `null` when either the duration is zero or no output tokens were
     // produced, treating both as "no meaningful rate to report". The previous
     // path returned 0 when `outputTokens === 0`, which read downstream as a
     // measured-zero rate rather than a missing measurement.
     //
-    // CODE_REVIEW §3.2.6: compute as `(outputTokens / durationMs) * 1000`
+    // 6: compute as `(outputTokens / durationMs) * 1000`
     // rather than `outputTokens / (durationMs / 1000)`. The two are
     // mathematically equivalent for non-degenerate inputs but the multiply
     // form preserves precision better when `durationMs` is small (e.g.

@@ -24,7 +24,7 @@ function safeFiniteOrNull(v: number | null | undefined): number | null {
 }
 
 /**
- * Warn-once for missing entityGuid (CODE_REVIEW §6.8).
+ * Warn-once for missing entityGuid.
  *
  * NR's entity model usually requires both `appName` and `entityGuid` to attach
  * events to a specific entity surface (APM service, browser app, etc.).
@@ -159,7 +159,7 @@ export function createAiResponse(params: CreateAiResponseParams): AiResponse {
   }
   warnIfMissingEntityGuid('AiResponse', params.entityGuid);
 
-  // CODE_REVIEW §6.5 — coerce token fields through safeInt so NaN, Infinity,
+  // coerce token fields through safeInt so NaN, Infinity,
   // negative numbers, and floats from buggy callers don't propagate as
   // null/Infinity into the serialized event (where JSON.stringify maps them
   // to "null", which NR Events API silently drops).
@@ -249,7 +249,7 @@ export function createAiMessage(params: CreateAiMessageParams): AiMessage {
   if (!params.role) {
     throw new Error('AiMessage requires a role');
   }
-  // CODE_REVIEW §6.13: required-field validation made uniform across the
+  // 13: required-field validation made uniform across the
   // three factory functions. `content` is typed as `string` but JS callers
   // bypass the type system; reject `null` / `undefined` here so downstream
   // serialization doesn't emit `content: "null"` / `content: "undefined"`
@@ -277,7 +277,7 @@ export function createAiMessage(params: CreateAiMessageParams): AiMessage {
 }
 
 // ---------------------------------------------------------------------------
-// CODE_REVIEW §6.15 — factory functions for the four newer agent-shaped
+// factory functions for the four newer agent-shaped
 // event types. Pre-§6.15 these had serializers but no constructors, so
 // consumers had to hand-build the type-shape and remember to set `id` /
 // `timestamp` defaults themselves. The four factories below mirror the

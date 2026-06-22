@@ -331,7 +331,7 @@ export class AlertSnapshotCollector {
         // percentiles surface as 0 to the rule comparator, which treats 0
         // as below any positive threshold — so a `latency.percentile`
         // rule asking for p99 still fires when the tracker has p99 data
-        // even if p95 happens to be missing. See F-006: gating on p95
+        // even if p95 happens to be missing. gating on p95
         // alone caused p50/p99 rules to silently never fire when sample
         // count was too low to compute all three.
         const hasAny =

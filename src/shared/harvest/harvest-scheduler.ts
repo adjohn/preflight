@@ -17,7 +17,7 @@ const logger = createLogger('harvest');
 
 /**
  * Generate an 8-hex-char correlation ID for one harvest cycle
- * (CODE_REVIEW §10.5). Stamped via `logger.child({ harvestId })` so every
+ *. Stamped via `logger.child({ harvestId })` so every
  * log line emitted during the cycle — including from `sendEvents*` /
  * `sendMetrics*` helpers — carries the same ID. Operators can pivot on
  * `harvestId` in stderr to trace one cycle through batch send, retry,
@@ -47,7 +47,7 @@ export interface HarvestSchedulerOptions {
   readonly maxEventBufferSize?: number;
   /**
    * Maximum number of events kept in the per-transport retry buffer when a
-   * harvest fails (CODE_REVIEW §4.21). Defaults to `maxEventBufferSize`,
+   * harvest fails. Defaults to `maxEventBufferSize`,
    * but can be set independently — operators with bursty failure modes may
    * want a deeper retry cap than primary buffer cap. Note that peak
    * in-memory event count is roughly `maxEventBufferSize + maxRetryEvents`.
@@ -55,7 +55,7 @@ export interface HarvestSchedulerOptions {
   readonly maxRetryEvents?: number;
   /**
    * Maximum number of metric snapshots kept in the per-transport retry
-   * buffer when a metric harvest fails (CODE_REVIEW §4.21). Defaults to 500.
+   * buffer when a metric harvest fails. Defaults to 500.
    * Each snapshot represents one (name, attributes) bucket; with §4.9's
    * summary-metric wire format, the corresponding NrMetric count is also
    * one per snapshot.
@@ -85,7 +85,7 @@ export interface HarvestSchedulerOptions {
    *
    * The `beforeExit` fallback is best-effort: Node may exit before its
    * fire-and-forget `void this.stop()` finishes, so events may be lost
-   * (CODE_REVIEW §4.12).
+   *.
    */
   readonly allowProcessExit?: boolean;
 }
@@ -112,7 +112,7 @@ export class HarvestScheduler {
   private running = false;
   private stopPromise: Promise<void> | null = null;
 
-  // CODE_REVIEW §4.15 + §4.16 — track in-flight harvests so (a) overlapping
+  // 15 + §4.16 — track in-flight harvests so (a) overlapping
   // interval ticks don't double-fire harvests on the same buffers (a slow
   // network can otherwise produce N concurrent fetches if interval < latency),
   // and (b) stop() can await any harvest already in progress before kicking
@@ -125,7 +125,7 @@ export class HarvestScheduler {
   // harvest to re-send the batch to *both* transports, duplicating on OTLP.
   private retryNrEventBatch: NrEventData[] = [];
   private retryOtlpEventBatch: NrEventData[] = [];
-  // CODE_REVIEW §4.6 — retry buffers hold pre-explosion bucket snapshots, not
+  // retry buffers hold pre-explosion bucket snapshots, not
   // exploded NrMetric[] wire form. On the next harvest the failed snapshots
   // are merged back into the aggregator (via a temporary one, per transport)
   // so that overlapping (name, attributes) keys collapse into a single
@@ -176,7 +176,7 @@ export class HarvestScheduler {
 
     this.eventBuffer = new EventBuffer({ maxSize: options.maxEventBufferSize });
     this.metricAggregator = new MetricAggregator();
-    // CODE_REVIEW §4.21: maxRetryEvents defaults to maxEventBufferSize when
+    // 21: maxRetryEvents defaults to maxEventBufferSize when
     // not specified, preserving prior behavior. Operators that need a
     // deeper retry cap (bursty failures, long downstream outages) can set
     // it independently — peak in-memory event count is then roughly
@@ -194,7 +194,7 @@ export class HarvestScheduler {
    *
    * Returns `true` when the event was added without evicting another, and
    * `false` when the event buffer was already full and the oldest event
-   * was head-dropped (CODE_REVIEW §4.22). Callers ignoring the return
+   * was head-dropped. Callers ignoring the return
    * value see the same behavior as before — the per-harvest
    * `nr.ai.dropped_events` self-monitoring metric still counts the drops
    * regardless. The boolean lets producers throttle or surface a custom
@@ -209,7 +209,7 @@ export class HarvestScheduler {
    *
    * Returns `true` when the sample was accepted into a bucket, and `false`
    * when it was rejected (non-finite value or invalid attribute type) per
-   * the §4.8 strict validation contract (CODE_REVIEW §4.22). Existing
+   * the §4.8 strict validation contract. Existing
    * callers that ignore the return value see unchanged behavior.
    */
   recordMetric(
@@ -225,7 +225,7 @@ export class HarvestScheduler {
    *
    * **Signal handling is the consumer's responsibility.** This library does
    * NOT register `SIGTERM` or `SIGINT` handlers — auto-registering process-level
-   * signal handlers from a library is an anti-pattern (CODE_REVIEW §4.13, §4.14):
+   * signal handlers from a library is an anti-pattern:
    *
    * 1. The consumer's main process likely has its own `SIGTERM`/`SIGINT`
    *    handler. If both fire and the consumer's `process.exit(0)` runs first,
@@ -246,7 +246,7 @@ export class HarvestScheduler {
    * }
    * ```
    *
-   * **Process exit semantics (CODE_REVIEW §4.12).** By default
+   * **Process exit semantics.** By default
    * (`allowProcessExit: false`), the harvest intervals keep the Node event
    * loop alive — your process will NOT exit until you call
    * `await scheduler.stop()`. This is intentional: silently dropping
@@ -261,7 +261,7 @@ export class HarvestScheduler {
       return;
     }
 
-    // CODE_REVIEW §4.19: refuse start() while a previous stop() is still
+    // 19: refuse start() while a previous stop() is still
     // resolving. `running` flips to false at the top of doStop(), so without
     // this guard a fast-cycling consumer could call start() before stop()
     // has finished tearing down intervals / removing the beforeExit
@@ -304,7 +304,7 @@ export class HarvestScheduler {
     }, this.metricHarvestIntervalMs);
 
     if (this.allowProcessExit) {
-      // CODE_REVIEW §4.12 — opt-in path for short-lived CLI tools. unref()'d
+      // opt-in path for short-lived CLI tools. unref()'d
       // intervals don't hold the loop open, and beforeExit is registered as
       // a best-effort final-flush attempt. Both are best-effort: Node can
       // exit before the fire-and-forget stop() finishes, so events may be
@@ -329,12 +329,12 @@ export class HarvestScheduler {
    *
    * Order of operations:
    * 1. Clear the harvest intervals.
-   * 2. Await any in-flight harvest started by an interval tick (CODE_REVIEW §4.16).
+   * 2. Await any in-flight harvest started by an interval tick.
    * 3. Run a final `harvestEvents()` + `harvestMetrics()`.
    * 4. `flush()` the optional `otlpEventBridge` and `otlpTransport` so
    *    pending OTLP batches are drained.
    *
-   * **OTel SDK teardown is the consumer's responsibility (CODE_REVIEW §5.4).**
+   * **OTel SDK teardown is the consumer's responsibility.**
    * `stop()` deliberately does not call `shutdown()` on `otlpTransport` /
    * `otlpEventBridge` — the scheduler does not own those objects'
    * lifecycles. If you do not call `shutdown()` yourself, you will leak
@@ -358,7 +358,7 @@ export class HarvestScheduler {
     // The interval teardown steps in doStop() are all safe no-ops when the
     // intervals were never started.
 
-    // CODE_REVIEW §4.19: drive doStop to completion through stopPromise so
+    // 19: drive doStop to completion through stopPromise so
     // concurrent stop() callers coalesce, then clear stopPromise once it
     // resolves so a subsequent start() can pass the "no in-flight stop"
     // guard. Without the clear, a restart-after-stop sequence would be
@@ -390,7 +390,7 @@ export class HarvestScheduler {
       process.removeListener('beforeExit', this.boundBeforeExit);
     }
 
-    // CODE_REVIEW §4.16 — wait for any harvest started by an interval tick
+    // wait for any harvest started by an interval tick
     // to complete before we initiate the final flush. Without this, stop()'s
     // own harvestEvents call could race the in-flight one (the re-entrancy
     // guard would make it a no-op, returning the existing promise — but if
@@ -463,7 +463,7 @@ export class HarvestScheduler {
   }
 
   private async doHarvestEvents(): Promise<void> {
-    // CODE_REVIEW §10.5: scoped child logger stamps `harvestId` on every
+    // 5: scoped child logger stamps `harvestId` on every
     // log line emitted during this cycle (overflow, retry, requeue,
     // OTLP-export failures). Operators searching stderr for one harvest's
     // story have a single pivot.
@@ -573,11 +573,11 @@ export class HarvestScheduler {
   }
 
   private async doHarvestMetrics(): Promise<void> {
-    // CODE_REVIEW §10.5: scoped child logger stamps a `harvestId` on every
+    // 5: scoped child logger stamps a `harvestId` on every
     // log line emitted during this metric harvest cycle.
     const harvestLog = logger.child({ harvestId: newHarvestId(), scope: 'metrics' });
 
-    // CODE_REVIEW §4.25 / §4.11 — self-monitoring: drain MetricAggregator's
+    // 25 / §4.11 — self-monitoring: drain MetricAggregator's
     // drop counter and emit it as a metric so non-finite-value rejections
     // and invalid-attribute rejections are visible in the consumer's own
     // NR dashboards. Mirrors §4.1's `nr.ai.dropped_events` pattern from
@@ -594,7 +594,7 @@ export class HarvestScheduler {
       });
     }
 
-    // CODE_REVIEW §4.6 — drain the aggregator as snapshots, then per
+    // drain the aggregator as snapshots, then per
     // transport: merge the previous failed-send snapshots with the fresh
     // ones (so duplicate name+attrs buckets accumulate), then explode to
     // wire form. Each transport gets its own merged set so a NR-only
@@ -642,7 +642,7 @@ export class HarvestScheduler {
    * with one entry per unique key. Uses a throwaway {@link MetricAggregator}
    * as the merge engine so the bucket-key logic is not duplicated here.
    *
-   * CODE_REVIEW §4.6 — without this re-merge, a failed-send retry plus a
+   * without this re-merge, a failed-send retry plus a
    * fresh harvest hitting the same metric+attrs would produce two wire
    * data points with different timestamps, breaking downstream NRQL
    * aggregation that expects one bucket per harvest interval.

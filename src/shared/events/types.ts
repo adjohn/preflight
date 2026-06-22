@@ -7,7 +7,7 @@ export type AiRequestMethod =
   | 'models.generateContentStream'
   | 'models.embedContent'
   | 'chat.completions.create'
-  // CODE_REVIEW §6.17 — OpenAI's embeddings endpoint. Added so consumers
+  // OpenAI's embeddings endpoint. Added so consumers
   // calling `client.embeddings.create({...})` (the OpenAI Node SDK shape)
   // can pass the verbatim method name and have it map to
   // `gen_ai.operation.name = 'embeddings'` in serialize.ts.
@@ -18,7 +18,7 @@ export type AiRequestMethod =
   | 'chat.stream'
   | 'chat'
   | 'chatStream'
-  // CODE_REVIEW §6.17 — Cohere's embeddings endpoint (`client.embed(...)`).
+  // Cohere's embeddings endpoint (`client.embed(...)`).
   | 'embed';
 
 export interface AiRequest {

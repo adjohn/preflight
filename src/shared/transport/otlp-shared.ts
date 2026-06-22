@@ -22,7 +22,7 @@ export function hasOtlpAuthHeader(headers: Record<string, string>): boolean {
   return false;
 }
 
-// CODE_REVIEW §5.11 — validate OTLP endpoint scheme. https:// is required for
+// validate OTLP endpoint scheme. https:// is required for
 // any non-localhost destination because the payload may contain user prompt
 // fragments (PII). Plain http:// is allowed only against loopback to support
 // local development and testing. Shared by OtlpTransport and OtlpEventBridge

@@ -92,7 +92,7 @@ export const DEFAULT_PRICING_TABLE: Record<string, ModelPricing> = {
   },
 
   // ---- Anthropic (legacy Claude 4 generation) ----
-  // CODE_REVIEW §2.12 — these legacy entries share input/output/cache rates
+  // these legacy entries share input/output/cache rates
   // with their current-generation counterparts, but `contextWindow` differs
   // (200K legacy vs 1M current). They are NOT alias candidates: the cost
   // calculations downstream don't use contextWindow, but downstream tooling
@@ -215,7 +215,7 @@ export const DEFAULT_PRICING_TABLE: Record<string, ModelPricing> = {
   // they get a correct cost figure than fall through to the unknown-model
   // zero rate. Rate values are the last published Google pricing as of
   // that date and will be removed in a future release after the migration
-  // window closes (CODE_REVIEW §2.13).
+  // window closes.
   'gemini-2.0-flash': {
     inputPerMTok: 0.1,
     outputPerMTok: 0.4,
@@ -471,7 +471,7 @@ export const DEFAULT_PRICING_TABLE: Record<string, ModelPricing> = {
     outputPerMTok: 0.6,
     contextWindow: 128_000,
   },
-  // CODE_REVIEW §2.15 — `command` and `command-light` are deprecated (2024)
+  // `command` and `command-light` are deprecated (2024)
   // but retained for historical-cost backfill of consumer apps that haven't
   // migrated. Context window is 4096 tokens, not 4000 — the round-number
   // approximation in the original entry was off by 96 tokens.

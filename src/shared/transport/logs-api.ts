@@ -10,7 +10,7 @@ export interface NrLogEntry {
 /**
  * Send a batch of log entries to the New Relic Logs API.
  *
- * Body shape (CODE_REVIEW §5.18): `[{ logs: [...] }]` — the "Detailed JSON"
+ * Body shape: `[{ logs: [...] }]` — the "Detailed JSON"
  * format documented at
  * https://docs.newrelic.com/docs/logs/log-api/introduction-log-api/.
  * NR also accepts a top-level `common` block sibling to `logs` for shared
@@ -26,7 +26,7 @@ export interface NrLogEntry {
  * when you own the batching and retry logic yourself. For managed delivery
  * analogous to event/metric harvest, a `NrLogEntry[]` buffer inside
  * `HarvestScheduler` would be the right surface — that work is tracked under
- * §11.9 in CODE_REVIEW.md.
+ *.
  */
 export async function sendLogs(
   logs: NrLogEntry[],

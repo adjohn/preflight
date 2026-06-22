@@ -14,7 +14,7 @@ export interface OtlpEventBridgeOptions {
   /**
    * OTel logger name used to identify the source of log records emitted by
    * this bridge. Defaults to `'ai-telemetry'` when not provided. Pass
-   * `'preflight'`, `'nr-ai-agent'`, etc. so telemetry from different
+   * `'preflight'`, `'my-agent'`, etc. so telemetry from different
    * consumers is distinguishable in the NR Logs UI.
    */
   clientName?: string;

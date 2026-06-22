@@ -1,6 +1,6 @@
 /**
  * Selects which downstream transport(s) the harvest scheduler ships to
- * (CODE_REVIEW §4.26). Single source of truth for the literal union — both
+ *. Single source of truth for the literal union — both
  * `AgentConfig.transport` and `HarvestSchedulerOptions.transport` consume
  * this type so a future addition (e.g. a Datadog transport) only needs to
  * widen the union here.
@@ -27,7 +27,7 @@
 export type TransportMode = 'nr-events-api' | 'otlp' | 'both';
 
 /**
- * Wire-format value for an `NrMetric` of type `'summary'` (CODE_REVIEW §4.9).
+ * Wire-format value for an `NrMetric` of type `'summary'`.
  * Mirrors the NR Metric API summary shape exactly.
  */
 export interface NrMetricSummaryValue {
@@ -76,7 +76,7 @@ export interface NrCountMetric extends NrMetricBase {
 /**
  * Pre-aggregated summary metric — `count`, `sum`, `min`, `max` over the
  * interval window. One summary metric replaces what would otherwise be four
- * separate `.count` / `.sum` / `.min` / `.max` data points (CODE_REVIEW §4.9),
+ * separate `.count` / `.sum` / `.min` / `.max` data points,
  * halving payload cardinality and matching NR's NRQL ergonomics.
  */
 export interface NrSummaryMetric extends NrMetricBase {
@@ -108,7 +108,7 @@ export interface TransportOptions {
   readonly requestTimeoutMs?: number;
   /**
    * Identifies the consuming client in the `User-Agent` header sent to NR
-   * ingest endpoints (e.g. `'preflight'`, `'nr-ai-agent'`). Defaults to
+   * ingest endpoints (e.g. `'preflight'`, `'my-agent'`). Defaults to
    * `'ai-telemetry'` when not provided.
    */
   readonly clientName?: string;

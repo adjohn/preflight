@@ -8,9 +8,7 @@ This guide covers everything you need to get productive in this repo: environmen
 
 Preflight provides **observability for AI coding assistants**. When developers use tools like Claude Code, Cursor, Windsurf, or Copilot, this project captures what's happening — tool calls, token usage, costs, efficiency patterns — and sends it all to New Relic.
 
-There are two main integration points:
-
-1. **MCP Server (this repo)** — Hooks into Claude Code via the Model Context Protocol. Captures every tool call, computes metrics like efficiency scores and anti-pattern detection, and exposes MCP tools that Claude Code can query directly.
+**MCP Server (this repo)** — Hooks into Claude Code via the Model Context Protocol. Captures every tool call, computes metrics like efficiency scores and anti-pattern detection, and exposes MCP tools that Claude Code can query directly.
 
 The MCP server uses a common transport layer (`src/shared/`) for event buffering, metric aggregation, and HTTP delivery to New Relic's APIs.
 
@@ -78,7 +76,7 @@ npx tsc -b .
 
 ### Working with shared code
 
-Do not edit `src/shared/` directly — it is a vendored snapshot. If you find a bug there, please open an issue.
+Do not edit `src/shared/` directly — it is a vendored snapshot. If you find a bug there, please open an issue at https://github.com/newrelic-experimental/preflight/issues.
 
 ---
 
@@ -380,7 +378,7 @@ After making changes, run through these checkpoints to confirm end-to-end behavi
 ### 1. Build and link
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/newrelic-experimental/preflight
 cd preflight
 nvm use
 npm install
@@ -510,6 +508,6 @@ Then restart Claude Code.
 - **[CLAUDE.md](./CLAUDE.md)** — Full technical reference: architecture, conventions, every pattern in detail.
 - **[SECURITY.md](./docs/SECURITY.md)** — Security practices, invariants, and code review checklist. Read before any PR touching config loading, network requests, subprocess execution, or telemetry fields.
 - **[TEST_PATTERNS.md](./docs/TEST_PATTERNS.md)** — Testing conventions, factory patterns, mock strategies.
-- **[COMMANDS_TABLE.md](./docs/COMMANDS_TABLE.md)** — All 36 MCP tools with parameters and return schemas.
+- **[COMMANDS_TABLE.md](./docs/COMMANDS_TABLE.md)** — All MCP tools with parameters and return schemas.
 - **[METRICS_TABLE.md](./docs/METRICS_TABLE.md)** — Every NR event and metric, field definitions, delivery mechanism.
 - **The code itself** — Best examples of our patterns: `src/metrics/` (tracker pattern), `src/shared/harvest/` (scheduler/buffer pattern).

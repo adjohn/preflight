@@ -10,7 +10,7 @@
 // redact() before handing it to a logger or external sink.
 //
 // safeForLog(config) — convenience wrapper that returns a redacted copy of an
-// AgentConfig, suitable for diagnostic dumps. See CODE_REVIEW §10.1.
+// AgentConfig, suitable for diagnostic dumps. See
 // ---------------------------------------------------------------------------
 
 import type { AgentConfig } from './config.js';
@@ -106,7 +106,7 @@ function redactInner(value: unknown, depth: number, ancestors: WeakSet<object>):
  * Keep `redact()` for arbitrary objects; reach for `safeForLog()` when you
  * specifically have an `AgentConfig` and want a typed return.
  *
- * CODE_REVIEW §10.1.
+ *
  */
 export function safeForLog(config: AgentConfig): Readonly<AgentConfig> {
   return Object.freeze(redact(config));

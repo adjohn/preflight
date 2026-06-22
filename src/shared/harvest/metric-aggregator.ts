@@ -14,7 +14,7 @@ export interface MetricAccumulator {
  * Allowed attribute value types. Restricted at compile time to the three
  * primitives NR ingest can faithfully round-trip; runtime validation in
  * {@link MetricAggregator.record} enforces the same shape against JS callers
- * that bypass the type system (CODE_REVIEW §4.8).
+ * that bypass the type system.
  */
 export type MetricAttributeValue = string | number | boolean;
 
@@ -23,7 +23,7 @@ export type MetricAttributeValue = string | number | boolean;
  * the four aggregator values. Returned by {@link MetricAggregator.harvestSnapshots}
  * and accepted by {@link MetricAggregator.merge}, allowing the harvest
  * scheduler to retain pre-explosion form across failed-send retries
- * (CODE_REVIEW §4.6) so that the next harvest's `record()` calls fold into
+ * so that the next harvest's `record()` calls fold into
  * the same bucket instead of producing a second set of data points.
  */
 export interface MetricSnapshot extends MetricAccumulator {
@@ -53,7 +53,7 @@ function isValidAttributeValue(v: unknown): v is MetricAttributeValue {
  * Encode an attribute value into the bucket key with a one-character type
  * sigil so `5` (number) and `"5"` (string), or `true` (boolean) and `"true"`
  * (string), produce distinct keys instead of silently sharing a bucket
- * (CODE_REVIEW §4.8).
+ *.
  */
 function encodeAttributeValue(v: MetricAttributeValue): string {
   switch (typeof v) {
@@ -89,7 +89,7 @@ export class MetricAggregator {
   /**
    * Number of `record()` calls rejected since the last `drainDropCount()`.
    * Incremented on non-finite values and invalid attribute types
-   * (CODE_REVIEW §4.11). Mirrors the pattern in `EventBuffer.dropCount` so
+   *. Mirrors the pattern in `EventBuffer.dropCount` so
    * `HarvestScheduler` can emit a `nr.ai.dropped_metrics` self-monitoring
    * gauge each harvest tick — operators currently see only `logger.warn`
    * spam, with no aggregate count of "we silently dropped N samples".
@@ -107,7 +107,7 @@ export class MetricAggregator {
    * when it was rejected (non-finite value or invalid attribute type) per
    * the §4.8 strict validation contract. The boolean return surface
    * exposes the rejection signal so callers can implement backpressure or
-   * surface invalid-input metrics (CODE_REVIEW §4.22). Existing callers
+   * surface invalid-input metrics. Existing callers
    * that ignore the return value see unchanged behavior.
    */
   record(
@@ -126,7 +126,7 @@ export class MetricAggregator {
     // entire sample when any attribute fails validation — silently
     // coercing `null` → `"null"` or `{}` → `"[object Object]"` would
     // produce ambiguous keys that collide with legitimate string values
-    // (CODE_REVIEW §4.8).
+    //.
     for (const [k, v] of Object.entries(attributes)) {
       if (!isValidAttributeValue(v)) {
         logger.warn('MetricAggregator.record: invalid attribute value — sample dropped', {
@@ -168,7 +168,7 @@ export class MetricAggregator {
    * to wire form, or {@link merge} on a fresh harvest cycle to fold the
    * snapshots back in if a send failed.
    *
-   * CODE_REVIEW §4.6 — retaining snapshot form across the failed-send
+   * retaining snapshot form across the failed-send
    * boundary is what lets the next harvest produce a single rolled-up
    * data point per name+attrs combination instead of two separate ones
    * with different timestamps.
@@ -194,7 +194,7 @@ export class MetricAggregator {
    * Fold pre-rolled snapshots back into the aggregator, accumulating into
    * existing buckets when the (name, attributes) key matches. Used on the
    * retry path to merge a failed-send batch with the next harvest interval's
-   * data so the result is a single rolled-up data point (CODE_REVIEW §4.6).
+   * data so the result is a single rolled-up data point.
    */
   merge(snapshots: readonly MetricSnapshot[]): void {
     for (const s of snapshots) {
@@ -238,7 +238,7 @@ export class MetricAggregator {
    * Total number of `record()` calls rejected since the last
    * `drainDropCount()` (or aggregator construction). Includes both
    * non-finite-value rejections and invalid-attribute-type rejections
-   * (CODE_REVIEW §4.11). Read-only — call `drainDropCount()` to read and
+   *. Read-only — call `drainDropCount()` to read and
    * reset atomically.
    */
   get dropCount(): number {
@@ -266,7 +266,7 @@ export class MetricAggregator {
    * `metric-aggregator.test.ts` to verify post-`harvest()` state.
    *
    * Not used by `HarvestScheduler` today; surfacing it (rather than dropping
-   * the accessor per CODE_REVIEW §4.10) keeps the surface stable for the
+   * the accessor per 10) keeps the surface stable for the
    * self-monitoring work tracked under §4.25.
    */
   get bucketCount(): number {
@@ -276,7 +276,7 @@ export class MetricAggregator {
 
 /**
  * Convert each {@link MetricSnapshot} to a single wire-format `NrMetric` of
- * type `'summary'` (CODE_REVIEW §4.9).
+ * type `'summary'`.
  *
  * Pre-§4.9 this function emitted four separate metrics per snapshot
  * (`{name}.count`, `.sum`, `.min`, `.max`) — three of them as `gauge` (which

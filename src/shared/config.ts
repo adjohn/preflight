@@ -4,7 +4,7 @@ import type { TransportMode } from './transport/types.js';
 import { DEFAULT_CLIENT_NAME } from './transport/otlp-shared.js';
 
 /**
- * Strings that count as `true` (CODE_REVIEW §3.3.8). The lowercased env
+ * Strings that count as `true`. The lowercased env
  * value is checked against these literal sets — any other value falls
  * through to the default.
  */
@@ -12,7 +12,7 @@ const ENV_TRUTHY = new Set(['true', '1', 'yes', 'on']);
 const ENV_FALSY = new Set(['false', '0', 'no', 'off']);
 
 /**
- * Module-level config logger. Per CODE_REVIEW §7.5 the underlying
+ * Module-level config logger. Per 5 the underlying
  * `createLogger` now resolves the minimum log level per-call via the cached
  * `getMinLevel()`, so a runtime env mutation followed by `__resetLogLevelCache()`
  * propagates here without re-constructing this logger.
@@ -43,7 +43,7 @@ export interface AgentConfig {
    * `User-Agent` headers and OTel instrumentation scope / logger names.
    * Defaults to `'ai-telemetry'` when not set.
    *
-   * Pass `'preflight'` from the Preflight MCP server or `'nr-ai-agent'`
+   * Pass `'preflight'` from the Preflight MCP server or `'my-agent'`
    * from the TypeScript agent so telemetry from each consumer is
    * distinguishable in the NR UI.
    */
@@ -52,7 +52,7 @@ export interface AgentConfig {
 
 /**
  * Parse a boolean environment variable. Accepts `true|1|yes|on` as truthy
- * and `false|0|no|off` as falsy (case-insensitive, CODE_REVIEW §3.3.8). Any
+ * and `false|0|no|off` as falsy (case-insensitive, 8). Any
  * other value (or missing env var) returns the default. Unknown values emit
  * a debug log so misconfigurations are diagnosable.
  */
@@ -72,7 +72,7 @@ function envBool(key: string, defaultValue: boolean): boolean {
 /**
  * Parse an integer environment variable. Out-of-bound values are clamped to
  * the bound and emit a debug log so the override is observable
- * (CODE_REVIEW §3.3.7).
+ *.
  */
 function envInt(
   key: string,
@@ -130,7 +130,7 @@ function overrideString(v: string | null | undefined, envFn: () => string | null
 }
 
 /**
- * Parse the transport-mode env var (CODE_REVIEW §3.3.10). Accepts the same
+ * Parse the transport-mode env var. Accepts the same
  * values as the `transport` field on `AgentConfig`. Unrecognized values
  * fall back to the default and emit a debug log so misconfigurations are
  * diagnosable.
@@ -154,7 +154,7 @@ function buildAttributionDefaults(
 
   // Env-var defaults for the four standard attribution fields.
   //
-  // CODE_REVIEW §3.3.11: empty-string env values are intentionally treated as
+  // 11: empty-string env values are intentionally treated as
   // "not set" via the truthiness check below. NR's events API rejects empty
   // string attribute values, so a deliberately-empty env var (e.g. to "clear"
   // a higher-precedence default) would only produce a 400 at ingest time —
@@ -197,7 +197,7 @@ function buildAttributionDefaults(
 //   - Whitespace around the `=` is stripped.
 //   - Only the FIRST `=` separates key from value (so a value can legitimately
 //     contain `=` if it appears later in the substring after percent-decoding).
-//   - Keys and values are percent-decoded after splitting (CODE_REVIEW §3.3.4).
+//   - Keys and values are percent-decoded after splitting.
 function parseOtlpHeaders(headerString: string | undefined): Record<string, string> {
   if (!headerString) return {};
   const result: Record<string, string> = {};
@@ -251,7 +251,7 @@ const LICENSE_KEY_RE = /^[\x21-\x7E]{20,128}$/;
  *
  * Precedence: `overrides` (when present per key) > env vars > defaults. The
  * function is stateless from the library's perspective — call it again to
- * pick up env-var changes (CODE_REVIEW §3.3.12 documents the SIGHUP pattern).
+ * pick up env-var changes (12 documents the SIGHUP pattern).
  *
  * License-key validation enforces a printable-ASCII regex (20–128 chars,
  * no whitespace) — strict enough to catch trailing newlines from `cat` pipes
@@ -312,7 +312,7 @@ export function loadConfig(overrides?: AgentConfigInput): Readonly<AgentConfig> 
       ? overrides.accountId
       : (process.env.NEW_RELIC_ACCOUNT_ID ?? null);
   if (accountId !== null && !/^[1-9]\d*$/.test(accountId)) {
-    // CODE_REVIEW §3.3.6: positive-integer-only, no leading zeros, any length.
+    // 6: positive-integer-only, no leading zeros, any length.
     // - Removes the prior 12-digit cap so consumers don't have to release a
     //   new version when NR issues 13+ digit account IDs server-side.
     // - Rejects '0' / leading-zero strings (e.g. '07' would have passed the
@@ -324,7 +324,7 @@ export function loadConfig(overrides?: AgentConfigInput): Readonly<AgentConfig> 
     );
   }
 
-  // CODE_REVIEW F3: hoist `transport` resolution so we can fail fast when
+  // F3: hoist `transport` resolution so we can fail fast when
   // accountId is missing for transports that need it. Without this check, the
   // NR Events API URL becomes ".../accounts/null/events", which NR returns 404
   // on; the harvest scheduler then silently retry-loops every batch until the
