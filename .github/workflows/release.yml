@@ -14,6 +14,8 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      HUSKY: 0 # disable git hooks in CI
 
     steps:
       - uses: actions/checkout@v5
