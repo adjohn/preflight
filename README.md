@@ -20,12 +20,10 @@ Think of it like Google Analytics for your AI pair programmer.
 ---
 ## Demo
 
-<div align="center">
-  <video src="demo/preflight-readme.mp4" controls width="600" />
-</div>
 
-See the dashboard in action — session tracking, cost breakdown, efficiency score, anti-patterns, and more.
+![Preflight demo animation](demo/preflight-readme.gif)
 
+See the dashboard in action — session tracking, cost breakdown, efficiency score, anti-patterns, and more. ([Full video](demo/preflight-readme.mp4))
 ---
 
 
