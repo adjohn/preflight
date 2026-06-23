@@ -3,9 +3,9 @@
   <h1>Preflight</h1>
   <p><strong>Observability for AI Coding Assistants</strong></p>
 
-[![Open Source](https://img.shields.io/badge/Open%20Source-MIT-blue)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/Node-22%2B-brightgreen)](.nvmrc)
-[![Works Offline](https://img.shields.io/badge/Works%20Offline-Yes-brightgreen)](#local-mode)
+[![Local First](https://img.shields.io/badge/Local%20First-Offline%20by%20default-brightgreen)](#quick-start)
 [![Dashboards Included](https://img.shields.io/badge/Dashboards-7%20Included-blue)](#dashboards)
 
 [**Docs**](docs/ADVANCED.md) • [**Examples**](examples/) • [**Community**](https://support.newrelic.com/s/) • [**Contributing**](CONTRIBUTING.md)
@@ -20,7 +20,7 @@ Your AI coding assistant makes hundreds of decisions every session — what to r
 
 **Preflight is observability for agentic coding** — the actions, cost, and efficiency of your AI coding assistant as it works. See exactly what's happening, how much it costs, and where your AI is wasting time.
 
-It captures every tool call, measures the cost, detects inefficiencies, and sends actionable data to your dashboards — so you can optimize, budget, and understand AI behavior in real time.
+**Local-first by design.** Preflight runs entirely on your machine and sends your data nowhere by default. A live dashboard at `localhost:7777` shows your sessions in real time, fully offline. Connect a New Relic account only when you want more — team rollups, alerting, and cross-session history. You choose: **local-only**, **New Relic**, or **both**.
 
 ---
 
@@ -51,14 +51,15 @@ See cost breakdown, efficiency scoring, anti-patterns, and live session tracking
 - **Personalized recommendations** — optimize your AI workflow
 - **Weekly coaching reports** — narrative analysis vs. your historical baseline
 
-### Ready-to-Use Dashboards
-- **7 pre-built dashboards** — deploy in seconds
-- **Overview** — session stats, cost summary, top tools
-- **Personal** — 30-day self-reflection scoped to you
-- **Team View** — aggregated cost and efficiency across developers
-- **Manager View** — high-level team metrics, no tool-call content
-- **Platform Comparison** — Claude Code vs. Cursor vs. Windsurf, etc.
-- **Security Audit** — audit trail of sensitive file access
+### Dashboards
+- **Local dashboard** — live session view at `localhost:7777`, no account required
+- **7 pre-built New Relic dashboards** — deploy in seconds _(New Relic mode)_:
+  - **Overview** — session stats, cost summary, top tools
+  - **Personal** — 30-day self-reflection scoped to you
+  - **Team View** — aggregated cost and efficiency across developers
+  - **Manager View** — high-level team metrics, no tool-call content
+  - **Platform Comparison** — Claude Code vs. Cursor vs. Windsurf, etc.
+  - **Security Audit** — audit trail of sensitive file access
 
 ---
 
@@ -70,15 +71,43 @@ See cost breakdown, efficiency scoring, anti-patterns, and live session tracking
 npm install -g @newrelic/preflight
 ```
 
-### 2. Setup
+### 2. Run setup
 
 ```bash
 preflight setup
 ```
 
-Choose **cloud** to send telemetry to New Relic, or **local** for offline dashboard-only use. The wizard validates keys and most people are running in under 5 minutes.
+The wizard defaults to **local mode** — press Enter through the prompts and you're set. It wires Preflight into your AI tool (hooks + MCP server) and writes config to `~/.newrelic-preflight/`. Takes under a minute, no account required.
 
-Or skip the wizard:
+When prompted, pick a mode:
+
+| Mode | What it does | New Relic account? |
+| --- | --- | --- |
+| **local** _(default)_ | Everything stays on your machine; live dashboard at `localhost:7777` | Not needed |
+| **cloud** | Ships telemetry to New Relic | Required |
+| **both** | Local dashboard **and** New Relic | Required |
+
+### 3. Start coding
+
+Restart your AI tool — hooks and the MCP server load at session start. Every tool call is captured automatically. Open **http://localhost:7777** to watch your session live.
+
+---
+
+## Works With
+
+**Claude Code** • **Cursor** • **Windsurf** • **GitHub Copilot** • **Zed** • **Continue.dev** • **Amazon Q Developer**
+
+---
+
+## Connect New Relic (optional)
+
+Local mode is fully featured on its own. Connect a New Relic account to unlock:
+
+- **Team & manager dashboards** across multiple developers
+- **Alerting** on cost spikes, low efficiency, and stuck loops
+- **Cross-session history**, trends, and weekly coaching reports
+
+Re-run `preflight setup` and choose **cloud** or **both**, or configure it non-interactively:
 
 ```bash
 preflight install \
@@ -86,20 +115,14 @@ preflight install \
   --account-id YOUR_ACCOUNT_ID
 ```
 
-### 3. Deploy dashboards (optional)
+Then deploy the prebuilt dashboards:
 
 ```bash
 NEW_RELIC_API_KEY=NRAK-... NEW_RELIC_ACCOUNT_ID=12345 \
   preflight deploy-dashboards --all
 ```
 
-Then restart your AI tool and start coding. Every tool call is captured automatically.
-
----
-
-## Works With
-
-**Claude Code** • **Cursor** • **Windsurf** • **GitHub Copilot** • **Zed** • **Continue.dev** • **Amazon Q Developer**
+You'll need a **license key** (telemetry ingest) and your **account ID**, plus a **user API key** (`NRAK-…`) to deploy dashboards and alerts. See [ADVANCED.md](docs/ADVANCED.md) for alerts, OTLP export to other backends, and Terraform.
 
 ---
 
@@ -110,8 +133,8 @@ Then restart your AI tool and start coding. Every tool call is captured automati
 - **An AI coding tool** (Claude Code recommended for deepest integration)
 
 ### Optional
-- **New Relic account** — for cloud dashboards. Skip this to use [local mode](#local-mode) offline.
-- **User API key** — only needed for `deploy-dashboards` and `deploy-alerts` commands
+- **New Relic account** — only for `cloud`/`both` mode. Skip it to run local-only (the default).
+- **User API key** (`NRAK-…`) — only needed to deploy dashboards and alerts
 
 ---
 
@@ -120,19 +143,6 @@ Then restart your AI tool and start coding. Every tool call is captured automati
 - [**ADVANCED.md**](docs/ADVANCED.md) — Configuration, dashboards, alerts, Terraform
 - [**CONTRIBUTING.md**](CONTRIBUTING.md) — Development, testing, submitting PRs
 - [**SECURITY.md**](docs/SECURITY.md) — Security guidelines and best practices
-
----
-
-## Local Mode
-
-No New Relic account needed. Run:
-
-```bash
-npm install -g @newrelic/preflight
-preflight setup
-```
-
-Choose **local** mode. You'll get a live dashboard on `http://127.0.0.1:7777` showing your session in real time. Perfect for testing, learning, or offline use.
 
 ---
 
@@ -155,7 +165,7 @@ Then run `preflight setup` as usual.
 
 ## License
 
-Preflight is open source under the [MIT License](LICENSE).
+Preflight is open source under the [Apache License 2.0](LICENSE).
 
 ---
 
