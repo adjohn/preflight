@@ -1,5 +1,10 @@
 # NR AI Coding Observability: Preflight
 
+<div align="center">
+  <img src="demo/preflight-poster.png" alt="Preflight" width="600" />
+</div>
+
+
 **Observability for AI coding assistants.** Captures every action your AI coding tool takes — file reads, edits, commands, searches — and sends the data to New Relic so you can see exactly what's happening, how much it costs, and where it's wasting time.
 
 Think of it like Google Analytics for your AI pair programmer.
@@ -13,6 +18,16 @@ Think of it like Google Analytics for your AI pair programmer.
 - **Sends to New Relic** — all data lands in your NR account as queryable events and metrics, ready for dashboards and alerts
 
 ---
+## Demo
+
+<div align="center">
+  <video src="demo/preflight-readme.mp4" controls width="600" />
+</div>
+
+See the dashboard in action — session tracking, cost breakdown, efficiency score, anti-patterns, and more.
+
+---
+
 
 ## Before You Start
 
