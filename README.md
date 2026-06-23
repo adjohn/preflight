@@ -18,7 +18,7 @@
 
 Your AI coding assistant makes hundreds of decisions every session — what to read, what to edit, when to run commands. But you can't see any of it. You know it was fast, but was it *efficient*? You got a PR merged, but how much did it cost? You fixed a bug, but did it get stuck in a loop first?
 
-**Preflight is observability for agentic coding** — the actions, cost, and efficiency of your AI coding assistant as it works. This is _not_ [AI Monitoring in New Relic](https://newrelic.com/platform/ai-monitoring), which observes the LLM-powered applications you ship to production. Preflight watches the coding tool on your machine; AI Monitoring watches the AI features in your product.
+**Preflight is observability for agentic coding** — the actions, cost, and efficiency of your AI coding assistant as it works. See exactly what's happening, how much it costs, and where your AI is wasting time.
 
 It captures every tool call, measures the cost, detects inefficiencies, and sends actionable data to your dashboards — so you can optimize, budget, and understand AI behavior in real time.
 
