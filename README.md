@@ -1,10 +1,7 @@
-# Preflight — Observability for AI Coding Assistants
-
 <div align="center">
-  <img src="demo/preflight-poster.png" alt="Preflight" width="100%" style="max-width: 800px" />
-</div>
-
-<div align="center">
+  <img src="demo/preflight-logo.svg" alt="Preflight" width="96" height="96" />
+  <h1>Preflight</h1>
+  <p><strong>Observability for AI Coding Assistants</strong></p>
 
 [![Open Source](https://img.shields.io/badge/Open%20Source-MIT-blue)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/Node-22%2B-brightgreen)](.nvmrc)
@@ -31,7 +28,7 @@ It captures every tool call, measures the cost, detects inefficiencies, and send
 
 ![Preflight dashboard animation](demo/preflight-readme.gif)
 
-See cost breakdown, efficiency scoring, anti-patterns, and live session tracking in action. ([Full video](demo/preflight-readme.mp4))
+See cost breakdown, efficiency scoring, anti-patterns, and live session tracking in action.
 
 ---
 
