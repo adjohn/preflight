@@ -186,6 +186,7 @@ export function toolCallToNrEvent(
 ): NrEventData {
   const event: NrEventData = {
     eventType: 'AiToolCall',
+    event_version: 1,
     timestamp: record.timestamp,
     tool: record.toolName,
     tool_use_id: record.toolUseId,
@@ -254,6 +255,7 @@ export function proxyToolCallToNrEvent(
 ): NrEventData {
   const event: NrEventData = {
     eventType: 'AiMcpToolCall',
+    event_version: 1,
     timestamp: record.timestamp,
     server: record.serverName,
     tool: record.toolName,
@@ -297,6 +299,7 @@ export function proxyRequestToNrEvent(
 ): NrEventData {
   const event: NrEventData = {
     eventType: 'AiProxyRequest',
+    event_version: 1,
     timestamp: record.timestamp,
     server: record.serverName,
     method: record.method,
@@ -339,6 +342,7 @@ export function codingTaskToNrEvent(
 
   const event: NrEventData = {
     eventType: 'AiCodingTask',
+    event_version: 1,
     timestamp: task.endTime,
     task_id: task.taskId,
     developer: attrs.developer,
@@ -715,6 +719,7 @@ export function antiPatternToNrEvent(
 ): NrEventData {
   const event: NrEventData = {
     eventType: 'AiAntiPattern',
+    event_version: 1,
     timestamp: attrs.detectedAt ?? Date.now(),
     // Field name is intentionally 'type' (not 'patternType') — used by all NRQL queries and dashboards. Do not rename.
     type: pattern.type,
@@ -1173,6 +1178,7 @@ export class NrIngestManager {
   ): void {
     const nrEvent: NrEventData = {
       eventType: 'AiContextSnapshot',
+      event_version: 1,
       timestamp: snapshot.timestamp,
       developer: this.developer,
       appName: this.appName,
@@ -1202,6 +1208,7 @@ export class NrIngestManager {
   ingestBudgetWarning(event: BudgetThresholdEvent): void {
     const nrEvent: NrEventData = {
       eventType: 'AiBudgetWarning',
+      event_version: 1,
       timestamp: event.timestamp,
       developer: this.developer,
       appName: this.appName,

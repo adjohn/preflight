@@ -845,6 +845,15 @@ describe('auditRecordToNrEvent', () => {
     expect(event['audit.security_alert']).toBe(false);
     expect(event['audit.severity']).toBeUndefined();
   });
+
+  it('includes event_version: 1 on AiAuditEvent', () => {
+    const mgr = makeManager();
+    const record = makeRecord({ toolName: 'Read', filePath: 'src/app.ts' });
+    const audit = mgr.recordToolCall(record);
+    const event = auditRecordToNrEvent(audit);
+
+    expect(event.event_version).toBe(1);
+  });
 });
 
 describe('securityAlertToNrEvent', () => {
@@ -860,6 +869,15 @@ describe('securityAlertToNrEvent', () => {
     expect(event.tool).toBe('Bash');
     expect(event.command).toBe('rm -rf /');
     expect(event.developer).toBe('alice');
+  });
+
+  it('includes event_version: 1 on SecurityAlert', () => {
+    const mgr = makeManager();
+    const record = makeRecord({ toolName: 'Bash', command: 'rm -rf /' });
+    const audit = mgr.recordToolCall(record);
+    const event = securityAlertToNrEvent(audit);
+
+    expect(event.event_version).toBe(1);
   });
 });
 

@@ -37,6 +37,12 @@ Source: `src/shared/harvest/harvest-scheduler.ts`, `src/transport/log-ingest.ts`
 
 ---
 
+## Schema Versioning
+
+Every NR event type carries an `event_version` field (currently `1`). Within a version, changes are additive only: new attributes may appear, existing ones keep name and meaning. A rename, removal, or semantic change bumps the version. Consumers should tolerate unknown attributes and may branch on `event_version` in NRQL.
+
+---
+
 ## Events API
 
 ### MCP Server Events
