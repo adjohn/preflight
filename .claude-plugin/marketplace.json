@@ -1,0 +1,17 @@
+{
+  "name": "newrelic-preflight",
+  "owner": {
+    "name": "New Relic"
+  },
+  "description": "Preflight: observability for AI coding assistants, from New Relic.",
+  "plugins": [
+    {
+      "name": "preflight",
+      "source": "./",
+      "displayName": "Preflight",
+      "description": "Observability for AI coding assistants: cost tracking, efficiency scoring, and anti-pattern detection with a local dashboard. Local-first; New Relic export optional.",
+      "category": "monitoring",
+      "tags": ["observability", "cost-tracking", "mcp", "claude-code"]
+    }
+  ]
+}
