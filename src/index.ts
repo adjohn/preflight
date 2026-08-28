@@ -1790,6 +1790,7 @@ async function main(): Promise<void> {
         efficiencyScorer,
         feedbackCollector,
         apiFailureTracker,
+        gitEfficiencyTracker,
         turnCostAttributor,
         sessionTraceId,
       });
@@ -2639,6 +2640,7 @@ async function main(): Promise<void> {
           efficiencyScorer,
           feedbackCollector,
           apiFailureTracker,
+          gitEfficiencyTracker,
           turnCostAttributor,
           sessionTraceId: realId,
         });

@@ -397,6 +397,20 @@ Emitted every 60 seconds alongside session gauges (only when an `ApiFailureTrack
 
 Source: `src/metrics/api-failure-tracker.ts` — `emitMetrics()`
 
+### MCP Server — Git Metrics
+
+Emitted every 60 seconds alongside session gauges (only when a `GitEfficiencyTracker` is wired in). Attributes: `{developer, session_id?, team_id?, project_id?, org_id?}`. Each count blends hook-observed git/gh-CLI activity with commits hydrated from `git log` at session start — the two sources are deduped upstream (see `GitEfficiencyTracker.hydrateGitLog()`), so there is no separate hook-observed-vs-hydrated breakdown.
+
+| Metric Name               | Value | How Computed                             |
+| ------------------------- | ----- | ---------------------------------------- |
+| `ai.git.commit_count`     | count | `GitEfficiencyMetrics.commitCount`       |
+| `ai.git.push_count`       | count | `GitEfficiencyMetrics.pushCount`         |
+| `ai.git.force_push_count` | count | `GitEfficiencyMetrics.forcePushes`       |
+| `ai.git.pr_created`       | count | `GitEfficiencyMetrics.prMetrics.created` |
+| `ai.git.pr_merged`        | count | `GitEfficiencyMetrics.prMetrics.merged`  |
+
+Source: `src/metrics/git-efficiency-tracker.ts` — `emitMetrics()`
+
 ### Metric Aggregation
 
 All metrics pass through the `MetricAggregator` before being sent. For each unique (name + attributes) combination, the aggregator emits a single `summary` metric with:
