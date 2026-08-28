@@ -49,6 +49,7 @@ beforeEach(() => {
   delete process.env.NR_AI_DASHBOARD_HOST;
   delete process.env.NR_AI_DASHBOARD_OPEN;
   delete process.env.NEW_RELIC_AI_RETAIN_SESSIONS_DAYS;
+  delete process.env.NR_AI_COMPANION_MODE;
 });
 
 afterEach(() => {
@@ -584,6 +585,42 @@ describe('loadMcpConfig()', () => {
     const config = loadMcpConfig({ config: configPath });
     expect(config.highSecurity).toBe(false);
     expect(config.recordContent).toBe(true);
+  });
+});
+
+describe('companionMode', () => {
+  it('defaults to false when unset', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.companionMode).toBe(false);
+  });
+
+  it('reads true from the config file', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({ companionMode: true });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.companionMode).toBe(true);
+  });
+
+  it('NR_AI_COMPANION_MODE=true overrides an absent file value', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_COMPANION_MODE = 'true';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.companionMode).toBe(true);
+  });
+
+  it('NR_AI_COMPANION_MODE=false overrides a true file value (env > file > default)', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NR_AI_COMPANION_MODE = 'false';
+    const configPath = writeConfigFile({ companionMode: true });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.companionMode).toBe(false);
   });
 });
 
