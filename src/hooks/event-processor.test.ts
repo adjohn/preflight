@@ -1329,6 +1329,93 @@ describe('HookEventProcessor', () => {
     });
   });
 
+  describe('mode: instructions_loaded', () => {
+    it('routes mode:instructions_loaded entries through onInstructionsLoaded', () => {
+      const frames: import('./event-processor.js').InstructionsLoadedFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onInstructionsLoaded: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'instructions_loaded',
+          tool: 'instructions_loaded',
+          filePath: '/Users/test/project/CLAUDE.md',
+          memoryType: 'Project',
+          loadReason: 'session_start',
+          timestamp: 1700000000000,
+          sessionId: 's1',
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].filePath).toBe('/Users/test/project/CLAUDE.md');
+      expect(frames[0].memoryType).toBe('Project');
+      expect(frames[0].loadReason).toBe('session_start');
+      expect(frames[0].sessionId).toBe('s1');
+    });
+
+    it('defaults sessionId to null when absent', () => {
+      const frames: import('./event-processor.js').InstructionsLoadedFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onInstructionsLoaded: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'instructions_loaded',
+          tool: 'instructions_loaded',
+          filePath: '/Users/test/project/CLAUDE.md',
+          timestamp: 1700000000000,
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].sessionId).toBeNull();
+    });
+
+    it('swallows errors from a throwing onInstructionsLoaded callback', () => {
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onInstructionsLoaded: () => {
+          throw new Error('boom');
+        },
+      });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'instructions_loaded',
+            tool: 'instructions_loaded',
+            filePath: '/Users/test/project/CLAUDE.md',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+    });
+
+    it('is a no-op when onInstructionsLoaded is not configured', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'instructions_loaded',
+            tool: 'instructions_loaded',
+            filePath: '/Users/test/project/CLAUDE.md',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+      expect(records).toHaveLength(0);
+    });
+  });
+
   describe('platform tool-name mapping', () => {
     it('maps a non-canonical tool name using the injected platform adapter', () => {
       const fakeAdapter = {

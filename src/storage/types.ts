@@ -100,10 +100,27 @@ export interface ApiFailureHookEvent extends HookEventBase {
 }
 
 /**
+ * Emitted by Claude Code's InstructionsLoaded hook, which fires each time a
+ * `CLAUDE.md` or `.claude/rules/*.md` file is loaded into context —
+ * including at session start (`loadReason: 'session_start'`), a moment no
+ * tool-call-based heuristic can observe at all, since Claude Code loads
+ * eager instruction files internally with no visible `Read` call
+ * (code.claude.com/docs/en/hooks.md).
+ */
+export interface InstructionsLoadedHookEvent extends HookEventBase {
+  readonly mode: 'instructions_loaded';
+  readonly sessionId?: string;
+  readonly filePath: string;
+  readonly memoryType?: string;
+  readonly loadReason?: string;
+}
+
+/**
  * Buffer line discriminated union. `pre`/`post`/`token` are the original
  * collector modes. `subagent_token`, `workflow_run`, and
  * `observability_health` are emitted by the SubagentWatcher / WorkflowWatcher.
- * `api_failure` is emitted by the collector for Claude Code's StopFailure hook.
+ * `api_failure` is emitted by the collector for Claude Code's StopFailure
+ * hook, `instructions_loaded` for its InstructionsLoaded hook.
  */
 export type HookEvent =
   | PreHookEvent
@@ -112,7 +129,8 @@ export type HookEvent =
   | SubagentTokenHookEvent
   | WorkflowRunEvent
   | ObservabilityHealthHookEvent
-  | ApiFailureHookEvent;
+  | ApiFailureHookEvent
+  | InstructionsLoadedHookEvent;
 
 export interface TokenEvent {
   readonly mode: 'token';

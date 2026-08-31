@@ -2259,6 +2259,9 @@ async function main(): Promise<void> {
           duringToolExecution,
         });
       },
+      onInstructionsLoaded: (frame) => {
+        instructionDriftTracker.recordInstructionsLoaded(frame.filePath, frame.loadReason);
+      },
     });
 
     persistSession = (opts?: { periodic?: boolean }) => {

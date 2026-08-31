@@ -350,6 +350,14 @@ interface HookInput {
   // Claude's conversational output as it is for Stop/SubagentStop).
   error_details?: unknown;
   last_assistant_message?: string;
+  // InstructionsLoaded (code.claude.com/docs/en/hooks.md): fires each time a
+  // CLAUDE.md or .claude/rules/*.md file is loaded into context, including
+  // at session start (load_reason: 'session_start') — a moment no tool-call
+  // heuristic can see, since eager loads happen with no visible Read call.
+  // Reuses file_path (declared below for Cursor) for the loaded file's
+  // absolute path.
+  memory_type?: string;
+  load_reason?: string;
   // Cursor (https://cursor.com/docs/agent/hooks) sends a different field
   // vocabulary per hook type instead of the uniform tool_name/tool_input
   // Claude Code and Kiro use. conversation_id is Cursor's closest analog to
@@ -1021,6 +1029,19 @@ function processHook(raw: string): void {
         event.lastAssistantMessage = redact(truncate(data.last_assistant_message, maxContentLen));
       }
     }
+  } else if (eventName === 'instructionsloaded') {
+    // Fires each time a CLAUDE.md or .claude/rules/*.md file is loaded into
+    // context (code.claude.com/docs/en/hooks.md), including at session start
+    // — a moment no tool-call heuristic can see. Pure notification — no
+    // decision control. file_path is a path, not file content, so it's
+    // unconditional like transcript_path/cwd above, not gated on recordContent.
+    event = {
+      mode: 'instructions_loaded' as const,
+      filePath: data.file_path ?? 'unknown',
+      timestamp,
+      ...(typeof data.memory_type === 'string' && { memoryType: data.memory_type }),
+      ...(typeof data.load_reason === 'string' && { loadReason: data.load_reason }),
+    };
   } else {
     // Unknown hook event — ignore silently
     return;

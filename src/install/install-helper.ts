@@ -26,7 +26,9 @@ const COLLECTOR_COMMAND = 'preflight-collector';
 //   /abs/path/preflight-collector pre-tool
 //   "/quoted/path/preflight-collector" pre-tool
 //   preflight-collector stop-failure
-export const NR_HOOK_RE = /preflight-collector"?\s+(?:pre-tool|post-tool|stop-failure)/;
+//   preflight-collector instructions-loaded
+export const NR_HOOK_RE =
+  /preflight-collector"?\s+(?:pre-tool|post-tool|stop-failure|instructions-loaded)/;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +48,7 @@ export interface HookEntries {
   PreToolUse: HookEntry[];
   PostToolUse: HookEntry[];
   StopFailure: HookEntry[];
+  InstructionsLoaded: HookEntry[];
 }
 
 export interface McpServerConfig {
@@ -69,6 +72,7 @@ export function generateHookEntries(
   let pre: string;
   let post: string;
   let stopFailure: string;
+  let instructionsLoaded: string;
 
   if (options?.platform === 'wsl-windows-cc') {
     // Windows Claude Code runs hooks via wsl.exe — call the WSL binary through interop.
@@ -78,6 +82,7 @@ export function generateHookEntries(
     pre = `wsl.exe -e "${quotedPath}" pre-tool`;
     post = `wsl.exe -e "${quotedPath}" post-tool`;
     stopFailure = `wsl.exe -e "${quotedPath}" stop-failure`;
+    instructionsLoaded = `wsl.exe -e "${quotedPath}" instructions-loaded`;
   } else {
     // Quote the path so shells with sh -c don't split on spaces (e.g. /Users/John Doe/...).
     // Hook commands use preflight-collector (lightweight, <5ms budget).
@@ -87,6 +92,7 @@ export function generateHookEntries(
     pre = `${bin} pre-tool`;
     post = `${bin} post-tool`;
     stopFailure = `${bin} stop-failure`;
+    instructionsLoaded = `${bin} instructions-loaded`;
   }
 
   return {
@@ -96,6 +102,12 @@ export function generateHookEntries(
     // "Stop" — see code.claude.com/docs/en/hooks.md ("once per turn:
     // UserPromptSubmit, Stop, and StopFailure" are three separate hook events).
     StopFailure: [{ matcher: HOOK_MATCHER, hooks: [{ type: 'command', command: stopFailure }] }],
+    // InstructionsLoaded fires when CLAUDE.md or .claude/rules/*.md files are
+    // loaded into context — the actual moment instructions take effect, not
+    // when an Edit/Write call happens to touch one of those files.
+    InstructionsLoaded: [
+      { matcher: HOOK_MATCHER, hooks: [{ type: 'command', command: instructionsLoaded }] },
+    ],
   };
 }
 
@@ -212,9 +224,10 @@ function filterNrObserveEntries(entries: unknown[]): unknown[] {
  * entry that match the NR hook pattern (NR_HOOK_RE).
  * Pure — no file I/O.
  *
- * Deliberately does NOT check StopFailure: broadening what counts as "hooks
- * installed" would change behavior for existing users, which is a scope cut
- * for this PR, not an oversight — don't "fix" this without re-reading why.
+ * Deliberately does NOT check StopFailure or InstructionsLoaded: broadening
+ * what counts as "hooks installed" would change behavior for existing users,
+ * which is a scope cut for this PR, not an oversight — don't "fix" this
+ * without re-reading why.
  */
 export function areHooksInstalled(settingsContent: Record<string, unknown>): boolean {
   const hooks = settingsContent.hooks;
@@ -251,6 +264,7 @@ const HooksFieldSchema = z
     PreToolUse: z.array(z.unknown()).optional(),
     PostToolUse: z.array(z.unknown()).optional(),
     StopFailure: z.array(z.unknown()).optional(),
+    InstructionsLoaded: z.array(z.unknown()).optional(),
   })
   .passthrough();
 const SettingsSchema = z.object({ hooks: HooksFieldSchema.optional() }).passthrough();
@@ -289,7 +303,12 @@ export function mergeSettings(
       ? { ...(result.hooks as Record<string, unknown>) }
       : {};
 
-  for (const hookType of ['PreToolUse', 'PostToolUse', 'StopFailure'] as const) {
+  for (const hookType of [
+    'PreToolUse',
+    'PostToolUse',
+    'StopFailure',
+    'InstructionsLoaded',
+  ] as const) {
     const existingArr = Array.isArray(hooks[hookType]) ? [...(hooks[hookType] as unknown[])] : [];
 
     if (binPath !== null && binPath !== undefined) {
@@ -372,7 +391,12 @@ export function removeSettings(existing: Record<string, unknown>): Record<string
   if (typeof result.hooks === 'object' && result.hooks !== null) {
     const hooks = { ...(result.hooks as Record<string, unknown>) };
 
-    for (const hookType of ['PreToolUse', 'PostToolUse', 'StopFailure'] as const) {
+    for (const hookType of [
+      'PreToolUse',
+      'PostToolUse',
+      'StopFailure',
+      'InstructionsLoaded',
+    ] as const) {
       if (Array.isArray(hooks[hookType])) {
         const filtered = filterNrObserveEntries(hooks[hookType] as unknown[]);
         if (filtered.length > 0) {
