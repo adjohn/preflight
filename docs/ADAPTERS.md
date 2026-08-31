@@ -37,7 +37,7 @@ Detection order matters: `createDefaultRegistry()` (`src/platforms/platform-regi
 
 ## Claude Code (`claude-code`)
 
-**Mechanism:** Native `PreToolUse`/`PostToolUse`/`PostToolUseFailure` hooks, installed by Preflight itself, plus a separate `StopFailure` hook (its own top-level settings.json hooks key, not a `PostToolUse` payload variant) that feeds `ApiFailureTracker` with model-API-call failures.
+**Mechanism:** Native `PreToolUse`/`PostToolUse`/`PostToolUseFailure` hooks, installed by Preflight itself, plus two separate top-level settings.json hooks keys (not `PostToolUse` payload variants): `StopFailure`, which feeds `ApiFailureTracker` with model-API-call failures, and `PostModelSwitch`, which feeds `ModelUsageTracker` a discrete switch event (deliberate `/model` changes, and persistent automatic changes tagged `source: 'auto'`) — `PreModelSwitch` is intentionally not installed, since Preflight has no reason to block or confirm a switch.
 
 **Detection (`isSupported()`):** `CLAUDE_CODE` env var set, or `CLAUDE_CODE_VERSION` set, or `MCP_CLIENT === 'claude-code'`.
 

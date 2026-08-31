@@ -100,6 +100,20 @@ function makeStopFailure(overrides?: Record<string, unknown>): string {
   });
 }
 
+function makePostModelSwitch(overrides?: Record<string, unknown>): string {
+  return JSON.stringify({
+    session_id: 'abc123',
+    transcript_path: '/Users/test/.claude/projects/test/abc123.jsonl',
+    cwd: '/Users/test/project',
+    hook_event_name: 'PostModelSwitch',
+    from_model: 'claude-sonnet-5',
+    to_model: 'claude-opus-5',
+    requested_model: 'opus',
+    source: 'command',
+    ...overrides,
+  });
+}
+
 function makeGeminiBeforeTool(overrides?: Record<string, unknown>): string {
   return JSON.stringify({
     hook_event_name: 'BeforeTool',
@@ -591,6 +605,52 @@ describe('collector-script', () => {
 
       const event = readBufferEvents()[0]!;
       expect(event.errorType).toBe('unknown');
+    });
+  });
+
+  describe('processHook() — PostModelSwitch', () => {
+    it('writes a model_switch event with fromModel/toModel/requestedModel/source', () => {
+      processHook(makePostModelSwitch());
+
+      const events = readBufferEvents();
+      expect(events).toHaveLength(1);
+
+      const event = events[0]!;
+      expect(event.mode).toBe('model_switch');
+      expect(event.fromModel).toBe('claude-sonnet-5');
+      expect(event.toModel).toBe('claude-opus-5');
+      expect(event.requestedModel).toBe('opus');
+      expect(event.source).toBe('command');
+    });
+
+    it('captures an automatic switch with requestedModel null', () => {
+      processHook(
+        makePostModelSwitch({
+          source: 'auto',
+          requested_model: null,
+        }),
+      );
+
+      const event = readBufferEvents()[0]!;
+      expect(event.source).toBe('auto');
+      expect(event.requestedModel).toBeNull();
+    });
+
+    it('defaults fromModel/toModel to "unknown" when absent', () => {
+      processHook(makePostModelSwitch({ from_model: undefined, to_model: undefined }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.fromModel).toBe('unknown');
+      expect(event.toModel).toBe('unknown');
+    });
+
+    it('does not gate fromModel/toModel/source on recordContent', () => {
+      // Model IDs are a closed-ish identifier vocabulary, not free-text content.
+      processHook(makePostModelSwitch());
+
+      const event = readBufferEvents()[0]!;
+      expect(event.fromModel).toBe('claude-sonnet-5');
+      expect(event.source).toBe('command');
     });
   });
 

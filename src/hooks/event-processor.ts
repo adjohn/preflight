@@ -23,6 +23,7 @@ import type {
   SubagentTokenHookEvent,
   ObservabilityHealthHookEvent,
   ApiFailureHookEvent,
+  ModelSwitchHookEvent,
   ToolCallRecord,
   TokenEvent,
   SubagentTokenEvent,
@@ -76,6 +77,8 @@ export interface HookEventProcessorOptions {
   onWorkflowRun?: (event: WorkflowRunEvent) => void;
   /** Fires for every `mode: 'api_failure'` line; errors swallowed. */
   onApiFailure?: (event: ApiFailureFrame) => void;
+  /** Fires for every `mode: 'model_switch'` line; errors swallowed. */
+  onModelSwitch?: (event: ModelSwitchFrame) => void;
   /**
    * Adapter used to map each platform's raw tool names (e.g. Kiro's `fs_read`)
    * to Preflight's canonical vocabulary (`Read`) before pairing/emitting.
@@ -141,6 +144,16 @@ export interface ApiFailureFrame {
   readonly rawErrorType: string;
   readonly errorDetails?: string;
   readonly lastAssistantMessage?: string;
+}
+
+/** Wire-shape data extracted from a `mode: 'model_switch'` entry. */
+export interface ModelSwitchFrame {
+  readonly timestamp: number;
+  readonly sessionId: string | null;
+  readonly fromModel: string;
+  readonly toModel: string;
+  readonly requestedModel?: string | null;
+  readonly source?: string;
 }
 
 function numAttr(v: unknown): number {
@@ -233,6 +246,7 @@ export class HookEventProcessor {
   private readonly onSubagentToken: ((event: SubagentTokenEvent) => void) | null;
   private readonly onWorkflowRun: ((event: WorkflowRunEvent) => void) | null;
   private readonly onApiFailure: ((event: ApiFailureFrame) => void) | null;
+  private readonly onModelSwitch: ((event: ModelSwitchFrame) => void) | null;
   private readonly platformAdapter: PlatformAdapter;
   /**
    * Per-agent dedup rings for recent subagent turns (scoped by agentId, one
@@ -288,6 +302,7 @@ export class HookEventProcessor {
     this.onSubagentToken = options.onSubagentToken ?? null;
     this.onWorkflowRun = options.onWorkflowRun ?? null;
     this.onApiFailure = options.onApiFailure ?? null;
+    this.onModelSwitch = options.onModelSwitch ?? null;
     this.platformAdapter = options.platformAdapter ?? createDefaultRegistry().getActive();
 
     this.boundBeforeExit = () => {
@@ -398,6 +413,8 @@ export class HookEventProcessor {
           this.handleWorkflowRunEvent(event);
         } else if (event.mode === 'api_failure') {
           this.handleApiFailureEvent(event);
+        } else if (event.mode === 'model_switch') {
+          this.handleModelSwitchEvent(event);
         }
       } catch (err) {
         logger.warn('Error processing hook event', {
@@ -787,6 +804,28 @@ export class HookEventProcessor {
       this.onApiFailure(frame);
     } catch (err) {
       logger.warn('onApiFailure callback failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private handleModelSwitchEvent(event: ModelSwitchHookEvent): void {
+    if (!this.onModelSwitch) return;
+    const frame: ModelSwitchFrame = {
+      timestamp:
+        typeof event.timestamp === 'number' && Number.isFinite(event.timestamp)
+          ? event.timestamp
+          : Date.now(),
+      sessionId: event.sessionId ?? null,
+      fromModel: event.fromModel,
+      toModel: event.toModel,
+      ...(event.requestedModel !== undefined ? { requestedModel: event.requestedModel } : {}),
+      ...(typeof event.source === 'string' ? { source: event.source } : {}),
+    };
+    try {
+      this.onModelSwitch(frame);
+    } catch (err) {
+      logger.warn('onModelSwitch callback failed', {
         error: err instanceof Error ? err.message : String(err),
       });
     }

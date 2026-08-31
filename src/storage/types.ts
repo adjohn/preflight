@@ -100,10 +100,34 @@ export interface ApiFailureHookEvent extends HookEventBase {
 }
 
 /**
+ * Emitted by Claude Code's PostModelSwitch hook after the session's model
+ * changes (code.claude.com/docs/en/hooks.md). Only `PostModelSwitch` is
+ * installed — `PreModelSwitch` exists to block/confirm a switch, which
+ * Preflight has no reason to do, and every field here is also present on
+ * PostModelSwitch's own input.
+ *
+ * `source` is `'command'`/`'picker'`/`'sdk'` for a deliberate switch,
+ * `'auto'` for a persistent automatic change (e.g. a sustained fallback),
+ * or `'resume'` for the model restored on session resume. Claude Code does
+ * NOT fire this hook for a single-turn fallback-model-chain substitution
+ * that leaves the session's nominal model unchanged — that specific case
+ * stays invisible, `source: 'auto'` only covers a persistent switch.
+ */
+export interface ModelSwitchHookEvent extends HookEventBase {
+  readonly mode: 'model_switch';
+  readonly sessionId?: string;
+  readonly fromModel: string;
+  readonly toModel: string;
+  readonly requestedModel?: string | null;
+  readonly source?: string;
+}
+
+/**
  * Buffer line discriminated union. `pre`/`post`/`token` are the original
  * collector modes. `subagent_token`, `workflow_run`, and
  * `observability_health` are emitted by the SubagentWatcher / WorkflowWatcher.
- * `api_failure` is emitted by the collector for Claude Code's StopFailure hook.
+ * `api_failure` is emitted by the collector for Claude Code's StopFailure
+ * hook, `model_switch` for its PostModelSwitch hook.
  */
 export type HookEvent =
   | PreHookEvent
@@ -112,7 +136,8 @@ export type HookEvent =
   | SubagentTokenHookEvent
   | WorkflowRunEvent
   | ObservabilityHealthHookEvent
-  | ApiFailureHookEvent;
+  | ApiFailureHookEvent
+  | ModelSwitchHookEvent;
 
 export interface TokenEvent {
   readonly mode: 'token';

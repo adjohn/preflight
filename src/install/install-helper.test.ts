@@ -188,6 +188,33 @@ describe('generateHookEntries', () => {
       'wsl.exe -e "/home/user/bin/preflight-collector" stop-failure',
     );
   });
+
+  it('generates a PostModelSwitch entry alongside PreToolUse/PostToolUse/StopFailure', () => {
+    const hooks = generateHookEntries('/usr/local/bin/preflight');
+
+    expect(hooks.PostModelSwitch).toEqual([
+      {
+        matcher: '',
+        hooks: [{ type: 'command', command: '"/usr/local/bin/preflight-collector" model-switch' }],
+      },
+    ]);
+  });
+
+  it('generates a bare-name PostModelSwitch command when no binPath provided', () => {
+    const hooks = generateHookEntries();
+
+    expect(hooks.PostModelSwitch).toEqual([
+      { matcher: '', hooks: [{ type: 'command', command: 'preflight-collector model-switch' }] },
+    ]);
+  });
+
+  it('wsl mode: generates a quoted wsl.exe PostModelSwitch command', () => {
+    const hooks = generateHookEntries('/home/user/bin/preflight', { platform: 'wsl-windows-cc' });
+
+    expect(hooks.PostModelSwitch[0].hooks[0].command).toBe(
+      'wsl.exe -e "/home/user/bin/preflight-collector" model-switch',
+    );
+  });
 });
 
 describe('mergeSettings — wsl-windows-cc platform', () => {
@@ -339,6 +366,7 @@ describe('mergeSettings', () => {
     expect(hooks.PreToolUse).toHaveLength(1);
     expect(hooks.PostToolUse).toHaveLength(1);
     expect(hooks.StopFailure).toHaveLength(1);
+    expect(hooks.PostModelSwitch).toHaveLength(1);
 
     const pre = hooks.PreToolUse[0] as Record<string, unknown>;
     expect(pre.hooks).toEqual([{ type: 'command', command: 'preflight-collector pre-tool' }]);
@@ -348,9 +376,44 @@ describe('mergeSettings', () => {
     expect(stopFailure.hooks).toEqual([
       { type: 'command', command: 'preflight-collector stop-failure' },
     ]);
+    const postModelSwitch = hooks.PostModelSwitch[0] as Record<string, unknown>;
+    expect(postModelSwitch.hooks).toEqual([
+      { type: 'command', command: 'preflight-collector model-switch' },
+    ]);
 
     // MCP servers are NOT managed in settings.json
     expect(result.mcpServers).toBeUndefined();
+  });
+
+  it('preserves an existing foreign PostModelSwitch entry and appends ours', () => {
+    const existing = {
+      hooks: {
+        PostModelSwitch: [
+          { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --on-switch' }] },
+        ],
+      },
+    };
+
+    const result = mergeSettings(existing);
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    expect(hooks.PostModelSwitch).toHaveLength(2);
+    const foreignEntry = hooks.PostModelSwitch[0] as Record<string, unknown>;
+    expect((foreignEntry.hooks as Array<Record<string, string>>)[0].command).toBe(
+      'some-other-tool --on-switch',
+    );
+    const ourEntry = hooks.PostModelSwitch[1] as Record<string, unknown>;
+    expect((ourEntry.hooks as Array<Record<string, string>>)[0].command).toBe(
+      'preflight-collector model-switch',
+    );
+  });
+
+  it('is idempotent for PostModelSwitch — running twice does not duplicate entries', () => {
+    const once = mergeSettings({});
+    const twice = mergeSettings(once);
+
+    const hooks = twice.hooks as Record<string, unknown[]>;
+    expect(hooks.PostModelSwitch).toHaveLength(1);
   });
 
   it('preserves an existing foreign StopFailure entry and appends ours', () => {
@@ -559,7 +622,28 @@ describe('removeSettings', () => {
     ]);
   });
 
-  it('removes a full install (Pre/Post/StopFailure) down to an empty hooks object', () => {
+  it('removes only preflight PostModelSwitch entries, keeps foreign ones', () => {
+    const settings = {
+      hooks: {
+        PostModelSwitch: [
+          { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --on-switch' }] },
+          {
+            matcher: '',
+            hooks: [{ type: 'command', command: 'preflight-collector model-switch' }],
+          },
+        ],
+      },
+    };
+
+    const result = removeSettings(settings);
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    expect(hooks.PostModelSwitch).toEqual([
+      { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --on-switch' }] },
+    ]);
+  });
+
+  it('removes a full install (Pre/Post/StopFailure/PostModelSwitch) down to an empty hooks object', () => {
     const settings = mergeSettings({}, '/usr/local/bin/preflight');
     const result = removeSettings(settings);
 
