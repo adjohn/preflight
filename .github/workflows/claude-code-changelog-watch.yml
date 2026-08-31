@@ -1,0 +1,73 @@
+name: Claude Code Changelog Watch
+
+# Weekly check for anything new in anthropics/claude-code's CHANGELOG.md
+# worth reacting to — new hook fields/events, cost/usage/pricing changes,
+# OTel changes. See scripts/check-claude-code-changelog.ts and #526 for why
+# this exists: filing #520-#527 required doing this scan by hand.
+on:
+  schedule:
+    - cron: '17 9 * * 1' # Mondays ~09:17 UTC — off the hour, per cron etiquette
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # to commit the updated cursor file
+  issues: write # to create/comment on the tracking issue
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run changelog check
+        id: check
+        # No `npm ci` — the script only imports Node built-ins; `npx tsx`
+        # fetches its own runtime on demand, same as the other scripts/*.ts
+        # entries in package.json.
+        run: npm run check:claude-code-changelog
+
+      - name: Find existing tracking issue
+        id: find_issue
+        if: steps.check.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NUMBER=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search 'in:title "Claude Code changelog watch"' \
+            --json number --jq '.[0].number // empty')
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Create tracking issue
+        if: steps.check.outputs.matched == 'true' && steps.find_issue.outputs.number == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Claude Code changelog watch" \
+            --body-file changelog-report.md
+
+      - name: Comment on existing tracking issue
+        if: steps.check.outputs.matched == 'true' && steps.find_issue.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "${{ steps.find_issue.outputs.number }}" --repo "$GITHUB_REPOSITORY" \
+            --body-file changelog-report.md
+
+      - name: Commit updated cursor
+        run: |
+          if ! git diff --quiet -- .github/claude-code-changelog-cursor.txt; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .github/claude-code-changelog-cursor.txt
+            git commit -m "Update Claude Code changelog watch cursor"
+            git push
+          else
+            echo "Cursor unchanged, nothing to commit."
+          fi
