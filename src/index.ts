@@ -1085,7 +1085,13 @@ async function main(): Promise<void> {
       }) ?? undefined;
 
     sessionTracker = new SessionTracker(sessionTraceId);
-    const costTracker = new CostTracker(sessionTracker);
+    // Combine the two independent correction factors here so CostTracker only
+    // ever deals with one number (see its constructor doc comment) — the raw
+    // config fields (costRateMultiplier, dataResidencyPremium) stay unmerged
+    // in config.ts since they're set/documented independently.
+    const rateMultiplier =
+      (config.costRateMultiplier ?? 1) * (config.dataResidencyPremium ? 1.1 : 1);
+    const costTracker = new CostTracker(sessionTracker, { rateMultiplier });
     taskDetector = new TaskDetector({ costTracker });
     const antiPatternDetector = new AntiPatternDetector();
     const efficiencyScorer = new EfficiencyScorer();

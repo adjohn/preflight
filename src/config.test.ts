@@ -1017,6 +1017,78 @@ describe('budget fields', () => {
   });
 });
 
+describe('costRateMultiplier / dataResidencyPremium', () => {
+  it('default to null / false when not configured', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.costRateMultiplier).toBeNull();
+    expect(config.dataResidencyPremium).toBe(false);
+  });
+
+  it('loads costRateMultiplier from the config file', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({ costRateMultiplier: 0.85 });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.costRateMultiplier).toBe(0.85);
+  });
+
+  it('loads costRateMultiplier from the env var, overriding the config file', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NEW_RELIC_AI_COST_RATE_MULTIPLIER = '0.5';
+    const configPath = writeConfigFile({ costRateMultiplier: 0.85 });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.costRateMultiplier).toBe(0.5);
+  });
+
+  it('rejects a costRateMultiplier above 1 from the config file and logs a warning', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({ costRateMultiplier: 1.5 });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.costRateMultiplier).toBeNull();
+    const stderrOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(stderrOutput).toMatch(/costRateMultiplier/);
+  });
+
+  it('rejects a zero or negative costRateMultiplier from the config file', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({ costRateMultiplier: 0 });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.costRateMultiplier).toBeNull();
+  });
+
+  it('treats an out-of-range costRateMultiplier env var as unset (falls back to the config file)', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NEW_RELIC_AI_COST_RATE_MULTIPLIER = '2';
+    const configPath = writeConfigFile({ costRateMultiplier: 0.9 });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.costRateMultiplier).toBe(0.9);
+  });
+
+  it('loads dataResidencyPremium from the config file', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({ dataResidencyPremium: true });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dataResidencyPremium).toBe(true);
+  });
+
+  it('loads dataResidencyPremium from the env var, overriding the config file', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NEW_RELIC_AI_DATA_RESIDENCY_PREMIUM = 'false';
+    const configPath = writeConfigFile({ dataResidencyPremium: true });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.dataResidencyPremium).toBe(false);
+  });
+});
+
 describe('retainSessionsDays', () => {
   it('defaults to 90 when neither env var nor config file key is set', () => {
     process.env.NEW_RELIC_LICENSE_KEY = 'test-key';

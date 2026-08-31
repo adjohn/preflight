@@ -249,7 +249,8 @@ Session cost breakdown by task, model, and efficiency.
   "cost_per_line_of_code": 0.003,
   "cost_per_file_modified": 0.065,
   "cost_per_million_tokens": 7.43,
-  "tokens": { "input": 50000, "output": 20000, "thinking": 10000 }
+  "tokens": { "input": 50000, "output": 20000, "thinking": 10000 },
+  "rate_multiplier_applied": 1
 }
 ```
 
@@ -264,6 +265,7 @@ Session cost breakdown by task, model, and efficiency.
 - `cost_per_file_modified` — `totalCost / uniqueFilesWritten` (null if no files modified)
 - `cost_per_million_tokens` — blended session rate: `(totalCost / totalTokens) * 1_000_000`, summed across input, output, thinking, cache-read, and cache-creation tokens (null if no tokens reported). Not shipped as its own NR metric — it's a pure ratio of `ai.cost.session_total_usd` and the `ai.cost.tokens_*` counts already emitted, so it's more flexibly computed in NRQL at query time (`sum(cost)/sum(tokens)*1e6`, facetable by any dimension) than as a pre-baked gauge.
 - `tokens` — running totals by token type from all reports
+- `rate_multiplier_applied` — `1` unless `costRateMultiplier`/`dataResidencyPremium` are configured (see [ADVANCED.md](./ADVANCED.md#cost--pricing-corrections)), in which case every dollar figure above already reflects that correction. Preflight's cost figures are always its own estimate from token counts × a pricing table, never a real invoice — this field only tells you whether that estimate has been adjusted toward an org's actual contracted rate.
 
 **Requires:** `CostTracker`; `TaskDetector` for per-task breakdown
 

@@ -91,6 +91,30 @@ The config-file schema (`ConfigFileSchema`) still accepts the flat legacy keys s
 
 ---
 
+## Cost / Pricing Corrections
+
+Every dollar figure Preflight reports — session cost, budget-threshold alerts, cost-per-outcome, everything downstream of `CostTracker` — is computed the same way regardless of how your organization is actually billed: `tokens × Preflight's own vendored public list-price table`. Two config options narrow that gap, and one config option (already existing, undocumented until now) lets you close it exactly:
+
+**`customPricingFile`** (env: `NEW_RELIC_AI_CUSTOM_PRICING_FILE`): path to a JSON file of `{ "model-id": { "inputPerMTok": ..., "outputPerMTok": ..., ... } }` entries (see `ModelPricing` in `src/shared/pricing.ts`) that fully replaces the vendored table for the models it lists. If your organization has contracted per-model rates, enter them here model-by-model and Preflight reports at your real rate, no multiplier needed. Mutually exclusive with the bundled gap-fill pricing overlay — see the doc comment on `applyPricingOverlay()` in `src/metrics/pricing-overlay.ts`.
+
+**`costRateMultiplier`** (env: `NEW_RELIC_AI_COST_RATE_MULTIPLIER`): a flat discount factor, `0 < x ≤ 1`, applied to every dollar figure `CostTracker` computes — a cheaper alternative to `customPricingFile` when you have a single blended discount off list price rather than distinct per-model contracted rates. Mirrors the semantics of Claude Code's own `modelPricing.multiplier` managed setting.
+
+```json
+{
+  "costRateMultiplier": 0.85
+}
+```
+
+**`dataResidencyPremium`** (env: `NEW_RELIC_AI_DATA_RESIDENCY_PREMIUM`, boolean): applies the same 1.1× US-only-inference premium Claude Code itself applies for data-residency workspaces ([pricing docs](https://platform.claude.com/docs/en/about-claude/pricing#data-residency-pricing)). Combines multiplicatively with `costRateMultiplier` when both are set.
+
+Both are resolved once at startup into a single combined factor passed to `CostTracker`'s constructor, and every downstream consumer — `ModelUsageTracker`, `BudgetTracker`'s threshold alerts, day/task/workflow-run cost buckets — inherits the correction automatically, since they all read from the same `CostBreakdown` this factor scales. `nr_observe_get_cost_breakdown` reports the factor actually in effect as `rate_multiplier_applied` (see [COMMANDS_TABLE.md](./COMMANDS_TABLE.md)) so a consumer can tell whether a figure is still raw list price.
+
+**What this doesn't do:** Preflight does not read Claude Code's own `modelPricing` managed setting automatically. That setting is Managed-only scope, delivered through one of four mechanisms (server-managed settings from the claude.ai console, MDM/OS policy, a `managed-settings.json` file, or a policy helper program) — only one of which is a static file at a documented path, and by default only the single highest-priority source that's actually present is the one in effect. Reading the file unconditionally would risk silently applying a stale or overridden rate whenever a different mechanism is the one Claude Code actually selected. If you know your organization's contracted rate, enter it directly via `costRateMultiplier` or `customPricingFile` instead — the same numbers you'd put in Claude Code's own `modelPricing.overrides`/`multiplier` (see [Report spend at your contracted rates](https://code.claude.com/docs/en/costs#report-spend-at-your-contracted-rates)) work here too.
+
+Similarly, Preflight cannot detect the data-residency premium per-response the way Claude Code's own `/usage` figure does (that requires seeing which specific API responses were billed at the residency rate, which no hook or event exposes) — `dataResidencyPremium` is an explicit opt-in flag for "always apply 1.1×," not automatic detection.
+
+---
+
 ## Setup Wizard — Environment Variable Pre-Fill
 
 If `NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_ACCOUNT_ID`, or `NEW_RELIC_API_KEY` are set in the environment when `preflight setup` is run, the wizard pre-fills those prompts and shows the env var name as the hint (`$NEW_RELIC_LICENSE_KEY`). Pressing Enter accepts the value — no copy-paste needed. This makes the wizard scriptable in CI pipelines or Docker-based dev environments where credentials are already injected as environment variables.
