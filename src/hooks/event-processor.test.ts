@@ -129,6 +129,42 @@ describe('HookEventProcessor', () => {
       const record = records[0]!;
       expect(record.transcriptPath).toBe('/tmp/fake-transcript.jsonl');
     });
+
+    it('includes agentId/agentType from the pre event', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ agentId: 'agent-abc123', agentType: 'general-purpose' }),
+        makePostEvent(),
+      ]);
+
+      const record = records[0]!;
+      expect(record.agentId).toBe('agent-abc123');
+      expect(record.agentType).toBe('general-purpose');
+    });
+
+    it('falls back to the post event agentId/agentType when the pre event has none', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent(),
+        makePostEvent({ agentId: 'agent-def456', agentType: 'Explore' }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.agentId).toBe('agent-def456');
+      expect(record.agentType).toBe('Explore');
+    });
+
+    it('omits agentId/agentType for a parent-session tool call', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([makePreEvent(), makePostEvent()]);
+
+      const record = records[0]!;
+      expect(record.agentId).toBeUndefined();
+      expect(record.agentType).toBeUndefined();
+    });
   });
 
   describe('processEvents() — interleaved ordering', () => {
@@ -188,6 +224,23 @@ describe('HookEventProcessor', () => {
       expect(record.durationMs).toBeNull();
       expect(record.success).toBe(true);
       expect(record.outputSizeBytes).toBe(512);
+    });
+
+    it('still reports agentId/agentType from the post event with no matching pre-event', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePostEvent({
+          toolUseId: 'toolu_orphan_agent',
+          timestamp: 2000,
+          agentId: 'agent-ghi789',
+          agentType: 'general-purpose',
+        }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.agentId).toBe('agent-ghi789');
+      expect(record.agentType).toBe('general-purpose');
     });
   });
 

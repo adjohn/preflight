@@ -343,6 +343,15 @@ interface HookInput {
   transcript_path?: string;
   error?: string;
   is_interrupt?: boolean;
+  // Present on every hook event (code.claude.com/docs/en/hooks.md): agent_id
+  // identifies the subagent that fired this hook (absent for the parent
+  // session), agent_type names its kind (subagents, and sessions started
+  // with `--agent`). Attached to every ToolCallRecord below — previously
+  // there was no per-tool-call subagent attribution at all; the only
+  // existing agentId (SubagentWatcher, from transcript filenames) tracks
+  // subagent token usage, a separate signal this doesn't replace.
+  agent_id?: string;
+  agent_type?: string;
   // StopFailure (code.claude.com/docs/en/hooks.md) reuses `error` above for its
   // closed error-type enum and adds these two free-text fields: error_details
   // ("when available", no strict type — string or an object to JSON.stringify)
@@ -1032,6 +1041,8 @@ function processHook(raw: string): void {
   if (data.permission_mode) event.permissionMode = data.permission_mode;
   if (sessionId) event.sessionId = sessionId;
   if (data.tool_use_id) event.toolUseId = data.tool_use_id;
+  if (data.agent_id) event.agentId = data.agent_id;
+  if (data.agent_type) event.agentType = data.agent_type;
 
   // Write to buffer — wrapped in try/catch for resilience.
   try {

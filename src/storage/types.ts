@@ -17,6 +17,10 @@ export interface PreHookEvent extends HookEventBase {
   readonly cwd?: string;
   readonly transcriptPath?: string;
   readonly permissionMode?: string;
+  /** Set when this tool call was made by a subagent (code.claude.com/docs/en/hooks.md). */
+  readonly agentId?: string;
+  /** The subagent's type, or the session's `--agent` type. */
+  readonly agentType?: string;
 }
 
 /**
@@ -33,6 +37,10 @@ export interface PostHookEvent extends HookEventBase {
   readonly success?: boolean;
   readonly error?: string;
   readonly isInterrupt?: boolean;
+  /** Set when this tool call was made by a subagent (code.claude.com/docs/en/hooks.md). */
+  readonly agentId?: string;
+  /** The subagent's type, or the session's `--agent` type. */
+  readonly agentType?: string;
 }
 
 /** Emitted per LLM API turn with token usage; feeds CostTracker. */
@@ -148,6 +156,16 @@ export interface ToolCallRecord {
   readonly inputSizeBytes?: number;
   readonly outputSizeBytes?: number;
   readonly inputHash?: string;
+  /**
+   * Which subagent made this tool call, straight from the hook payload's
+   * `agent_id` (see `PreHookEvent.agentId`/`PostHookEvent.agentId`). Absent
+   * for tool calls made by the parent/orchestrator session. Distinct from —
+   * and a different signal than — the `agentId` `SubagentWatcher` derives
+   * from transcript filenames for subagent *token usage* attribution; that
+   * pipeline is untouched by this field.
+   */
+  readonly agentId?: string;
+  readonly agentType?: string;
   readonly [key: string]: unknown;
 }
 

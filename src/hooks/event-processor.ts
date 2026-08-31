@@ -516,6 +516,12 @@ export class HookEventProcessor {
         ...(preEvent.permissionMode !== undefined && {
           permissionMode: preEvent.permissionMode,
         }),
+        ...((preEvent.agentId ?? event.agentId) !== undefined && {
+          agentId: preEvent.agentId ?? event.agentId,
+        }),
+        ...((preEvent.agentType ?? event.agentType) !== undefined && {
+          agentType: preEvent.agentType ?? event.agentType,
+        }),
         ...toolFields,
       };
       this.emitRecord(record);
@@ -533,6 +539,8 @@ export class HookEventProcessor {
         success: event.success ?? true,
         ...(event.error !== undefined && { error: event.error }),
         ...(event.outputSize !== undefined && { outputSizeBytes: event.outputSize }),
+        ...(event.agentId !== undefined && { agentId: event.agentId }),
+        ...(event.agentType !== undefined && { agentType: event.agentType }),
         ...toolFields,
       };
       this.emitRecord(record);
