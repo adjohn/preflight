@@ -100,10 +100,29 @@ export interface ApiFailureHookEvent extends HookEventBase {
 }
 
 /**
+ * Emitted by Claude Code's SessionStart hook (code.claude.com/docs/en/hooks.md).
+ * Fires on every session (startup/resume/clear/compact/fork) — `source`
+ * distinguishes which. Only a `source` of `'resume'`/`'fork'` with a
+ * transcript that already has a response carries the four resume-cost
+ * fields below (Claude Code v2.1.251+); they're `undefined` for every other
+ * `source`, and this event is only actionable when they're present.
+ */
+export interface SessionStartHookEvent extends HookEventBase {
+  readonly mode: 'session_start';
+  readonly sessionId?: string;
+  readonly source?: string;
+  readonly secondsSinceLastResponse?: number;
+  readonly contextTokens?: number;
+  readonly promptCacheLikelyExpired?: boolean;
+  readonly estimatedCacheWriteUsd?: number;
+}
+
+/**
  * Buffer line discriminated union. `pre`/`post`/`token` are the original
  * collector modes. `subagent_token`, `workflow_run`, and
  * `observability_health` are emitted by the SubagentWatcher / WorkflowWatcher.
- * `api_failure` is emitted by the collector for Claude Code's StopFailure hook.
+ * `api_failure` is emitted by the collector for Claude Code's StopFailure
+ * hook, `session_start` for its SessionStart hook.
  */
 export type HookEvent =
   | PreHookEvent
@@ -112,7 +131,8 @@ export type HookEvent =
   | SubagentTokenHookEvent
   | WorkflowRunEvent
   | ObservabilityHealthHookEvent
-  | ApiFailureHookEvent;
+  | ApiFailureHookEvent
+  | SessionStartHookEvent;
 
 export interface TokenEvent {
   readonly mode: 'token';

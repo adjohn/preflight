@@ -38,6 +38,7 @@ import { checkNodeVersion } from './install/node-version-check.js';
 import { localDateKey, todayPortionOfSessionCost } from './lib/date.js';
 import { AntiPatternDetector } from './metrics/anti-patterns.js';
 import { ApiFailureTracker, mapClaudeCodeErrorType } from './metrics/api-failure-tracker.js';
+import { SessionResumeTracker } from './metrics/session-resume-tracker.js';
 import { BudgetTracker } from './metrics/budget-tracker.js';
 import { ClaudeMdTracker } from './metrics/claudemd-tracker.js';
 import { CollaborationProfiler } from './metrics/collaboration-profile.js';
@@ -1030,6 +1031,11 @@ async function main(): Promise<void> {
     // inputs stay at their "unknown" defaults for the same reason. See
     // api-failure-tracker.ts's API_FAILURE_PARTIAL_DATA_NOTE for the full story.
     const apiFailureTracker = new ApiFailureTracker();
+    // Fed via Claude Code's SessionStart hook (see the onSessionStart
+    // callback on eventProcessor below), only for source: 'resume'/'fork'
+    // events that carry the resume-cost fields — a plain startup/clear/
+    // compact SessionStart has nothing to report and never calls recordResume().
+    const sessionResumeTracker = new SessionResumeTracker();
     liveSessionRegistry = new LiveSessionRegistry();
     liveSessionRegistry.startSampling();
     // Unconditional in every mode — decoupled from whether the `--local`
@@ -2259,6 +2265,27 @@ async function main(): Promise<void> {
           duringToolExecution,
         });
       },
+      onSessionStart: (frame) => {
+        // Only 'resume'/'fork' SessionStart events with the resume-cost
+        // fields present are actionable — a plain startup/clear/compact
+        // start (or a resume with no prior response, per the docs) has
+        // nothing to report.
+        if (
+          typeof frame.secondsSinceLastResponse !== 'number' ||
+          typeof frame.contextTokens !== 'number' ||
+          typeof frame.promptCacheLikelyExpired !== 'boolean' ||
+          typeof frame.estimatedCacheWriteUsd !== 'number'
+        ) {
+          return;
+        }
+        sessionResumeTracker.recordResume({
+          secondsSinceLastResponse: frame.secondsSinceLastResponse,
+          contextTokens: frame.contextTokens,
+          promptCacheLikelyExpired: frame.promptCacheLikelyExpired,
+          estimatedCacheWriteUsd: frame.estimatedCacheWriteUsd,
+          timestampMs: frame.timestamp,
+        });
+      },
     });
 
     persistSession = (opts?: { periodic?: boolean }) => {
@@ -2696,6 +2723,7 @@ async function main(): Promise<void> {
         toolCallBuffer: toolCallBufferAccessor,
         qualityProxyTracker,
         apiFailureTracker,
+        sessionResumeTracker,
         turnCostAttributor,
         turnTracker,
         gitEfficiencyTracker,
@@ -2878,6 +2906,7 @@ async function main(): Promise<void> {
           toolCallBuffer: toolCallBufferAccessor,
           qualityProxyTracker,
           apiFailureTracker,
+          sessionResumeTracker,
           turnCostAttributor,
           turnTracker,
           gitEfficiencyTracker,

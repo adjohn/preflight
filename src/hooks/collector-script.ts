@@ -350,6 +350,16 @@ interface HookInput {
   // Claude's conversational output as it is for Stop/SubagentStop).
   error_details?: unknown;
   last_assistant_message?: string;
+  // SessionStart (code.claude.com/docs/en/hooks.md): fires on every session.
+  // `source` is always present; the four resume-cost fields only appear when
+  // source is 'resume'/'fork' and the transcript already has a response
+  // (Claude Code v2.1.251+). Not gated behind recordContent — source is a
+  // closed enum and the rest are numbers/booleans, none of it free text.
+  source?: string;
+  seconds_since_last_response?: number;
+  context_tokens?: number;
+  prompt_cache_likely_expired?: boolean;
+  estimated_cache_write_usd?: number;
   // Cursor (https://cursor.com/docs/agent/hooks) sends a different field
   // vocabulary per hook type instead of the uniform tool_name/tool_input
   // Claude Code and Kiro use. conversation_id is Cursor's closest analog to
@@ -1021,6 +1031,27 @@ function processHook(raw: string): void {
         event.lastAssistantMessage = redact(truncate(data.last_assistant_message, maxContentLen));
       }
     }
+  } else if (eventName === 'sessionstart') {
+    // Fires on every session — startup/resume/clear/compact/fork, per
+    // data.source (code.claude.com/docs/en/hooks.md). Pure notification —
+    // no decision control used here. The four resume-cost fields are only
+    // ever present for source 'resume'/'fork'; SessionResumeTracker (the
+    // consumer) treats their absence as "nothing to report", not an error.
+    event = {
+      mode: 'session_start' as const,
+      timestamp,
+      ...(typeof data.source === 'string' && { source: data.source }),
+      ...(typeof data.seconds_since_last_response === 'number' && {
+        secondsSinceLastResponse: data.seconds_since_last_response,
+      }),
+      ...(typeof data.context_tokens === 'number' && { contextTokens: data.context_tokens }),
+      ...(typeof data.prompt_cache_likely_expired === 'boolean' && {
+        promptCacheLikelyExpired: data.prompt_cache_likely_expired,
+      }),
+      ...(typeof data.estimated_cache_write_usd === 'number' && {
+        estimatedCacheWriteUsd: data.estimated_cache_write_usd,
+      }),
+    };
   } else {
     // Unknown hook event — ignore silently
     return;

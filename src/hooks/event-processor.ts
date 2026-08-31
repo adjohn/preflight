@@ -23,6 +23,7 @@ import type {
   SubagentTokenHookEvent,
   ObservabilityHealthHookEvent,
   ApiFailureHookEvent,
+  SessionStartHookEvent,
   ToolCallRecord,
   TokenEvent,
   SubagentTokenEvent,
@@ -76,6 +77,8 @@ export interface HookEventProcessorOptions {
   onWorkflowRun?: (event: WorkflowRunEvent) => void;
   /** Fires for every `mode: 'api_failure'` line; errors swallowed. */
   onApiFailure?: (event: ApiFailureFrame) => void;
+  /** Fires for every `mode: 'session_start'` line; errors swallowed. */
+  onSessionStart?: (event: SessionStartFrame) => void;
   /**
    * Adapter used to map each platform's raw tool names (e.g. Kiro's `fs_read`)
    * to Preflight's canonical vocabulary (`Read`) before pairing/emitting.
@@ -141,6 +144,17 @@ export interface ApiFailureFrame {
   readonly rawErrorType: string;
   readonly errorDetails?: string;
   readonly lastAssistantMessage?: string;
+}
+
+/** Wire-shape data extracted from a `mode: 'session_start'` entry. */
+export interface SessionStartFrame {
+  readonly timestamp: number;
+  readonly sessionId: string | null;
+  readonly source?: string;
+  readonly secondsSinceLastResponse?: number;
+  readonly contextTokens?: number;
+  readonly promptCacheLikelyExpired?: boolean;
+  readonly estimatedCacheWriteUsd?: number;
 }
 
 function numAttr(v: unknown): number {
@@ -233,6 +247,7 @@ export class HookEventProcessor {
   private readonly onSubagentToken: ((event: SubagentTokenEvent) => void) | null;
   private readonly onWorkflowRun: ((event: WorkflowRunEvent) => void) | null;
   private readonly onApiFailure: ((event: ApiFailureFrame) => void) | null;
+  private readonly onSessionStart: ((event: SessionStartFrame) => void) | null;
   private readonly platformAdapter: PlatformAdapter;
   /**
    * Per-agent dedup rings for recent subagent turns (scoped by agentId, one
@@ -288,6 +303,7 @@ export class HookEventProcessor {
     this.onSubagentToken = options.onSubagentToken ?? null;
     this.onWorkflowRun = options.onWorkflowRun ?? null;
     this.onApiFailure = options.onApiFailure ?? null;
+    this.onSessionStart = options.onSessionStart ?? null;
     this.platformAdapter = options.platformAdapter ?? createDefaultRegistry().getActive();
 
     this.boundBeforeExit = () => {
@@ -398,6 +414,8 @@ export class HookEventProcessor {
           this.handleWorkflowRunEvent(event);
         } else if (event.mode === 'api_failure') {
           this.handleApiFailureEvent(event);
+        } else if (event.mode === 'session_start') {
+          this.handleSessionStartEvent(event);
         }
       } catch (err) {
         logger.warn('Error processing hook event', {
@@ -787,6 +805,35 @@ export class HookEventProcessor {
       this.onApiFailure(frame);
     } catch (err) {
       logger.warn('onApiFailure callback failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private handleSessionStartEvent(event: SessionStartHookEvent): void {
+    if (!this.onSessionStart) return;
+    const frame: SessionStartFrame = {
+      timestamp:
+        typeof event.timestamp === 'number' && Number.isFinite(event.timestamp)
+          ? event.timestamp
+          : Date.now(),
+      sessionId: event.sessionId ?? null,
+      ...(typeof event.source === 'string' ? { source: event.source } : {}),
+      ...(typeof event.secondsSinceLastResponse === 'number'
+        ? { secondsSinceLastResponse: event.secondsSinceLastResponse }
+        : {}),
+      ...(typeof event.contextTokens === 'number' ? { contextTokens: event.contextTokens } : {}),
+      ...(typeof event.promptCacheLikelyExpired === 'boolean'
+        ? { promptCacheLikelyExpired: event.promptCacheLikelyExpired }
+        : {}),
+      ...(typeof event.estimatedCacheWriteUsd === 'number'
+        ? { estimatedCacheWriteUsd: event.estimatedCacheWriteUsd }
+        : {}),
+    };
+    try {
+      this.onSessionStart(frame);
+    } catch (err) {
+      logger.warn('onSessionStart callback failed', {
         error: err instanceof Error ? err.message : String(err),
       });
     }

@@ -999,7 +999,7 @@ Source: `src/tools/cost-tools.ts`
 
 ### `nr_observe_get_cost_forecast`
 
-Projects future spend based on current session burn rate.
+Projects future spend based on current session burn rate. When this session was resumed after being stale, the response also includes a `resumeContext` field (`resumeCount`, `totalEstimatedCacheWriteUsd`, `lastResume`) — Claude Code's own SessionStart report of how long it had been and its estimated cost to re-warm the prompt cache, sourced from `SessionResumeTracker`. Riding alongside the forecast as extra JSON; it never changes the forecast fields themselves.
 
 **Parameters:** None
 
