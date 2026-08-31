@@ -497,13 +497,19 @@ export class HookEventProcessor {
         preEvent.toolInput,
         event.toolOutput,
       );
+      const wallClockMs = Math.max(0, event.timestamp - preEvent.timestamp);
+      const hasNativeDuration =
+        typeof event.nativeDurationMs === 'number' && Number.isFinite(event.nativeDurationMs);
       const record: ToolCallRecord = {
         id: randomUUID(),
         sessionId: preEvent.sessionId ?? event.sessionId ?? null,
         toolName: preEvent.tool,
         toolUseId: preEvent.toolUseId ?? key,
         timestamp: preEvent.timestamp,
-        durationMs: Math.max(0, event.timestamp - preEvent.timestamp),
+        durationMs: hasNativeDuration ? (event.nativeDurationMs as number) : wallClockMs,
+        permissionWaitMs: hasNativeDuration
+          ? Math.max(0, wallClockMs - (event.nativeDurationMs as number))
+          : null,
         success: event.success ?? true,
         ...(event.error !== undefined && { error: event.error }),
         ...(preEvent.inputSize !== undefined && { inputSizeBytes: preEvent.inputSize }),
@@ -520,7 +526,10 @@ export class HookEventProcessor {
       };
       this.emitRecord(record);
     } else {
-      // Orphaned post — no matching pre; use post-event's toolInput if present
+      // Orphaned post — no matching pre; use post-event's toolInput if present.
+      // There's no pre-event timestamp to build a wall-clock delta from, but
+      // a native duration_ms (if the platform sent one) is still real data —
+      // no reason to discard it just because pairing failed.
       logger.debug('Orphaned post event — no matching pre', { tool: event.tool, key });
       const toolFields = parseToolSpecificFields(event.tool, event.toolInput, event.toolOutput);
       const record: ToolCallRecord = {
@@ -529,7 +538,10 @@ export class HookEventProcessor {
         toolName: event.tool,
         toolUseId: event.toolUseId ?? key,
         timestamp: event.timestamp,
-        durationMs: null,
+        durationMs:
+          typeof event.nativeDurationMs === 'number' && Number.isFinite(event.nativeDurationMs)
+            ? event.nativeDurationMs
+            : null,
         success: event.success ?? true,
         ...(event.error !== undefined && { error: event.error }),
         ...(event.outputSize !== undefined && { outputSizeBytes: event.outputSize }),

@@ -485,6 +485,28 @@ describe('collector-script', () => {
       expect(event.sessionId).toBe('sess-001');
       expect(event.toolUseId).toBe('toolu_def456');
     });
+
+    it('captures native duration_ms as nativeDurationMs', () => {
+      processHook(makePostToolUse({ duration_ms: 842 }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.nativeDurationMs).toBe(842);
+    });
+
+    it('omits nativeDurationMs when duration_ms is absent', () => {
+      processHook(makePostToolUse());
+
+      const event = readBufferEvents()[0]!;
+      expect(event.nativeDurationMs).toBeUndefined();
+    });
+
+    it('ignores an invalid duration_ms (negative, NaN, or non-number)', () => {
+      processHook(makePostToolUse({ duration_ms: -5 }));
+      expect(readBufferEvents()[0]!.nativeDurationMs).toBeUndefined();
+
+      processHook(makePostToolUse({ duration_ms: 'not-a-number' }));
+      expect(readBufferEvents()[1]!.nativeDurationMs).toBeUndefined();
+    });
   });
 
   describe('processHook() — PostToolUseFailure', () => {
@@ -500,6 +522,13 @@ describe('collector-script', () => {
       expect(event.success).toBe(false);
       expect(event.error).toBe('Command exited with non-zero status code 1');
       expect(event.isInterrupt).toBe(false);
+    });
+
+    it('captures native duration_ms as nativeDurationMs', () => {
+      processHook(makePostToolUseFailure({ duration_ms: 1337 }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.nativeDurationMs).toBe(1337);
     });
 
     it('captures is_interrupt flag when true', () => {

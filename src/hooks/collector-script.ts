@@ -343,6 +343,13 @@ interface HookInput {
   transcript_path?: string;
   error?: string;
   is_interrupt?: boolean;
+  // PostToolUse/PostToolUseFailure (code.claude.com/docs/en/hooks.md): tool
+  // execution time in milliseconds, excluding permission-prompt wait time and
+  // PreToolUse hook execution — the number this collector's own pre/post
+  // wall-clock delta (event-processor.ts's durationMs computation) can't
+  // separate out on its own. Read below and preferred over that delta when
+  // present and valid.
+  duration_ms?: number;
   // StopFailure (code.claude.com/docs/en/hooks.md) reuses `error` above for its
   // closed error-type enum and adds these two free-text fields: error_details
   // ("when available", no strict type — string or an object to JSON.stringify)
@@ -707,6 +714,14 @@ function processHook(raw: string): void {
       success: typeof responseSuccess === 'boolean' ? responseSuccess : true,
     };
 
+    if (
+      typeof data.duration_ms === 'number' &&
+      Number.isFinite(data.duration_ms) &&
+      data.duration_ms >= 0
+    ) {
+      event.nativeDurationMs = data.duration_ms;
+    }
+
     // Store input metadata as fallback for orphaned-post pairing (pre-event may be missing)
     const postInputMeta = extractInputMeta(toolName, data.tool_input);
     if (postInputMeta !== undefined) event.toolInput = postInputMeta;
@@ -729,6 +744,14 @@ function processHook(raw: string): void {
       error: redact(data.error ?? 'unknown error'),
       isInterrupt: data.is_interrupt ?? false,
     };
+
+    if (
+      typeof data.duration_ms === 'number' &&
+      Number.isFinite(data.duration_ms) &&
+      data.duration_ms >= 0
+    ) {
+      event.nativeDurationMs = data.duration_ms;
+    }
   } else if (eventName === 'beforetool') {
     // Gemini CLI (https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md)
     // sends BeforeTool/AfterTool instead of PreToolUse/PostToolUse, but the

@@ -33,6 +33,14 @@ export interface PostHookEvent extends HookEventBase {
   readonly success?: boolean;
   readonly error?: string;
   readonly isInterrupt?: boolean;
+  /**
+   * Claude Code's own reported tool-execution time (ms), excluding
+   * permission-prompt wait time and PreToolUse hook execution. When present,
+   * `HookEventProcessor` prefers this over the pre/post wall-clock delta for
+   * `ToolCallRecord.durationMs`, and derives `permissionWaitMs` from the gap
+   * between the two.
+   */
+  readonly nativeDurationMs?: number;
 }
 
 /** Emitted per LLM API turn with token usage; feeds CostTracker. */
@@ -141,7 +149,24 @@ export interface ToolCallRecord {
   readonly toolName: string;
   readonly toolUseId: string;
   readonly timestamp: number;
+  /**
+   * Tool execution time. Sourced from Claude Code's own `duration_ms` (see
+   * `PostHookEvent.nativeDurationMs`) when available — excludes
+   * permission-prompt wait time and PreToolUse hook execution. Falls back to
+   * the pre/post hook wall-clock delta on platforms/versions that don't send
+   * `duration_ms`, in which case it still includes that wait time.
+   */
   readonly durationMs: number | null;
+  /**
+   * Wall-clock time this tool call spent on permission-prompt/PreToolUse-hook
+   * overhead, i.e. the gap `durationMs` above deliberately excludes: the
+   * pre/post wall-clock delta minus the native `duration_ms`. `null` when no
+   * native `duration_ms` was available to decompose against (in that case
+   * `durationMs` itself is the undecomposed wall-clock delta, not 0 overhead).
+   * A local single-developer dashboard is the intended consumer — this is
+   * "time spent waiting on you", not a tool-speed metric.
+   */
+  readonly permissionWaitMs?: number | null;
   readonly success: boolean;
   readonly errorType?: string;
   readonly error?: string;
