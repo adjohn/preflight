@@ -816,6 +816,38 @@ describe('markBoundary', () => {
   });
 });
 
+describe('startTaskIfNone', () => {
+  it('starts a new active task when none is active', () => {
+    const detector = new TaskDetector();
+    expect(detector.getCurrentTask()).toBeNull();
+
+    detector.startTaskIfNone(Date.now());
+
+    expect(detector.getMetrics().currentTaskActive).toBe(true);
+  });
+
+  it('is a no-op when a task is already active — does not reset its accumulated calls', () => {
+    const detector = new TaskDetector();
+    detector.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/a.ts' }));
+
+    detector.startTaskIfNone(Date.now());
+
+    expect(detector.getMetrics().currentTaskToolCalls).toBe(1);
+  });
+
+  it('lets a task started via startTaskIfNone be closed normally by markBoundary', () => {
+    const detector = new TaskDetector();
+    detector.startTaskIfNone(Date.now());
+    detector.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/a.ts' }));
+
+    const closed = detector.markBoundary(Date.now());
+
+    expect(closed).not.toBeNull();
+    expect(closed!.toolCallCount).toBe(1);
+    expect(detector.getMetrics().currentTaskActive).toBe(false);
+  });
+});
+
 describe('seedFromPersisted', () => {
   it('folds seeded totals into getMetrics().seededAggregate, additive across calls', () => {
     const detector = new TaskDetector();

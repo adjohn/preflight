@@ -1329,6 +1329,134 @@ describe('HookEventProcessor', () => {
     });
   });
 
+  describe('mode: user_prompt_submit / stop (turn/task boundary hooks)', () => {
+    it('routes mode:user_prompt_submit entries through onUserPromptSubmit', () => {
+      const frames: import('./event-processor.js').BoundaryFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onUserPromptSubmit: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'user_prompt_submit',
+          tool: 'user_prompt_submit',
+          timestamp: 1700000000000,
+          sessionId: 's1',
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].timestamp).toBe(1700000000000);
+      expect(frames[0].sessionId).toBe('s1');
+    });
+
+    it('routes mode:stop entries through onStop', () => {
+      const frames: import('./event-processor.js').BoundaryFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onStop: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'stop',
+          tool: 'stop',
+          timestamp: 1700000000000,
+          sessionId: 's1',
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].timestamp).toBe(1700000000000);
+      expect(frames[0].sessionId).toBe('s1');
+    });
+
+    it('defaults sessionId to null when absent, for both user_prompt_submit and stop', () => {
+      const promptFrames: import('./event-processor.js').BoundaryFrame[] = [];
+      const stopFrames: import('./event-processor.js').BoundaryFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onUserPromptSubmit: (f) => promptFrames.push(f),
+        onStop: (f) => stopFrames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'user_prompt_submit',
+          tool: 'user_prompt_submit',
+          timestamp: 1700000000000,
+        } as HookEvent,
+        { mode: 'stop', tool: 'stop', timestamp: 1700000000001 } as HookEvent,
+      ]);
+
+      expect(promptFrames[0].sessionId).toBeNull();
+      expect(stopFrames[0].sessionId).toBeNull();
+    });
+
+    it('falls back to Date.now() when timestamp is missing or not finite', () => {
+      const frames: import('./event-processor.js').BoundaryFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onStop: (f) => frames.push(f),
+      });
+
+      const before = Date.now();
+      processor.processEvents([
+        { mode: 'stop', tool: 'stop', timestamp: NaN, sessionId: 's1' } as HookEvent,
+      ]);
+      const after = Date.now();
+
+      expect(frames[0].timestamp).toBeGreaterThanOrEqual(before);
+      expect(frames[0].timestamp).toBeLessThanOrEqual(after);
+    });
+
+    it('swallows errors from a throwing onUserPromptSubmit/onStop callback', () => {
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onUserPromptSubmit: () => {
+          throw new Error('boom');
+        },
+        onStop: () => {
+          throw new Error('boom');
+        },
+      });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'user_prompt_submit',
+            tool: 'user_prompt_submit',
+            timestamp: 1700000000000,
+            sessionId: 's1',
+          } as HookEvent,
+          { mode: 'stop', tool: 'stop', timestamp: 1700000000001, sessionId: 's1' } as HookEvent,
+        ]),
+      ).not.toThrow();
+    });
+
+    it('is a no-op when onUserPromptSubmit/onStop are not configured', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'user_prompt_submit',
+            tool: 'user_prompt_submit',
+            timestamp: 1700000000000,
+          } as HookEvent,
+          { mode: 'stop', tool: 'stop', timestamp: 1700000000001 } as HookEvent,
+        ]),
+      ).not.toThrow();
+      expect(records).toHaveLength(0);
+    });
+  });
+
   describe('platform tool-name mapping', () => {
     it('maps a non-canonical tool name using the injected platform adapter', () => {
       const fakeAdapter = {

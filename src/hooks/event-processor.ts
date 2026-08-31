@@ -23,6 +23,8 @@ import type {
   SubagentTokenHookEvent,
   ObservabilityHealthHookEvent,
   ApiFailureHookEvent,
+  UserPromptSubmitHookEvent,
+  StopHookEvent,
   ToolCallRecord,
   TokenEvent,
   SubagentTokenEvent,
@@ -76,6 +78,10 @@ export interface HookEventProcessorOptions {
   onWorkflowRun?: (event: WorkflowRunEvent) => void;
   /** Fires for every `mode: 'api_failure'` line; errors swallowed. */
   onApiFailure?: (event: ApiFailureFrame) => void;
+  /** Fires for every `mode: 'user_prompt_submit'` line; errors swallowed. */
+  onUserPromptSubmit?: (event: BoundaryFrame) => void;
+  /** Fires for every `mode: 'stop'` line; errors swallowed. */
+  onStop?: (event: BoundaryFrame) => void;
   /**
    * Adapter used to map each platform's raw tool names (e.g. Kiro's `fs_read`)
    * to Preflight's canonical vocabulary (`Read`) before pairing/emitting.
@@ -141,6 +147,17 @@ export interface ApiFailureFrame {
   readonly rawErrorType: string;
   readonly errorDetails?: string;
   readonly lastAssistantMessage?: string;
+}
+
+/**
+ * Wire-shape data extracted from a `mode: 'user_prompt_submit'` or
+ * `mode: 'stop'` entry — both carry nothing beyond a timestamp/sessionId
+ * (see the doc comments on `UserPromptSubmitHookEvent`/`StopHookEvent` in
+ * storage/types.ts for why), so one shared frame type covers both.
+ */
+export interface BoundaryFrame {
+  readonly timestamp: number;
+  readonly sessionId: string | null;
 }
 
 function numAttr(v: unknown): number {
@@ -233,6 +250,8 @@ export class HookEventProcessor {
   private readonly onSubagentToken: ((event: SubagentTokenEvent) => void) | null;
   private readonly onWorkflowRun: ((event: WorkflowRunEvent) => void) | null;
   private readonly onApiFailure: ((event: ApiFailureFrame) => void) | null;
+  private readonly onUserPromptSubmit: ((event: BoundaryFrame) => void) | null;
+  private readonly onStop: ((event: BoundaryFrame) => void) | null;
   private readonly platformAdapter: PlatformAdapter;
   /**
    * Per-agent dedup rings for recent subagent turns (scoped by agentId, one
@@ -288,6 +307,8 @@ export class HookEventProcessor {
     this.onSubagentToken = options.onSubagentToken ?? null;
     this.onWorkflowRun = options.onWorkflowRun ?? null;
     this.onApiFailure = options.onApiFailure ?? null;
+    this.onUserPromptSubmit = options.onUserPromptSubmit ?? null;
+    this.onStop = options.onStop ?? null;
     this.platformAdapter = options.platformAdapter ?? createDefaultRegistry().getActive();
 
     this.boundBeforeExit = () => {
@@ -398,6 +419,10 @@ export class HookEventProcessor {
           this.handleWorkflowRunEvent(event);
         } else if (event.mode === 'api_failure') {
           this.handleApiFailureEvent(event);
+        } else if (event.mode === 'user_prompt_submit') {
+          this.handleBoundaryEvent(event, this.onUserPromptSubmit, 'onUserPromptSubmit');
+        } else if (event.mode === 'stop') {
+          this.handleBoundaryEvent(event, this.onStop, 'onStop');
         }
       } catch (err) {
         logger.warn('Error processing hook event', {
@@ -787,6 +812,29 @@ export class HookEventProcessor {
       this.onApiFailure(frame);
     } catch (err) {
       logger.warn('onApiFailure callback failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /** Shared handler for `user_prompt_submit`/`stop` — both carry nothing beyond timestamp/sessionId. */
+  private handleBoundaryEvent(
+    event: UserPromptSubmitHookEvent | StopHookEvent,
+    callback: ((event: BoundaryFrame) => void) | null,
+    callbackName: string,
+  ): void {
+    if (!callback) return;
+    const frame: BoundaryFrame = {
+      timestamp:
+        typeof event.timestamp === 'number' && Number.isFinite(event.timestamp)
+          ? event.timestamp
+          : Date.now(),
+      sessionId: event.sessionId ?? null,
+    };
+    try {
+      callback(frame);
+    } catch (err) {
+      logger.warn(`${callbackName} callback failed`, {
         error: err instanceof Error ? err.message : String(err),
       });
     }

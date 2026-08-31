@@ -100,10 +100,37 @@ export interface ApiFailureHookEvent extends HookEventBase {
 }
 
 /**
+ * Emitted by Claude Code's UserPromptSubmit hook, which fires when the user
+ * submits a prompt, before Claude processes it (code.claude.com/docs/en/hooks.md).
+ * Deliberately carries no content — the `prompt` field itself is free text
+ * this file has no reason to capture; only its timestamp matters, as a
+ * precise "a new task started here" boundary for `TaskDetector`.
+ */
+export interface UserPromptSubmitHookEvent extends HookEventBase {
+  readonly mode: 'user_prompt_submit';
+  readonly sessionId?: string;
+}
+
+/**
+ * Emitted by Claude Code's Stop hook, which fires when the main agent has
+ * finished responding — does NOT fire on a user interrupt, so this is a
+ * corroborating precise signal, not a full replacement for the existing
+ * idle-gap heuristics in `TurnTracker`/`TaskDetector` (code.claude.com/docs/en/hooks.md).
+ * Deliberately carries no content — `last_assistant_message`,
+ * `background_tasks`, and `session_crons` are all real fields on this hook's
+ * input, but none of them are needed just to mark "a turn/task ended here".
+ */
+export interface StopHookEvent extends HookEventBase {
+  readonly mode: 'stop';
+  readonly sessionId?: string;
+}
+
+/**
  * Buffer line discriminated union. `pre`/`post`/`token` are the original
  * collector modes. `subagent_token`, `workflow_run`, and
  * `observability_health` are emitted by the SubagentWatcher / WorkflowWatcher.
- * `api_failure` is emitted by the collector for Claude Code's StopFailure hook.
+ * `api_failure` is emitted by the collector for Claude Code's StopFailure
+ * hook, `user_prompt_submit`/`stop` for its UserPromptSubmit/Stop hooks.
  */
 export type HookEvent =
   | PreHookEvent
@@ -112,7 +139,9 @@ export type HookEvent =
   | SubagentTokenHookEvent
   | WorkflowRunEvent
   | ObservabilityHealthHookEvent
-  | ApiFailureHookEvent;
+  | ApiFailureHookEvent
+  | UserPromptSubmitHookEvent
+  | StopHookEvent;
 
 export interface TokenEvent {
   readonly mode: 'token';

@@ -336,10 +336,30 @@ export class TaskDetector implements Resettable {
    * universal task-boundary signal any platform's calling agent can invoke
    * via `nr_observe_mark_task_boundary` — the only boundary signal available
    * on platforms that have no equivalent to Claude Code's
-   * `AskUserQuestion`/`TaskUpdate` tools.
+   * `AskUserQuestion`/`TaskUpdate` tools. On Claude Code itself, this is
+   * also called from its native `Stop` hook (see the `onStop` wiring in
+   * index.ts) — Stop fires once the main agent finishes responding, a more
+   * precise "this task is over" signal than waiting for `idleTimeoutMs` of
+   * silence, though it doesn't fire on a user interrupt, so the idle timer
+   * stays as a fallback for that case.
    */
   markBoundary(timestamp: number): AiCodingTask | null {
     return this.closeCurrentTask(timestamp);
+  }
+
+  /**
+   * Starts a new task at `timestamp` if none is currently active — a no-op
+   * otherwise, so it's always safe to call even if a task is already open.
+   * Wired to Claude Code's `UserPromptSubmit` hook (see index.ts) so a
+   * task's `startTime` reflects the moment the user actually submitted
+   * their instruction, not the timestamp of whatever tool call Claude
+   * happens to make first — which could be several seconds later, and
+   * would otherwise understate the task's true duration by that much.
+   */
+  startTaskIfNone(timestamp: number): void {
+    if (this.activeTask === null) {
+      this.startNewTask(timestamp);
+    }
   }
 
   /**

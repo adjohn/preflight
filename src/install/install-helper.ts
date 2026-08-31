@@ -26,7 +26,10 @@ const COLLECTOR_COMMAND = 'preflight-collector';
 //   /abs/path/preflight-collector pre-tool
 //   "/quoted/path/preflight-collector" pre-tool
 //   preflight-collector stop-failure
-export const NR_HOOK_RE = /preflight-collector"?\s+(?:pre-tool|post-tool|stop-failure)/;
+//   preflight-collector user-prompt-submit
+//   preflight-collector stop
+export const NR_HOOK_RE =
+  /preflight-collector"?\s+(?:pre-tool|post-tool|stop-failure|user-prompt-submit|stop)/;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +49,8 @@ export interface HookEntries {
   PreToolUse: HookEntry[];
   PostToolUse: HookEntry[];
   StopFailure: HookEntry[];
+  UserPromptSubmit: HookEntry[];
+  Stop: HookEntry[];
 }
 
 export interface McpServerConfig {
@@ -69,6 +74,8 @@ export function generateHookEntries(
   let pre: string;
   let post: string;
   let stopFailure: string;
+  let userPromptSubmit: string;
+  let stop: string;
 
   if (options?.platform === 'wsl-windows-cc') {
     // Windows Claude Code runs hooks via wsl.exe — call the WSL binary through interop.
@@ -78,6 +85,8 @@ export function generateHookEntries(
     pre = `wsl.exe -e "${quotedPath}" pre-tool`;
     post = `wsl.exe -e "${quotedPath}" post-tool`;
     stopFailure = `wsl.exe -e "${quotedPath}" stop-failure`;
+    userPromptSubmit = `wsl.exe -e "${quotedPath}" user-prompt-submit`;
+    stop = `wsl.exe -e "${quotedPath}" stop`;
   } else {
     // Quote the path so shells with sh -c don't split on spaces (e.g. /Users/John Doe/...).
     // Hook commands use preflight-collector (lightweight, <5ms budget).
@@ -87,6 +96,8 @@ export function generateHookEntries(
     pre = `${bin} pre-tool`;
     post = `${bin} post-tool`;
     stopFailure = `${bin} stop-failure`;
+    userPromptSubmit = `${bin} user-prompt-submit`;
+    stop = `${bin} stop`;
   }
 
   return {
@@ -96,6 +107,17 @@ export function generateHookEntries(
     // "Stop" — see code.claude.com/docs/en/hooks.md ("once per turn:
     // UserPromptSubmit, Stop, and StopFailure" are three separate hook events).
     StopFailure: [{ matcher: HOOK_MATCHER, hooks: [{ type: 'command', command: stopFailure }] }],
+    // UserPromptSubmit/Stop are corroborating precise turn/task-boundary
+    // signals for TurnTracker/TaskDetector's existing idle-gap heuristics —
+    // neither replaces the heuristic (Stop doesn't fire on a user
+    // interrupt), so both stay wired regardless. Purely observational: this
+    // collector never returns a JSON decision, even though both hooks
+    // support one (UserPromptSubmit can block/modify a prompt, Stop can
+    // block Claude from stopping).
+    UserPromptSubmit: [
+      { matcher: HOOK_MATCHER, hooks: [{ type: 'command', command: userPromptSubmit }] },
+    ],
+    Stop: [{ matcher: HOOK_MATCHER, hooks: [{ type: 'command', command: stop }] }],
   };
 }
 
@@ -212,9 +234,10 @@ function filterNrObserveEntries(entries: unknown[]): unknown[] {
  * entry that match the NR hook pattern (NR_HOOK_RE).
  * Pure — no file I/O.
  *
- * Deliberately does NOT check StopFailure: broadening what counts as "hooks
- * installed" would change behavior for existing users, which is a scope cut
- * for this PR, not an oversight — don't "fix" this without re-reading why.
+ * Deliberately does NOT check StopFailure, UserPromptSubmit, or Stop:
+ * broadening what counts as "hooks installed" would change behavior for
+ * existing users, which is a scope cut for this PR, not an oversight —
+ * don't "fix" this without re-reading why.
  */
 export function areHooksInstalled(settingsContent: Record<string, unknown>): boolean {
   const hooks = settingsContent.hooks;
@@ -251,6 +274,8 @@ const HooksFieldSchema = z
     PreToolUse: z.array(z.unknown()).optional(),
     PostToolUse: z.array(z.unknown()).optional(),
     StopFailure: z.array(z.unknown()).optional(),
+    UserPromptSubmit: z.array(z.unknown()).optional(),
+    Stop: z.array(z.unknown()).optional(),
   })
   .passthrough();
 const SettingsSchema = z.object({ hooks: HooksFieldSchema.optional() }).passthrough();
@@ -289,7 +314,13 @@ export function mergeSettings(
       ? { ...(result.hooks as Record<string, unknown>) }
       : {};
 
-  for (const hookType of ['PreToolUse', 'PostToolUse', 'StopFailure'] as const) {
+  for (const hookType of [
+    'PreToolUse',
+    'PostToolUse',
+    'StopFailure',
+    'UserPromptSubmit',
+    'Stop',
+  ] as const) {
     const existingArr = Array.isArray(hooks[hookType]) ? [...(hooks[hookType] as unknown[])] : [];
 
     if (binPath !== null && binPath !== undefined) {
@@ -372,7 +403,13 @@ export function removeSettings(existing: Record<string, unknown>): Record<string
   if (typeof result.hooks === 'object' && result.hooks !== null) {
     const hooks = { ...(result.hooks as Record<string, unknown>) };
 
-    for (const hookType of ['PreToolUse', 'PostToolUse', 'StopFailure'] as const) {
+    for (const hookType of [
+      'PreToolUse',
+      'PostToolUse',
+      'StopFailure',
+      'UserPromptSubmit',
+      'Stop',
+    ] as const) {
       if (Array.isArray(hooks[hookType])) {
         const filtered = filterNrObserveEntries(hooks[hookType] as unknown[]);
         if (filtered.length > 0) {

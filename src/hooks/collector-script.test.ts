@@ -100,6 +100,28 @@ function makeStopFailure(overrides?: Record<string, unknown>): string {
   });
 }
 
+function makeUserPromptSubmit(overrides?: Record<string, unknown>): string {
+  return JSON.stringify({
+    session_id: 'sess-001',
+    transcript_path: '/Users/test/.claude/projects/test/sess-001.jsonl',
+    cwd: '/projects/test',
+    hook_event_name: 'UserPromptSubmit',
+    prompt: 'fix the bug in foo.ts',
+    ...overrides,
+  });
+}
+
+function makeStop(overrides?: Record<string, unknown>): string {
+  return JSON.stringify({
+    session_id: 'sess-001',
+    transcript_path: '/Users/test/.claude/projects/test/sess-001.jsonl',
+    cwd: '/projects/test',
+    hook_event_name: 'Stop',
+    last_assistant_message: 'Done, all tests pass.',
+    ...overrides,
+  });
+}
+
 function makeGeminiBeforeTool(overrides?: Record<string, unknown>): string {
   return JSON.stringify({
     hook_event_name: 'BeforeTool',
@@ -591,6 +613,52 @@ describe('collector-script', () => {
 
       const event = readBufferEvents()[0]!;
       expect(event.errorType).toBe('unknown');
+    });
+  });
+
+  describe('processHook() — UserPromptSubmit', () => {
+    it('writes a user_prompt_submit event with session metadata', () => {
+      processHook(makeUserPromptSubmit());
+
+      const events = readBufferEvents();
+      expect(events).toHaveLength(1);
+
+      const event = events[0]!;
+      expect(event.mode).toBe('user_prompt_submit');
+      expect(event.sessionId).toBe('sess-001');
+    });
+
+    it('never captures the prompt text, even with recordContent=true', () => {
+      process.env.NEW_RELIC_AI_MCP_RECORD_CONTENT = 'true';
+
+      processHook(makeUserPromptSubmit({ prompt: 'API_KEY = sk-1234567890abcdef' }));
+
+      const event = readBufferEvents()[0]!;
+      expect(JSON.stringify(event)).not.toContain('sk-1234567890abcdef');
+      expect(event.prompt).toBeUndefined();
+    });
+  });
+
+  describe('processHook() — Stop', () => {
+    it('writes a stop event with session metadata', () => {
+      processHook(makeStop());
+
+      const events = readBufferEvents();
+      expect(events).toHaveLength(1);
+
+      const event = events[0]!;
+      expect(event.mode).toBe('stop');
+      expect(event.sessionId).toBe('sess-001');
+    });
+
+    it('never captures last_assistant_message, even with recordContent=true', () => {
+      process.env.NEW_RELIC_AI_MCP_RECORD_CONTENT = 'true';
+
+      processHook(makeStop({ last_assistant_message: 'API_KEY = sk-1234567890abcdef' }));
+
+      const event = readBufferEvents()[0]!;
+      expect(JSON.stringify(event)).not.toContain('sk-1234567890abcdef');
+      expect(event.lastAssistantMessage).toBeUndefined();
     });
   });
 
