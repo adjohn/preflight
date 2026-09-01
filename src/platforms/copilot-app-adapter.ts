@@ -45,7 +45,7 @@ function isCopilotAppToolCallEvent(x: unknown): x is CopilotAppToolCallEvent {
  * deterministic on machines that really have the app installed (see
  * isSupported() below).
  */
-function getCopilotAppDir(): string {
+export function getCopilotAppDir(): string {
   return process.env.NEW_RELIC_AI_COPILOT_DIR ?? join(homedir(), '.copilot');
 }
 
