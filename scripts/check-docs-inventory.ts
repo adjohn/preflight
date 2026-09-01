@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Docs-vs-code drift checker for the cloud-egress inventory (issue #493).
+ * Docs-vs-code drift checker for the cloud-egress inventory.
  *
  * Two checks:
  *   1. Every event type this app actually emits (`eventType: '<Name>'`
