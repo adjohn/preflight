@@ -23,7 +23,14 @@ const PLATFORM_ENV_KEYS = [
   'CLAUDE_CODE_VERSION',
   'MCP_CLIENT',
   'NEW_RELIC_AI_PLATFORM',
+  'NEW_RELIC_AI_COPILOT_DIR',
 ];
+// CopilotAppAdapter ambient-detects via NEW_RELIC_AI_COPILOT_DIR (defaulting
+// to ~/.copilot). A machine that really has the GitHub Copilot desktop app
+// or CLI installed has a real ~/.copilot/data.db, so it must be pointed at a
+// nonexistent path — not merely deleted — for the "no platform adapter
+// injected" tests to reliably fall back to generic-mcp.
+const NONEXISTENT_COPILOT_DIR = resolve(tmpdir(), `nr-ep-test-no-copilot-dir-${process.pid}`);
 
 beforeEach(() => {
   stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -39,6 +46,7 @@ beforeEach(() => {
     savedEnv[key] = process.env[key];
     delete process.env[key];
   }
+  process.env.NEW_RELIC_AI_COPILOT_DIR = NONEXISTENT_COPILOT_DIR;
 });
 
 afterEach(() => {

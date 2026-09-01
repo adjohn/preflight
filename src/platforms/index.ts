@@ -8,7 +8,8 @@ export { ClaudeCodeAdapter, CLAUDE_CODE_ENV_SIGNALS } from './claude-code-adapte
 export { CursorAdapter } from './cursor-adapter.js';
 export { WindsurfAdapter } from './windsurf-adapter.js';
 export { CopilotAdapter } from './copilot-adapter.js';
-export { CopilotSdkAdapter } from './copilot-sdk-adapter.js';
+export { CopilotAppAdapter } from './copilot-app-adapter.js';
+export { CopilotSdkAdapter, COPILOT_SDK_TOOL_MAP } from './copilot-sdk-adapter.js';
 export type { CopilotToolCallEvent, CopilotUsageRecord } from './copilot-adapter.js';
 export { parseCopilotUsageResponse } from './copilot-adapter.js';
 export { ZedAdapter } from './zed-adapter.js';
