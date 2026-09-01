@@ -289,7 +289,12 @@ function getGitRemoteUrl(): string | null {
     return execSync('git remote get-url origin', {
       encoding: 'utf-8',
       timeout: 2000,
-      env: { ...process.env },
+      // GIT_DIR/GIT_WORK_TREE (set by git for hook subprocesses, e.g. this
+      // process running under husky's pre-push) override the cwd-implied
+      // repo, silently redirecting this call to whatever repo the ambient
+      // env points at. See local-session-aggregator.ts's GIT_OPTS for the
+      // same guard.
+      env: { ...process.env, GIT_DIR: undefined, GIT_WORK_TREE: undefined },
     }).trim();
   } catch {
     return null;

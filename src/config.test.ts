@@ -1262,17 +1262,22 @@ describe('developer sanitization via loadMcpConfig()', () => {
 
   it('repoUrl strips embedded credentials from an inferred git remote', () => {
     const origDir = process.cwd();
-    // A dedicated mkdtemp dir, not the shared per-test `tmpDir` (Date.now()-named,
-    // shared with writeConfigFile) — this test mutates real git state (init +
-    // remote add), and a name collision with another test's tmpDir under full
-    // suite load previously caused an intermittent "remote origin already
-    // exists" failure.
+    // A dedicated mkdtemp dir, not the shared per-test `tmpDir`, since this
+    // test mutates real git state (init + remote add).
     const gitDir = mkdtempSync(resolve(tmpdir(), 'nr-mcp-test-repo-'));
+    // GIT_DIR/GIT_WORK_TREE (set by git for hook subprocesses, e.g. this
+    // process running under husky's pre-push) override `cwd`, silently
+    // redirecting `git init`/`git remote add` to the real repo instead of
+    // gitDir — which is exactly what made this test flake only when run via
+    // `git push`, never via a direct `npm test`. See config.ts's
+    // getGitRemoteUrl() and local-session-aggregator.ts's GIT_OPTS for the
+    // same guard.
+    const gitEnv = { ...process.env, GIT_DIR: undefined, GIT_WORK_TREE: undefined };
     try {
-      execSync('git init', { cwd: gitDir });
+      execSync('git init', { cwd: gitDir, env: gitEnv });
       execSync(
         'git remote add origin https://someuser:ghp_faketoken1234567890abcd@github.com/org/repo.git',
-        { cwd: gitDir },
+        { cwd: gitDir, env: gitEnv },
       );
       process.chdir(gitDir);
       process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
