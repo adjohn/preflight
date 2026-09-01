@@ -1,6 +1,6 @@
 {
   "name": "@newrelic/preflight",
-  "version": "1.18.2",
+  "version": "1.21.0",
   "type": "module",
   "license": "Apache-2.0",
   "private": false,
@@ -60,6 +60,7 @@
     "deploy:dashboard:teardown": "node dist/index.js deploy-dashboards --all --teardown",
     "backfill:sessions": "npx tsx scripts/backfill-sessions.ts",
     "check:bundle-size": "npx tsx scripts/check-bundle-size.ts",
+    "check:docs-inventory": "npx tsx scripts/check-docs-inventory.ts",
     "dev": "node dist/index.js --local",
     "dev:all": "npm run build && npm run dev",
     "dev:full": "npm run build:server && { npm run dev & BACK=$!; npm run dev:web; kill $BACK 2>/dev/null || true; }",

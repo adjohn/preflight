@@ -571,6 +571,9 @@ export class HookEventProcessor {
         ...(preEvent.permissionMode !== undefined && {
           permissionMode: preEvent.permissionMode,
         }),
+        ...((preEvent.platform ?? event.platform) !== undefined && {
+          platform: preEvent.platform ?? event.platform,
+        }),
         ...toolFields,
       };
       this.emitRecord(record);
@@ -589,6 +592,7 @@ export class HookEventProcessor {
         ...(event.isInterrupt === true && { errorType: 'interrupted' }),
         ...(event.error !== undefined && { error: event.error }),
         ...(event.outputSize !== undefined && { outputSizeBytes: event.outputSize }),
+        ...(event.platform !== undefined && { platform: event.platform }),
         ...toolFields,
       };
       this.emitRecord(record);
@@ -664,6 +668,7 @@ export class HookEventProcessor {
       errorType: entry.phase === 'permission_requested' ? 'rejected' : 'timeout',
       ...(event.inputSize !== undefined && { inputSizeBytes: event.inputSize }),
       ...(event.inputHash !== undefined && { inputHash: event.inputHash }),
+      ...(event.platform !== undefined && { platform: event.platform }),
       ...toolFields,
     });
   }
