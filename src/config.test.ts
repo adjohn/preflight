@@ -1,5 +1,5 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execSync } from 'node:child_process';
@@ -1262,13 +1262,19 @@ describe('developer sanitization via loadMcpConfig()', () => {
 
   it('repoUrl strips embedded credentials from an inferred git remote', () => {
     const origDir = process.cwd();
+    // A dedicated mkdtemp dir, not the shared per-test `tmpDir` (Date.now()-named,
+    // shared with writeConfigFile) — this test mutates real git state (init +
+    // remote add), and a name collision with another test's tmpDir under full
+    // suite load previously caused an intermittent "remote origin already
+    // exists" failure.
+    const gitDir = mkdtempSync(resolve(tmpdir(), 'nr-mcp-test-repo-'));
     try {
-      execSync('git init', { cwd: tmpDir });
+      execSync('git init', { cwd: gitDir });
       execSync(
         'git remote add origin https://someuser:ghp_faketoken1234567890abcd@github.com/org/repo.git',
-        { cwd: tmpDir },
+        { cwd: gitDir },
       );
-      process.chdir(tmpDir);
+      process.chdir(gitDir);
       process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
       process.env.NEW_RELIC_ACCOUNT_ID = '12345';
       const configPath = writeConfigFile({});
@@ -1279,6 +1285,7 @@ describe('developer sanitization via loadMcpConfig()', () => {
       expect(config.repoUrl).toContain('[REDACTED]');
     } finally {
       process.chdir(origDir);
+      rmSync(gitDir, { recursive: true, force: true });
     }
   });
 
