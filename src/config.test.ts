@@ -2,6 +2,7 @@ import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { execSync } from 'node:child_process';
 import {
   loadMcpConfig,
   redactSensitive,
@@ -43,6 +44,7 @@ beforeEach(() => {
   delete process.env.NEW_RELIC_AI_TEAM_ID;
   delete process.env.NEW_RELIC_AI_PROJECT_ID;
   delete process.env.NEW_RELIC_AI_ORG_ID;
+  delete process.env.NEW_RELIC_AI_REPO_URL;
   delete process.env.NEW_RELIC_API_KEY;
   delete process.env.NR_AI_MODE;
   // Most fixtures below set credentials without asserting on mode; an explicit
@@ -1211,6 +1213,56 @@ describe('developer sanitization via loadMcpConfig()', () => {
       const configPath = writeConfigFile({});
       const config = loadMcpConfig({ config: configPath });
       expect(config.projectId).toBeNull();
+    } finally {
+      process.chdir(origDir);
+    }
+  });
+
+  it('repoUrl uses config file value when no env var set', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({
+      projectId: 'myorg/myrepo',
+      repoUrl: 'https://example.test/x',
+    });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.repoUrl).toBe('https://example.test/x');
+  });
+
+  it('repoUrl is null when projectId is null, even if repoUrl is set explicitly', () => {
+    const origDir = process.cwd();
+    try {
+      process.chdir(tmpDir); // non-git directory → projectId resolves to null
+      delete process.env.GIT_DIR;
+      delete process.env.GIT_WORK_TREE;
+      process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+      process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+      const configPath = writeConfigFile({ projectId: null, repoUrl: 'https://example.test/x' });
+      const config = loadMcpConfig({ config: configPath });
+      expect(config.projectId).toBeNull();
+      expect(config.repoUrl).toBeNull();
+    } finally {
+      process.chdir(origDir);
+    }
+  });
+
+  it('repoUrl strips embedded credentials from an inferred git remote', () => {
+    const origDir = process.cwd();
+    try {
+      execSync('git init', { cwd: tmpDir });
+      execSync(
+        'git remote add origin https://someuser:ghp_faketoken1234567890abcd@github.com/org/repo.git',
+        { cwd: tmpDir },
+      );
+      process.chdir(tmpDir);
+      process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+      process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+      const configPath = writeConfigFile({});
+      const config = loadMcpConfig({ config: configPath });
+      expect(config.repoUrl).not.toBeNull();
+      expect(config.repoUrl).not.toContain('ghp_faketoken1234567890abcd');
+      expect(config.repoUrl).not.toContain('someuser:');
+      expect(config.repoUrl).toContain('[REDACTED]');
     } finally {
       process.chdir(origDir);
     }

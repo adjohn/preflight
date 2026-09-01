@@ -217,7 +217,12 @@ function detectSecurityAlert(
 
 export function auditRecordToNrEvent(
   record: AuditRecord,
-  attrs?: { teamId?: string | null; projectId?: string | null; orgId?: string | null },
+  attrs?: {
+    teamId?: string | null;
+    projectId?: string | null;
+    orgId?: string | null;
+    repoUrl?: string | null;
+  },
 ): NrEventData {
   const event: NrEventData = {
     eventType: 'AiAuditEvent',
@@ -231,6 +236,7 @@ export function auditRecordToNrEvent(
   if (attrs?.teamId) event.team_id = attrs.teamId;
   if (attrs?.projectId) event.project_id = attrs.projectId;
   if (attrs?.orgId) event.org_id = attrs.orgId;
+  if (attrs?.repoUrl) event.repo_url = attrs.repoUrl;
 
   if (record.sessionId != null) event.session_id = record.sessionId;
   if (record.filePath != null) event.file_path = redactSensitive(record.filePath);
@@ -249,7 +255,12 @@ export function auditRecordToNrEvent(
 
 export function securityAlertToNrEvent(
   record: AuditRecord,
-  attrs?: { teamId?: string | null; projectId?: string | null; orgId?: string | null },
+  attrs?: {
+    teamId?: string | null;
+    projectId?: string | null;
+    orgId?: string | null;
+    repoUrl?: string | null;
+  },
 ): NrEventData {
   const alert = record.securityAlert;
   if (!alert) throw new Error('securityAlertToNrEvent called with no securityAlert on record');
@@ -266,6 +277,7 @@ export function securityAlertToNrEvent(
   if (attrs?.teamId) event.team_id = attrs.teamId;
   if (attrs?.projectId) event.project_id = attrs.projectId;
   if (attrs?.orgId) event.org_id = attrs.orgId;
+  if (attrs?.repoUrl) event.repo_url = attrs.repoUrl;
 
   if (record.sessionId != null) event.session_id = record.sessionId;
   if (record.filePath != null) event.file_path = redactSensitive(record.filePath);

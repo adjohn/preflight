@@ -27,6 +27,7 @@ export interface McpServerConfig {
   readonly teamId: string | null;
   readonly projectId: string | null;
   readonly orgId: string | null;
+  readonly repoUrl: string | null;
   readonly model: string;
   readonly enabled: boolean;
   readonly highSecurity: boolean;
@@ -282,21 +283,35 @@ function inferDeveloper(): string {
   }
 }
 
-function inferProjectId(): string | null {
+function getGitRemoteUrl(): string | null {
   try {
-    const remote = execSync('git remote get-url origin', {
+    return execSync('git remote get-url origin', {
       encoding: 'utf-8',
       timeout: 2000,
       env: { ...process.env },
     }).trim();
-    // Extract "org/repo" from HTTPS or SSH remotes:
-    // https://github.com/org/repo.git  → org/repo
-    // git@github.com:org/repo.git      → org/repo
-    const match = remote.match(/[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
-    return match ? match[1] : null;
   } catch {
     return null;
   }
+}
+
+function inferProjectId(): string | null {
+  const remote = getGitRemoteUrl();
+  if (!remote) return null;
+  // Extract "org/repo" from HTTPS or SSH remotes:
+  // https://github.com/org/repo.git  → org/repo
+  // git@github.com:org/repo.git      → org/repo
+  const match = remote.match(/[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
+  return match ? match[1] : null;
+}
+
+function inferRepoUrl(): string | null {
+  const remote = getGitRemoteUrl();
+  if (!remote) return null;
+  // Strip credentials (tokens, keys) from the remote URL
+  const redacted = redactSensitive(remote);
+  // Apply the same sanitization as other org fields (control chars, length)
+  return sanitizeOrgField(redacted);
 }
 
 function envBool(key: string, defaultValue: boolean): boolean {
@@ -692,6 +707,13 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
     typeof file.highSecurity === 'boolean' ? file.highSecurity : false,
   );
 
+  // projectId must be resolved before repoUrl so repoUrl's opt-out gate reads
+  // the same value instead of recomputing it (and re-shelling out to git)
+  const resolvedProjectId = sanitizeOrgField(
+    process.env.NEW_RELIC_AI_PROJECT_ID ??
+      (typeof file.projectId === 'string' ? file.projectId : inferProjectId()),
+  );
+
   const config: McpServerConfig = {
     licenseKey,
     accountId,
@@ -716,10 +738,17 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       process.env.NEW_RELIC_AI_TEAM_ID ?? (typeof file.teamId === 'string' ? file.teamId : null),
     ),
 
-    projectId: sanitizeOrgField(
-      process.env.NEW_RELIC_AI_PROJECT_ID ??
-        (typeof file.projectId === 'string' ? file.projectId : inferProjectId()),
-    ),
+    projectId: resolvedProjectId,
+
+    // Same opt-out as projectId: if that resolved to null (explicit
+    // `projectId: null` or inference failed), don't compute repoUrl either.
+    repoUrl:
+      resolvedProjectId === null
+        ? null
+        : sanitizeOrgField(
+            process.env.NEW_RELIC_AI_REPO_URL ??
+              (typeof file.repoUrl === 'string' ? file.repoUrl : inferRepoUrl()),
+          ),
 
     orgId: sanitizeOrgField(
       process.env.NEW_RELIC_AI_ORG_ID ?? (typeof file.orgId === 'string' ? file.orgId : null),
