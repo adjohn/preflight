@@ -3,6 +3,7 @@ import {
   toolCallToNrEvent,
   codingTaskToNrEvent,
   antiPatternToNrEvent,
+  retryAlertToNrEvent,
   proxyToolCallToNrEvent,
   workflowRunToNrEvent,
   scriptWorkflowRunToNrEvent,
@@ -24,9 +25,11 @@ import type { ToolCallRecord, SubagentTokenEvent } from '../storage/types.js';
 import type { ProxyToolCallRecord, ProxyRequestRecord } from '../proxy/types.js';
 import type { AiCodingTask } from '../metrics/task-detector.js';
 import type { AntiPattern } from '../metrics/anti-patterns.js';
+import type { ThrashingAlert } from '../metrics/retry-detector.js';
 import type { ContextTurnSnapshot, ToolContextContribution } from '../metrics/context-tracker.js';
 import { SessionTracker } from '../metrics/session-tracker.js';
 import { CostTracker } from '../metrics/cost-tracker.js';
+import { GitEfficiencyTracker } from '../metrics/git-efficiency-tracker.js';
 import { FeedbackCollector } from '../tools/workflow-tools.js';
 import { ApiFailureTracker } from '../metrics/api-failure-tracker.js';
 import type { TokenUsage } from '../shared/index.js';
@@ -113,6 +116,19 @@ function makePattern(overrides?: Partial<AntiPattern>): AntiPattern {
     type: 'thrashing',
     tokensWasted: 0,
     suggestion: 'Consider reviewing your approach before retrying',
+    ...overrides,
+  };
+}
+
+function makeThrashingAlert(overrides?: Partial<ThrashingAlert>): ThrashingAlert {
+  return {
+    toolName: 'Bash',
+    occurrences: 3,
+    windowSize: 5,
+    similarity: 1,
+    tokensWastedEstimate: 42,
+    timestamp: 1_700_000_000_000,
+    sessionId: 'sess-001',
     ...overrides,
   };
 }
@@ -425,6 +441,13 @@ describe('toolCallToNrEvent()', () => {
       expect(event.error as string).not.toContain(SECRET_TOKEN);
       expect(event.error as string).toContain('[REDACTED]');
     });
+
+    it('includes event_version: 1 on AiToolCall', () => {
+      const record = makeRecord();
+      const event = toolCallToNrEvent(record, { developer: 'd', appName: 'a' });
+
+      expect(event.event_version).toBe(1);
+    });
   });
 
   // AiToolCall carries no cost/token fields of its own (cost lives on
@@ -493,7 +516,7 @@ describe('NrIngestManager', () => {
       expect(attrs.session_id).toBe('proxy-conn-xyz');
     });
 
-    it('still tags non-proxy tool call metrics with sessionTraceId (regression guard)', async () => {
+    it("tags non-proxy tool call metrics with the record's own sessionId when present", async () => {
       const manager = new NrIngestManager(makeIngestOptions({ sessionTraceId: 'proxy-trace-id' }));
 
       manager.ingestToolCall(makeRecord({ sessionId: 'hook-session-001' }));
@@ -506,7 +529,7 @@ describe('NrIngestManager', () => {
       >;
       const callCountMetric = sentMetrics.find((m) => m.name === 'ai.tool.call_count')!;
       const attrs = callCountMetric.attributes as Record<string, unknown>;
-      expect(attrs.session_id).toBe('proxy-trace-id');
+      expect(attrs.session_id).toBe('hook-session-001');
     });
   });
 
@@ -554,6 +577,13 @@ describe('NrIngestManager', () => {
       expect(event.team_id).toBe('team-1');
       expect(event.project_id).toBe('proj-1');
       expect(event.org_id).toBe('org-1');
+    });
+
+    it('includes event_version: 1 on AiProxyRequest', () => {
+      const record = makeProxyRequestRecord();
+      const event = proxyRequestToNrEvent(record, { developer: 'd', appName: 'a' });
+
+      expect(event.event_version).toBe(1);
     });
   });
 
@@ -659,6 +689,21 @@ describe('NrIngestManager', () => {
       >;
       const snapshotEvent = sentEvents.find((e) => e.eventType === 'AiContextSnapshot')!;
       expect(snapshotEvent.session_id).toBe('trace-abc');
+    });
+
+    it('includes event_version: 1 on AiContextSnapshot', async () => {
+      const manager = new NrIngestManager(makeIngestOptions());
+
+      manager.ingestContextSnapshot(makeContextSnapshot(), []);
+
+      manager.start();
+      await manager.stop();
+
+      const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
+      const snapshotEvent = sentEvents.find((e) => e.eventType === 'AiContextSnapshot')!;
+      expect(snapshotEvent.event_version).toBe(1);
     });
   });
 
@@ -891,6 +936,51 @@ describe('NrIngestManager', () => {
       >;
       const failureMetrics = sentMetrics.filter((m) => m.name === 'ai.api.failures_total');
       expect(failureMetrics).toHaveLength(1);
+    });
+
+    it('emits the five ai.git.* metrics on stop when a gitEfficiencyTracker is provided, tagged with developer/session attrs', async () => {
+      const sessionTracker = new SessionTracker('git-metrics-session');
+      const gitEfficiencyTracker = new GitEfficiencyTracker();
+      gitEfficiencyTracker.recordToolCall(makeRecord({ command: 'git commit -m "x"' }));
+      gitEfficiencyTracker.recordToolCall(makeRecord({ command: 'git push origin feature' }));
+      gitEfficiencyTracker.recordToolCall(
+        makeRecord({ command: 'git push --force origin feature' }),
+      );
+      gitEfficiencyTracker.recordToolCall(makeRecord({ command: 'gh pr create --title "x"' }));
+      gitEfficiencyTracker.recordToolCall(makeRecord({ command: 'gh pr merge 1' }));
+
+      const manager = new NrIngestManager(
+        makeIngestOptions({
+          sessionTracker,
+          gitEfficiencyTracker,
+          sessionTraceId: 'sess-git-1',
+        }),
+      );
+
+      manager.start();
+      await manager.stop();
+
+      expect(mockSendMetrics).toHaveBeenCalled();
+      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<{
+        name: string;
+        attributes?: Record<string, unknown>;
+        value: { sum: number };
+      }>;
+
+      const expectedNamesAndSums: Array<[string, number]> = [
+        ['ai.git.commit_count', 1],
+        ['ai.git.push_count', 2],
+        ['ai.git.force_push_count', 1],
+        ['ai.git.pr_created', 1],
+        ['ai.git.pr_merged', 1],
+      ];
+      for (const [name, sum] of expectedNamesAndSums) {
+        const metric = sentMetrics.find((m) => m.name === name);
+        expect(metric).toBeDefined();
+        expect(metric!.value.sum).toBe(sum);
+        expect(metric!.attributes?.developer).toBe('test-dev');
+        expect(metric!.attributes?.session_id).toBe('sess-git-1');
+      }
     });
 
     it('emitSessionGauges is a no-op after stop()', async () => {
@@ -1310,6 +1400,13 @@ describe('codingTaskToNrEvent()', () => {
 
     expect(event).not.toHaveProperty('cost_authority');
   });
+
+  it('includes event_version: 1 on AiCodingTask', () => {
+    const task = makeTask();
+    const event = codingTaskToNrEvent(task, { developer: 'd', appName: 'a' });
+
+    expect(event.event_version).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1478,6 +1575,17 @@ describe('antiPatternToNrEvent()', () => {
     expect(event.timestamp as number).toBeGreaterThanOrEqual(before);
     expect(event.timestamp as number).toBeLessThanOrEqual(after);
   });
+
+  it('includes event_version: 1 on AiAntiPattern', () => {
+    const pattern = makePattern();
+    const event = antiPatternToNrEvent(pattern, {
+      developer: 'd',
+      appName: 'a',
+      taskId: 'task-008',
+    });
+
+    expect(event.event_version).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1542,6 +1650,117 @@ describe('NrIngestManager.ingestAntiPattern()', () => {
 });
 
 // ---------------------------------------------------------------------------
+// retryAlertToNrEvent()
+// ---------------------------------------------------------------------------
+
+describe('retryAlertToNrEvent()', () => {
+  it('serializes required fields', () => {
+    const alert = makeThrashingAlert();
+    const event = retryAlertToNrEvent(alert, {
+      developer: 'dev1',
+      appName: 'my-app',
+      sessionId: 'trace-id',
+      platform: 'claude-code',
+    });
+
+    expect(event.eventType).toBe('AiRetryAlert');
+    expect(event.tool_name).toBe('Bash');
+    expect(event.occurrences).toBe(3);
+    expect(event.window_size).toBe(5);
+    expect(event.similarity).toBe(1);
+    expect(event.tokens_wasted).toBe(42);
+    expect(event.developer).toBe('dev1');
+    expect(event.app_name).toBe('my-app');
+    expect(event.platform).toBe('claude-code');
+    expect(event.timestamp).toBe(1_700_000_000_000);
+  });
+
+  it('session_id comes from attrs.sessionId, not alert.sessionId', () => {
+    // Same single-source-of-truth convention as antiPatternToNrEvent — see
+    // "NrIngestManager.ingestRetryAlert: sessionTraceId takes precedence
+    // over alert.sessionId" below for why.
+    const alert = makeThrashingAlert({ sessionId: 'alert-own-session' });
+    const event = retryAlertToNrEvent(alert, {
+      developer: 'd',
+      appName: 'a',
+      sessionId: 'trace-id',
+    });
+
+    expect(event.session_id).toBe('trace-id');
+  });
+
+  it('omits session_id when attrs.sessionId is undefined', () => {
+    const event = retryAlertToNrEvent(makeThrashingAlert(), {
+      developer: 'd',
+      appName: 'a',
+    });
+
+    expect(event).not.toHaveProperty('session_id');
+  });
+
+  it('defaults platform to claude-code when not provided', () => {
+    const event = retryAlertToNrEvent(makeThrashingAlert(), {
+      developer: 'd',
+      appName: 'a',
+    });
+
+    expect(event.platform).toBe('claude-code');
+  });
+
+  it('includes team/project/org attribution when provided', () => {
+    const event = retryAlertToNrEvent(makeThrashingAlert(), {
+      developer: 'd',
+      appName: 'a',
+      teamId: 'team-1',
+      projectId: 'proj-1',
+      orgId: 'org-1',
+    });
+
+    expect(event.team_id).toBe('team-1');
+    expect(event.project_id).toBe('proj-1');
+    expect(event.org_id).toBe('org-1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NrIngestManager.ingestRetryAlert()
+// ---------------------------------------------------------------------------
+
+describe('NrIngestManager.ingestRetryAlert()', () => {
+  it('queues an AiRetryAlert event that is flushed on stop()', async () => {
+    const manager = new NrIngestManager(makeIngestOptions());
+
+    manager.ingestRetryAlert(makeThrashingAlert(), { platform: 'claude-code' });
+    manager.start();
+    await manager.stop();
+
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const retryEvent = sentEvents.find((e) => e.eventType === 'AiRetryAlert');
+    expect(retryEvent).toBeDefined();
+    expect(retryEvent!.tool_name).toBe('Bash');
+  });
+
+  it('sessionTraceId takes precedence over alert.sessionId', async () => {
+    const manager = new NrIngestManager({
+      ...makeIngestOptions(),
+      sessionTraceId: 'the-trace-id',
+    });
+
+    manager.ingestRetryAlert(makeThrashingAlert({ sessionId: 'a-different-session' }));
+    manager.start();
+    await manager.stop();
+
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const retryEvent = sentEvents.find((e) => e.eventType === 'AiRetryAlert');
+    expect(retryEvent?.session_id).toBe('the-trace-id');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Session trace ID propagation
 // ---------------------------------------------------------------------------
 
@@ -1595,12 +1814,28 @@ describe('session trace ID propagation', () => {
     expect(event.session_id).toBe(TRACE_ID);
   });
 
-  it('NrIngestManager.ingestToolCall: emits sessionTraceId as session_id on AiToolCall event', async () => {
+  it("NrIngestManager.ingestToolCall: prefers the record's own sessionId as session_id on AiToolCall event", async () => {
     const manager = new NrIngestManager({
       ...makeIngestOptions(),
       sessionTraceId: TRACE_ID,
     });
-    manager.ingestToolCall(makeRecord({ sessionId: 'old-id' }));
+    manager.ingestToolCall(makeRecord({ sessionId: 'record-own-id' }));
+    manager.start();
+    await manager.stop();
+
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const toolCallEvent = sentEvents.find((e) => e.eventType === 'AiToolCall');
+    expect(toolCallEvent?.session_id).toBe('record-own-id');
+  });
+
+  it('NrIngestManager.ingestToolCall: falls back to sessionTraceId as session_id when the record has no sessionId', async () => {
+    const manager = new NrIngestManager({
+      ...makeIngestOptions(),
+      sessionTraceId: TRACE_ID,
+    });
+    manager.ingestToolCall(makeRecord({ sessionId: null }));
     manager.start();
     await manager.stop();
 
@@ -1688,6 +1923,12 @@ describe('session trace ID propagation', () => {
     expect(event.session_id).toBeUndefined();
   });
 
+  it('proxyToolCallToNrEvent: includes event_version: 1 on AiMcpToolCall', () => {
+    const record = makeProxyRecord();
+    const event = proxyToolCallToNrEvent(record, { developer: 'dev', appName: 'app' });
+    expect(event.event_version).toBe(1);
+  });
+
   it('NrIngestManager.ingestBudgetWarning: emits session_id from sessionTraceId', async () => {
     const manager = new NrIngestManager({
       ...makeIngestOptions(),
@@ -1727,6 +1968,25 @@ describe('session trace ID propagation', () => {
     >;
     const budgetEvent = sentEvents.find((e) => e.eventType === 'AiBudgetWarning');
     expect(budgetEvent?.session_id).toBeUndefined();
+  });
+
+  it('NrIngestManager.ingestBudgetWarning: includes event_version: 1 on AiBudgetWarning', async () => {
+    const manager = new NrIngestManager(makeIngestOptions());
+    manager.ingestBudgetWarning({
+      period: 'session',
+      thresholdPct: 50,
+      spentUsd: 5,
+      budgetUsd: 10,
+      timestamp: Date.now(),
+    });
+    manager.start();
+    await manager.stop();
+
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const budgetEvent = sentEvents.find((e) => e.eventType === 'AiBudgetWarning');
+    expect(budgetEvent?.event_version).toBe(1);
   });
 
   it('toolCallToNrEvent: includes team_id when teamId is non-null', () => {

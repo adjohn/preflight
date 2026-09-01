@@ -47,7 +47,7 @@ export NEW_RELIC_AI_TRANSPORT=both
 
 ## Inbound OTLP Receiver (Proxy Mode)
 
-When running in proxy mode, you can also enable an **inbound OTLP receiver** that acts as a local OpenTelemetry Collector. Any OTel-instrumented app pointing at `http://localhost:4318` will have its telemetry enriched with the current coding session context (`ai.session.id`, `ai.developer`, `ai.project_id`) and forwarded to NR, linking application traces to the AI session that produced them. **This enrichment only applies to JSON-encoded OTLP payloads** — most production OTel SDKs (Node, Python, Java) default to protobuf, which is forwarded unmodified without enrichment; see the note below.
+When running in proxy mode, you can also enable an **inbound OTLP receiver** that acts as a local OpenTelemetry Collector. Any OTel-instrumented app pointing at `http://localhost:4318` will have its telemetry enriched with the current coding session context (`ai.session.id`, `ai.developer`, `ai.project_id`) and forwarded to NR, linking application traces to the AI session that produced them. Both JSON and protobuf OTLP/HTTP payloads are enriched. Protobuf payloads are decoded and re-encoded through a vendored schema descriptor (`src/proxy/otlp-descriptor.ts`), which carries one caveat: a sender running a newer OTLP schema than the descriptor's vintage (opentelemetry-proto @ dfd0b0e) loses any fields the descriptor does not know about during re-encoding. The JSON path has no such limit. The descriptor file's header documents the exact regeneration command.
 
 Add to `~/.newrelic-preflight/config.json`:
 
@@ -77,7 +77,7 @@ export NR_AI_OTLP_FORWARD_HEADERS="api-key=your-license-key"
 | `otlpForwardEndpoint`     | Where enriched payloads are forwarded. Set to `null` to receive and enrich only.                                                                                                                                                                                                                                                          | `https://otlp.nr-data.net` (when `licenseKey` is set) |
 | `otlpForwardHeaders`      | HTTP headers added to every forwarded request                                                                                                                                                                                                                                                                                             | `{ "api-key": <licenseKey> }`                         |
 
-Point your application's OTel SDK at `http://localhost:4318`. JSON OTLP payloads are enriched; protobuf payloads are forwarded as-is.
+Point your application's OTel SDK at `http://localhost:4318`. JSON and protobuf OTLP payloads are both enriched. A payload that fails to decode is forwarded unmodified rather than dropped, and protobuf senders on a newer OTLP schema are subject to the descriptor-vintage caveat above.
 
 ---
 
