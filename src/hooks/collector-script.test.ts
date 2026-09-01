@@ -87,6 +87,19 @@ function makePostToolUseFailure(overrides?: Record<string, unknown>): string {
   });
 }
 
+function makeStopFailure(overrides?: Record<string, unknown>): string {
+  return JSON.stringify({
+    session_id: 'abc123',
+    transcript_path: '/Users/test/.claude/projects/test/abc123.jsonl',
+    cwd: '/Users/test/project',
+    hook_event_name: 'StopFailure',
+    error: 'rate_limit',
+    error_details: '429 Too Many Requests',
+    last_assistant_message: 'API Error: Rate limit reached',
+    ...overrides,
+  });
+}
+
 function makeGeminiBeforeTool(overrides?: Record<string, unknown>): string {
   return JSON.stringify({
     hook_event_name: 'BeforeTool',
@@ -184,6 +197,26 @@ describe('collector-script', () => {
       const event = readBufferEvents()[0]!;
       expect(event.sessionId).toBe('sess-001');
       expect(event.toolUseId).toBe('toolu_abc123');
+    });
+
+    it('stamps event.platform from MCP_CLIENT when explicitly set', () => {
+      process.env.MCP_CLIENT = 'copilot-sdk';
+      processHook(makePreToolUse());
+
+      expect(readBufferEvents()[0]!.platform).toBe('copilot-sdk');
+    });
+
+    it('stamps event.platform from NEW_RELIC_AI_PLATFORM when MCP_CLIENT is absent', () => {
+      process.env.NEW_RELIC_AI_PLATFORM = 'cursor';
+      processHook(makePreToolUse());
+
+      expect(readBufferEvents()[0]!.platform).toBe('cursor');
+    });
+
+    it('leaves event.platform unset for a genuine Claude Code hook with no explicit platform override', () => {
+      processHook(makePreToolUse());
+
+      expect(readBufferEvents()[0]!.platform).toBeUndefined();
     });
 
     it('captures transcript_path as transcriptPath', () => {
@@ -513,6 +546,155 @@ describe('collector-script', () => {
       const event = readBufferEvents()[0]!;
       expect(event.error).not.toContain('sk-1234567890abcdef');
       expect(event.error).toContain('[REDACTED]');
+    });
+  });
+
+  describe('processHook() — StopFailure', () => {
+    it('writes an api_failure event with the raw errorType', () => {
+      processHook(makeStopFailure());
+
+      const events = readBufferEvents();
+      expect(events).toHaveLength(1);
+
+      const event = events[0]!;
+      expect(event.mode).toBe('api_failure');
+      expect(event.errorType).toBe('rate_limit');
+      expect(event.sessionId).toBe('abc123');
+    });
+
+    it('includes redacted error_details and last_assistant_message when recordContent=true', () => {
+      process.env.NEW_RELIC_AI_MCP_RECORD_CONTENT = 'true';
+
+      processHook(makeStopFailure());
+
+      const event = readBufferEvents()[0]!;
+      expect(event.errorDetails).toBe('429 Too Many Requests');
+      expect(event.lastAssistantMessage).toBe('API Error: Rate limit reached');
+    });
+
+    it('omits error_details and last_assistant_message when recordContent=false', () => {
+      processHook(makeStopFailure());
+
+      const event = readBufferEvents()[0]!;
+      expect(event.errorDetails).toBeUndefined();
+      expect(event.lastAssistantMessage).toBeUndefined();
+    });
+
+    it('redacts sensitive information in error_details and last_assistant_message', () => {
+      process.env.NEW_RELIC_AI_MCP_RECORD_CONTENT = 'true';
+
+      processHook(
+        makeStopFailure({
+          error_details: 'Authorization failed: Bearer eyJhbGciOiJIUzI1NiJ9.token.signature',
+          last_assistant_message: 'Failed: API_KEY = sk-1234567890abcdef',
+        }),
+      );
+
+      const event = readBufferEvents()[0]!;
+      expect(event.errorDetails).toContain('[REDACTED]');
+      expect(event.errorDetails).not.toContain('eyJhbGciOiJIUzI1NiJ9');
+      expect(event.lastAssistantMessage).toContain('[REDACTED]');
+      expect(event.lastAssistantMessage).not.toContain('sk-1234567890abcdef');
+    });
+
+    it('JSON.stringifies a non-string error_details', () => {
+      process.env.NEW_RELIC_AI_MCP_RECORD_CONTENT = 'true';
+
+      processHook(makeStopFailure({ error_details: { code: 429, message: 'Too Many Requests' } }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.errorDetails).toBe('{"code":429,"message":"Too Many Requests"}');
+    });
+
+    it('defaults errorType to "unknown" when error is missing', () => {
+      processHook(makeStopFailure({ error: undefined }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.errorType).toBe('unknown');
+    });
+  });
+
+  describe('processHook() — PermissionRequest / PermissionDenied', () => {
+    it('writes a permission_request event with toolUseId and sessionId', () => {
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'PermissionRequest',
+          tool_name: 'Bash',
+          tool_input: { command: 'rm -rf build' },
+          tool_use_id: 'toolu_perm1',
+          session_id: 'sess-001',
+          prompt_id: 'prompt-001',
+          cwd: '/projects/test',
+          permission_mode: 'default',
+        }),
+      );
+
+      const events = readBufferEvents();
+      expect(events).toHaveLength(1);
+      const event = events[0]!;
+      expect(event.mode).toBe('permission_request');
+      expect(event.tool).toBe('Bash');
+      expect(event.toolUseId).toBe('toolu_perm1');
+      expect(event.sessionId).toBe('sess-001');
+      expect(event.timestamp).toEqual(expect.any(Number));
+    });
+
+    it('writes a permission_denied event carrying a redacted deniedReason', () => {
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'PermissionDenied',
+          tool_name: 'Bash',
+          tool_use_id: 'toolu_perm2',
+          session_id: 'sess-001',
+          denied_reason: 'Blocked by policy: Bearer eyJhbGciOiJIUzI1NiJ9.token.signature',
+        }),
+      );
+
+      const events = readBufferEvents();
+      expect(events).toHaveLength(1);
+      const event = events[0]!;
+      expect(event.mode).toBe('permission_denied');
+      expect(event.tool).toBe('Bash');
+      expect(event.toolUseId).toBe('toolu_perm2');
+      expect(event.deniedReason).toContain('Blocked by policy');
+      expect(event.deniedReason).toContain('[REDACTED]');
+      expect(event.deniedReason).not.toContain('eyJhbGciOiJIUzI1NiJ9');
+    });
+
+    it('drops a permission event with no tool_use_id without crashing', () => {
+      const stderrWriteSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'PermissionRequest',
+          tool_name: 'Bash',
+          session_id: 'sess-001',
+        }),
+      );
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'PermissionDenied',
+          tool_name: 'Bash',
+          tool_use_id: '',
+          session_id: 'sess-001',
+        }),
+      );
+
+      expect(readBufferEvents()).toHaveLength(0);
+      expect(stderrWriteSpy).toHaveBeenCalledTimes(2);
+      stderrWriteSpy.mockRestore();
+    });
+
+    it('never writes hook decision output to stdout', () => {
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'PermissionRequest',
+          tool_name: 'Bash',
+          tool_use_id: 'toolu_perm3',
+          session_id: 'sess-001',
+        }),
+      );
+
+      expect(stdoutSpy).not.toHaveBeenCalled();
     });
   });
 
