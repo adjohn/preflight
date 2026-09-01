@@ -128,6 +128,15 @@ export interface NrIngestOptions {
    * reporting `duration_ms≈604800000` with file-activity counts stuck at 0).
    */
   trackSessionGauges?: boolean;
+  /**
+   * When true, `emitSessionGauges()` suppresses the `ai.cost.*` gauge family
+   * and cost-bearing Claude-Code-sourced events are tagged
+   * `cost_authority: 'external'` instead of dropped. Set this when the same
+   * org also enables Claude Code's built-in OTel export, so a blended
+   * "org AI spend" dashboard doesn't double the true cost (the two exports
+   * share `session_id` === OTel's `session.id`). Default false.
+   */
+  companionMode?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,6 +351,8 @@ export function codingTaskToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    /** See `NrIngestOptions.companionMode`. */
+    companionMode?: boolean;
   },
 ): NrEventData {
   const firstRecord = task.toolCalls[0];
@@ -385,6 +396,12 @@ export function codingTaskToNrEvent(
   // firstRecord?.sessionId fallback was only meaningful when the MCP fabricated
   // its own UUID and lost cross-reference with the tool-call records.
   if (attrs.sessionTraceId != null) event.session_id = attrs.sessionTraceId;
+
+  // Only claude-code-platform cost has an OTel twin to reconcile against —
+  // other platforms' cost fields have no double-count to flag.
+  if (attrs.companionMode && platform === 'claude-code') {
+    event.cost_authority = 'external';
+  }
 
   return event;
 }
@@ -481,6 +498,8 @@ export function subagentTurnToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    /** See `NrIngestOptions.companionMode`. */
+    companionMode?: boolean;
   },
 ): NrEventData {
   const event: NrEventData = {
@@ -510,6 +529,9 @@ export function subagentTurnToNrEvent(
   if (attrs.teamId) event.team_id = attrs.teamId;
   if (attrs.projectId) event.project_id = attrs.projectId;
   if (attrs.orgId) event.org_id = attrs.orgId;
+  // Subagent turns are always derived from a Claude Code transcript — no
+  // platform check needed, unlike codingTaskToNrEvent.
+  if (attrs.companionMode) event.cost_authority = 'external';
   return event;
 }
 
@@ -527,6 +549,8 @@ export function subagentTokenEventToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    /** See `NrIngestOptions.companionMode`. */
+    companionMode?: boolean;
   },
 ): NrEventData {
   const ev: NrEventData = {
@@ -549,6 +573,9 @@ export function subagentTokenEventToNrEvent(
   if (attrs.teamId) ev.team_id = attrs.teamId;
   if (attrs.projectId) ev.project_id = attrs.projectId;
   if (attrs.orgId) ev.org_id = attrs.orgId;
+  // Subagent token events are always derived from a Claude Code transcript —
+  // no platform check needed, unlike codingTaskToNrEvent.
+  if (attrs.companionMode) ev.cost_authority = 'external';
   return ev;
 }
 
@@ -560,6 +587,8 @@ export function scriptWorkflowRunToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    /** See `NrIngestOptions.companionMode`. */
+    companionMode?: boolean;
   },
 ): NrEventData {
   const event: NrEventData = {
@@ -597,6 +626,9 @@ export function scriptWorkflowRunToNrEvent(
   if (attrs.teamId) event.team_id = attrs.teamId;
   if (attrs.projectId) event.project_id = attrs.projectId;
   if (attrs.orgId) event.org_id = attrs.orgId;
+  // Script-driven workflow runs are always derived from a Claude Code
+  // transcript — no platform check needed, unlike codingTaskToNrEvent.
+  if (attrs.companionMode) event.cost_authority = 'external';
   return event;
 }
 
@@ -656,6 +688,8 @@ export function workflowRunToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    /** See `NrIngestOptions.companionMode`. */
+    companionMode?: boolean;
   },
 ): NrEventData {
   const event: NrEventData = {
@@ -700,6 +734,10 @@ export function workflowRunToNrEvent(
   // the session ID baked into the tracker output.
   const resolvedSessionId = attrs.sessionTraceId ?? metrics.session_id;
   if (resolvedSessionId) event.session_id = resolvedSessionId;
+
+  // Agent-tool workflow runs are always derived from a Claude Code
+  // transcript — no platform check needed, unlike codingTaskToNrEvent.
+  if (attrs.companionMode) event.cost_authority = 'external';
 
   return event;
 }
@@ -873,6 +911,7 @@ export class NrIngestManager {
   private readonly otlpTransport: OtlpTransport | null;
   private readonly otlpEventBridge: OtlpEventBridge | null;
   private readonly trackSessionGauges: boolean;
+  private readonly companionMode: boolean;
   private sessionGaugeIntervalId: ReturnType<typeof setInterval> | null = null;
   private running = false;
   private consecutiveEventSendFailures = 0;
@@ -903,6 +942,7 @@ export class NrIngestManager {
       });
     this.metricHarvestIntervalMs = options.metricHarvestIntervalMs ?? 60_000;
     this.trackSessionGauges = options.trackSessionGauges ?? true;
+    this.companionMode = options.companionMode ?? false;
 
     let otlpTransport: OtlpTransport | null = null;
     let otlpEventBridge: OtlpEventBridge | null = null;
@@ -1130,6 +1170,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      companionMode: this.companionMode,
     });
     this.scheduler.addEvent(event);
   }
@@ -1149,6 +1190,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      companionMode: this.companionMode,
     });
     this.scheduler.addEvent(event);
   }
@@ -1166,6 +1208,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      companionMode: this.companionMode,
     });
     this.scheduler.addEvent(event);
   }
@@ -1182,6 +1225,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      companionMode: this.companionMode,
     });
     this.scheduler.addEvent(event);
   }
@@ -1198,6 +1242,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      companionMode: this.companionMode,
     });
     this.scheduler.addEvent(ev);
   }
@@ -1384,7 +1429,10 @@ export class NrIngestManager {
             : { developer, ...teamAttrs, ...attrs },
         );
       });
-      this.costTracker?.emitMetrics(devAggregator);
+      // Gauges carry no platform attribute, so suppression is the only way to
+      // stop the blended-dashboard double-count against Claude Code's own
+      // OTel export — cost-bearing events are tagged instead (see below).
+      if (!this.companionMode) this.costTracker?.emitMetrics(devAggregator);
       this.efficiencyScorer?.emitMetrics(devAggregator);
       this.feedbackCollector?.emitMetrics(devAggregator);
       this.apiFailureTracker?.emitMetrics(devAggregator);

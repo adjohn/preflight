@@ -31,6 +31,12 @@ export interface McpServerConfig {
   readonly enabled: boolean;
   readonly highSecurity: boolean;
   readonly recordContent: boolean;
+  /**
+   * Set when this org also enables Claude Code's built-in OTel export, so the
+   * same session isn't ingested twice into a blended "org AI spend" dashboard
+   * (session_id === OTel's session.id). See docs/ADVANCED.md § Companion mode.
+   */
+  readonly companionMode: boolean;
   readonly redactionPatterns: readonly RegExp[];
   readonly hookBufferPath: string;
   readonly storagePath: string;
@@ -138,6 +144,7 @@ export const ConfigFileSchema = z
     enabled: z.boolean().optional(),
     highSecurity: z.boolean().optional(),
     recordContent: z.boolean().optional(),
+    companionMode: z.boolean().optional(),
     storagePath: z.string().optional(),
     hookBufferPath: z.string().optional(),
     harvestEventsMs: z.number().optional(),
@@ -738,6 +745,11 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
         'NEW_RELIC_AI_MCP_RECORD_CONTENT',
         typeof file.recordContent === 'boolean' ? file.recordContent : false,
       ),
+    ),
+
+    companionMode: envBool(
+      'NR_AI_COMPANION_MODE',
+      typeof file.companionMode === 'boolean' ? file.companionMode : false,
     ),
 
     redactionPatterns: DEFAULT_REDACTION_PATTERNS,

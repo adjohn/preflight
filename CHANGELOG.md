@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0] - 2026-09-01
+
+### Added
+
+- **A new `companionMode` setting prevents double-counting cost and token metrics when an org also enables Claude Code's built-in OTel export.** With it on, Preflight's own cost gauges are suppressed and cost-bearing events are tagged for reconciliation instead of dropped, so a blended "org AI spend" dashboard reflects the true total rather than counting each session twice.
+
 ## [1.23.0] - 2026-09-01
 
 ### Added

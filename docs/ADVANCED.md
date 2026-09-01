@@ -91,6 +91,47 @@ The config-file schema (`ConfigFileSchema`) still accepts the flat legacy keys s
 
 ---
 
+## Companion Mode (Running Alongside Claude Code's Built-in OTel)
+
+Claude Code has its own built-in OTel export for cost, tokens, lines-of-code, and session-time metrics. Preflight's `session_id` equals that export's `session.id` for Claude Code sessions, so the two streams join cleanly — which also means an org that enables both, feeding them into one blended "org AI spend" dashboard, roughly doubles the true cost and token counts. `companionMode` exists to stop that without losing either signal.
+
+Add to `~/.newrelic-preflight/config.json`:
+
+```json
+{
+  "companionMode": true
+}
+```
+
+Or via an environment variable:
+
+```bash
+export NR_AI_COMPANION_MODE=true
+```
+
+| Setting         | What it does                                                       | Default |
+| --------------- | ------------------------------------------------------------------ | ------- |
+| `companionMode` | Suppresses `ai.cost.*` gauges and tags cost-bearing events (below) | `false` |
+
+With `companionMode: true`:
+
+- **Suppressed** — the whole `ai.cost.*` gauge family (`session_total_usd`, `tokens_input`/`tokens_output`/`tokens_thinking`/`tokens_cache_read`/`tokens_cache_creation`, `cache_savings_usd`, `cost_per_line_of_code`, `cost_per_file_modified`, `report_count`, `estimation_count`, `subagent_usd`, `parent_usd`) is not emitted from `emitSessionGauges()`. Gauges carry no per-datapoint platform attribute, so suppression is the only way to stop the blended-dashboard double-count — there's no field to tag instead.
+- **Tagged, not dropped** — cost-bearing events keep every field they'd normally carry and gain `cost_authority: 'external'`: `AiCodingTask` (when the task's `platform` is `claude-code` — a task from another platform has no OTel twin, so it's left untagged), `AiSubagentTurn`, and `AiWorkflowRun` (both are always derived from a Claude Code transcript, so they're tagged unconditionally whenever companion mode is on).
+- **Unchanged** — everything else: task detection, efficiency scoring, anti-pattern detection, the audit trail, context tracking, MCP proxy metrics, and per-repo git outcomes have no OTel equivalent and keep flowing normally. The local dashboard and budget tracking are unaffected too — both read `CostTracker`'s own totals directly, never the exported gauges.
+
+For a blended deployment, treat each signal's canonical source this way:
+
+| Signal                                                                             | Canonical source          |
+| ---------------------------------------------------------------------------------- | ------------------------- |
+| Cost / tokens                                                                      | Claude Code's OTel export |
+| Tasks, efficiency, anti-patterns, audit, context, MCP proxy, per-repo git outcomes | Preflight                 |
+
+Because cost-bearing fields are tagged rather than removed, reconciliation is still possible — a query that needs Preflight's cost breakdown for some other purpose can filter to `cost_authority = 'external'` and cross-reference against the OTel-sourced total, joined on `session_id` / `session.id`.
+
+One consequence to plan for: two of the shipped alert conditions query the suppressed gauge family — `alerts/conditions/05-session-cost-budget.json` and `alerts/conditions-personal/02-personal-session-cost.json` both alert on `ai.cost.session_total_usd`. With companion mode on, those conditions receive no data and go quiet. Rebuild the equivalent alerts on Claude Code's OTel cost metrics (the canonical cost source in this deployment), or don't deploy those two conditions.
+
+---
+
 ## Setup Wizard — Environment Variable Pre-Fill
 
 If `NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_ACCOUNT_ID`, or `NEW_RELIC_API_KEY` are set in the environment when `preflight setup` is run, the wizard pre-fills those prompts and shows the env var name as the hint (`$NEW_RELIC_LICENSE_KEY`). Pressing Enter accepts the value — no copy-paste needed. This makes the wizard scriptable in CI pipelines or Docker-based dev environments where credentials are already injected as environment variables.
