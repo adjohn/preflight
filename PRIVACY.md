@@ -91,11 +91,9 @@ See [README.md → Key settings](./README.md#key-settings) for configuration.
 
 ### `repoUrl` — inferred from the same git remote as `projectId`
 
-By default the tool also sends the full git remote URL as `repo_url`, derived from the same `git remote get-url origin` read used for `projectId`. Any embedded credentials in the URL are stripped before the value is sent.
+By default the tool also sends the full git remote URL as `repo_url`, derived from the same `git remote get-url origin` read used for `projectId`. Any embedded credentials in the URL are stripped before the value is sent. Override it with the `NEW_RELIC_AI_REPO_URL` environment variable, or the `repoUrl` key in `~/.newrelic-preflight/config.json`.
 
-**Privacy implication:** A full remote URL can reveal more than an `org/repo` pair alone, for example an internal git hostname. There is no separate toggle for this field: setting `projectId: null` disables `repo_url` too, since both derive from the same repository identity.
-
-See [README.md → Key settings](./README.md#key-settings) for configuration.
+**Privacy implication:** A full remote URL can reveal more than an `org/repo` pair alone, for example an internal git hostname. There is no separate toggle for this field: setting `projectId: null` disables `repo_url` too, since both derive from the same repository identity. If you explicitly set `NEW_RELIC_AI_REPO_URL` while `projectId` resolves to null, that value is silently discarded rather than sent — this is intentional (the opt-out takes priority) but easy to miss if you're only looking at your own env var.
 
 ### `mode: 'local'` — no data leaves the machine
 

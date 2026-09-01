@@ -494,6 +494,24 @@ describe('NrIngestManager', () => {
       const attrs = callCountMetric.attributes as Record<string, unknown>;
       expect(attrs.session_id).toBe('hook-session-001');
     });
+
+    it('tags tool call metrics with repo_url when configured (regression: teamDims previously omitted it)', async () => {
+      const manager = new NrIngestManager(
+        makeIngestOptions({ repoUrl: 'https://github.com/org/repo' }),
+      );
+
+      manager.ingestToolCall(makeRecord());
+
+      manager.start();
+      await manager.stop();
+
+      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
+      const callCountMetric = sentMetrics.find((m) => m.name === 'ai.tool.call_count')!;
+      const attrs = callCountMetric.attributes as Record<string, unknown>;
+      expect(attrs.repo_url).toBe('https://github.com/org/repo');
+    });
   });
 
   describe('proxyRequestToNrEvent()', () => {
@@ -857,6 +875,25 @@ describe('NrIngestManager', () => {
       const metricNames = sentMetrics.map((m) => m.name);
       expect(metricNames).toContain('ai.session.duration_ms');
       expect(metricNames).toContain('ai.session.unique_files_read');
+    });
+
+    it('tags session gauge metrics with repo_url when configured (regression: teamAttrs previously omitted it)', async () => {
+      const sessionTracker = new SessionTracker('repo-url-gauge-session');
+      sessionTracker.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/x.ts' }));
+
+      const manager = new NrIngestManager(
+        makeIngestOptions({ sessionTracker, repoUrl: 'https://github.com/org/repo' }),
+      );
+
+      manager.start();
+      await manager.stop();
+
+      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
+      const durationMetric = sentMetrics.find((m) => m.name === 'ai.session.duration_ms')!;
+      const attrs = durationMetric.attributes as Record<string, unknown>;
+      expect(attrs.repo_url).toBe('https://github.com/org/repo');
     });
 
     it('emits aggregated proxy metrics (server_call_count, tool_popularity) sourced from proxyMetrics on stop', async () => {

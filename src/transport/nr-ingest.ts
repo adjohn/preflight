@@ -172,7 +172,7 @@ const REDACT_FIELD_KEYS = new Set([
   'agentTeamName',
 ]);
 
-function attachTeamAttribution(
+export function attachTeamAttribution(
   event: NrEventData,
   attrs: {
     teamId?: string | null;
@@ -1061,6 +1061,7 @@ export class NrIngestManager {
     if (this.teamId) teamDims.team_id = this.teamId;
     if (this.projectId) teamDims.project_id = this.projectId;
     if (this.orgId) teamDims.org_id = this.orgId;
+    if (this.repoUrl) teamDims.repo_url = this.repoUrl;
 
     this.scheduler.recordMetric(
       'ai.tool.call_count',
@@ -1358,6 +1359,7 @@ export class NrIngestManager {
     if (this.teamId) teamAttrs.team_id = this.teamId;
     if (this.projectId) teamAttrs.project_id = this.projectId;
     if (this.orgId) teamAttrs.org_id = this.orgId;
+    if (this.repoUrl) teamAttrs.repo_url = this.repoUrl;
 
     const record = (name: string, value: number, attrs: Record<string, string | number> = {}) => {
       this.scheduler.recordMetric(
