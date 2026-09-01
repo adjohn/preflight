@@ -528,6 +528,10 @@ export class HookEventProcessor {
       ...(event.deniedReason !== undefined && { error: event.deniedReason }),
       ...(pre.inputSize !== undefined && { inputSizeBytes: pre.inputSize }),
       ...(pre.inputHash !== undefined && { inputHash: pre.inputHash }),
+      ...(pre.cwd !== undefined && { cwd: pre.cwd }),
+      ...(pre.transcriptPath !== undefined && { transcriptPath: pre.transcriptPath }),
+      ...(pre.permissionMode !== undefined && { permissionMode: pre.permissionMode }),
+      ...(pre.platform !== undefined && { platform: pre.platform }),
       ...toolFields,
     });
   }

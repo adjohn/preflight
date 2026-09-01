@@ -450,6 +450,29 @@ describe('HookEventProcessor', () => {
       expect(records).toHaveLength(0);
       expect(processor.pendingCount).toBe(0);
     });
+
+    it('carries cwd, transcriptPath, permissionMode, and platform from the pre-event onto the denied record', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({
+          toolUseId: 'toolu_d3',
+          timestamp: 1000,
+          cwd: '/projects/test',
+          transcriptPath: '/tmp/fake-transcript.jsonl',
+          permissionMode: 'default',
+          platform: 'claude-code',
+        }),
+        makePermissionDeniedEvent({ toolUseId: 'toolu_d3', timestamp: 1005 }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.cwd).toBe('/projects/test');
+      expect(record.transcriptPath).toBe('/tmp/fake-transcript.jsonl');
+      expect(record.permissionMode).toBe('default');
+      expect(record.platform).toBe('claude-code');
+    });
   });
 
   describe('permission lifecycle — rejection inferred from sweep', () => {
