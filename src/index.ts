@@ -84,7 +84,11 @@ import { TrendAnalyzer } from './metrics/trend-analyzer.js';
 import { TurnCostAttributor } from './metrics/turn-cost-attributor.js';
 import { TurnTracker } from './metrics/turn-tracker.js';
 import { WorkflowRunTracker } from './metrics/workflow-run-tracker.js';
-import { createDefaultRegistry, GenericMcpAdapter } from './platforms/index.js';
+import {
+  createDefaultRegistry,
+  GENERIC_MCP_PLATFORM_NAME,
+  GenericMcpAdapter,
+} from './platforms/index.js';
 import type { ProxyRequestRecord, ProxyToolCallRecord } from './proxy/index.js';
 import { ProxyManager } from './proxy/index.js';
 import { AuditTrailManager } from './security/audit-trail.js';
@@ -1796,6 +1800,9 @@ async function main(): Promise<void> {
                 copilotDebugLoggingDisabled:
                   activeCopilotUsageWatcher?.getHealth().debugLoggingLikelyDisabled ?? false,
                 copilotSdkExtensionMissing: isCopilotSdkExtensionMissing(activePlatformName),
+                platformDetectionFellBack:
+                  (eventProcessor?.activePlatform ?? activePlatformName) ===
+                  GENERIC_MCP_PLATFORM_NAME,
               };
             },
           },

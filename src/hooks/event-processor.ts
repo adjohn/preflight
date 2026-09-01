@@ -12,7 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '../shared/index.js';
-import { createDefaultRegistry } from '../platforms/index.js';
+import { createDefaultRegistry, GENERIC_MCP_PLATFORM_NAME } from '../platforms/index.js';
 import type { PlatformAdapter } from '../platforms/types.js';
 import type { LocalStore } from '../storage/local-store.js';
 import type {
@@ -235,6 +235,17 @@ export class HookEventProcessor {
   private readonly onApiFailure: ((event: ApiFailureFrame) => void) | null;
   private readonly platformAdapter: PlatformAdapter;
   /**
+   * Set from a non-generic `platform` value carried on a pre/post event (see
+   * `applyStampedPlatform`) — overrides `platformAdapter` once a hook-time
+   * stamp names a registered adapter. Last non-generic stamp wins; a
+   * `generic-mcp` or unrecognized stamp never overrides. One processor holds
+   * one stamped adapter, so in `drainAllSessions` mode concurrent sessions
+   * from different platforms share the last stamp — still strictly better
+   * than everything filing as generic-mcp.
+   */
+  private stampedPlatformAdapter: PlatformAdapter | null = null;
+  private registeredAdaptersByName: Map<string, PlatformAdapter> | null = null;
+  /**
    * Per-agent dedup rings for recent subagent turns (scoped by agentId, one
    * DedupRing per agent, LRU-bounded across agents). Cursor recovery may
    * re-read a line after a crash mid-write; double-counting would be silent,
@@ -299,12 +310,39 @@ export class HookEventProcessor {
   }
 
   /**
-   * The platform name resolved for this process — either the explicitly
-   * injected `platformAdapter`, or the auto-detected default. Resolved
-   * once at construction time; this getter never re-detects.
+   * The platform name currently in effect — the last non-generic
+   * hook-stamped adapter (see `applyStampedPlatform`) if one has been seen,
+   * else the explicitly injected `platformAdapter`, else the auto-detected
+   * default. Not construction-time-only: a stamped event can flip this on
+   * any later read.
    */
   get activePlatform(): string {
-    return this.platformAdapter.platformName;
+    return (this.stampedPlatformAdapter ?? this.platformAdapter).platformName;
+  }
+
+  /**
+   * Lazily builds the platformName → adapter map from the full registry, once
+   * per process — avoids the registry-construction cost for the common case
+   * where no event ever carries a `platform` stamp.
+   */
+  private getRegisteredAdaptersByName(): Map<string, PlatformAdapter> {
+    if (this.registeredAdaptersByName === null) {
+      this.registeredAdaptersByName = new Map(
+        createDefaultRegistry()
+          .getRegistered()
+          .map((adapter) => [adapter.platformName, adapter]),
+      );
+    }
+    return this.registeredAdaptersByName;
+  }
+
+  /** See `stampedPlatformAdapter`'s doc comment for the override rules. */
+  private applyStampedPlatform(platformName: string): void {
+    if (platformName === GENERIC_MCP_PLATFORM_NAME) return;
+    const current = this.stampedPlatformAdapter ?? this.platformAdapter;
+    if (platformName === current.platformName) return;
+    const adapter = this.getRegisteredAdaptersByName().get(platformName);
+    if (adapter) this.stampedPlatformAdapter = adapter;
   }
 
   start(): void {
@@ -379,9 +417,16 @@ export class HookEventProcessor {
    */
   processEvents(events: HookEvent[]): void {
     for (const rawEvent of events) {
+      if (
+        (rawEvent.mode === 'pre' || rawEvent.mode === 'post') &&
+        rawEvent.platform !== undefined
+      ) {
+        this.applyStampedPlatform(rawEvent.platform);
+      }
+      const activeAdapter = this.stampedPlatformAdapter ?? this.platformAdapter;
       const event: HookEvent =
         rawEvent.mode === 'pre' || rawEvent.mode === 'post'
-          ? { ...rawEvent, tool: mapToolNameOrOriginal(this.platformAdapter, rawEvent.tool) }
+          ? { ...rawEvent, tool: mapToolNameOrOriginal(activeAdapter, rawEvent.tool) }
           : rawEvent;
       try {
         if (event.mode === 'token') {

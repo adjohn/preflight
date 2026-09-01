@@ -213,7 +213,22 @@ describe('collector-script', () => {
       expect(readBufferEvents()[0]!.platform).toBe('cursor');
     });
 
-    it('leaves event.platform unset for a genuine Claude Code hook with no explicit platform override', () => {
+    it('stamps event.platform "claude-code" when only CLAUDECODE is set', () => {
+      // jest itself runs under Claude Code, so CLAUDECODE is already set in
+      // this process env — set it explicitly for clarity and to survive a
+      // future test environment that doesn't carry it ambiently.
+      process.env.CLAUDECODE = '1';
+      processHook(makePreToolUse());
+
+      expect(readBufferEvents()[0]!.platform).toBe('claude-code');
+    });
+
+    it('leaves event.platform unset when no platform signal is present', () => {
+      delete process.env.CLAUDECODE;
+      delete process.env.CLAUDE_CODE;
+      delete process.env.CLAUDE_CODE_VERSION;
+      delete process.env.MCP_CLIENT;
+      delete process.env.NEW_RELIC_AI_PLATFORM;
       processHook(makePreToolUse());
 
       expect(readBufferEvents()[0]!.platform).toBeUndefined();

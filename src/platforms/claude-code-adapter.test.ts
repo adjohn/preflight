@@ -7,7 +7,13 @@ const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
   stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-  for (const key of ['CLAUDE_CODE', 'CLAUDE_CODE_VERSION', 'CLAUDE_MODEL', 'MCP_CLIENT']) {
+  for (const key of [
+    'CLAUDECODE',
+    'CLAUDE_CODE',
+    'CLAUDE_CODE_VERSION',
+    'CLAUDE_MODEL',
+    'MCP_CLIENT',
+  ]) {
     savedEnv[key] = process.env[key];
     delete process.env[key];
   }
@@ -120,6 +126,11 @@ describe('ClaudeCodeAdapter', () => {
   });
 
   describe('isSupported', () => {
+    it('returns true when CLAUDECODE is set', () => {
+      process.env.CLAUDECODE = '1';
+      expect(adapter.isSupported()).toBe(true);
+    });
+
     it('returns true when CLAUDE_CODE is set', () => {
       process.env.CLAUDE_CODE = '1';
       expect(adapter.isSupported()).toBe(true);

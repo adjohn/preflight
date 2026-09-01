@@ -12,6 +12,18 @@ let tmpDir: string;
 let store: LocalStore;
 let records: ToolCallRecord[];
 let onRecord: jest.Mock<(record: ToolCallRecord) => void>;
+const savedEnv: Record<string, string | undefined> = {};
+// jest itself runs under Claude Code, so CLAUDECODE is set ambiently in this
+// process env — clear it (and its siblings) so the "no platform adapter
+// injected" tests exercise a genuine generic-mcp default, not an accidental
+// Claude Code match.
+const PLATFORM_ENV_KEYS = [
+  'CLAUDECODE',
+  'CLAUDE_CODE',
+  'CLAUDE_CODE_VERSION',
+  'MCP_CLIENT',
+  'NEW_RELIC_AI_PLATFORM',
+];
 
 beforeEach(() => {
   stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -23,12 +35,20 @@ beforeEach(() => {
   onRecord = jest.fn((record: ToolCallRecord) => {
     records.push(record);
   });
+  for (const key of PLATFORM_ENV_KEYS) {
+    savedEnv[key] = process.env[key];
+    delete process.env[key];
+  }
 });
 
 afterEach(() => {
   stderrSpy.mockRestore();
   if (existsSync(tmpDir)) {
     rmSync(tmpDir, { recursive: true, force: true });
+  }
+  for (const [key, value] of Object.entries(savedEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
   }
 });
 
@@ -1395,6 +1415,54 @@ describe('HookEventProcessor', () => {
       const processor = new HookEventProcessor({ store, onRecord });
 
       expect(processor.activePlatform).toBe('generic-mcp');
+    });
+
+    it('a pre/post pair stamped platform: "kiro" flips activePlatform and maps Kiro tool names', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+      expect(processor.activePlatform).toBe('generic-mcp');
+
+      processor.processEvents([
+        makePreEvent({ tool: 'fs_read', toolUseId: 'toolu_kiro', platform: 'kiro' }),
+        makePostEvent({ tool: 'fs_read', toolUseId: 'toolu_kiro', platform: 'kiro' }),
+      ]);
+
+      expect(processor.activePlatform).toBe('kiro');
+      expect(records).toHaveLength(1);
+      expect(records[0]!.toolName).toBe('Read');
+    });
+
+    it('a generic-mcp stamp never overrides the current platform', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ tool: 'fs_read', toolUseId: 'toolu_kiro', platform: 'kiro' }),
+        makePostEvent({ tool: 'fs_read', toolUseId: 'toolu_kiro', platform: 'kiro' }),
+      ]);
+      expect(processor.activePlatform).toBe('kiro');
+
+      processor.processEvents([
+        makePreEvent({ tool: 'Read', toolUseId: 'toolu_generic', platform: 'generic-mcp' }),
+        makePostEvent({ tool: 'Read', toolUseId: 'toolu_generic', platform: 'generic-mcp' }),
+      ]);
+
+      expect(processor.activePlatform).toBe('kiro');
+    });
+
+    it('an unrecognized platform stamp never overrides the current platform', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ tool: 'fs_read', toolUseId: 'toolu_kiro', platform: 'kiro' }),
+        makePostEvent({ tool: 'fs_read', toolUseId: 'toolu_kiro', platform: 'kiro' }),
+      ]);
+      expect(processor.activePlatform).toBe('kiro');
+
+      processor.processEvents([
+        makePreEvent({ tool: 'Read', toolUseId: 'toolu_unknown', platform: 'some-unknown-tool' }),
+        makePostEvent({ tool: 'Read', toolUseId: 'toolu_unknown', platform: 'some-unknown-tool' }),
+      ]);
+
+      expect(processor.activePlatform).toBe('kiro');
     });
 
     it('maps tool names correctly when pairing falls back to findOldestPendingKey (no toolUseId)', () => {

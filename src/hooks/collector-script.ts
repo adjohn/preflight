@@ -27,6 +27,7 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { REDACTION_PATTERNS } from '../redaction-patterns.js';
 import { resolveRecordContent } from '../record-content-gate.js';
+import { CLAUDE_CODE_ENV_SIGNALS } from '../platforms/claude-code-adapter.js';
 
 // ---------------------------------------------------------------------------
 // Lightweight config (env vars only — no file reads)
@@ -92,6 +93,19 @@ function getMaxContentLength(): number {
   if (val === undefined) return 10_240;
   const parsed = parseInt(val, 10);
   return Number.isNaN(parsed) ? 10_240 : parsed;
+}
+
+/**
+ * Ambient stamping is deliberately limited to Claude Code, the only platform
+ * whose hook-process env signal is verified; other platforms stamp via
+ * explicit MCP_CLIENT in their generated hook commands.
+ */
+function detectStampPlatform(): string | undefined {
+  const explicit = process.env.MCP_CLIENT ?? process.env.NEW_RELIC_AI_PLATFORM;
+  if (explicit) return explicit;
+  return CLAUDE_CODE_ENV_SIGNALS.some((key) => process.env[key] !== undefined)
+    ? 'claude-code'
+    : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -1036,17 +1050,12 @@ function processHook(raw: string): void {
   // that reliably reflects the real host, since whichever process later
   // drains the buffer (e.g. --local's unscoped drain of an unowned session,
   // see LocalSessionAggregator) may have detected a completely different
-  // platform for itself. Deliberately reads MCP_CLIENT/NEW_RELIC_AI_PLATFORM
-  // directly instead of going through PlatformRegistry: registry-based
-  // ambient detection would mis-tag every Claude Code hook event as
-  // generic-mcp (ClaudeCodeAdapter.isSupported() doesn't match Claude Code's
-  // real hook env — see #539), and pulling in the full adapter registry adds
-  // measurable overhead on this hot, pre+post-per-tool-call path. Explicit
-  // platforms (currently just Copilot SDK) are the only ones that need
-  // stamping here anyway; leaving it unset lets nr-ingest.ts's existing
-  // default-to-claude-code apply for everything else.
-  const explicitPlatform = process.env.MCP_CLIENT ?? process.env.NEW_RELIC_AI_PLATFORM;
-  if (explicitPlatform) event.platform = explicitPlatform;
+  // platform for itself. Deliberately reads env vars directly (and imports
+  // only the light claude-code-adapter const, not the full registry) instead
+  // of going through PlatformRegistry — registry-based detection adds
+  // measurable overhead on this hot, pre+post-per-tool-call path.
+  const stampedPlatform = detectStampPlatform();
+  if (stampedPlatform) event.platform = stampedPlatform;
   if (data.tool_use_id) event.toolUseId = data.tool_use_id;
 
   // Write to buffer — wrapped in try/catch for resilience.

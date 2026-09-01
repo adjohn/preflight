@@ -24,6 +24,7 @@ let stderrSpy: ReturnType<typeof jest.spyOn>;
 const savedEnv: Record<string, string | undefined> = {};
 
 const ENV_KEYS = [
+  'CLAUDECODE',
   'CLAUDE_CODE',
   'CLAUDE_CODE_VERSION',
   'MCP_CLIENT',
