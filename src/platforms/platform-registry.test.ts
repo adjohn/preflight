@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { AmazonQAdapter } from './amazon-q-adapter.js';
 import { AntigravityAdapter } from './antigravity-adapter.js';
-import { ClaudeCodeAdapter } from './claude-code-adapter.js';
+import { CLAUDE_CODE_ENV_SIGNALS, ClaudeCodeAdapter } from './claude-code-adapter.js';
 import { ClineAdapter } from './cline-adapter.js';
 import { CodexAdapter } from './codex-adapter.js';
 import { ContinueAdapter } from './continue-adapter.js';
@@ -29,9 +29,7 @@ let stderrSpy: ReturnType<typeof jest.spyOn>;
 const savedEnv: Record<string, string | undefined> = {};
 
 const ENV_KEYS = [
-  'CLAUDECODE',
-  'CLAUDE_CODE',
-  'CLAUDE_CODE_VERSION',
+  ...CLAUDE_CODE_ENV_SIGNALS,
   'MCP_CLIENT',
   'MCP_CLIENT_NAME',
   'CURSOR_SESSION_ID',

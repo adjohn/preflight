@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -38,6 +38,9 @@ interface CopilotAppToolCallEvent {
 function isCopilotAppToolCallEvent(x: unknown): x is CopilotAppToolCallEvent {
   return typeof x === 'object' && x !== null;
 }
+
+/** How recently `data.db` must have been written for ambient detection — see isSupported(). */
+const AMBIENT_DB_RECENCY_MS = 7 * 24 * 3_600_000;
 
 /**
  * Resolves the app's `~/.copilot`-shaped directory. The env override exists
@@ -166,7 +169,17 @@ export class CopilotAppAdapter implements PlatformAdapter {
     // is NOT usable as a discriminator: it's created by the app's own pooled
     // CLI processes after the first session too (verified live 2026-08-31),
     // so its presence or absence says nothing about which host this is.
+    // Bare existence is sticky forever (uninstalling the app leaves data.db
+    // behind), so the file must also be recently modified — the app writes
+    // it continuously while running, and a machine that stopped using the
+    // app ages out of ambient detection instead of misclassifying every
+    // later un-stamped session as copilot-app indefinitely.
     const dir = getCopilotAppDir();
-    return existsSync(join(dir, 'data.db'));
+    try {
+      const st = statSync(join(dir, 'data.db'));
+      return Date.now() - st.mtimeMs <= AMBIENT_DB_RECENCY_MS;
+    } catch {
+      return false;
+    }
   }
 }

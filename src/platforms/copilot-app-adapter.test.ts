@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -176,6 +176,17 @@ describe('CopilotAppAdapter', () => {
 
       it('returns false when the dir exists but has no data.db (CLI-only machine)', () => {
         mkdirSync(tmpDir, { recursive: true });
+        process.env.NEW_RELIC_AI_COPILOT_DIR = tmpDir;
+
+        expect(adapter.isSupported()).toBe(false);
+      });
+
+      it('returns false when data.db has not been written in over 7 days (app uninstalled or abandoned — bare existence is sticky forever)', () => {
+        mkdirSync(tmpDir, { recursive: true });
+        const dbPath = join(tmpDir, 'data.db');
+        writeFileSync(dbPath, '');
+        const staleSeconds = (Date.now() - 8 * 24 * 3_600_000) / 1000;
+        utimesSync(dbPath, staleSeconds, staleSeconds);
         process.env.NEW_RELIC_AI_COPILOT_DIR = tmpDir;
 
         expect(adapter.isSupported()).toBe(false);

@@ -18,6 +18,7 @@ import {
   writeCwdBreadcrumb,
   writePpidBreadcrumb,
 } from './collector-script.js';
+import { CLAUDE_CODE_ENV_SIGNALS } from '../platforms/claude-code-adapter.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let stdoutSpy: ReturnType<typeof jest.spyOn>;
@@ -224,9 +225,7 @@ describe('collector-script', () => {
     });
 
     it('leaves event.platform unset when no platform signal is present', () => {
-      delete process.env.CLAUDECODE;
-      delete process.env.CLAUDE_CODE;
-      delete process.env.CLAUDE_CODE_VERSION;
+      for (const key of CLAUDE_CODE_ENV_SIGNALS) delete process.env[key];
       delete process.env.MCP_CLIENT;
       delete process.env.NEW_RELIC_AI_PLATFORM;
       processHook(makePreToolUse());

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { LocalStore } from '../storage/local-store.js';
 import { HookEventProcessor, DedupRingRegistry } from './event-processor.js';
 import { AntigravityAdapter } from '../platforms/antigravity-adapter.js';
+import { CLAUDE_CODE_ENV_SIGNALS } from '../platforms/claude-code-adapter.js';
 import type { HookEvent, PreHookEvent, PostHookEvent, ToolCallRecord } from '../storage/types.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
@@ -18,9 +19,7 @@ const savedEnv: Record<string, string | undefined> = {};
 // injected" tests exercise a genuine generic-mcp default, not an accidental
 // Claude Code match.
 const PLATFORM_ENV_KEYS = [
-  'CLAUDECODE',
-  'CLAUDE_CODE',
-  'CLAUDE_CODE_VERSION',
+  ...CLAUDE_CODE_ENV_SIGNALS,
   'MCP_CLIENT',
   'NEW_RELIC_AI_PLATFORM',
   'NEW_RELIC_AI_COPILOT_DIR',
