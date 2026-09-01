@@ -184,7 +184,7 @@
           "layout": { "column": 1, "row": 1, "width": 12, "height": 1 },
           "visualization": { "id": "viz.markdown" },
           "rawConfiguration": {
-            "text": "# Cost\n\nSpend from `AiCodingTask.estimated_cost_usd` (per-task events, safe to sum). Token and cache widgets read the session-level `ai.cost.*` gauges via latest-per-session subqueries. With `companionMode: true` the `ai.cost.*` gauges are suppressed, so the token/cache widgets go quiet and Claude Code's own OTel metrics become the cost authority — task cost events remain and are tagged `cost_authority: 'external'`."
+            "text": "# Cost\n\nSpend from `AiCodingTask.estimated_cost_usd` (per-task events, safe to sum). Token and cache widgets show ratios over the session-level `ai.cost.*` gauges — the gauges are cumulative snapshots, so only ratios (not raw sums) are meaningful across sessions. With `companionMode: true` the `ai.cost.*` gauges are suppressed, so the token/cache widgets go quiet and Claude Code's own OTel metrics become the cost authority — task cost events remain and are tagged `cost_authority: 'external'`."
           }
         },
         {
@@ -241,7 +241,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [],
-                "query": "FROM (FROM Metric SELECT latest(ai.cost.tokens_input) AS input, latest(ai.cost.tokens_cache_read) AS cacheRead FACET session_id LIMIT MAX SINCE 7 days ago) SELECT sum(cacheRead) / (sum(input) + sum(cacheRead)) * 100 AS 'Cache Hit %' SINCE 7 days ago"
+                "query": "FROM Metric SELECT sum(ai.cost.tokens_cache_read) / (sum(ai.cost.tokens_input) + sum(ai.cost.tokens_cache_read)) * 100 AS 'Cache Hit %' SINCE 7 days ago"
               }
             ],
             "platformOptions": { "ignoreTimeRange": false }
@@ -296,7 +296,7 @@
           }
         },
         {
-          "title": "Token Mix (7d)",
+          "title": "Token Mix % (7d)",
           "layout": { "column": 1, "row": 8, "width": 4, "height": 3 },
           "visualization": { "id": "viz.bar" },
           "rawConfiguration": {
@@ -304,7 +304,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [],
-                "query": "FROM (FROM Metric SELECT latest(ai.cost.tokens_input) AS input, latest(ai.cost.tokens_output) AS output, latest(ai.cost.tokens_thinking) AS thinking, latest(ai.cost.tokens_cache_read) AS cacheRead FACET session_id LIMIT MAX SINCE 7 days ago) SELECT sum(input) AS 'Input', sum(output) AS 'Output', sum(thinking) AS 'Thinking', sum(cacheRead) AS 'Cache Read' SINCE 7 days ago"
+                "query": "FROM Metric SELECT sum(ai.cost.tokens_input) / (sum(ai.cost.tokens_input) + sum(ai.cost.tokens_output) + sum(ai.cost.tokens_thinking) + sum(ai.cost.tokens_cache_read)) * 100 AS 'Input %', sum(ai.cost.tokens_output) / (sum(ai.cost.tokens_input) + sum(ai.cost.tokens_output) + sum(ai.cost.tokens_thinking) + sum(ai.cost.tokens_cache_read)) * 100 AS 'Output %', sum(ai.cost.tokens_thinking) / (sum(ai.cost.tokens_input) + sum(ai.cost.tokens_output) + sum(ai.cost.tokens_thinking) + sum(ai.cost.tokens_cache_read)) * 100 AS 'Thinking %', sum(ai.cost.tokens_cache_read) / (sum(ai.cost.tokens_input) + sum(ai.cost.tokens_output) + sum(ai.cost.tokens_thinking) + sum(ai.cost.tokens_cache_read)) * 100 AS 'Cache Read %' SINCE 7 days ago"
               }
             ],
             "platformOptions": { "ignoreTimeRange": false }
