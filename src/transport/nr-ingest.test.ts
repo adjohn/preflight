@@ -425,6 +425,13 @@ describe('toolCallToNrEvent()', () => {
       expect(event.error as string).not.toContain(SECRET_TOKEN);
       expect(event.error as string).toContain('[REDACTED]');
     });
+
+    it('includes event_version: 1 on AiToolCall', () => {
+      const record = makeRecord();
+      const event = toolCallToNrEvent(record, { developer: 'd', appName: 'a' });
+
+      expect(event.event_version).toBe(1);
+    });
   });
 });
 
@@ -541,6 +548,13 @@ describe('NrIngestManager', () => {
       expect(event.project_id).toBe('proj-1');
       expect(event.org_id).toBe('org-1');
     });
+
+    it('includes event_version: 1 on AiProxyRequest', () => {
+      const record = makeProxyRequestRecord();
+      const event = proxyRequestToNrEvent(record, { developer: 'd', appName: 'a' });
+
+      expect(event.event_version).toBe(1);
+    });
   });
 
   describe('ingestProxyRequest()', () => {
@@ -645,6 +659,21 @@ describe('NrIngestManager', () => {
       >;
       const snapshotEvent = sentEvents.find((e) => e.eventType === 'AiContextSnapshot')!;
       expect(snapshotEvent.session_id).toBe('trace-abc');
+    });
+
+    it('includes event_version: 1 on AiContextSnapshot', async () => {
+      const manager = new NrIngestManager(makeIngestOptions());
+
+      manager.ingestContextSnapshot(makeContextSnapshot(), []);
+
+      manager.start();
+      await manager.stop();
+
+      const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
+      const snapshotEvent = sentEvents.find((e) => e.eventType === 'AiContextSnapshot')!;
+      expect(snapshotEvent.event_version).toBe(1);
     });
   });
 
@@ -1209,6 +1238,13 @@ describe('codingTaskToNrEvent()', () => {
 
     expect(event.platform).toBe('claude-code');
   });
+
+  it('includes event_version: 1 on AiCodingTask', () => {
+    const task = makeTask();
+    const event = codingTaskToNrEvent(task, { developer: 'd', appName: 'a' });
+
+    expect(event.event_version).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1376,6 +1412,17 @@ describe('antiPatternToNrEvent()', () => {
 
     expect(event.timestamp as number).toBeGreaterThanOrEqual(before);
     expect(event.timestamp as number).toBeLessThanOrEqual(after);
+  });
+
+  it('includes event_version: 1 on AiAntiPattern', () => {
+    const pattern = makePattern();
+    const event = antiPatternToNrEvent(pattern, {
+      developer: 'd',
+      appName: 'a',
+      taskId: 'task-008',
+    });
+
+    expect(event.event_version).toBe(1);
   });
 });
 
@@ -1714,6 +1761,12 @@ describe('session trace ID propagation', () => {
     expect(event.session_id).toBeUndefined();
   });
 
+  it('proxyToolCallToNrEvent: includes event_version: 1 on AiMcpToolCall', () => {
+    const record = makeProxyRecord();
+    const event = proxyToolCallToNrEvent(record, { developer: 'dev', appName: 'app' });
+    expect(event.event_version).toBe(1);
+  });
+
   it('NrIngestManager.ingestBudgetWarning: emits session_id from sessionTraceId', async () => {
     const manager = new NrIngestManager({
       ...makeIngestOptions(),
@@ -1753,6 +1806,25 @@ describe('session trace ID propagation', () => {
     >;
     const budgetEvent = sentEvents.find((e) => e.eventType === 'AiBudgetWarning');
     expect(budgetEvent?.session_id).toBeUndefined();
+  });
+
+  it('NrIngestManager.ingestBudgetWarning: includes event_version: 1 on AiBudgetWarning', async () => {
+    const manager = new NrIngestManager(makeIngestOptions());
+    manager.ingestBudgetWarning({
+      period: 'session',
+      thresholdPct: 50,
+      spentUsd: 5,
+      budgetUsd: 10,
+      timestamp: Date.now(),
+    });
+    manager.start();
+    await manager.stop();
+
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const budgetEvent = sentEvents.find((e) => e.eventType === 'AiBudgetWarning');
+    expect(budgetEvent?.event_version).toBe(1);
   });
 
   it('toolCallToNrEvent: includes team_id when teamId is non-null', () => {

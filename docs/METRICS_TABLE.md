@@ -37,6 +37,12 @@ Source: `src/shared/harvest/harvest-scheduler.ts`, `src/transport/log-ingest.ts`
 
 ---
 
+## Schema Versioning
+
+Every NR event type carries an `event_version` field (currently `1`). Within a version, changes are additive only: new attributes may appear, existing ones keep name and meaning. A rename, removal, or semantic change bumps the version. Consumers should tolerate unknown attributes and may branch on `event_version` in NRQL.
+
+---
+
 ## Events API
 
 ### MCP Server Events
@@ -50,6 +56,7 @@ Emitted for every tool call captured by the hook collector.
 | Field               | Type    | Description                                                                                                                                                                |
 | ------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `eventType`         | string  | Always `"AiToolCall"`                                                                                                                                                      |
+| `event_version`     | number  | Schema version, currently `1`. See [Schema Versioning](#schema-versioning).                                                                                                |
 | `timestamp`         | number  | Unix epoch milliseconds                                                                                                                                                    |
 | `tool`              | string  | Tool name (e.g., `Read`, `Edit`, `Bash`, `Grep`)                                                                                                                           |
 | `tool_use_id`       | string  | Unique tool use identifier from the AI assistant                                                                                                                           |
@@ -87,6 +94,7 @@ Emitted for proxied tool calls (when the server forwards to upstream MCP servers
 | Field                 | Type    | Description                                                                                                            |
 | --------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `eventType`           | string  | Always `"AiMcpToolCall"`                                                                                               |
+| `event_version`       | number  | Schema version, currently `1`. See [Schema Versioning](#schema-versioning).                                            |
 | `timestamp`           | number  | Unix epoch milliseconds                                                                                                |
 | `server`              | string  | Upstream server name                                                                                                   |
 | `tool`                | string  | Tool name                                                                                                              |
@@ -113,6 +121,7 @@ Emitted for non-tool proxy requests (discovery methods like `tools/list`, `resou
 | Field                 | Type    | Description                                                                                                            |
 | --------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `eventType`           | string  | Always `"AiProxyRequest"`                                                                                              |
+| `event_version`       | number  | Schema version, currently `1`. See [Schema Versioning](#schema-versioning).                                            |
 | `timestamp`           | number  | Unix epoch milliseconds                                                                                                |
 | `server`              | string  | Upstream server name                                                                                                   |
 | `method`              | string  | MCP method name (e.g., `tools/list`)                                                                                   |
@@ -136,6 +145,7 @@ Emitted for every tool call as a security audit record.
 | Field                  | Type    | Description                                                                                                            |
 | ---------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `eventType`            | string  | Always `"AiAuditEvent"`                                                                                                |
+| `event_version`        | number  | Schema version, currently `1`. See [Schema Versioning](#schema-versioning).                                            |
 | `timestamp`            | number  | Unix epoch seconds                                                                                                     |
 | `action`               | string  | Audit action: `FileRead`, `FileWrite`, `FileEdit`, `BashCommand`, `McpToolCall`, `AgentSpawn`, `Search`, or `Other`    |
 | `tool`                 | string  | Tool name                                                                                                              |
@@ -157,21 +167,22 @@ Source: `src/security/audit-trail.ts` — `auditRecordToNrEvent()`
 
 Emitted only when a security alert is triggered (subset of audit events).
 
-| Field         | Type   | Description                                                                                                            |
-| ------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `eventType`   | string | Always `"SecurityAlert"`                                                                                               |
-| `timestamp`   | number | Unix epoch seconds                                                                                                     |
-| `severity`    | string | `critical`, `high`, or `medium`                                                                                        |
-| `alert_type`  | string | `destructive_command`, `sensitive_file`, or `external_network`                                                         |
-| `description` | string | Human-readable alert description                                                                                       |
-| `tool`        | string | Tool that triggered the alert                                                                                          |
-| `developer`   | string | Developer identifier                                                                                                   |
-| `session_id`  | string | Session identifier (if available)                                                                                      |
-| `team_id`     | string | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
-| `project_id`  | string | Project identifier (derived from git remote or configured)                                                             |
-| `org_id`      | string | Organization identifier (if configured)                                                                                |
-| `file_path`   | string | File path (if sensitive file alert)                                                                                    |
-| `command`     | string | Command (if destructive command alert)                                                                                 |
+| Field           | Type   | Description                                                                                                            |
+| --------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `eventType`     | string | Always `"SecurityAlert"`                                                                                               |
+| `event_version` | number | Schema version, currently `1`. See [Schema Versioning](#schema-versioning).                                            |
+| `timestamp`     | number | Unix epoch seconds                                                                                                     |
+| `severity`      | string | `critical`, `high`, or `medium`                                                                                        |
+| `alert_type`    | string | `destructive_command`, `sensitive_file`, or `external_network`                                                         |
+| `description`   | string | Human-readable alert description                                                                                       |
+| `tool`          | string | Tool that triggered the alert                                                                                          |
+| `developer`     | string | Developer identifier                                                                                                   |
+| `session_id`    | string | Session identifier (if available)                                                                                      |
+| `team_id`       | string | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
+| `project_id`    | string | Project identifier (derived from git remote or configured)                                                             |
+| `org_id`        | string | Organization identifier (if configured)                                                                                |
+| `file_path`     | string | File path (if sensitive file alert)                                                                                    |
+| `command`       | string | Command (if destructive command alert)                                                                                 |
 
 Security alert triggers:
 
@@ -188,6 +199,7 @@ Emitted when a task boundary is detected (a logical unit of work from task start
 | Field                  | Type    | Description                                                                                                            |
 | ---------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `eventType`            | string  | Always `"AiCodingTask"`                                                                                                |
+| `event_version`        | number  | Schema version, currently `1`. See [Schema Versioning](#schema-versioning).                                            |
 | `timestamp`            | number  | Unix epoch milliseconds (task end time)                                                                                |
 | `task_id`              | string  | Unique task identifier                                                                                                 |
 | `developer`            | string  | Developer identifier                                                                                                   |
@@ -222,27 +234,28 @@ Source: `src/transport/nr-ingest.ts` — `codingTaskToNrEvent()`
 
 Emitted for each anti-pattern detected within a completed task.
 
-| Field          | Type   | Description                                                                                                            |
-| -------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `eventType`    | string | Always `"AiAntiPattern"`                                                                                               |
-| `timestamp`    | number | Unix epoch milliseconds (detection time)                                                                               |
-| `type`         | string | Pattern type: `thrashing`, `re_reading`, `stuck_loop`, `blind_editing`, or `over_delegation`                           |
-| `task_id`      | string | Task identifier where the pattern was detected                                                                         |
-| `developer`    | string | Developer identifier                                                                                                   |
-| `app_name`     | string | Application name                                                                                                       |
-| `platform`     | string | Platform attribution                                                                                                   |
-| `session_id`   | string | Session identifier (if available)                                                                                      |
-| `team_id`      | string | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
-| `project_id`   | string | Project identifier (if configured)                                                                                     |
-| `org_id`       | string | Organization identifier (if configured)                                                                                |
-| `suggestion`   | string | Human-readable remediation suggestion                                                                                  |
-| `file`         | string | File involved (if applicable)                                                                                          |
-| `command`      | string | Command involved (if applicable)                                                                                       |
-| `iterations`   | number | Number of thrash/repeat iterations (if applicable)                                                                     |
-| `read_count`   | number | Number of redundant reads (re_reading only)                                                                            |
-| `repeat_count` | number | Number of identical command repeats (stuck_loop only)                                                                  |
-| `edit_count`   | number | Number of unverified edits (blind_editing only)                                                                        |
-| `agent_count`  | number | Number of agent spawns (over_delegation only)                                                                          |
+| Field           | Type   | Description                                                                                                            |
+| --------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `eventType`     | string | Always `"AiAntiPattern"`                                                                                               |
+| `event_version` | number | Schema version, currently `1`. See [Schema Versioning](#schema-versioning).                                            |
+| `timestamp`     | number | Unix epoch milliseconds (detection time)                                                                               |
+| `type`          | string | Pattern type: `thrashing`, `re_reading`, `stuck_loop`, `blind_editing`, or `over_delegation`                           |
+| `task_id`       | string | Task identifier where the pattern was detected                                                                         |
+| `developer`     | string | Developer identifier                                                                                                   |
+| `app_name`      | string | Application name                                                                                                       |
+| `platform`      | string | Platform attribution                                                                                                   |
+| `session_id`    | string | Session identifier (if available)                                                                                      |
+| `team_id`       | string | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
+| `project_id`    | string | Project identifier (if configured)                                                                                     |
+| `org_id`        | string | Organization identifier (if configured)                                                                                |
+| `suggestion`    | string | Human-readable remediation suggestion                                                                                  |
+| `file`          | string | File involved (if applicable)                                                                                          |
+| `command`       | string | Command involved (if applicable)                                                                                       |
+| `iterations`    | number | Number of thrash/repeat iterations (if applicable)                                                                     |
+| `read_count`    | number | Number of redundant reads (re_reading only)                                                                            |
+| `repeat_count`  | number | Number of identical command repeats (stuck_loop only)                                                                  |
+| `edit_count`    | number | Number of unverified edits (blind_editing only)                                                                        |
+| `agent_count`   | number | Number of agent spawns (over_delegation only)                                                                          |
 
 Source: `src/transport/nr-ingest.ts` — `antiPatternToNrEvent()`
 
@@ -253,6 +266,7 @@ Emitted when a configured budget threshold is crossed (50%, 80%, 100%).
 | Field           | Type   | Description                                                                                                            |
 | --------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `eventType`     | string | Always `"AiBudgetWarning"`                                                                                             |
+| `event_version` | number | Schema version, currently `1`. See [Schema Versioning](#schema-versioning).                                            |
 | `timestamp`     | number | Unix epoch milliseconds                                                                                                |
 | `budget_period` | string | Budget period: `session`, `daily`, or `weekly`                                                                         |
 | `threshold_pct` | number | Threshold percentage: `50`, `80`, or `100`                                                                             |
@@ -283,6 +297,7 @@ Emitted for each LLM turn when context-window tracking is enabled, capturing tok
 | Field                   | Type   | Description                                                                                                            |
 | ----------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `eventType`             | string | Always `"AiContextSnapshot"`                                                                                           |
+| `event_version`         | number | Schema version, currently `1`. See [Schema Versioning](#schema-versioning).                                            |
 | `timestamp`             | number | Unix epoch milliseconds                                                                                                |
 | `developer`             | string | Developer identifier                                                                                                   |
 | `appName`               | string | Application name (camelCase, same as `AiBudgetWarning`)                                                                |
