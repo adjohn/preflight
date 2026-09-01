@@ -84,7 +84,8 @@ export const DEFAULT_DESTRUCTIVE_COMMAND_PATTERNS: RegExp[] = [
   /\brm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*[fF][a-zA-Z]*|-[a-zA-Z]*[fF][a-zA-Z]*[rR][a-zA-Z]*|-[rR][a-zA-Z]*(?:\s+-[a-zA-Z]+)*\s+-[fF]|-[fF][a-zA-Z]*(?:\s+-[a-zA-Z]+)*\s+-[rR]|-[rR]\b|-[a-zA-Z]*[rR]\b)/,
   // GNU long-form: rm --recursive
   /\brm\b.*--recursive\b/,
-  /\bgit\s+push\s+--force\b/i,
+  // git push --force / -f, but NOT --force-with-lease / --force-if-includes (the safe forms)
+  /\bgit\s+push\s+--force(?!-(?:with-lease|if-includes))\b/i,
   /\bgit\s+push\s+-f\b/i,
   /\bgit\s+reset\s+--hard\b/i,
   /\bDROP\s+TABLE\b/i,

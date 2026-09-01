@@ -297,6 +297,16 @@ describe('AuditTrailManager', () => {
     expect(audit.securityAlert).toBeUndefined();
   });
 
+  it.each(['git push --force-with-lease origin main', 'git push --force-if-includes origin main'])(
+    'does not flag "%s" as destructive (safe force variant)',
+    (command) => {
+      const mgr = makeManager();
+      const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command }));
+
+      expect(audit.securityAlert).toBeUndefined();
+    },
+  );
+
   // 6. External network request (medium)
   it('detects curl as medium external network alert', () => {
     const mgr = makeManager();
