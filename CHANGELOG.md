@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.6] - 2026-09-01
+
+### Fixed
+
+- **Using the safe force-push variants `git push --force-with-lease` and `git push --force-if-includes` no longer triggers a critical destructive-command security alert.** The audit trail's pattern matched on the `--force` prefix alone, so these safe forms were flagged the same as a plain `--force`, contradicting documented behavior; the underlying `git push --force` and `git push -f` cases are still flagged.
+
 ## [1.18.5] - 2026-09-01
 
 ### Fixed
