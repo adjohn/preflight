@@ -1,15 +1,15 @@
 // pbjs JSON descriptor for the three OTLP/HTTP export request types.
 //
-// Generated from open-telemetry/opentelemetry-proto @ dfd0b0e with:
-//   npx -p protobufjs-cli pbjs -t json -p . \
-//     opentelemetry/proto/collector/{logs,metrics,trace}/v1/*_service.proto
-// then with the three *Service entries deleted from the output: they are gRPC
-// service stubs this HTTP transcoder never uses, and their method descriptors
-// do not type-check against protobufjs's INamespace (IMethod declares
-// `comment` as required, but pbjs never emits one).
+// Generated from open-telemetry/opentelemetry-proto @ dfd0b0e by:
+//   npx tsx scripts/regenerate-otlp-descriptor.ts dfd0b0e
+// which fetches that commit's proto tree, runs `pbjs -t json` over the three
+// OTLP/HTTP service protos, and deletes the resulting *Service entries: they
+// are gRPC service stubs this HTTP transcoder never uses, and their method
+// descriptors do not type-check against protobufjs's INamespace (IMethod
+// declares `comment` as required, but pbjs never emits one).
 //
-// To pick up a newer OTLP schema, re-run that command against a newer proto
-// checkout, delete the *Service entries again, and replace the object below.
+// To pick up a newer OTLP schema, re-run that command with a newer commit SHA
+// from open-telemetry/opentelemetry-proto and replace the object below.
 // Vendored as a .ts module (not .json) so the compiled dist ships it without
 // resolveJsonModule or copy steps.
 export const OTLP_DESCRIPTOR = {

@@ -1,6 +1,6 @@
 {
   "name": "@newrelic/preflight",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "type": "module",
   "license": "Apache-2.0",
   "private": false,
@@ -59,6 +59,7 @@
     "deploy:dashboard:update": "node dist/index.js deploy-dashboards --all --update",
     "deploy:dashboard:teardown": "node dist/index.js deploy-dashboards --all --teardown",
     "backfill:sessions": "npx tsx scripts/backfill-sessions.ts",
+    "regenerate:otlp-descriptor": "npx tsx scripts/regenerate-otlp-descriptor.ts",
     "check:bundle-size": "npx tsx scripts/check-bundle-size.ts",
     "check:docs-inventory": "npx tsx scripts/check-docs-inventory.ts",
     "dev": "node dist/index.js --local",
