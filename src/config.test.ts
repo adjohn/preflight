@@ -404,6 +404,20 @@ describe('loadMcpConfig()', () => {
     expect(stderrOutput).not.toMatch(/Unknown keys in config file/);
   });
 
+  it('does not warn about repoUrl as an unknown config-file key (regression: was missing from ConfigFileSchema)', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const path = resolve(tmpDir, 'repo-url.json');
+    writeFileSync(
+      path,
+      JSON.stringify({ projectId: 'myorg/myrepo', repoUrl: 'https://example.test/x' }),
+    );
+    const config = loadMcpConfig({ config: path });
+    expect(config.repoUrl).toBe('https://example.test/x');
+    const stderrOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(stderrOutput).not.toMatch(/Unknown keys in config file/);
+  });
+
   it('does not warn for recognized keys in config file (task #22)', () => {
     process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
     process.env.NEW_RELIC_ACCOUNT_ID = '12345';

@@ -135,6 +135,7 @@ export const ConfigFileSchema = z
     teamId: z.string().nullable().optional(),
     projectId: z.string().nullable().optional(),
     orgId: z.string().nullable().optional(),
+    repoUrl: z.string().nullable().optional(),
     model: z.string().optional(),
     enabled: z.boolean().optional(),
     highSecurity: z.boolean().optional(),
