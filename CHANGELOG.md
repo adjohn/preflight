@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] - 2026-09-01
+
+### Added
+
+- **Tool-call telemetry now distinguishes user rejections, auto-mode policy denials, and mid-run interrupts from a generic timeout** — `error_type` gains `rejected`, `denied`, and `interrupted` values (previously all three exported as `timeout`), enabling acceptance-rate analysis for Edit/Write tools. Wires Claude Code's `PermissionRequest`/`PermissionDenied` hooks alongside the existing ones; after upgrading, `preflight doctor`'s hooks-wired check will report a failure until `preflight install` is re-run to register the two new hooks.
+
 ## [1.21.0] - 2026-09-01
 
 ### Added
