@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 2026-09-01
+
+### Added
+
+- **The inbound OTLP receiver now enriches protobuf-encoded payloads, not just JSON** — `application/x-protobuf` bodies (the default for most OTel SDKs, including Claude Code's own) are decoded, tagged with session/repo context, and re-encoded, matching what the JSON path already did. A payload using OTLP schema fields newer than the receiver's vendored descriptor loses those unrecognized fields on re-encode; a payload that fails to decode is forwarded unmodified rather than dropped.
+
 ## [1.22.0] - 2026-09-01
 
 ### Added
