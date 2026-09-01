@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.1] - 2026-09-01
+
+### Added
+
+- **Claude Fable 5.1 and Claude Mythos 5.1, released 2026-09-01, are now priced.** Sessions on `claude-fable-5-1` or `claude-mythos-5-1` previously showed $0 cost because the vendored pricing table predates them. Both use Anthropic's published $10/$50 per MTok with $12.50 5-minute cache writes and the new $0.25 cache-read rate (0.025x of input, a quarter of Fable 5's). Added through the bundled gap-fill overlay, so a later upstream table sync cannot double-price them.
+
 ## [1.19.0] - 2026-08-31
 
 ### Fixed

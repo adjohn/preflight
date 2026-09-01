@@ -71,6 +71,19 @@ describe('applyPricingOverlay', () => {
     });
   });
 
+  it('prices Claude Fable 5.1 and Mythos 5.1 at their published rates, including the 0.025x cache read', () => {
+    applyPricingOverlay(null);
+    for (const model of ['claude-fable-5-1', 'claude-mythos-5-1', 'claude-fable-5-1[1m]']) {
+      expect(resolveModelPricing(model)).toMatchObject({
+        inputPerMTok: 10,
+        outputPerMTok: 50,
+        cacheReadPerMTok: 0.25,
+        cacheCreationPerMTok: 12.5,
+        contextWindow: 1_000_000,
+      });
+    }
+  });
+
   it('respects an explicit user customPricingFile instead of the bundled overlay', () => {
     // A user-supplied file that is not JSON at all — loadCustomPricing() will
     // reject it and log a warning, but the point under test is that we never

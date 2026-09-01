@@ -1,1 +1,18 @@
-{}
+{
+  "claude-fable-5-1": {
+    "inputPerMTok": 10,
+    "outputPerMTok": 50,
+    "thinkingPerMTok": 50,
+    "cacheReadPerMTok": 0.25,
+    "cacheCreationPerMTok": 12.5,
+    "contextWindow": 1000000
+  },
+  "claude-mythos-5-1": {
+    "inputPerMTok": 10,
+    "outputPerMTok": 50,
+    "thinkingPerMTok": 50,
+    "cacheReadPerMTok": 0.25,
+    "cacheCreationPerMTok": 12.5,
+    "contextWindow": 1000000
+  }
+}
