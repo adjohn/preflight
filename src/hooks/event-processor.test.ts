@@ -574,6 +574,24 @@ describe('HookEventProcessor', () => {
       expect(records).toHaveLength(1);
       expect(records[0]!.errorType).toBe('rejected');
     });
+
+    it('pairs normally when the user approves within the TTL — the common case', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ tool: 'Bash', toolUseId: 'toolu_approved', timestamp: 1000 }),
+        makePermissionRequestEvent({ toolUseId: 'toolu_approved', timestamp: 1001 }),
+        makePostEvent({ toolUseId: 'toolu_approved', timestamp: 1500 }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.toolName).toBe('Bash');
+      expect(record.success).toBe(true);
+      expect(record.errorType).toBeUndefined();
+      expect(record.durationMs).toBe(500);
+      expect(processor.pendingCount).toBe(0);
+    });
   });
 
   describe('PostToolUseFailure with is_interrupt', () => {
