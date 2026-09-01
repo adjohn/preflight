@@ -1473,6 +1473,36 @@ describe('HookEventProcessor', () => {
       expect(processor.activePlatform).toBe('kiro');
     });
 
+    it('interleaved sessions each map tool names with their own stamped adapter', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ tool: 'fs_read', toolUseId: 'a1', sessionId: 'sess-a', platform: 'kiro' }),
+        makePostEvent({ tool: 'fs_read', toolUseId: 'a1', sessionId: 'sess-a', platform: 'kiro' }),
+        makePreEvent({
+          tool: 'view',
+          toolUseId: 'b1',
+          sessionId: 'sess-b',
+          platform: 'copilot-sdk',
+        }),
+        makePostEvent({
+          tool: 'view',
+          toolUseId: 'b1',
+          sessionId: 'sess-b',
+          platform: 'copilot-sdk',
+        }),
+        // A later event for session A arrives WITHOUT a stamp while the last
+        // process-level stamp is copilot-sdk — it must still map via the
+        // adapter session A stamped earlier, not the other session's.
+        makePreEvent({ tool: 'fs_write', toolUseId: 'a2', sessionId: 'sess-a' }),
+        makePostEvent({ tool: 'fs_write', toolUseId: 'a2', sessionId: 'sess-a' }),
+      ]);
+
+      expect(records.map((r) => r.toolName)).toEqual(['Read', 'Read', 'Write']);
+      // The session-summary label still follows the last non-generic stamp.
+      expect(processor.activePlatform).toBe('copilot-sdk');
+    });
+
     it('maps tool names correctly when pairing falls back to findOldestPendingKey (no toolUseId)', () => {
       const fakeAdapter = {
         platformName: 'fake',

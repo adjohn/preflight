@@ -342,11 +342,15 @@ export class CopilotAppUsageWatcher {
     }
   }
 
+  private ensureStorageDir(): void {
+    if (!existsSync(this.storagePath)) {
+      mkdirSync(this.storagePath, { recursive: true, mode: 0o700 });
+    }
+  }
+
   private writeCursor(sessionId: string, totals: CursorState): void {
     try {
-      if (!existsSync(this.storagePath)) {
-        mkdirSync(this.storagePath, { recursive: true, mode: 0o700 });
-      }
+      this.ensureStorageDir();
       writeFileSync(this.cursorPath(sessionId), JSON.stringify(totals), { mode: 0o600 });
     } catch (err) {
       this.recordError(err);
@@ -356,9 +360,7 @@ export class CopilotAppUsageWatcher {
   /** Append into the session's hook buffer, same path convention as the collector. */
   private appendToBuffer(sessionId: string, event: object): void {
     try {
-      if (!existsSync(this.storagePath)) {
-        mkdirSync(this.storagePath, { recursive: true, mode: 0o700 });
-      }
+      this.ensureStorageDir();
       appendFileSync(
         join(this.storagePath, `buffer-${sessionId}.jsonl`),
         JSON.stringify(event) + '\n',
