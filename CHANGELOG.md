@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] - 2026-09-01
+
+### Added
+
+- **Git activity — commits, pushes, force-pushes, and PR create/merge outcomes — is now exported to New Relic as `ai.git.*` metrics**, tagged with the same developer/team/project attribution as cost and efficiency metrics.
+
 ## [1.20.0] - 2026-09-01
 
 ### Added

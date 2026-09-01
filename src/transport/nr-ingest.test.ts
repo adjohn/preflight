@@ -27,6 +27,7 @@ import type { AntiPattern } from '../metrics/anti-patterns.js';
 import type { ThrashingAlert } from '../metrics/retry-detector.js';
 import type { ContextTurnSnapshot, ToolContextContribution } from '../metrics/context-tracker.js';
 import { SessionTracker } from '../metrics/session-tracker.js';
+import { GitEfficiencyTracker } from '../metrics/git-efficiency-tracker.js';
 import { FeedbackCollector } from '../tools/workflow-tools.js';
 import { ApiFailureTracker } from '../metrics/api-failure-tracker.js';
 
@@ -846,6 +847,51 @@ describe('NrIngestManager', () => {
       >;
       const failureMetrics = sentMetrics.filter((m) => m.name === 'ai.api.failures_total');
       expect(failureMetrics).toHaveLength(1);
+    });
+
+    it('emits the five ai.git.* metrics on stop when a gitEfficiencyTracker is provided, tagged with developer/session attrs', async () => {
+      const sessionTracker = new SessionTracker('git-metrics-session');
+      const gitEfficiencyTracker = new GitEfficiencyTracker();
+      gitEfficiencyTracker.recordToolCall(makeRecord({ command: 'git commit -m "x"' }));
+      gitEfficiencyTracker.recordToolCall(makeRecord({ command: 'git push origin feature' }));
+      gitEfficiencyTracker.recordToolCall(
+        makeRecord({ command: 'git push --force origin feature' }),
+      );
+      gitEfficiencyTracker.recordToolCall(makeRecord({ command: 'gh pr create --title "x"' }));
+      gitEfficiencyTracker.recordToolCall(makeRecord({ command: 'gh pr merge 1' }));
+
+      const manager = new NrIngestManager(
+        makeIngestOptions({
+          sessionTracker,
+          gitEfficiencyTracker,
+          sessionTraceId: 'sess-git-1',
+        }),
+      );
+
+      manager.start();
+      await manager.stop();
+
+      expect(mockSendMetrics).toHaveBeenCalled();
+      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<{
+        name: string;
+        attributes?: Record<string, unknown>;
+        value: { sum: number };
+      }>;
+
+      const expectedNamesAndSums: Array<[string, number]> = [
+        ['ai.git.commit_count', 1],
+        ['ai.git.push_count', 2],
+        ['ai.git.force_push_count', 1],
+        ['ai.git.pr_created', 1],
+        ['ai.git.pr_merged', 1],
+      ];
+      for (const [name, sum] of expectedNamesAndSums) {
+        const metric = sentMetrics.find((m) => m.name === name);
+        expect(metric).toBeDefined();
+        expect(metric!.value.sum).toBe(sum);
+        expect(metric!.attributes?.developer).toBe('test-dev');
+        expect(metric!.attributes?.session_id).toBe('sess-git-1');
+      }
     });
 
     it('emitSessionGauges is a no-op after stop()', async () => {
