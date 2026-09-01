@@ -325,30 +325,30 @@ Source: `src/transport/nr-ingest.ts` — `ingestContextSnapshot()`
 
 Emitted for each subagent (`Task` tool) assistant turn observed by the subagent-watcher pipeline.
 
-| Field                   | Type   | Description                                                                                                                 |
-| ----------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `eventType`             | string | Always `"AiSubagentTurn"`                                                                                                   |
-| `event_version`         | number | Always `1`                                                                                                                  |
-| `timestamp`             | number | Unix epoch milliseconds                                                                                                     |
-| `agent_id`              | string | Identifier of the spawned subagent                                                                                          |
-| `parent_session_id`     | string | Session ID of the parent Claude Code session that spawned the subagent                                                      |
-| `message_id`            | string | Identifier of the assistant message this turn corresponds to                                                                |
-| `model`                 | string | Model used for this turn (e.g. `claude-sonnet-4-5`). Declarative metadata, not redacted — needed stable for grouping in NR. |
-| `input_tokens`          | number | Input tokens for this turn                                                                                                  |
-| `output_tokens`         | number | Output tokens for this turn                                                                                                 |
-| `cache_creation_tokens` | number | Prompt cache creation tokens for this turn                                                                                  |
-| `cache_read_tokens`     | number | Prompt cache read tokens for this turn                                                                                      |
-| `reasoning_tokens`      | number | Extended-thinking/reasoning tokens for this turn                                                                            |
-| `developer`             | string | Developer identifier                                                                                                        |
-| `app_name`              | string | Application name                                                                                                            |
-| `workflow_run_id`       | string | Workflow run this turn belongs to (if any); empty string when not part of a tracked workflow run                            |
-| `usd`                   | number | Computed USD cost for this turn (if cost computation has run for this turn)                                                 |
-| `stop_reason`           | string | Model stop reason (if known)                                                                                                |
-| `team_id`               | string | User-defined team label from config. Omitted when `teamId` is not configured.                                               |
-| `project_id`            | string | Project identifier (derived from git remote or configured)                                                                  |
-| `org_id`                | string | Organization identifier (if configured)                                                                                     |
+| Field                   | Type   | Description                                                                                                                                                                 |
+| ----------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eventType`             | string | Always `"AiSubagentTurn"`                                                                                                                                                   |
+| `event_version`         | number | Always `1`                                                                                                                                                                  |
+| `timestamp`             | number | Unix epoch milliseconds                                                                                                                                                     |
+| `agent_id`              | string | Identifier of the spawned subagent                                                                                                                                          |
+| `parent_session_id`     | string | Session ID of the parent Claude Code session that spawned the subagent                                                                                                      |
+| `message_id`            | string | Identifier of the assistant message this turn corresponds to                                                                                                                |
+| `model`                 | string | Model used for this turn (e.g. `claude-sonnet-4-5`). Declarative metadata, not redacted — needed stable for grouping in NR.                                                 |
+| `input_tokens`          | number | Input tokens for this turn                                                                                                                                                  |
+| `output_tokens`         | number | Output tokens for this turn                                                                                                                                                 |
+| `cache_creation_tokens` | number | Prompt cache creation tokens for this turn                                                                                                                                  |
+| `cache_read_tokens`     | number | Prompt cache read tokens for this turn                                                                                                                                      |
+| `reasoning_tokens`      | number | Extended-thinking/reasoning tokens for this turn                                                                                                                            |
+| `developer`             | string | Developer identifier                                                                                                                                                        |
+| `app_name`              | string | Application name                                                                                                                                                            |
+| `workflow_run_id`       | string | Workflow run this turn belongs to (if any). `subagentTurnToNrEvent()` sends empty string when absent; `subagentTokenEventToNrEvent()` omits the field entirely when absent. |
+| `usd`                   | number | Computed USD cost for this turn (if cost computation has run for this turn)                                                                                                 |
+| `stop_reason`           | string | Model stop reason (if known)                                                                                                                                                |
+| `team_id`               | string | User-defined team label from config. Omitted when `teamId` is not configured.                                                                                               |
+| `project_id`            | string | Project identifier (derived from git remote or configured)                                                                                                                  |
+| `org_id`                | string | Organization identifier (if configured)                                                                                                                                     |
 
-Two builders produce this event type. `subagentTurnToNrEvent()` runs after `CostTracker.recordTokenUsage()` has computed the per-turn USD, and additionally includes `turn_uuid` (unique per-turn ID), `timestamp_ms` (duplicate of `timestamp`), and `schema_fingerprint` (source-JSONL schema fingerprint, if computed). `subagentTokenEventToNrEvent()` serializes the lighter storage-layer `SubagentTokenEvent` record before cost computation — it omits `usd`, `stop_reason`, `turn_uuid`, and `schema_fingerprint`, and adds a resolved `session_id` instead. Both share the token-count and identity fields above.
+Two builders produce this event type. `subagentTurnToNrEvent()` runs after `CostTracker.recordTokenUsage()` has computed the per-turn USD, and additionally includes `turn_uuid` (unique per-turn ID), `timestamp_ms` (duplicate of `timestamp`), and `schema_fingerprint` (source-JSONL schema fingerprint, if computed). `subagentTokenEventToNrEvent()` serializes the lighter storage-layer `SubagentTokenEvent` record before cost computation — it omits `usd`, `stop_reason`, `turn_uuid`, and `schema_fingerprint`. Both share the token-count and identity fields above, including `parent_session_id`; neither builder sends a separate resolved `session_id`.
 
 Source: `src/transport/nr-ingest.ts` — `subagentTurnToNrEvent()`, `subagentTokenEventToNrEvent()`
 
@@ -435,6 +435,31 @@ Emitted by the workflow/subagent watcher pipeline to report its own health — f
 | `org_id`                    | string | Organization identifier (if configured)                |
 
 Source: `src/transport/nr-ingest.ts` — `observabilityHealthToNrEvent()`
+
+#### `AiRetryAlert`
+
+Emitted when `RetryDetector` flags a thrashing pattern — the same tool call repeating with high similarity in a short window.
+
+| Field           | Type   | Description                                                                                                                                                                        |
+| --------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eventType`     | string | Always `"AiRetryAlert"`                                                                                                                                                            |
+| `timestamp`     | number | Unix epoch milliseconds                                                                                                                                                            |
+| `tool_name`     | string | The tool being called repeatedly                                                                                                                                                   |
+| `occurrences`   | number | Number of similar calls observed in the window                                                                                                                                     |
+| `window_size`   | number | Size of the sliding detection window                                                                                                                                               |
+| `similarity`    | number | Similarity score (0–1) between the repeated calls                                                                                                                                  |
+| `tokens_wasted` | number | Estimated tokens wasted by the repeated calls                                                                                                                                      |
+| `developer`     | string | Developer identifier                                                                                                                                                               |
+| `app_name`      | string | Application name                                                                                                                                                                   |
+| `platform`      | string | Originating platform (defaults to `"claude-code"`)                                                                                                                                 |
+| `session_id`    | string | Resolved Claude Code session ID (if available). Sourced from the ingesting process's own `sessionTraceId`, not the alert's in-process `sessionId` — see the builder's doc comment. |
+| `team_id`       | string | User-defined team label (if configured)                                                                                                                                            |
+| `project_id`    | string | Project identifier (if configured)                                                                                                                                                 |
+| `org_id`        | string | Organization identifier (if configured)                                                                                                                                            |
+
+Unlike every other event type in this document, `AiRetryAlert` does not carry `event_version` — `retryAlertToNrEvent()` predates the `event_version` stamping pass and was missed by it.
+
+Source: `src/transport/nr-ingest.ts` — `retryAlertToNrEvent()`
 
 ### Setup Validation
 
