@@ -350,6 +350,17 @@ interface HookInput {
   // wall-clock delta (event-processor.ts's durationMs computation) can't
   // separate out on its own. Read below and preferred over that delta when
   // present and valid.
+  //
+  // The posttooluse/posttoolusefailure branches below are shared by every
+  // platform using this uniform hook envelope (Kiro, Amazon Q, Droid, Codex,
+  // VS Code Copilot — see ADAPTERS.md), so this field is read the same way
+  // regardless of sender. Confirmed against Factory Droid's own hooks
+  // reference that its PostToolUse payload carries no duration_ms at all, so
+  // the wall-clock fallback applies cleanly there; not independently
+  // confirmed for the others. If a platform other than Claude Code is later
+  // found to send duration_ms with different semantics (e.g. including
+  // permission-prompt wait), this generic read would need to become
+  // platform-aware.
   duration_ms?: number;
   // StopFailure (code.claude.com/docs/en/hooks.md) reuses `error` above for its
   // closed error-type enum and adds these two free-text fields: error_details
