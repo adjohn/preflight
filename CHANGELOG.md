@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0] - 2026-09-02
+
+### Added
+
+- **Preflight now sees model switches as they happen, not just as a change in token-usage reports.** Claude Code's `PostModelSwitch` hook fires whenever the session's model changes — a deliberate `/model` switch, a persistent automatic fallback, or the model restored on resume. Preflight now records each of these as a discrete event, including how many were automatic, instead of only inferring a change happened from a different model string showing up in usage data.
+
 ## [1.28.0] - 2026-09-02
 
 ### Added
