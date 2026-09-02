@@ -1,17 +1,14 @@
 {
-  "name": "newrelic-preflight",
+  "name": "newrelic-preflight-marketplace",
   "owner": {
-    "name": "New Relic"
+    "name": "New Relic",
+    "url": "https://github.com/newrelic-experimental"
   },
-  "description": "Preflight: observability for AI coding assistants, from New Relic.",
   "plugins": [
     {
-      "name": "preflight",
-      "source": "./",
-      "displayName": "Preflight",
-      "description": "Observability for AI coding assistants: cost tracking, efficiency scoring, and anti-pattern detection with a local dashboard. Local-first; New Relic export optional.",
-      "category": "monitoring",
-      "tags": ["observability", "cost-tracking", "mcp", "claude-code"]
+      "name": "newrelic-preflight",
+      "source": "./plugin",
+      "description": "Observability for AI coding assistants — tool-call capture, cost tracking, and efficiency scoring, powered by New Relic."
     }
   ]
 }

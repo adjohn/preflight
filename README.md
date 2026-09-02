@@ -98,16 +98,14 @@ When prompted, pick a mode:
 
 Restart your AI tool — hooks and the MCP server load at session start. Every tool call is captured automatically. Open **http://localhost:7777** to watch your session live.
 
+> **Using Claude Code?** You can skip the npm install above and add Preflight as a [Claude Code plugin](docs/PLUGIN.md) instead:
+>
+> ```
+> /plugin marketplace add newrelic-experimental/preflight
+> /plugin install newrelic-preflight@newrelic-preflight-marketplace
+> ```
+
 ### Other ways to install
-
-**Claude Code plugin** — wires up the MCP server in one command:
-
-```
-/plugin marketplace add newrelic-experimental/preflight
-/plugin install preflight@newrelic-preflight
-```
-
-Then ask Claude Code to run the `nr_observe_install_hooks` tool (it offers to once `nr_observe_health` reports `setup_required: true`) and restart to activate hook capture.
 
 **Cursor** — [Add to Cursor](https://cursor.com/en/install-mcp?name=newrelic-preflight&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBuZXdyZWxpYy9wcmVmbGlnaHQiLCItLXN0ZGlvIl19) installs the MCP server via a one-click deeplink; run `preflight setup` afterwards for hook capture.
 
