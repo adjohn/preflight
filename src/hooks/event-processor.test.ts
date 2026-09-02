@@ -235,6 +235,19 @@ describe('HookEventProcessor', () => {
       expect(record.agentType).toBe('Explore');
     });
 
+    it('prefers the pre event agentId/agentType over a conflicting post event value', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ agentId: 'agent-abc123', agentType: 'general-purpose' }),
+        makePostEvent({ agentId: 'agent-def456', agentType: 'Explore' }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.agentId).toBe('agent-abc123');
+      expect(record.agentType).toBe('general-purpose');
+    });
+
     it('omits agentId/agentType for a parent-session tool call', () => {
       const processor = new HookEventProcessor({ store, onRecord });
 
