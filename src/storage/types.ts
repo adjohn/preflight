@@ -1,6 +1,8 @@
 interface HookEventBase {
   readonly tool: string;
   readonly timestamp: number;
+  /** True originating platform, stamped by collector-script.ts at write time. */
+  readonly platform?: string;
 }
 
 /**
@@ -41,6 +43,30 @@ export interface PostHookEvent extends HookEventBase {
    * between the two.
    */
   readonly nativeDurationMs?: number;
+}
+
+/**
+ * Emitted when a gated tool call awaits user approval (Claude Code's
+ * PermissionRequest hook). Marks the pending `PreHookEvent` with the same
+ * toolUseId as permission-requested; a rejection produces no further hook
+ * event, so `HookEventProcessor` infers it when the marked entry expires.
+ */
+export interface PermissionRequestHookEvent extends HookEventBase {
+  readonly mode: 'permission_request';
+  readonly toolUseId: string;
+  readonly sessionId?: string;
+}
+
+/**
+ * Emitted when auto permission mode denies a tool call by policy (Claude
+ * Code's PermissionDenied hook). Completes the pending `PreHookEvent` with
+ * the same toolUseId as errorType 'denied'.
+ */
+export interface PermissionDeniedHookEvent extends HookEventBase {
+  readonly mode: 'permission_denied';
+  readonly toolUseId: string;
+  readonly sessionId?: string;
+  readonly deniedReason?: string;
 }
 
 /** Emitted per LLM API turn with token usage; feeds CostTracker. */
@@ -109,13 +135,16 @@ export interface ApiFailureHookEvent extends HookEventBase {
 
 /**
  * Buffer line discriminated union. `pre`/`post`/`token` are the original
- * collector modes. `subagent_token`, `workflow_run`, and
- * `observability_health` are emitted by the SubagentWatcher / WorkflowWatcher.
+ * collector modes; `permission_request`/`permission_denied` are collector
+ * modes for Claude Code's permission hooks. `subagent_token`, `workflow_run`,
+ * and `observability_health` are emitted by the SubagentWatcher / WorkflowWatcher.
  * `api_failure` is emitted by the collector for Claude Code's StopFailure hook.
  */
 export type HookEvent =
   | PreHookEvent
   | PostHookEvent
+  | PermissionRequestHookEvent
+  | PermissionDeniedHookEvent
   | TokenHookEvent
   | SubagentTokenHookEvent
   | WorkflowRunEvent
