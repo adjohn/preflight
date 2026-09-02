@@ -39,6 +39,7 @@ import { checkNodeVersion } from './install/node-version-check.js';
 import { localDateKey, todayPortionOfSessionCost } from './lib/date.js';
 import { AntiPatternDetector } from './metrics/anti-patterns.js';
 import { ApiFailureTracker, mapClaudeCodeErrorType } from './metrics/api-failure-tracker.js';
+import { SessionResumeTracker } from './metrics/session-resume-tracker.js';
 import { BudgetTracker } from './metrics/budget-tracker.js';
 import { ClaudeMdTracker } from './metrics/claudemd-tracker.js';
 import { CollaborationProfiler } from './metrics/collaboration-profile.js';
@@ -1027,9 +1028,26 @@ async function main(): Promise<void> {
         }
       }
     } else {
-      // --local: force local mode so config validation skips cloud credentials.
-      process.env.NR_AI_MODE = 'local';
-      config = loadConfigOrDie(options);
+      // --local: try normal config resolution first, so a config file that
+      // already sets mode: 'cloud'/'both' with real credentials still gets
+      // cloud ingest from --local — previously this branch unconditionally
+      // forced mode: 'local', which silently dropped any activity --local
+      // drained on behalf of an unowned session (e.g. a Copilot chat with no
+      // dedicated owning --stdio engine): captured and shown in the local
+      // dashboard, but never forwarded to New Relic even when the user had
+      // configured real credentials. Only fall back to forcing local mode
+      // when credentials are genuinely absent, preserving the original
+      // intent of letting --local run without requiring cloud credentials.
+      try {
+        config = loadConfigOrDie(options);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/Missing required configuration: (licenseKey|accountId)/.test(msg)) {
+          throw err;
+        }
+        process.env.NR_AI_MODE = 'local';
+        config = loadConfigOrDie(options);
+      }
 
       if (!config.enabled) {
         logger.info('Server disabled via config — exiting');
@@ -1126,6 +1144,11 @@ async function main(): Promise<void> {
     // inputs stay at their "unknown" defaults for the same reason. See
     // api-failure-tracker.ts's API_FAILURE_PARTIAL_DATA_NOTE for the full story.
     const apiFailureTracker = new ApiFailureTracker();
+    // Fed via Claude Code's SessionStart hook (see the onSessionStart
+    // callback on eventProcessor below), only for source: 'resume'/'fork'
+    // events that carry the resume-cost fields — a plain startup/clear/
+    // compact SessionStart has nothing to report and never calls recordResume().
+    const sessionResumeTracker = new SessionResumeTracker();
     liveSessionRegistry = new LiveSessionRegistry();
     liveSessionRegistry.startSampling();
     // Unconditional in every mode — decoupled from whether the `--local`
@@ -1551,7 +1574,12 @@ async function main(): Promise<void> {
       localStore,
     });
 
-    const dashboardEnabled = config.mode === 'local' || config.mode === 'both';
+    // options.local always gets a dashboard, regardless of what config.mode
+    // resolves to — the try/catch above only forces mode: 'local' when cloud
+    // credentials are absent, so `--local` combined with an explicit
+    // `mode: 'cloud'` config (real credentials present) would otherwise skip
+    // the dashboard the user explicitly asked for by passing --local.
+    const dashboardEnabled = options.local || config.mode === 'local' || config.mode === 'both';
     let alertEngine: LocalAlertEngine | undefined;
     let alertSnapshotCollector: AlertSnapshotCollector | undefined;
     let alertLog: AlertLog | undefined;
@@ -1877,6 +1905,7 @@ async function main(): Promise<void> {
         teamId: config.teamId,
         projectId: config.projectId,
         orgId: config.orgId,
+        companionMode: config.companionMode,
         sessionTracker,
         localStore,
         auditTrail,
@@ -1886,6 +1915,7 @@ async function main(): Promise<void> {
         efficiencyScorer,
         feedbackCollector,
         apiFailureTracker,
+        gitEfficiencyTracker,
         turnCostAttributor,
         sessionTraceId,
       });
@@ -1988,7 +2018,23 @@ async function main(): Promise<void> {
         contextWindowTracker.recordToolCall(rawRecord);
         contextTracker.recordToolCall(rawRecord);
         latencyTracker.recordToolCall(rawRecord);
-        retryDetector.recordToolCall(rawRecord);
+        const thrashingAlert = retryDetector.recordToolCall(rawRecord);
+        if (thrashingAlert) {
+          capturedNrIngest?.ingestRetryAlert(thrashingAlert, {
+            platform: typeof rawRecord.platform === 'string' ? rawRecord.platform : undefined,
+          });
+          liveBus.emit('retry-alert', {
+            // alert.sessionId (not sessionTraceId) — see RetryDetector's
+            // session-grouping comment: in --local mode this process's own
+            // RetryDetector drains every session's buffer, so only the
+            // alert's own sessionId can be trusted to name the offending one.
+            sessionId: thrashingAlert.sessionId ?? undefined,
+            toolName: thrashingAlert.toolName,
+            occurrences: thrashingAlert.occurrences,
+            tokensWasted: thrashingAlert.tokensWastedEstimate,
+            ts: thrashingAlert.timestamp,
+          });
+        }
         qualityProxyTracker.recordToolCall(rawRecord);
         const turnId = turnTracker.recordToolCall(rawRecord);
         const turnNumber = turnTracker.getCurrentTurnNumber();
@@ -2378,6 +2424,46 @@ async function main(): Promise<void> {
           duringToolExecution,
         });
       },
+      onSessionStart: (frame) => {
+        // Only 'resume'/'fork' SessionStart events with the resume-cost
+        // fields present are actionable — a plain startup/clear/compact
+        // start (or a resume with no prior response, per the docs) has
+        // nothing to report.
+        if (
+          typeof frame.secondsSinceLastResponse !== 'number' ||
+          typeof frame.contextTokens !== 'number' ||
+          typeof frame.promptCacheLikelyExpired !== 'boolean' ||
+          typeof frame.estimatedCacheWriteUsd !== 'number'
+        ) {
+          return;
+        }
+        sessionResumeTracker.recordResume({
+          secondsSinceLastResponse: frame.secondsSinceLastResponse,
+          contextTokens: frame.contextTokens,
+          promptCacheLikelyExpired: frame.promptCacheLikelyExpired,
+          estimatedCacheWriteUsd: frame.estimatedCacheWriteUsd,
+          timestampMs: frame.timestamp,
+        });
+      },
+      onInstructionsLoaded: (frame) => {
+        instructionDriftTracker.recordInstructionsLoaded(frame.filePath, frame.loadReason);
+      },
+      onModelSwitch: (frame) => {
+        modelUsageTracker.recordModelSwitch({
+          fromModel: frame.fromModel,
+          toModel: frame.toModel,
+          source: frame.source,
+          requestedModel: frame.requestedModel,
+          timestampMs: frame.timestamp,
+        });
+      },
+      onUserPromptSubmit: (frame) => {
+        taskDetector!.startTaskIfNone(frame.timestamp);
+      },
+      onStop: (frame) => {
+        turnTracker.finalizeTurnAt(frame.timestamp);
+        taskDetector!.markBoundary(frame.timestamp);
+      },
     });
 
     persistSession = (opts?: { periodic?: boolean }) => {
@@ -2749,6 +2835,7 @@ async function main(): Promise<void> {
           teamId: config!.teamId,
           projectId: config!.projectId,
           orgId: config!.orgId,
+          companionMode: config!.companionMode,
           sessionTracker: sessionTracker!,
           localStore: realLocalStore,
           auditTrail,
@@ -2758,6 +2845,7 @@ async function main(): Promise<void> {
           efficiencyScorer,
           feedbackCollector,
           apiFailureTracker,
+          gitEfficiencyTracker,
           turnCostAttributor,
           sessionTraceId: realId,
         });
@@ -2815,6 +2903,7 @@ async function main(): Promise<void> {
         toolCallBuffer: toolCallBufferAccessor,
         qualityProxyTracker,
         apiFailureTracker,
+        sessionResumeTracker,
         turnCostAttributor,
         turnTracker,
         gitEfficiencyTracker,
@@ -2997,6 +3086,7 @@ async function main(): Promise<void> {
           toolCallBuffer: toolCallBufferAccessor,
           qualityProxyTracker,
           apiFailureTracker,
+          sessionResumeTracker,
           turnCostAttributor,
           turnTracker,
           gitEfficiencyTracker,
@@ -3029,6 +3119,13 @@ async function main(): Promise<void> {
         }
       }
     } else {
+      // nrIngest is only constructed above when config.mode !== 'local' (see
+      // the try/catch at this branch's start) — i.e. only when real
+      // credentials are configured. Starting it here is what actually lets
+      // --local forward the unowned sessions it drains (see the comment on
+      // that try/catch): constructing NrIngestManager alone queues events
+      // in memory but never sends them until .start() runs its harvest loop.
+      nrIngest?.start();
       logger.info('Server running in local dashboard mode (Ctrl+C to stop)');
       // DashboardServer HTTP listener keeps the process alive.
       // SIGINT/SIGTERM are handled by the global shutdown handler registered above.
@@ -3096,6 +3193,7 @@ async function main(): Promise<void> {
         teamId: config.teamId,
         projectId: config.projectId,
         orgId: config.orgId,
+        companionMode: config.companionMode,
         sessionTracker: new SessionTracker(sessionTraceId),
         localStore: proxyLocalStore,
         eventHarvestIntervalMs: config.harvestIntervalMs.events,

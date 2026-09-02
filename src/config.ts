@@ -31,6 +31,12 @@ export interface McpServerConfig {
   readonly enabled: boolean;
   readonly highSecurity: boolean;
   readonly recordContent: boolean;
+  /**
+   * Set when this org also enables Claude Code's built-in OTel export, so the
+   * same session isn't ingested twice into a blended "org AI spend" dashboard
+   * (session_id === OTel's session.id). See docs/ADVANCED.md § Companion mode.
+   */
+  readonly companionMode: boolean;
   readonly redactionPatterns: readonly RegExp[];
   readonly hookBufferPath: string;
   readonly storagePath: string;
@@ -160,6 +166,7 @@ export const ConfigFileSchema = z
     enabled: z.boolean().optional(),
     highSecurity: z.boolean().optional(),
     recordContent: z.boolean().optional(),
+    companionMode: z.boolean().optional(),
     storagePath: z.string().optional(),
     hookBufferPath: z.string().optional(),
     harvestEventsMs: z.number().optional(),
@@ -652,6 +659,13 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
     }
   }
 
+  // --- licenseKey: CLI has no flag for this, so env > file ---
+  // Hoisted ahead of mode resolution: an ambiguous licenseKey-without-mode
+  // config must fail closed instead of silently defaulting to 'cloud'.
+  const licenseKeyRaw =
+    process.env.NEW_RELIC_LICENSE_KEY ??
+    (typeof file.licenseKey === 'string' ? file.licenseKey : undefined);
+
   // --- Resolve mode early so we can gate licenseKey/accountId requirements ---
   // File mode is already validated by the zod schema in loadConfigFile.
   const isValidMode = (v: string | undefined): v is Mode =>
@@ -660,13 +674,22 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
   if (envMode !== undefined && envMode !== '' && !isValidMode(envMode)) {
     throw new Error(`Invalid NR_AI_MODE='${envMode}'. Must be one of: ${VALID_MODES.join(', ')}.`);
   }
-  const mode: Mode =
-    (isValidMode(envMode) ? envMode : undefined) ?? (file.mode as Mode | undefined) ?? 'cloud';
+  const fileMode = file.mode as Mode | undefined;
+  let mode: Mode;
+  if (isValidMode(envMode)) {
+    mode = envMode;
+  } else if (fileMode !== undefined) {
+    mode = fileMode;
+  } else if (licenseKeyRaw) {
+    // Local-first default (README): telemetry export is opt-in, so a config
+    // with credentials but no explicit mode must not silently export.
+    throw new Error(
+      'Config has a licenseKey but no explicit mode. Telemetry export is opt-in: set "mode": "cloud" (or "both") in the config file, set NR_AI_MODE, or remove the credentials for local-only use. Previous versions implicitly defaulted to cloud.',
+    );
+  } else {
+    mode = 'local';
+  }
 
-  // --- licenseKey: CLI has no flag for this, so env > file ---
-  const licenseKeyRaw =
-    process.env.NEW_RELIC_LICENSE_KEY ??
-    (typeof file.licenseKey === 'string' ? file.licenseKey : undefined);
   if (mode !== 'local' && !licenseKeyRaw) {
     throw new Error(
       `Missing required configuration: licenseKey (mode='${mode}'). ` +
@@ -764,6 +787,11 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
         'NEW_RELIC_AI_MCP_RECORD_CONTENT',
         typeof file.recordContent === 'boolean' ? file.recordContent : false,
       ),
+    ),
+
+    companionMode: envBool(
+      'NR_AI_COMPANION_MODE',
+      typeof file.companionMode === 'boolean' ? file.companionMode : false,
     ),
 
     redactionPatterns: DEFAULT_REDACTION_PATTERNS,
