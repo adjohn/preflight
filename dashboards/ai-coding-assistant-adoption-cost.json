@@ -1082,7 +1082,7 @@
             "id": "viz.markdown"
           },
           "rawConfiguration": {
-            "text": "Adoption momentum over 8 weeks and a 60-day look at who is compounding value. Leaderboards are normalized by **active days** (days with at least one recorded task), so a quiet calendar week is not mistaken for a productivity drop. Coding tasks are the output unit: one task is a detected unit of work (a feature, fix, or investigation inside a session). **Git outcomes** (bottom rows) read the `ai.git.*` gauges added in Preflight #484 and the rejection signal from #485 — both need a Preflight release newer than 1.16.3. The gauges are per-session running totals, so tables show per-session maxima and Cost per PR divides one sum by another (both sums snapshot at the same cadence, so the ratio holds). Edit accept rate counts Edit/Write calls without a 'rejected'/'denied'/'interrupted' error_type. The **Model × Task Type** rows read the `outcome_type` and `model` attributes added to AiCodingTask in #549 — tasks recorded by older Preflight versions appear without them."
+            "text": "Adoption momentum over 8 weeks and a 60-day look at who is compounding value. Leaderboards are normalized by **active days** (days with at least one recorded task), so a quiet calendar week is not mistaken for a productivity drop. Coding tasks are the output unit: one task is a detected unit of work (a feature, fix, or investigation inside a session). **Git outcomes** (bottom rows) read the `ai.git.*` gauges added in Preflight #484 and the rejection signal from #485 — both need a Preflight release newer than 1.16.3. The gauges are per-session running totals, so tables show per-session maxima and Cost per PR divides one sum by another (both sums snapshot at the same cadence, so the ratio holds). Edit accept rate counts Edit/Write calls without a 'rejected'/'denied'/'interrupted' error_type. Model-level drill-down lives on the **Models** page."
           }
         },
         {
@@ -1572,41 +1572,33 @@
               "zero": true
             }
           }
-        },
+        }
+      ]
+    },
+    {
+      "name": "Models",
+      "description": null,
+      "widgets": [
         {
-          "title": "Model × Task Type (30d)",
+          "title": "Reading This Page",
           "layout": {
             "column": 1,
-            "row": 27,
+            "row": 1,
             "width": 12,
-            "height": 4
+            "height": 2
           },
           "visualization": {
-            "id": "viz.table"
+            "id": "viz.markdown"
           },
           "rawConfiguration": {
-            "facet": {
-              "showOtherSeries": false
-            },
-            "legend": {
-              "enabled": true
-            },
-            "nrqlQueries": [
-              {
-                "accountIds": [],
-                "query": "FROM AiCodingTask SELECT count(*) AS 'Tasks', average(estimated_cost_usd) AS 'Avg Cost (USD)', average(duration_ms) / 60000 AS 'Avg Minutes', percentage(count(*), WHERE tests_passed > 0 OR tests_run = 0) AS 'Success %' FACET model, outcome_type SINCE 30 days ago LIMIT 100"
-              }
-            ],
-            "platformOptions": {
-              "ignoreTimeRange": false
-            }
+            "text": "Which models are working best for which work. Task-level widgets read the `model` and `outcome_type` attributes added to `AiCodingTask` in Preflight #549 — tasks from older versions appear without them, and a task that switched models mid-flight attributes wholly to the model active at completion. Cache Hit % reads `ai.cost.*` gauges, which exist only when a live server exports metrics. Success % counts tasks whose last test run passed (or that ran no tests)."
           }
         },
         {
-          "title": "Cost by Task Type (30d)",
+          "title": "Cost by Model (30d)",
           "layout": {
             "column": 1,
-            "row": 31,
+            "row": 3,
             "width": 4,
             "height": 3
           },
@@ -1623,7 +1615,65 @@
             "nrqlQueries": [
               {
                 "accountIds": [],
-                "query": "FROM AiCodingTask SELECT sum(estimated_cost_usd) AS 'USD' FACET outcome_type SINCE 30 days ago"
+                "query": "FROM AiCodingTask SELECT sum(estimated_cost_usd) AS 'USD' FACET model SINCE 30 days ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Daily Cost by Model",
+          "layout": {
+            "column": 5,
+            "row": 3,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.stacked-bar"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM AiCodingTask SELECT sum(estimated_cost_usd) AS 'USD' FACET model SINCE 30 days ago TIMESERIES 1 day"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Tasks by Model (30d)",
+          "layout": {
+            "column": 9,
+            "row": 3,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM AiCodingTask SELECT count(*) AS 'Tasks' FACET model SINCE 30 days ago"
               }
             ],
             "platformOptions": {
@@ -1634,8 +1684,8 @@
         {
           "title": "Avg Cost per Task by Model (30d)",
           "layout": {
-            "column": 5,
-            "row": 31,
+            "column": 1,
+            "row": 6,
             "width": 4,
             "height": 3
           },
@@ -1661,10 +1711,68 @@
           }
         },
         {
-          "title": "Task Success % by Model (30d)",
+          "title": "Tokens per Task by Model (30d)",
+          "layout": {
+            "column": 5,
+            "row": 6,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM AiCodingTask SELECT average(tokens_used) AS 'Tokens / Task' FACET model SINCE 30 days ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Avg Task Minutes by Model (30d)",
           "layout": {
             "column": 9,
-            "row": 31,
+            "row": 6,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM AiCodingTask SELECT average(duration_ms) / 60000 AS 'Minutes / Task' FACET model SINCE 30 days ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Task Success % by Model (30d)",
+          "layout": {
+            "column": 1,
+            "row": 9,
             "width": 4,
             "height": 3
           },
@@ -1682,6 +1790,151 @@
               {
                 "accountIds": [],
                 "query": "FROM AiCodingTask SELECT percentage(count(*), WHERE tests_passed > 0 OR tests_run = 0) AS 'Success %' FACET model SINCE 30 days ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Cache Hit % by Model (7d)",
+          "layout": {
+            "column": 5,
+            "row": 9,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM Metric SELECT sum(ai.cost.tokens_cache_read) / (sum(ai.cost.tokens_input) + sum(ai.cost.tokens_cache_read)) * 100 AS 'Cache Hit %' FACET model SINCE 7 days ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Lines of Code per Dollar by Model (30d)",
+          "layout": {
+            "column": 9,
+            "row": 9,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM AiCodingTask SELECT sum(lines_added) / sum(estimated_cost_usd) AS 'Lines / USD' FACET model SINCE 30 days ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Model × Task Type (30d)",
+          "layout": {
+            "column": 1,
+            "row": 12,
+            "width": 12,
+            "height": 4
+          },
+          "visualization": {
+            "id": "viz.table"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM AiCodingTask SELECT count(*) AS 'Tasks', average(estimated_cost_usd) AS 'Avg Cost (USD)', average(duration_ms) / 60000 AS 'Avg Minutes', percentage(count(*), WHERE tests_passed > 0 OR tests_run = 0) AS 'Success %' FACET model, outcome_type SINCE 30 days ago LIMIT 100"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Developer × Model (30d)",
+          "layout": {
+            "column": 1,
+            "row": 16,
+            "width": 6,
+            "height": 4
+          },
+          "visualization": {
+            "id": "viz.table"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM AiCodingTask SELECT count(*) AS 'Tasks', sum(estimated_cost_usd) AS 'Cost (USD)', average(estimated_cost_usd) AS 'USD / Task' FACET developer, model SINCE 30 days ago LIMIT 100"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Cost by Task Type (30d)",
+          "layout": {
+            "column": 7,
+            "row": 16,
+            "width": 6,
+            "height": 4
+          },
+          "visualization": {
+            "id": "viz.pie"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM AiCodingTask SELECT sum(estimated_cost_usd) AS 'USD' FACET outcome_type SINCE 30 days ago"
               }
             ],
             "platformOptions": {
