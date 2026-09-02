@@ -26,6 +26,8 @@ import { VERSION } from '../version.js';
 import type { ToolCallRecord, SubagentTokenEvent } from '../storage/types.js';
 import type { ProxyToolCallRecord, ProxyRequestRecord } from '../proxy/types.js';
 import type { AiCodingTask } from '../metrics/task-detector.js';
+import type { OutcomeType } from '../metrics/cost-per-outcome.js';
+import { CostPerOutcomeAnalyzer } from '../metrics/cost-per-outcome.js';
 import type { WorkflowRunMetrics } from '../metrics/workflow-run-tracker.js';
 import type { AntiPattern } from '../metrics/anti-patterns.js';
 import type { ThrashingAlert } from '../metrics/retry-detector.js';
@@ -353,6 +355,10 @@ export function codingTaskToNrEvent(
     orgId?: string | null;
     /** See `NrIngestOptions.companionMode`. */
     companionMode?: boolean;
+    /** Outcome classification from `CostPerOutcomeAnalyzer.classifyOutcome()`. */
+    outcomeType?: OutcomeType;
+    /** Model active when the task completed, from `CostTracker.getMetrics().model`. */
+    model?: string | null;
   },
 ): NrEventData {
   const firstRecord = task.toolCalls[0];
@@ -391,6 +397,8 @@ export function codingTaskToNrEvent(
   if (attrs.teamId) event.team_id = attrs.teamId;
   if (attrs.projectId) event.project_id = attrs.projectId;
   if (attrs.orgId) event.org_id = attrs.orgId;
+  if (attrs.outcomeType) event.outcome_type = attrs.outcomeType;
+  if (attrs.model) event.model = attrs.model;
 
   // sessionTraceId is the resolved Claude Code session_id; the
   // firstRecord?.sessionId fallback was only meaningful when the MCP fabricated
@@ -895,6 +903,9 @@ export class NrIngestManager {
   private readonly sessionTracker: SessionTracker;
   private readonly proxyMetrics: ProxyMetricsTracker;
   private readonly costTracker?: CostTracker;
+  // classifyOutcome() reads only the task it's given, so one shared instance
+  // with default options serves every ingest.
+  private readonly outcomeAnalyzer = new CostPerOutcomeAnalyzer();
   private readonly efficiencyScorer?: EfficiencyScorer;
   private readonly feedbackCollector?: FeedbackCollector;
   private readonly apiFailureTracker?: ApiFailureTracker;
@@ -1171,6 +1182,8 @@ export class NrIngestManager {
       projectId: this.projectId,
       orgId: this.orgId,
       companionMode: this.companionMode,
+      outcomeType: this.outcomeAnalyzer.classifyOutcome(task),
+      model: this.costTracker?.getMetrics().model ?? null,
     });
     this.scheduler.addEvent(event);
   }
