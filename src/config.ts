@@ -51,6 +51,28 @@ export interface McpServerConfig {
   readonly nrApiKey: string | null;
   /** Path to a custom pricing JSON file, applied via `initPricing()`. See `NEW_RELIC_AI_CUSTOM_PRICING_FILE`. */
   readonly customPricingFile: string | null;
+  /**
+   * Flat discount multiplier (0 < x ≤ 1) applied to every dollar figure
+   * `CostTracker` computes, so an org's contracted rate is reflected instead
+   * of list price. Mirrors Claude Code's own `modelPricing.multiplier`
+   * semantics without reading Claude Code's managed settings directly —
+   * those are delivered through several mechanisms (server-managed,
+   * MDM, a `managed-settings.json` file, a policy helper), only one of which
+   * is a static file, and only the winning source is actually in effect, so
+   * auto-discovery would risk silently applying a stale/overridden rate.
+   * `null`/unset: no correction. See `NEW_RELIC_AI_COST_RATE_MULTIPLIER`.
+   */
+  readonly costRateMultiplier: number | null;
+  /**
+   * Applies the 1.1x US-only-inference premium Claude Code itself applies
+   * for data-residency workspaces (see
+   * https://platform.claude.com/docs/en/about-claude/pricing#data-residency-pricing),
+   * multiplicatively combined with `costRateMultiplier` when both are set.
+   * Preflight cannot detect residency-billed responses on its own (no hook
+   * or event exposes it), so this is an explicit opt-in, not automatic.
+   * See `NEW_RELIC_AI_DATA_RESIDENCY_PREMIUM`.
+   */
+  readonly dataResidencyPremium: boolean;
   readonly digestWebhookUrl: string | null;
   readonly digestSchedule: string; // cron expression, default: "0 9 * * 1" (Monday 9am)
   /** Default: 90. `null` disables retention (only reachable via an explicit `null` in config.json). */
@@ -158,6 +180,8 @@ export const ConfigFileSchema = z
     proxyUpstreams: z.array(z.unknown()).optional(),
     nrApiKey: z.string().nullable().optional(),
     customPricingFile: z.string().nullable().optional(),
+    costRateMultiplier: z.number().nullable().optional(),
+    dataResidencyPremium: z.boolean().optional(),
     digestWebhookUrl: z.string().nullable().optional(),
     digestSchedule: z.string().optional(),
     retainSessionsDays: z.number().nullable().optional(),
@@ -484,6 +508,24 @@ function validateFilePositiveNumber(value: number, fieldName: string): boolean {
     fieldName,
     value,
   });
+  return false;
+}
+
+// costRateMultiplier is a discount factor, not an arbitrary positive number —
+// mirrors the bound Claude Code itself enforces on modelPricing.multiplier
+// (docs/settings-reference#modelpricing: "greater than 0 and at most 1").
+// A value above 1 would silently inflate every cost figure, the opposite of
+// this field's purpose, so it gets its own validator rather than reusing
+// validateFilePositiveNumber.
+function validateFileRatio(value: number, fieldName: string): boolean {
+  if (Number.isFinite(value) && value > 0 && value <= 1) return true;
+  logger.warn(
+    `${fieldName} in config file must be a number greater than 0 and at most 1 — ignoring value`,
+    {
+      fieldName,
+      value,
+    },
+  );
   return false;
 }
 
@@ -850,6 +892,23 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
     customPricingFile:
       process.env.NEW_RELIC_AI_CUSTOM_PRICING_FILE ??
       (typeof file.customPricingFile === 'string' ? file.customPricingFile : null),
+
+    costRateMultiplier: (() => {
+      const raw = process.env.NEW_RELIC_AI_COST_RATE_MULTIPLIER;
+      if (raw !== undefined && raw !== '') {
+        const v = parseFloat(raw);
+        if (Number.isFinite(v) && v > 0 && v <= 1) return v;
+      }
+      if (typeof file.costRateMultiplier !== 'number') return null;
+      return validateFileRatio(file.costRateMultiplier, 'costRateMultiplier')
+        ? file.costRateMultiplier
+        : null;
+    })(),
+
+    dataResidencyPremium: envBool(
+      'NEW_RELIC_AI_DATA_RESIDENCY_PREMIUM',
+      typeof file.dataResidencyPremium === 'boolean' ? file.dataResidencyPremium : false,
+    ),
 
     digestWebhookUrl:
       process.env.NEW_RELIC_AI_DIGEST_WEBHOOK_URL ??

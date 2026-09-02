@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 2026-09-02
+
+### Added
+
+- **Preflight now supports correcting cost figures toward an organization's actual contracted rate.** Preflight previously computed every dollar figure from its own vendored public list-price table, with no way to reflect a negotiated discount or the data-residency inference premium — so for an org billed differently than list price, every cost figure was systematically off by a known amount. Two new config options close that gap: a flat discount multiplier, and a flag for the same 1.1× premium applied to data-residency workspaces.
+
 ## [1.31.0] - 2026-09-02
 
 ### Added
