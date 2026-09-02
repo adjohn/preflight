@@ -415,6 +415,9 @@ function processHook(raw) {
       outputSize: sizeOf(toolResponse),
       success: typeof responseSuccess === "boolean" ? responseSuccess : true
     };
+    if (typeof data.duration_ms === "number" && Number.isFinite(data.duration_ms) && data.duration_ms >= 0) {
+      event.nativeDurationMs = data.duration_ms;
+    }
     const postInputMeta = extractInputMeta(toolName, data.tool_input);
     if (postInputMeta !== void 0) event.toolInput = postInputMeta;
     const outputMeta = extractOutputMeta(toolName, toolResponse);
@@ -432,6 +435,9 @@ function processHook(raw) {
       error: redact(data.error ?? "unknown error"),
       isInterrupt: data.is_interrupt ?? false
     };
+    if (typeof data.duration_ms === "number" && Number.isFinite(data.duration_ms) && data.duration_ms >= 0) {
+      event.nativeDurationMs = data.duration_ms;
+    }
   } else if (eventName === "permissionrequest" || eventName === "permissiondenied") {
     if (typeof data.tool_use_id !== "string" || data.tool_use_id === "") {
       process.stderr.write(`[preflight-collector] Dropping ${eventName} without tool_use_id

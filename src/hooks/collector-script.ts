@@ -344,6 +344,24 @@ interface HookInput {
   transcript_path?: string;
   error?: string;
   is_interrupt?: boolean;
+  // PostToolUse/PostToolUseFailure (code.claude.com/docs/en/hooks.md): tool
+  // execution time in milliseconds, excluding permission-prompt wait time and
+  // PreToolUse hook execution — the number this collector's own pre/post
+  // wall-clock delta (event-processor.ts's durationMs computation) can't
+  // separate out on its own. Read below and preferred over that delta when
+  // present and valid.
+  //
+  // The posttooluse/posttoolusefailure branches below are shared by every
+  // platform using this uniform hook envelope (Kiro, Amazon Q, Droid, Codex,
+  // VS Code Copilot — see ADAPTERS.md), so this field is read the same way
+  // regardless of sender. Confirmed against Factory Droid's own hooks
+  // reference that its PostToolUse payload carries no duration_ms at all, so
+  // the wall-clock fallback applies cleanly there; not independently
+  // confirmed for the others. If a platform other than Claude Code is later
+  // found to send duration_ms with different semantics (e.g. including
+  // permission-prompt wait), this generic read would need to become
+  // platform-aware.
+  duration_ms?: number;
   // StopFailure (code.claude.com/docs/en/hooks.md) reuses `error` above for its
   // closed error-type enum and adds these two free-text fields: error_details
   // ("when available", no strict type — string or an object to JSON.stringify)
@@ -709,6 +727,14 @@ function processHook(raw: string): void {
       success: typeof responseSuccess === 'boolean' ? responseSuccess : true,
     };
 
+    if (
+      typeof data.duration_ms === 'number' &&
+      Number.isFinite(data.duration_ms) &&
+      data.duration_ms >= 0
+    ) {
+      event.nativeDurationMs = data.duration_ms;
+    }
+
     // Store input metadata as fallback for orphaned-post pairing (pre-event may be missing)
     const postInputMeta = extractInputMeta(toolName, data.tool_input);
     if (postInputMeta !== undefined) event.toolInput = postInputMeta;
@@ -731,6 +757,14 @@ function processHook(raw: string): void {
       error: redact(data.error ?? 'unknown error'),
       isInterrupt: data.is_interrupt ?? false,
     };
+
+    if (
+      typeof data.duration_ms === 'number' &&
+      Number.isFinite(data.duration_ms) &&
+      data.duration_ms >= 0
+    ) {
+      event.nativeDurationMs = data.duration_ms;
+    }
   } else if (eventName === 'permissionrequest' || eventName === 'permissiondenied') {
     // A user rejection produces no hook event of its own — the processor
     // infers it from a permission-requested pre that never completes, and can

@@ -136,6 +136,51 @@ describe('HookEventProcessor', () => {
       expect(record.sessionId).toBe('sess-001');
       expect(record.id).toMatch(/^[0-9a-f-]{36}$/);
       expect(record.timestamp).toBe(1000);
+      expect(record.permissionWaitMs).toBeNull();
+    });
+
+    it('prefers the native duration_ms over the pre/post wall-clock delta, and reports the gap as permissionWaitMs', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      // Wall-clock delta is 500ms (a permission prompt sat in the middle),
+      // but the tool itself only ran for 40ms per Claude Code's own report.
+      processor.processEvents([
+        makePreEvent({ timestamp: 1000 }),
+        makePostEvent({ timestamp: 1500, nativeDurationMs: 40 }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.durationMs).toBe(40);
+      expect(record.permissionWaitMs).toBe(460);
+    });
+
+    it('falls back to the wall-clock delta when nativeDurationMs is absent', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ timestamp: 1000 }),
+        makePostEvent({ timestamp: 1500 }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.durationMs).toBe(500);
+      expect(record.permissionWaitMs).toBeNull();
+    });
+
+    it('clamps permissionWaitMs to 0 when the native duration exceeds the wall-clock delta', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      // Pathological clock skew: native duration reported larger than the
+      // wall-clock gap this collector observed between the two hooks.
+      processor.processEvents([
+        makePreEvent({ timestamp: 1000 }),
+        makePostEvent({ timestamp: 1050, nativeDurationMs: 90 }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.durationMs).toBe(90);
+      expect(record.permissionWaitMs).toBe(0);
     });
 
     it('includes inputSizeBytes, outputSizeBytes, and inputHash', () => {
@@ -222,6 +267,21 @@ describe('HookEventProcessor', () => {
       expect(record.durationMs).toBeNull();
       expect(record.success).toBe(true);
       expect(record.outputSizeBytes).toBe(512);
+    });
+
+    it('still reports durationMs from nativeDurationMs even with no matching pre-event', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePostEvent({
+          toolUseId: 'toolu_orphan_native',
+          timestamp: 2000,
+          nativeDurationMs: 75,
+        }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.durationMs).toBe(75);
     });
   });
 
