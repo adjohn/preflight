@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] - 2026-09-02
+
+### Added
+
+- **Preflight now understands when a resumed session's cost spike was expected.** Claude Code's `SessionStart` hook reports how long a session had been idle and its own estimate of what re-warming the prompt cache will cost when resuming a stale conversation. Preflight now surfaces that context alongside its cost forecast, so a resume-driven spike has an explanation attached instead of appearing as an unexplained cache-hit dip.
+
 ## [1.29.0] - 2026-09-02
 
 ### Added
