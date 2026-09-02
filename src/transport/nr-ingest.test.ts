@@ -309,6 +309,24 @@ describe('toolCallToNrEvent()', () => {
     expect(event.platform).toBe('cursor');
   });
 
+  it('maps agentId/agentType to snake_case agent_id/agent_type', () => {
+    const record = makeRecord({ agentId: 'agent-abc123', agentType: 'general-purpose' });
+    const event = toolCallToNrEvent(record, { developer: 'd', appName: 'a' });
+
+    expect(event.agent_id).toBe('agent-abc123');
+    expect(event.agent_type).toBe('general-purpose');
+    expect(event.agentId).toBeUndefined();
+    expect(event.agentType).toBeUndefined();
+  });
+
+  it('omits agent_id/agent_type when the record carries none (parent-session call)', () => {
+    const record = makeRecord();
+    const event = toolCallToNrEvent(record, { developer: 'd', appName: 'a' });
+
+    expect(event.agent_id).toBeUndefined();
+    expect(event.agent_type).toBeUndefined();
+  });
+
   it('skips null and undefined values', () => {
     const record = makeRecord({
       durationMs: null,
