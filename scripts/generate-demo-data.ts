@@ -14,7 +14,7 @@
  *
  * Usage:
  *   NEW_RELIC_LICENSE_KEY=...NRAL NEW_RELIC_ACCOUNT_ID=12345 \
- *     npx tsx scripts/generate-demo-data.ts [--hours 46] [--seed 7] [--dry-run]
+ *     npx tsx scripts/generate-demo-data.ts [--hours 46] [--seed 7] [--dry-run] [--eu | --staging]
  *
  * Requires an ingest license key (...NRAL), not a User API key.
  */
@@ -245,7 +245,27 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-function parseArgs(): { hours: number; seed: number; dryRun: boolean } {
+export interface IngestEndpoints {
+  readonly eventsHost: string;
+  readonly metricsHost: string;
+}
+
+const REGIONS: Readonly<Record<string, IngestEndpoints>> = {
+  us: {
+    eventsHost: 'https://insights-collector.newrelic.com',
+    metricsHost: 'https://metric-api.newrelic.com',
+  },
+  eu: {
+    eventsHost: 'https://insights-collector.eu01.nr-data.net',
+    metricsHost: 'https://metric-api.eu.newrelic.com',
+  },
+  staging: {
+    eventsHost: 'https://staging-insights-collector.newrelic.com',
+    metricsHost: 'https://staging-metric-api.newrelic.com',
+  },
+};
+
+function parseArgs(): { hours: number; seed: number; dryRun: boolean; region: IngestEndpoints } {
   const args = process.argv.slice(2);
   const valueOf = (flag: string, fallback: number): number => {
     const i = args.indexOf(flag);
@@ -254,15 +274,17 @@ function parseArgs(): { hours: number; seed: number; dryRun: boolean } {
     if (!Number.isFinite(n) || n <= 0) throw new Error(`invalid value for ${flag}`);
     return n;
   };
+  const region = args.includes('--staging') ? 'staging' : args.includes('--eu') ? 'eu' : 'us';
   return {
     hours: Math.min(valueOf('--hours', 46), 47),
     seed: valueOf('--seed', 7),
     dryRun: args.includes('--dry-run'),
+    region: REGIONS[region],
   };
 }
 
 function main(): Promise<void> {
-  const { hours, seed, dryRun } = parseArgs();
+  const { hours, seed, dryRun, region } = parseArgs();
   const licenseKey = process.env.NEW_RELIC_LICENSE_KEY;
   const accountId = process.env.NEW_RELIC_ACCOUNT_ID;
   if (!dryRun && (!licenseKey || !accountId)) {
@@ -474,13 +496,13 @@ function main(): Promise<void> {
     }
   }
 
-  return send(events, metrics, { licenseKey, accountId, dryRun });
+  return send(events, metrics, { licenseKey, accountId, dryRun, region });
 }
 
 async function send(
   events: EventRow[],
   metrics: MetricRow[],
-  opts: { licenseKey?: string; accountId?: string; dryRun: boolean },
+  opts: { licenseKey?: string; accountId?: string; dryRun: boolean; region: IngestEndpoints },
 ): Promise<void> {
   const byType = new Map<string, number>();
   for (const e of events) {
@@ -512,15 +534,13 @@ async function send(
   const BATCH = 1000;
   for (let i = 0; i < events.length; i += BATCH) {
     await post(
-      `https://insights-collector.newrelic.com/v1/accounts/${opts.accountId}/events`,
+      `${opts.region.eventsHost}/v1/accounts/${opts.accountId}/events`,
       events.slice(i, i + BATCH),
     );
   }
   console.error(`Sent ${events.length} events.`);
   for (let i = 0; i < metrics.length; i += BATCH) {
-    await post('https://metric-api.newrelic.com/metric/v1', [
-      { metrics: metrics.slice(i, i + BATCH) },
-    ]);
+    await post(`${opts.region.metricsHost}/metric/v1`, [{ metrics: metrics.slice(i, i + BATCH) }]);
   }
   console.error(`Sent ${metrics.length} metric data points.`);
   console.error('\nData is queryable within a minute or two. Widgets with 7d/30d windows fill');
