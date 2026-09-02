@@ -1,6 +1,8 @@
 interface HookEventBase {
   readonly tool: string;
   readonly timestamp: number;
+  /** True originating platform, stamped by collector-script.ts at write time. */
+  readonly platform?: string;
 }
 
 /**
@@ -41,6 +43,38 @@ export interface PostHookEvent extends HookEventBase {
   readonly agentId?: string;
   /** The subagent's type, or the session's `--agent` type. */
   readonly agentType?: string;
+  /**
+   * Claude Code's own reported tool-execution time (ms), excluding
+   * permission-prompt wait time and PreToolUse hook execution. When present,
+   * `HookEventProcessor` prefers this over the pre/post wall-clock delta for
+   * `ToolCallRecord.durationMs`, and derives `permissionWaitMs` from the gap
+   * between the two.
+   */
+  readonly nativeDurationMs?: number;
+}
+
+/**
+ * Emitted when a gated tool call awaits user approval (Claude Code's
+ * PermissionRequest hook). Marks the pending `PreHookEvent` with the same
+ * toolUseId as permission-requested; a rejection produces no further hook
+ * event, so `HookEventProcessor` infers it when the marked entry expires.
+ */
+export interface PermissionRequestHookEvent extends HookEventBase {
+  readonly mode: 'permission_request';
+  readonly toolUseId: string;
+  readonly sessionId?: string;
+}
+
+/**
+ * Emitted when auto permission mode denies a tool call by policy (Claude
+ * Code's PermissionDenied hook). Completes the pending `PreHookEvent` with
+ * the same toolUseId as errorType 'denied'.
+ */
+export interface PermissionDeniedHookEvent extends HookEventBase {
+  readonly mode: 'permission_denied';
+  readonly toolUseId: string;
+  readonly sessionId?: string;
+  readonly deniedReason?: string;
 }
 
 /** Emitted per LLM API turn with token usage; feeds CostTracker. */
@@ -109,13 +143,16 @@ export interface ApiFailureHookEvent extends HookEventBase {
 
 /**
  * Buffer line discriminated union. `pre`/`post`/`token` are the original
- * collector modes. `subagent_token`, `workflow_run`, and
- * `observability_health` are emitted by the SubagentWatcher / WorkflowWatcher.
+ * collector modes; `permission_request`/`permission_denied` are collector
+ * modes for Claude Code's permission hooks. `subagent_token`, `workflow_run`,
+ * and `observability_health` are emitted by the SubagentWatcher / WorkflowWatcher.
  * `api_failure` is emitted by the collector for Claude Code's StopFailure hook.
  */
 export type HookEvent =
   | PreHookEvent
   | PostHookEvent
+  | PermissionRequestHookEvent
+  | PermissionDeniedHookEvent
   | TokenHookEvent
   | SubagentTokenHookEvent
   | WorkflowRunEvent
@@ -149,7 +186,24 @@ export interface ToolCallRecord {
   readonly toolName: string;
   readonly toolUseId: string;
   readonly timestamp: number;
+  /**
+   * Tool execution time. Sourced from Claude Code's own `duration_ms` (see
+   * `PostHookEvent.nativeDurationMs`) when available — excludes
+   * permission-prompt wait time and PreToolUse hook execution. Falls back to
+   * the pre/post hook wall-clock delta on platforms/versions that don't send
+   * `duration_ms`, in which case it still includes that wait time.
+   */
   readonly durationMs: number | null;
+  /**
+   * Wall-clock time this tool call spent on permission-prompt/PreToolUse-hook
+   * overhead, i.e. the gap `durationMs` above deliberately excludes: the
+   * pre/post wall-clock delta minus the native `duration_ms`. `null` when no
+   * native `duration_ms` was available to decompose against (in that case
+   * `durationMs` itself is the undecomposed wall-clock delta, not 0 overhead).
+   * A local single-developer dashboard is the intended consumer — this is
+   * "time spent waiting on you", not a tool-speed metric.
+   */
+  readonly permissionWaitMs?: number | null;
   readonly success: boolean;
   readonly errorType?: string;
   readonly error?: string;

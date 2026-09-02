@@ -199,6 +199,26 @@ describe('collector-script', () => {
       expect(event.toolUseId).toBe('toolu_abc123');
     });
 
+    it('stamps event.platform from MCP_CLIENT when explicitly set', () => {
+      process.env.MCP_CLIENT = 'copilot-sdk';
+      processHook(makePreToolUse());
+
+      expect(readBufferEvents()[0]!.platform).toBe('copilot-sdk');
+    });
+
+    it('stamps event.platform from NEW_RELIC_AI_PLATFORM when MCP_CLIENT is absent', () => {
+      process.env.NEW_RELIC_AI_PLATFORM = 'cursor';
+      processHook(makePreToolUse());
+
+      expect(readBufferEvents()[0]!.platform).toBe('cursor');
+    });
+
+    it('leaves event.platform unset for a genuine Claude Code hook with no explicit platform override', () => {
+      processHook(makePreToolUse());
+
+      expect(readBufferEvents()[0]!.platform).toBeUndefined();
+    });
+
     it('captures transcript_path as transcriptPath', () => {
       processHook(makePreToolUse({ transcript_path: '/tmp/fake-session.jsonl' }));
 
@@ -509,6 +529,28 @@ describe('collector-script', () => {
       expect(event.sessionId).toBe('sess-001');
       expect(event.toolUseId).toBe('toolu_def456');
     });
+
+    it('captures native duration_ms as nativeDurationMs', () => {
+      processHook(makePostToolUse({ duration_ms: 842 }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.nativeDurationMs).toBe(842);
+    });
+
+    it('omits nativeDurationMs when duration_ms is absent', () => {
+      processHook(makePostToolUse());
+
+      const event = readBufferEvents()[0]!;
+      expect(event.nativeDurationMs).toBeUndefined();
+    });
+
+    it('ignores an invalid duration_ms (negative, NaN, or non-number)', () => {
+      processHook(makePostToolUse({ duration_ms: -5 }));
+      expect(readBufferEvents()[0]!.nativeDurationMs).toBeUndefined();
+
+      processHook(makePostToolUse({ duration_ms: 'not-a-number' }));
+      expect(readBufferEvents()[1]!.nativeDurationMs).toBeUndefined();
+    });
   });
 
   describe('processHook() — PostToolUseFailure', () => {
@@ -524,6 +566,13 @@ describe('collector-script', () => {
       expect(event.success).toBe(false);
       expect(event.error).toBe('Command exited with non-zero status code 1');
       expect(event.isInterrupt).toBe(false);
+    });
+
+    it('captures native duration_ms as nativeDurationMs', () => {
+      processHook(makePostToolUseFailure({ duration_ms: 1337 }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.nativeDurationMs).toBe(1337);
     });
 
     it('captures is_interrupt flag when true', () => {
@@ -615,6 +664,90 @@ describe('collector-script', () => {
 
       const event = readBufferEvents()[0]!;
       expect(event.errorType).toBe('unknown');
+    });
+  });
+
+  describe('processHook() — PermissionRequest / PermissionDenied', () => {
+    it('writes a permission_request event with toolUseId and sessionId', () => {
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'PermissionRequest',
+          tool_name: 'Bash',
+          tool_input: { command: 'rm -rf build' },
+          tool_use_id: 'toolu_perm1',
+          session_id: 'sess-001',
+          prompt_id: 'prompt-001',
+          cwd: '/projects/test',
+          permission_mode: 'default',
+        }),
+      );
+
+      const events = readBufferEvents();
+      expect(events).toHaveLength(1);
+      const event = events[0]!;
+      expect(event.mode).toBe('permission_request');
+      expect(event.tool).toBe('Bash');
+      expect(event.toolUseId).toBe('toolu_perm1');
+      expect(event.sessionId).toBe('sess-001');
+      expect(event.timestamp).toEqual(expect.any(Number));
+    });
+
+    it('writes a permission_denied event carrying a redacted deniedReason', () => {
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'PermissionDenied',
+          tool_name: 'Bash',
+          tool_use_id: 'toolu_perm2',
+          session_id: 'sess-001',
+          denied_reason: 'Blocked by policy: Bearer eyJhbGciOiJIUzI1NiJ9.token.signature',
+        }),
+      );
+
+      const events = readBufferEvents();
+      expect(events).toHaveLength(1);
+      const event = events[0]!;
+      expect(event.mode).toBe('permission_denied');
+      expect(event.tool).toBe('Bash');
+      expect(event.toolUseId).toBe('toolu_perm2');
+      expect(event.deniedReason).toContain('Blocked by policy');
+      expect(event.deniedReason).toContain('[REDACTED]');
+      expect(event.deniedReason).not.toContain('eyJhbGciOiJIUzI1NiJ9');
+    });
+
+    it('drops a permission event with no tool_use_id without crashing', () => {
+      const stderrWriteSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'PermissionRequest',
+          tool_name: 'Bash',
+          session_id: 'sess-001',
+        }),
+      );
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'PermissionDenied',
+          tool_name: 'Bash',
+          tool_use_id: '',
+          session_id: 'sess-001',
+        }),
+      );
+
+      expect(readBufferEvents()).toHaveLength(0);
+      expect(stderrWriteSpy).toHaveBeenCalledTimes(2);
+      stderrWriteSpy.mockRestore();
+    });
+
+    it('never writes hook decision output to stdout', () => {
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'PermissionRequest',
+          tool_name: 'Bash',
+          tool_use_id: 'toolu_perm3',
+          session_id: 'sess-001',
+        }),
+      );
+
+      expect(stdoutSpy).not.toHaveBeenCalled();
     });
   });
 

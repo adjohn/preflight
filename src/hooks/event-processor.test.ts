@@ -5,7 +5,14 @@ import { tmpdir } from 'node:os';
 import { LocalStore } from '../storage/local-store.js';
 import { HookEventProcessor, DedupRingRegistry } from './event-processor.js';
 import { AntigravityAdapter } from '../platforms/antigravity-adapter.js';
-import type { HookEvent, PreHookEvent, PostHookEvent, ToolCallRecord } from '../storage/types.js';
+import type {
+  HookEvent,
+  PermissionDeniedHookEvent,
+  PermissionRequestHookEvent,
+  PreHookEvent,
+  PostHookEvent,
+  ToolCallRecord,
+} from '../storage/types.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let tmpDir: string;
@@ -76,6 +83,33 @@ function makeFailureEvent(overrides?: Partial<Omit<PostHookEvent, 'mode'>>): Pos
   };
 }
 
+function makePermissionRequestEvent(
+  overrides?: Partial<Omit<PermissionRequestHookEvent, 'mode'>>,
+): PermissionRequestHookEvent {
+  return {
+    mode: 'permission_request',
+    tool: 'Read',
+    timestamp: 1001,
+    toolUseId: 'toolu_001',
+    sessionId: 'sess-001',
+    ...overrides,
+  };
+}
+
+function makePermissionDeniedEvent(
+  overrides?: Partial<Omit<PermissionDeniedHookEvent, 'mode'>>,
+): PermissionDeniedHookEvent {
+  return {
+    mode: 'permission_denied',
+    tool: 'Read',
+    timestamp: 1002,
+    toolUseId: 'toolu_001',
+    sessionId: 'sess-001',
+    deniedReason: 'Blocked by permission rules',
+    ...overrides,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -102,6 +136,51 @@ describe('HookEventProcessor', () => {
       expect(record.sessionId).toBe('sess-001');
       expect(record.id).toMatch(/^[0-9a-f-]{36}$/);
       expect(record.timestamp).toBe(1000);
+      expect(record.permissionWaitMs).toBeNull();
+    });
+
+    it('prefers the native duration_ms over the pre/post wall-clock delta, and reports the gap as permissionWaitMs', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      // Wall-clock delta is 500ms (a permission prompt sat in the middle),
+      // but the tool itself only ran for 40ms per Claude Code's own report.
+      processor.processEvents([
+        makePreEvent({ timestamp: 1000 }),
+        makePostEvent({ timestamp: 1500, nativeDurationMs: 40 }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.durationMs).toBe(40);
+      expect(record.permissionWaitMs).toBe(460);
+    });
+
+    it('falls back to the wall-clock delta when nativeDurationMs is absent', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ timestamp: 1000 }),
+        makePostEvent({ timestamp: 1500 }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.durationMs).toBe(500);
+      expect(record.permissionWaitMs).toBeNull();
+    });
+
+    it('clamps permissionWaitMs to 0 when the native duration exceeds the wall-clock delta', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      // Pathological clock skew: native duration reported larger than the
+      // wall-clock gap this collector observed between the two hooks.
+      processor.processEvents([
+        makePreEvent({ timestamp: 1000 }),
+        makePostEvent({ timestamp: 1050, nativeDurationMs: 90 }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.durationMs).toBe(90);
+      expect(record.permissionWaitMs).toBe(0);
     });
 
     it('includes inputSizeBytes, outputSizeBytes, and inputHash', () => {
@@ -241,6 +320,21 @@ describe('HookEventProcessor', () => {
       const record = records[0]!;
       expect(record.agentId).toBe('agent-ghi789');
       expect(record.agentType).toBe('general-purpose');
+    });
+
+    it('still reports durationMs from nativeDurationMs even with no matching pre-event', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePostEvent({
+          toolUseId: 'toolu_orphan_native',
+          timestamp: 2000,
+          nativeDurationMs: 75,
+        }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.durationMs).toBe(75);
     });
   });
 
@@ -424,6 +518,235 @@ describe('HookEventProcessor', () => {
 
       const tools = records.map((r) => r.toolName).sort();
       expect(tools).toEqual(['Read', 'Write']);
+    });
+  });
+
+  describe('permission lifecycle — denied', () => {
+    it('completes a pending pre as errorType "denied" on PermissionDenied (auto mode, no request)', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ tool: 'Bash', toolUseId: 'toolu_d1', timestamp: 1000 }),
+        makePermissionDeniedEvent({ toolUseId: 'toolu_d1', timestamp: 1005 }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.toolName).toBe('Bash');
+      expect(record.toolUseId).toBe('toolu_d1');
+      expect(record.success).toBe(false);
+      expect(record.errorType).toBe('denied');
+      expect(record.error).toBe('Blocked by permission rules');
+      expect(record.durationMs).toBeNull();
+      expect(processor.pendingCount).toBe(0);
+    });
+
+    it('completes a permission-requested pre as "denied" (request → denied)', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ toolUseId: 'toolu_d2', timestamp: 1000 }),
+        makePermissionRequestEvent({ toolUseId: 'toolu_d2', timestamp: 1001 }),
+        makePermissionDeniedEvent({ toolUseId: 'toolu_d2', timestamp: 1010 }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      expect(records[0]!.errorType).toBe('denied');
+      expect(processor.pendingCount).toBe(0);
+    });
+
+    it('drops a PermissionDenied without a pending pre — no synthesized record', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([makePermissionDeniedEvent({ toolUseId: 'toolu_unmatched' })]);
+
+      expect(records).toHaveLength(0);
+      expect(processor.pendingCount).toBe(0);
+    });
+
+    it('carries cwd, transcriptPath, permissionMode, and platform from the pre-event onto the denied record', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({
+          toolUseId: 'toolu_d3',
+          timestamp: 1000,
+          cwd: '/projects/test',
+          transcriptPath: '/tmp/fake-transcript.jsonl',
+          permissionMode: 'default',
+          platform: 'claude-code',
+        }),
+        makePermissionDeniedEvent({ toolUseId: 'toolu_d3', timestamp: 1005 }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.cwd).toBe('/projects/test');
+      expect(record.transcriptPath).toBe('/tmp/fake-transcript.jsonl');
+      expect(record.permissionMode).toBe('default');
+      expect(record.platform).toBe('claude-code');
+    });
+  });
+
+  describe('permission lifecycle — rejection inferred from sweep', () => {
+    it('drops a PermissionRequest without a pending pre', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([makePermissionRequestEvent({ toolUseId: 'toolu_unmatched' })]);
+
+      expect(records).toHaveLength(0);
+      expect(processor.pendingCount).toBe(0);
+    });
+
+    it('sweeps a bare orphan as "timeout" at the 60s TTL, unchanged', () => {
+      jest.useFakeTimers();
+      try {
+        const processor = new HookEventProcessor({ store, onRecord, pollIntervalMs: 1000 });
+        processor.start();
+        processor.processEvents([makePreEvent({ toolUseId: 'toolu_bare', timestamp: Date.now() })]);
+
+        jest.advanceTimersByTime(59_000);
+        expect(records).toHaveLength(0);
+
+        jest.advanceTimersByTime(2_000);
+        expect(records).toHaveLength(1);
+        expect(records[0]!.errorType).toBe('timeout');
+        expect(records[0]!.success).toBe(false);
+        processor.stop();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('sweeps a permission-requested orphan as "rejected" only after the 5-minute TTL', () => {
+      jest.useFakeTimers();
+      try {
+        const processor = new HookEventProcessor({ store, onRecord, pollIntervalMs: 1000 });
+        processor.start();
+        processor.processEvents([
+          makePreEvent({ tool: 'Bash', toolUseId: 'toolu_rej', timestamp: Date.now() }),
+          makePermissionRequestEvent({ toolUseId: 'toolu_rej', timestamp: Date.now() }),
+        ]);
+
+        // Outlives the plain 60s orphan TTL — the prompt is still open.
+        jest.advanceTimersByTime(61_000);
+        expect(records).toHaveLength(0);
+
+        jest.advanceTimersByTime(240_000);
+        expect(records).toHaveLength(1);
+        const record = records[0]!;
+        expect(record.errorType).toBe('rejected');
+        expect(record.success).toBe(false);
+        expect(record.durationMs).toBeNull();
+        expect(record.toolName).toBe('Bash');
+        processor.stop();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('handles an approval later than the TTL as a post-without-pre record', () => {
+      jest.useFakeTimers();
+      try {
+        const processor = new HookEventProcessor({ store, onRecord, pollIntervalMs: 1000 });
+        processor.start();
+        processor.processEvents([
+          makePreEvent({ toolUseId: 'toolu_late', timestamp: Date.now() }),
+          makePermissionRequestEvent({ toolUseId: 'toolu_late', timestamp: Date.now() }),
+        ]);
+
+        jest.advanceTimersByTime(301_000);
+        expect(records).toHaveLength(1);
+        expect(records[0]!.errorType).toBe('rejected');
+
+        // The user approves after the sweep — the post arrives with no pending pre.
+        processor.processEvents([
+          makePostEvent({ toolUseId: 'toolu_late', timestamp: Date.now() }),
+        ]);
+
+        expect(records).toHaveLength(2);
+        const lateRecord = records[1]!;
+        expect(lateRecord.toolUseId).toBe('toolu_late');
+        expect(lateRecord.durationMs).toBeNull();
+        expect(lateRecord.success).toBe(true);
+        processor.stop();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('stop() flushes a permission-requested entry as "rejected", not "timeout"', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ toolUseId: 'toolu_flush', timestamp: 1000 }),
+        makePermissionRequestEvent({ toolUseId: 'toolu_flush', timestamp: 1001 }),
+      ]);
+      processor.stop();
+
+      expect(records).toHaveLength(1);
+      expect(records[0]!.errorType).toBe('rejected');
+    });
+
+    it('pairs normally when the user approves within the TTL — the common case', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ tool: 'Bash', toolUseId: 'toolu_approved', timestamp: 1000 }),
+        makePermissionRequestEvent({ toolUseId: 'toolu_approved', timestamp: 1001 }),
+        makePostEvent({ toolUseId: 'toolu_approved', timestamp: 1500 }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.toolName).toBe('Bash');
+      expect(record.success).toBe(true);
+      expect(record.errorType).toBeUndefined();
+      expect(record.durationMs).toBe(500);
+      expect(processor.pendingCount).toBe(0);
+    });
+  });
+
+  describe('PostToolUseFailure with is_interrupt', () => {
+    it('classifies a paired interrupt failure as errorType "interrupted"', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ tool: 'Bash', toolUseId: 'toolu_int', timestamp: 1000 }),
+        makeFailureEvent({ toolUseId: 'toolu_int', timestamp: 1500, isInterrupt: true }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.errorType).toBe('interrupted');
+      expect(record.success).toBe(false);
+      expect(record.error).toBe('Command exited with non-zero status code 1');
+      expect(record.durationMs).toBe(500);
+    });
+
+    it('leaves errorType unset for a non-interrupt failure', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ tool: 'Bash', toolUseId: 'toolu_fail', timestamp: 1000 }),
+        makeFailureEvent({ toolUseId: 'toolu_fail', timestamp: 1500, isInterrupt: false }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      expect(records[0]!.errorType).toBeUndefined();
+      expect(records[0]!.success).toBe(false);
+    });
+
+    it('classifies an orphaned interrupt failure as "interrupted" too', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makeFailureEvent({ toolUseId: 'toolu_orphan_int', timestamp: 1500, isInterrupt: true }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      expect(records[0]!.errorType).toBe('interrupted');
+      expect(records[0]!.durationMs).toBeNull();
     });
   });
 
