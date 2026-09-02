@@ -144,7 +144,7 @@ const TURN_ANALYSIS_TOOL = {
 const INSTALL_HOOKS_TOOL = {
   name: 'nr_observe_install_hooks',
   description:
-    'Install PreToolUse and PostToolUse monitoring hooks into ~/.claude/settings.json. ' +
+    'Install PreToolUse, PostToolUse, PermissionRequest, and PermissionDenied monitoring hooks into ~/.claude/settings.json. ' +
     'Call when nr_observe_health reports hooks_installed: false. ' +
     'Requires a Claude Code restart to activate monitoring.',
   inputSchema: { type: 'object' as const, properties: {} },
