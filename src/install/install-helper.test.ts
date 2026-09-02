@@ -162,6 +162,23 @@ describe('generateHookEntries', () => {
     expect(hooks.PreToolUse[0].hooks[0].command).toBe('preflight-collector pre-tool');
   });
 
+  it('registers PermissionRequest and PermissionDenied with their own subcommands', () => {
+    const hooks = generateHookEntries();
+
+    expect(hooks.PermissionRequest).toEqual([
+      {
+        matcher: '',
+        hooks: [{ type: 'command', command: 'preflight-collector permission-request' }],
+      },
+    ]);
+    expect(hooks.PermissionDenied).toEqual([
+      {
+        matcher: '',
+        hooks: [{ type: 'command', command: 'preflight-collector permission-denied' }],
+      },
+    ]);
+  });
+
   it('generates a StopFailure entry alongside PreToolUse/PostToolUse', () => {
     const hooks = generateHookEntries('/usr/local/bin/preflight');
 
@@ -181,11 +198,65 @@ describe('generateHookEntries', () => {
     ]);
   });
 
+  it('quotes permission hook paths when binPath is provided', () => {
+    const hooks = generateHookEntries('/usr/local/bin/preflight');
+
+    expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
+      '"/usr/local/bin/preflight-collector" permission-request',
+    );
+    expect(hooks.PermissionDenied[0].hooks[0].command).toBe(
+      '"/usr/local/bin/preflight-collector" permission-denied',
+    );
+  });
+
+  it('wsl mode: wraps permission hooks in wsl.exe -e like pre/post', () => {
+    const hooks = generateHookEntries('/home/user/bin/preflight', { platform: 'wsl-windows-cc' });
+
+    expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
+      'wsl.exe -e "/home/user/bin/preflight-collector" permission-request',
+    );
+    expect(hooks.PermissionDenied[0].hooks[0].command).toBe(
+      'wsl.exe -e "/home/user/bin/preflight-collector" permission-denied',
+    );
+  });
+
   it('wsl mode: generates a quoted wsl.exe StopFailure command', () => {
     const hooks = generateHookEntries('/home/user/bin/preflight', { platform: 'wsl-windows-cc' });
 
     expect(hooks.StopFailure[0].hooks[0].command).toBe(
       'wsl.exe -e "/home/user/bin/preflight-collector" stop-failure',
+    );
+  });
+
+  it('generates an InstructionsLoaded entry alongside PreToolUse/PostToolUse/StopFailure', () => {
+    const hooks = generateHookEntries('/usr/local/bin/preflight');
+
+    expect(hooks.InstructionsLoaded).toEqual([
+      {
+        matcher: '',
+        hooks: [
+          { type: 'command', command: '"/usr/local/bin/preflight-collector" instructions-loaded' },
+        ],
+      },
+    ]);
+  });
+
+  it('generates a bare-name InstructionsLoaded command when no binPath provided', () => {
+    const hooks = generateHookEntries();
+
+    expect(hooks.InstructionsLoaded).toEqual([
+      {
+        matcher: '',
+        hooks: [{ type: 'command', command: 'preflight-collector instructions-loaded' }],
+      },
+    ]);
+  });
+
+  it('wsl mode: generates a quoted wsl.exe InstructionsLoaded command', () => {
+    const hooks = generateHookEntries('/home/user/bin/preflight', { platform: 'wsl-windows-cc' });
+
+    expect(hooks.InstructionsLoaded[0].hooks[0].command).toBe(
+      'wsl.exe -e "/home/user/bin/preflight-collector" instructions-loaded',
     );
   });
 
@@ -366,6 +437,7 @@ describe('mergeSettings', () => {
     expect(hooks.PreToolUse).toHaveLength(1);
     expect(hooks.PostToolUse).toHaveLength(1);
     expect(hooks.StopFailure).toHaveLength(1);
+    expect(hooks.InstructionsLoaded).toHaveLength(1);
     expect(hooks.PostModelSwitch).toHaveLength(1);
 
     const pre = hooks.PreToolUse[0] as Record<string, unknown>;
@@ -376,6 +448,10 @@ describe('mergeSettings', () => {
     expect(stopFailure.hooks).toEqual([
       { type: 'command', command: 'preflight-collector stop-failure' },
     ]);
+    const instructionsLoaded = hooks.InstructionsLoaded[0] as Record<string, unknown>;
+    expect(instructionsLoaded.hooks).toEqual([
+      { type: 'command', command: 'preflight-collector instructions-loaded' },
+    ]);
     const postModelSwitch = hooks.PostModelSwitch[0] as Record<string, unknown>;
     expect(postModelSwitch.hooks).toEqual([
       { type: 'command', command: 'preflight-collector model-switch' },
@@ -383,6 +459,37 @@ describe('mergeSettings', () => {
 
     // MCP servers are NOT managed in settings.json
     expect(result.mcpServers).toBeUndefined();
+  });
+
+  it('preserves an existing foreign InstructionsLoaded entry and appends ours', () => {
+    const existing = {
+      hooks: {
+        InstructionsLoaded: [
+          { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --audit' }] },
+        ],
+      },
+    };
+
+    const result = mergeSettings(existing);
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    expect(hooks.InstructionsLoaded).toHaveLength(2);
+    const foreignEntry = hooks.InstructionsLoaded[0] as Record<string, unknown>;
+    expect((foreignEntry.hooks as Array<Record<string, string>>)[0].command).toBe(
+      'some-other-tool --audit',
+    );
+    const ourEntry = hooks.InstructionsLoaded[1] as Record<string, unknown>;
+    expect((ourEntry.hooks as Array<Record<string, string>>)[0].command).toBe(
+      'preflight-collector instructions-loaded',
+    );
+  });
+
+  it('is idempotent for InstructionsLoaded — running twice does not duplicate entries', () => {
+    const once = mergeSettings({});
+    const twice = mergeSettings(once);
+
+    const hooks = twice.hooks as Record<string, unknown[]>;
+    expect(hooks.InstructionsLoaded).toHaveLength(1);
   });
 
   it('preserves an existing foreign PostModelSwitch entry and appends ours', () => {
@@ -507,6 +614,43 @@ describe('mergeSettings', () => {
     const hooks = twice.hooks as Record<string, unknown[]>;
     expect(hooks.PreToolUse).toHaveLength(1);
     expect(hooks.PostToolUse).toHaveLength(1);
+    expect(hooks.PermissionRequest).toHaveLength(1);
+    expect(hooks.PermissionDenied).toHaveLength(1);
+  });
+
+  it('adds PermissionRequest and PermissionDenied hook entries', () => {
+    const result = mergeSettings({});
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    const permReq = hooks.PermissionRequest[0] as Record<string, unknown>;
+    expect(permReq.hooks).toEqual([
+      { type: 'command', command: 'preflight-collector permission-request' },
+    ]);
+    const permDenied = hooks.PermissionDenied[0] as Record<string, unknown>;
+    expect(permDenied.hooks).toEqual([
+      { type: 'command', command: 'preflight-collector permission-denied' },
+    ]);
+  });
+
+  it('adds permission hooks to a pre-upgrade install that has only pre/post entries', () => {
+    const preUpgrade = {
+      hooks: {
+        PreToolUse: [
+          { matcher: '', hooks: [{ type: 'command', command: 'preflight-collector pre-tool' }] },
+        ],
+        PostToolUse: [
+          { matcher: '', hooks: [{ type: 'command', command: 'preflight-collector post-tool' }] },
+        ],
+      },
+    };
+
+    const result = mergeSettings(preUpgrade, '/usr/local/bin/preflight');
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    expect(hooks.PreToolUse).toHaveLength(1);
+    expect(hooks.PostToolUse).toHaveLength(1);
+    expect(hooks.PermissionRequest).toHaveLength(1);
+    expect(hooks.PermissionDenied).toHaveLength(1);
   });
 
   it('upgrades a bare-name hook entry to a quoted absolute path on re-install', () => {
@@ -601,6 +745,39 @@ describe('removeSettings', () => {
     expect(result).toEqual(settings);
   });
 
+  it('removes PermissionRequest and PermissionDenied entries, bare and quoted forms', () => {
+    const settings = {
+      hooks: {
+        PermissionRequest: [
+          {
+            matcher: '',
+            hooks: [{ type: 'command', command: 'preflight-collector permission-request' }],
+          },
+          { matcher: '', hooks: [{ type: 'command', command: 'my-other-permission-hook' }] },
+        ],
+        PermissionDenied: [
+          {
+            matcher: '',
+            hooks: [
+              {
+                type: 'command',
+                command: '"/usr/local/bin/preflight-collector" permission-denied',
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const result = removeSettings(settings);
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    expect(hooks.PermissionRequest).toEqual([
+      { matcher: '', hooks: [{ type: 'command', command: 'my-other-permission-hook' }] },
+    ]);
+    expect(hooks.PermissionDenied).toBeUndefined();
+  });
+
   it('removes only preflight StopFailure entries, keeps foreign ones', () => {
     const settings = {
       hooks: {
@@ -619,6 +796,27 @@ describe('removeSettings', () => {
     const hooks = result.hooks as Record<string, unknown[]>;
     expect(hooks.StopFailure).toEqual([
       { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --stop-failure' }] },
+    ]);
+  });
+
+  it('removes only preflight InstructionsLoaded entries, keeps foreign ones', () => {
+    const settings = {
+      hooks: {
+        InstructionsLoaded: [
+          { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --audit' }] },
+          {
+            matcher: '',
+            hooks: [{ type: 'command', command: 'preflight-collector instructions-loaded' }],
+          },
+        ],
+      },
+    };
+
+    const result = removeSettings(settings);
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    expect(hooks.InstructionsLoaded).toEqual([
+      { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --audit' }] },
     ]);
   });
 
@@ -643,7 +841,7 @@ describe('removeSettings', () => {
     ]);
   });
 
-  it('removes a full install (Pre/Post/StopFailure/PostModelSwitch) down to an empty hooks object', () => {
+  it('removes a full install (Pre/Post/StopFailure/InstructionsLoaded/PostModelSwitch) down to an empty hooks object', () => {
     const settings = mergeSettings({}, '/usr/local/bin/preflight');
     const result = removeSettings(settings);
 
@@ -1000,34 +1198,24 @@ describe('areHooksInstalled()', () => {
     expect(areHooksInstalled({ hooks: { PreToolUse: other, PostToolUse: other } })).toBe(false);
   });
 
-  it('returns true when both PreToolUse and PostToolUse contain NR hooks', () => {
+  it('returns true when all four hook types contain NR hooks', () => {
+    expect(areHooksInstalled(mergeSettings({}))).toBe(true);
+  });
+
+  it('returns true when absolute path form is used', () => {
+    expect(areHooksInstalled(mergeSettings({}, '/home/alice/.local/bin/preflight'))).toBe(true);
+  });
+
+  it('returns false for a pre-upgrade install missing the permission hooks', () => {
+    // preflight install must re-run its merge on such a settings file, so a
+    // true here would leave old installs permanently without permission hooks.
     const pre = [
       { matcher: '', hooks: [{ type: 'command', command: 'preflight-collector pre-tool' }] },
     ];
     const post = [
       { matcher: '', hooks: [{ type: 'command', command: 'preflight-collector post-tool' }] },
     ];
-    expect(areHooksInstalled({ hooks: { PreToolUse: pre, PostToolUse: post } })).toBe(true);
-  });
-
-  it('returns true when absolute path form is used', () => {
-    const pre = [
-      {
-        matcher: '',
-        hooks: [
-          { type: 'command', command: '/home/alice/.local/bin/preflight-collector pre-tool' },
-        ],
-      },
-    ];
-    const post = [
-      {
-        matcher: '',
-        hooks: [
-          { type: 'command', command: '/home/alice/.local/bin/preflight-collector post-tool' },
-        ],
-      },
-    ];
-    expect(areHooksInstalled({ hooks: { PreToolUse: pre, PostToolUse: post } })).toBe(true);
+    expect(areHooksInstalled({ hooks: { PreToolUse: pre, PostToolUse: post } })).toBe(false);
   });
 });
 
@@ -1058,13 +1246,7 @@ describe('readAndCheckHooks()', () => {
 
   it('returns true when settings file has NR hooks', () => {
     const path = join(tmpDir, 'settings.json');
-    const pre = [
-      { matcher: '', hooks: [{ type: 'command', command: 'preflight-collector pre-tool' }] },
-    ];
-    const post = [
-      { matcher: '', hooks: [{ type: 'command', command: 'preflight-collector post-tool' }] },
-    ];
-    writeJsonFile(path, { hooks: { PreToolUse: pre, PostToolUse: post } }, tmpDir);
+    writeJsonFile(path, mergeSettings({}), tmpDir);
     expect(readAndCheckHooks(path)).toBe(true);
   });
 });
