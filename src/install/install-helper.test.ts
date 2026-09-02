@@ -286,6 +286,33 @@ describe('generateHookEntries', () => {
       'wsl.exe -e "/home/user/bin/preflight-collector" model-switch',
     );
   });
+
+  it('generates a SessionStart entry alongside PreToolUse/PostToolUse/StopFailure', () => {
+    const hooks = generateHookEntries('/usr/local/bin/preflight');
+
+    expect(hooks.SessionStart).toEqual([
+      {
+        matcher: '',
+        hooks: [{ type: 'command', command: '"/usr/local/bin/preflight-collector" session-start' }],
+      },
+    ]);
+  });
+
+  it('generates a bare-name SessionStart command when no binPath provided', () => {
+    const hooks = generateHookEntries();
+
+    expect(hooks.SessionStart).toEqual([
+      { matcher: '', hooks: [{ type: 'command', command: 'preflight-collector session-start' }] },
+    ]);
+  });
+
+  it('wsl mode: generates a quoted wsl.exe SessionStart command', () => {
+    const hooks = generateHookEntries('/home/user/bin/preflight', { platform: 'wsl-windows-cc' });
+
+    expect(hooks.SessionStart[0].hooks[0].command).toBe(
+      'wsl.exe -e "/home/user/bin/preflight-collector" session-start',
+    );
+  });
 });
 
 describe('mergeSettings — wsl-windows-cc platform', () => {
@@ -439,6 +466,7 @@ describe('mergeSettings', () => {
     expect(hooks.StopFailure).toHaveLength(1);
     expect(hooks.InstructionsLoaded).toHaveLength(1);
     expect(hooks.PostModelSwitch).toHaveLength(1);
+    expect(hooks.SessionStart).toHaveLength(1);
 
     const pre = hooks.PreToolUse[0] as Record<string, unknown>;
     expect(pre.hooks).toEqual([{ type: 'command', command: 'preflight-collector pre-tool' }]);
@@ -455,6 +483,10 @@ describe('mergeSettings', () => {
     const postModelSwitch = hooks.PostModelSwitch[0] as Record<string, unknown>;
     expect(postModelSwitch.hooks).toEqual([
       { type: 'command', command: 'preflight-collector model-switch' },
+    ]);
+    const sessionStart = hooks.SessionStart[0] as Record<string, unknown>;
+    expect(sessionStart.hooks).toEqual([
+      { type: 'command', command: 'preflight-collector session-start' },
     ]);
 
     // MCP servers are NOT managed in settings.json
@@ -521,6 +553,37 @@ describe('mergeSettings', () => {
 
     const hooks = twice.hooks as Record<string, unknown[]>;
     expect(hooks.PostModelSwitch).toHaveLength(1);
+  });
+
+  it('preserves an existing foreign SessionStart entry and appends ours', () => {
+    const existing = {
+      hooks: {
+        SessionStart: [
+          { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --load-context' }] },
+        ],
+      },
+    };
+
+    const result = mergeSettings(existing);
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    expect(hooks.SessionStart).toHaveLength(2);
+    const foreignEntry = hooks.SessionStart[0] as Record<string, unknown>;
+    expect((foreignEntry.hooks as Array<Record<string, string>>)[0].command).toBe(
+      'some-other-tool --load-context',
+    );
+    const ourEntry = hooks.SessionStart[1] as Record<string, unknown>;
+    expect((ourEntry.hooks as Array<Record<string, string>>)[0].command).toBe(
+      'preflight-collector session-start',
+    );
+  });
+
+  it('is idempotent for SessionStart — running twice does not duplicate entries', () => {
+    const once = mergeSettings({});
+    const twice = mergeSettings(once);
+
+    const hooks = twice.hooks as Record<string, unknown[]>;
+    expect(hooks.SessionStart).toHaveLength(1);
   });
 
   it('preserves an existing foreign StopFailure entry and appends ours', () => {
@@ -841,7 +904,28 @@ describe('removeSettings', () => {
     ]);
   });
 
-  it('removes a full install (Pre/Post/StopFailure/InstructionsLoaded/PostModelSwitch) down to an empty hooks object', () => {
+  it('removes only preflight SessionStart entries, keeps a foreign one (e.g. a user git-fetch hook)', () => {
+    const settings = {
+      hooks: {
+        SessionStart: [
+          { matcher: '', hooks: [{ type: 'command', command: 'git fetch --all --prune' }] },
+          {
+            matcher: '',
+            hooks: [{ type: 'command', command: 'preflight-collector session-start' }],
+          },
+        ],
+      },
+    };
+
+    const result = removeSettings(settings);
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    expect(hooks.SessionStart).toEqual([
+      { matcher: '', hooks: [{ type: 'command', command: 'git fetch --all --prune' }] },
+    ]);
+  });
+
+  it('removes a full install (Pre/Post/StopFailure/InstructionsLoaded/PostModelSwitch/SessionStart) down to an empty hooks object', () => {
     const settings = mergeSettings({}, '/usr/local/bin/preflight');
     const result = removeSettings(settings);
 

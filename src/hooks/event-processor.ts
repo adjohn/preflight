@@ -28,6 +28,7 @@ import type {
   SubagentTokenHookEvent,
   ObservabilityHealthHookEvent,
   ApiFailureHookEvent,
+  SessionStartHookEvent,
   InstructionsLoadedHookEvent,
   ModelSwitchHookEvent,
   ToolCallRecord,
@@ -83,6 +84,8 @@ export interface HookEventProcessorOptions {
   onWorkflowRun?: (event: WorkflowRunEvent) => void;
   /** Fires for every `mode: 'api_failure'` line; errors swallowed. */
   onApiFailure?: (event: ApiFailureFrame) => void;
+  /** Fires for every `mode: 'session_start'` line; errors swallowed. */
+  onSessionStart?: (event: SessionStartFrame) => void;
   /** Fires for every `mode: 'instructions_loaded'` line; errors swallowed. */
   onInstructionsLoaded?: (event: InstructionsLoadedFrame) => void;
   /** Fires for every `mode: 'model_switch'` line; errors swallowed. */
@@ -152,6 +155,17 @@ export interface ApiFailureFrame {
   readonly rawErrorType: string;
   readonly errorDetails?: string;
   readonly lastAssistantMessage?: string;
+}
+
+/** Wire-shape data extracted from a `mode: 'session_start'` entry. */
+export interface SessionStartFrame {
+  readonly timestamp: number;
+  readonly sessionId: string | null;
+  readonly source?: string;
+  readonly secondsSinceLastResponse?: number;
+  readonly contextTokens?: number;
+  readonly promptCacheLikelyExpired?: boolean;
+  readonly estimatedCacheWriteUsd?: number;
 }
 
 /** Wire-shape data extracted from a `mode: 'instructions_loaded'` entry. */
@@ -278,6 +292,7 @@ export class HookEventProcessor {
   private readonly onSubagentToken: ((event: SubagentTokenEvent) => void) | null;
   private readonly onWorkflowRun: ((event: WorkflowRunEvent) => void) | null;
   private readonly onApiFailure: ((event: ApiFailureFrame) => void) | null;
+  private readonly onSessionStart: ((event: SessionStartFrame) => void) | null;
   private readonly onInstructionsLoaded: ((event: InstructionsLoadedFrame) => void) | null;
   private readonly onModelSwitch: ((event: ModelSwitchFrame) => void) | null;
   private readonly platformAdapter: PlatformAdapter;
@@ -335,6 +350,7 @@ export class HookEventProcessor {
     this.onSubagentToken = options.onSubagentToken ?? null;
     this.onWorkflowRun = options.onWorkflowRun ?? null;
     this.onApiFailure = options.onApiFailure ?? null;
+    this.onSessionStart = options.onSessionStart ?? null;
     this.onInstructionsLoaded = options.onInstructionsLoaded ?? null;
     this.onModelSwitch = options.onModelSwitch ?? null;
     this.platformAdapter = options.platformAdapter ?? createDefaultRegistry().getActive();
@@ -451,6 +467,8 @@ export class HookEventProcessor {
           this.handleWorkflowRunEvent(event);
         } else if (event.mode === 'api_failure') {
           this.handleApiFailureEvent(event);
+        } else if (event.mode === 'session_start') {
+          this.handleSessionStartEvent(event);
         } else if (event.mode === 'instructions_loaded') {
           this.handleInstructionsLoadedEvent(event);
         } else if (event.mode === 'model_switch') {
@@ -913,6 +931,35 @@ export class HookEventProcessor {
       this.onApiFailure(frame);
     } catch (err) {
       logger.warn('onApiFailure callback failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private handleSessionStartEvent(event: SessionStartHookEvent): void {
+    if (!this.onSessionStart) return;
+    const frame: SessionStartFrame = {
+      timestamp:
+        typeof event.timestamp === 'number' && Number.isFinite(event.timestamp)
+          ? event.timestamp
+          : Date.now(),
+      sessionId: event.sessionId ?? null,
+      ...(typeof event.source === 'string' ? { source: event.source } : {}),
+      ...(typeof event.secondsSinceLastResponse === 'number'
+        ? { secondsSinceLastResponse: event.secondsSinceLastResponse }
+        : {}),
+      ...(typeof event.contextTokens === 'number' ? { contextTokens: event.contextTokens } : {}),
+      ...(typeof event.promptCacheLikelyExpired === 'boolean'
+        ? { promptCacheLikelyExpired: event.promptCacheLikelyExpired }
+        : {}),
+      ...(typeof event.estimatedCacheWriteUsd === 'number'
+        ? { estimatedCacheWriteUsd: event.estimatedCacheWriteUsd }
+        : {}),
+    };
+    try {
+      this.onSessionStart(frame);
+    } catch (err) {
+      logger.warn('onSessionStart callback failed', {
         error: err instanceof Error ? err.message : String(err),
       });
     }

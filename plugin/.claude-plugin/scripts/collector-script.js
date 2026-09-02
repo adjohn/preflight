@@ -650,6 +650,22 @@ function processHook(raw) {
         event.lastAssistantMessage = redact(truncate(data.last_assistant_message, maxContentLen));
       }
     }
+  } else if (eventName === "sessionstart") {
+    event = {
+      mode: "session_start",
+      timestamp,
+      ...typeof data.source === "string" && { source: data.source },
+      ...typeof data.seconds_since_last_response === "number" && {
+        secondsSinceLastResponse: data.seconds_since_last_response
+      },
+      ...typeof data.context_tokens === "number" && { contextTokens: data.context_tokens },
+      ...typeof data.prompt_cache_likely_expired === "boolean" && {
+        promptCacheLikelyExpired: data.prompt_cache_likely_expired
+      },
+      ...typeof data.estimated_cache_write_usd === "number" && {
+        estimatedCacheWriteUsd: data.estimated_cache_write_usd
+      }
+    };
   } else if (eventName === "instructionsloaded") {
     event = {
       mode: "instructions_loaded",

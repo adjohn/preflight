@@ -100,6 +100,21 @@ function makeStopFailure(overrides?: Record<string, unknown>): string {
   });
 }
 
+function makeSessionStartResume(overrides?: Record<string, unknown>): string {
+  return JSON.stringify({
+    session_id: 'abc123',
+    transcript_path: '/Users/test/.claude/projects/test/abc123.jsonl',
+    cwd: '/Users/test/project',
+    hook_event_name: 'SessionStart',
+    source: 'resume',
+    seconds_since_last_response: 5400,
+    context_tokens: 182340,
+    prompt_cache_likely_expired: true,
+    estimated_cache_write_usd: 1.1396,
+    ...overrides,
+  });
+}
+
 function makeInstructionsLoaded(overrides?: Record<string, unknown>): string {
   return JSON.stringify({
     session_id: 'abc123',
@@ -694,6 +709,51 @@ describe('collector-script', () => {
     });
   });
 
+  describe('processHook() — SessionStart', () => {
+    it('writes a session_start event with all resume-cost fields', () => {
+      processHook(makeSessionStartResume());
+
+      const events = readBufferEvents();
+      expect(events).toHaveLength(1);
+
+      const event = events[0]!;
+      expect(event.mode).toBe('session_start');
+      expect(event.source).toBe('resume');
+      expect(event.secondsSinceLastResponse).toBe(5400);
+      expect(event.contextTokens).toBe(182340);
+      expect(event.promptCacheLikelyExpired).toBe(true);
+      expect(event.estimatedCacheWriteUsd).toBeCloseTo(1.1396);
+    });
+
+    it('omits the resume-cost fields for a plain startup (no resume fields sent)', () => {
+      processHook(
+        makeSessionStartResume({
+          source: 'startup',
+          seconds_since_last_response: undefined,
+          context_tokens: undefined,
+          prompt_cache_likely_expired: undefined,
+          estimated_cache_write_usd: undefined,
+        }),
+      );
+
+      const event = readBufferEvents()[0]!;
+      expect(event.source).toBe('startup');
+      expect(event.secondsSinceLastResponse).toBeUndefined();
+      expect(event.contextTokens).toBeUndefined();
+      expect(event.promptCacheLikelyExpired).toBeUndefined();
+      expect(event.estimatedCacheWriteUsd).toBeUndefined();
+    });
+
+    it('does not gate resume fields on recordContent', () => {
+      // source is a closed enum and the rest are numbers/booleans, not free text.
+      processHook(makeSessionStartResume());
+
+      const event = readBufferEvents()[0]!;
+      expect(event.source).toBe('resume');
+      expect(event.estimatedCacheWriteUsd).toBeCloseTo(1.1396);
+    });
+  });
+
   describe('processHook() — InstructionsLoaded', () => {
     it('writes an instructions_loaded event with filePath/memoryType/loadReason', () => {
       processHook(makeInstructionsLoaded());
@@ -959,7 +1019,7 @@ describe('collector-script', () => {
     it('silently ignores unknown hook event names', () => {
       processHook(
         JSON.stringify({
-          hook_event_name: 'SessionStart',
+          hook_event_name: 'PreCompact',
           session_id: 'sess-001',
         }),
       );
@@ -2151,7 +2211,7 @@ describe('collector-script', () => {
     });
 
     it('still ignores a genuinely unknown hook_event_name', () => {
-      processHook(makeGeminiBeforeTool({ hook_event_name: 'SessionStart' }));
+      processHook(makeGeminiBeforeTool({ hook_event_name: 'PreCompact' }));
       expect(readBufferEvents()).toHaveLength(0);
     });
   });

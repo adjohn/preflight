@@ -1718,6 +1718,98 @@ describe('HookEventProcessor', () => {
     });
   });
 
+  describe('mode: session_start', () => {
+    it('routes mode:session_start entries through onSessionStart with all resume fields', () => {
+      const frames: import('./event-processor.js').SessionStartFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onSessionStart: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'session_start',
+          tool: 'session_start',
+          source: 'resume',
+          secondsSinceLastResponse: 5400,
+          contextTokens: 182340,
+          promptCacheLikelyExpired: true,
+          estimatedCacheWriteUsd: 1.1396,
+          timestamp: 1700000000000,
+          sessionId: 's1',
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].source).toBe('resume');
+      expect(frames[0].secondsSinceLastResponse).toBe(5400);
+      expect(frames[0].contextTokens).toBe(182340);
+      expect(frames[0].promptCacheLikelyExpired).toBe(true);
+      expect(frames[0].estimatedCacheWriteUsd).toBeCloseTo(1.1396);
+      expect(frames[0].sessionId).toBe('s1');
+    });
+
+    it('defaults sessionId to null when absent', () => {
+      const frames: import('./event-processor.js').SessionStartFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onSessionStart: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'session_start',
+          tool: 'session_start',
+          source: 'startup',
+          timestamp: 1700000000000,
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].sessionId).toBeNull();
+      expect(frames[0].secondsSinceLastResponse).toBeUndefined();
+    });
+
+    it('swallows errors from a throwing onSessionStart callback', () => {
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onSessionStart: () => {
+          throw new Error('boom');
+        },
+      });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'session_start',
+            tool: 'session_start',
+            source: 'resume',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+    });
+
+    it('is a no-op when onSessionStart is not configured', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'session_start',
+            tool: 'session_start',
+            source: 'resume',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+      expect(records).toHaveLength(0);
+    });
+  });
+
   describe('mode: instructions_loaded', () => {
     it('routes mode:instructions_loaded entries through onInstructionsLoaded', () => {
       const frames: import('./event-processor.js').InstructionsLoadedFrame[] = [];

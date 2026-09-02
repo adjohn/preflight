@@ -50,11 +50,12 @@ const HOOK_SUBCOMMANDS = {
  */
 export const HOOK_SUBCOMMAND_PATTERN = Object.values(HOOK_SUBCOMMANDS).join('|');
 
-// InstructionsLoaded and PostModelSwitch are deliberately kept out of
-// HOOK_SUBCOMMANDS/HOOK_EVENT_TYPES (see the areHooksInstalled comment below)
-// but still need to be recognized here.
+// InstructionsLoaded, PostModelSwitch, and SessionStart are deliberately kept
+// out of HOOK_SUBCOMMANDS/HOOK_EVENT_TYPES (see the areHooksInstalled comment
+// below) but still need to be recognized here.
 const INSTRUCTIONS_LOADED_SUBCOMMAND = 'instructions-loaded';
 const MODEL_SWITCH_SUBCOMMAND = 'model-switch';
+const SESSION_START_SUBCOMMAND = 'session-start';
 
 // Matches the hook commands this installer writes, in both bare-name and
 // absolute-path forms (quoted or unquoted):
@@ -63,8 +64,9 @@ const MODEL_SWITCH_SUBCOMMAND = 'model-switch';
 //   "/quoted/path/preflight-collector" post-tool
 //   preflight-collector instructions-loaded
 //   preflight-collector model-switch
+//   preflight-collector session-start
 export const NR_HOOK_RE = new RegExp(
-  `preflight-collector"?\\s+(?:${HOOK_SUBCOMMAND_PATTERN}|${INSTRUCTIONS_LOADED_SUBCOMMAND}|${MODEL_SWITCH_SUBCOMMAND})`,
+  `preflight-collector"?\\s+(?:${HOOK_SUBCOMMAND_PATTERN}|${INSTRUCTIONS_LOADED_SUBCOMMAND}|${MODEL_SWITCH_SUBCOMMAND}|${SESSION_START_SUBCOMMAND})`,
 );
 
 // ---------------------------------------------------------------------------
@@ -81,11 +83,13 @@ export interface HookEntry {
   hooks: HookCommand[];
 }
 
-// InstructionsLoaded and PostModelSwitch are appended separately rather than
-// folded into HookEventType — see the areHooksInstalled comment below.
+// InstructionsLoaded, PostModelSwitch, and SessionStart are appended
+// separately rather than folded into HookEventType — see the
+// areHooksInstalled comment below.
 export type HookEntries = Record<HookEventType, HookEntry[]> & {
   InstructionsLoaded: HookEntry[];
   PostModelSwitch: HookEntry[];
+  SessionStart: HookEntry[];
 };
 
 export interface McpServerConfig {
@@ -161,6 +165,20 @@ export function generateHookEntries(
           {
             type: 'command',
             command: `${collectorInvocation} ${MODEL_SWITCH_SUBCOMMAND}`,
+          },
+        ],
+      },
+    ],
+    // SessionStart fires on every session (startup/resume/clear/compact/fork)
+    // — this collector only acts on the resume-cost fields, present for a
+    // subset of those; every other case is a fast no-op.
+    SessionStart: [
+      {
+        matcher: HOOK_MATCHER,
+        hooks: [
+          {
+            type: 'command',
+            command: `${collectorInvocation} ${SESSION_START_SUBCOMMAND}`,
           },
         ],
       },
@@ -283,11 +301,10 @@ function filterNrObserveEntries(entries: unknown[]): unknown[] {
  * this re-run their merge and add the missing permission hooks.
  * Pure — no file I/O.
  *
- * Deliberately does NOT check StopFailure, InstructionsLoaded, or
- * PostModelSwitch: broadening
- * what counts as "hooks installed" would change behavior for existing users,
- * which is a scope cut for this PR, not an oversight — don't "fix" this
- * without re-reading why.
+ * Deliberately does NOT check StopFailure, InstructionsLoaded,
+ * PostModelSwitch, or SessionStart: broadening what counts as "hooks
+ * installed" would change behavior for existing users, which is a scope cut
+ * for this PR, not an oversight — don't "fix" this without re-reading why.
  */
 export function areHooksInstalled(settingsContent: Record<string, unknown>): boolean {
   const hooks = settingsContent.hooks;
@@ -329,6 +346,7 @@ const HooksFieldSchema = z
     StopFailure: z.array(z.unknown()).optional(),
     InstructionsLoaded: z.array(z.unknown()).optional(),
     PostModelSwitch: z.array(z.unknown()).optional(),
+    SessionStart: z.array(z.unknown()).optional(),
   })
   .passthrough();
 const SettingsSchema = z.object({ hooks: HooksFieldSchema.optional() }).passthrough();
@@ -367,7 +385,12 @@ export function mergeSettings(
       ? { ...(result.hooks as Record<string, unknown>) }
       : {};
 
-  for (const hookType of [...HOOK_EVENT_TYPES, 'InstructionsLoaded', 'PostModelSwitch'] as const) {
+  for (const hookType of [
+    ...HOOK_EVENT_TYPES,
+    'InstructionsLoaded',
+    'PostModelSwitch',
+    'SessionStart',
+  ] as const) {
     const existingArr = Array.isArray(hooks[hookType]) ? [...(hooks[hookType] as unknown[])] : [];
 
     if (binPath !== null && binPath !== undefined) {
@@ -454,6 +477,7 @@ export function removeSettings(existing: Record<string, unknown>): Record<string
       ...HOOK_EVENT_TYPES,
       'InstructionsLoaded',
       'PostModelSwitch',
+      'SessionStart',
     ] as const) {
       if (Array.isArray(hooks[hookType])) {
         const filtered = filterNrObserveEntries(hooks[hookType] as unknown[]);
