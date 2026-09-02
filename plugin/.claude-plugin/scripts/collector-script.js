@@ -658,6 +658,15 @@ function processHook(raw) {
       ...typeof data.memory_type === "string" && { memoryType: data.memory_type },
       ...typeof data.load_reason === "string" && { loadReason: data.load_reason }
     };
+  } else if (eventName === "postmodelswitch") {
+    event = {
+      mode: "model_switch",
+      fromModel: data.from_model ?? "unknown",
+      toModel: data.to_model ?? "unknown",
+      timestamp,
+      ...data.requested_model !== void 0 && { requestedModel: data.requested_model },
+      ...typeof data.source === "string" && { source: data.source }
+    };
   } else {
     return;
   }

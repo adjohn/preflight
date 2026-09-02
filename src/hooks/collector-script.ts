@@ -387,6 +387,16 @@ interface HookInput {
   // absolute path.
   memory_type?: string;
   load_reason?: string;
+  // PostModelSwitch (code.claude.com/docs/en/hooks.md): fires after the
+  // session's model changes. requested_model is null for an automatic
+  // change (source: 'auto') or absent entirely on older payload shapes.
+  // Deliberately not capturing the cost-estimate fields (context_tokens,
+  // prompt_cache_warm, cache_ttl, estimated_cache_write_usd, pricing) —
+  // that's a richer cache-cost-forecast feature, out of scope here.
+  from_model?: string;
+  to_model?: string;
+  requested_model?: string | null;
+  source?: string;
   // Cursor (https://cursor.com/docs/agent/hooks) sends a different field
   // vocabulary per hook type instead of the uniform tool_name/tool_input
   // Claude Code and Kiro use. conversation_id is Cursor's closest analog to
@@ -1104,6 +1114,21 @@ function processHook(raw: string): void {
       timestamp,
       ...(typeof data.memory_type === 'string' && { memoryType: data.memory_type }),
       ...(typeof data.load_reason === 'string' && { loadReason: data.load_reason }),
+    };
+  } else if (eventName === 'postmodelswitch') {
+    // Fires after the session's model changes (code.claude.com/docs/en/hooks.md).
+    // Pure notification — no decision control (PreModelSwitch has that; not
+    // installed here). Model IDs are a closed-ish identifier vocabulary
+    // (e.g. 'claude-opus-5'), not free-text content, so unlike
+    // error_details/last_assistant_message above these aren't gated behind
+    // recordContent.
+    event = {
+      mode: 'model_switch' as const,
+      fromModel: data.from_model ?? 'unknown',
+      toModel: data.to_model ?? 'unknown',
+      timestamp,
+      ...(data.requested_model !== undefined && { requestedModel: data.requested_model }),
+      ...(typeof data.source === 'string' && { source: data.source }),
     };
   } else {
     // Unknown hook event — ignore silently

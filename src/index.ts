@@ -2415,6 +2415,15 @@ async function main(): Promise<void> {
       onInstructionsLoaded: (frame) => {
         instructionDriftTracker.recordInstructionsLoaded(frame.filePath, frame.loadReason);
       },
+      onModelSwitch: (frame) => {
+        modelUsageTracker.recordModelSwitch({
+          fromModel: frame.fromModel,
+          toModel: frame.toModel,
+          source: frame.source,
+          requestedModel: frame.requestedModel,
+          timestampMs: frame.timestamp,
+        });
+      },
     });
 
     persistSession = (opts?: { periodic?: boolean }) => {

@@ -1805,6 +1805,98 @@ describe('HookEventProcessor', () => {
     });
   });
 
+  describe('mode: model_switch', () => {
+    it('routes mode:model_switch entries through onModelSwitch with all fields', () => {
+      const frames: import('./event-processor.js').ModelSwitchFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onModelSwitch: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'model_switch',
+          tool: 'model_switch',
+          fromModel: 'claude-sonnet-5',
+          toModel: 'claude-opus-5',
+          requestedModel: 'opus',
+          source: 'command',
+          timestamp: 1700000000000,
+          sessionId: 's1',
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].fromModel).toBe('claude-sonnet-5');
+      expect(frames[0].toModel).toBe('claude-opus-5');
+      expect(frames[0].requestedModel).toBe('opus');
+      expect(frames[0].source).toBe('command');
+      expect(frames[0].sessionId).toBe('s1');
+    });
+
+    it('defaults sessionId to null when absent', () => {
+      const frames: import('./event-processor.js').ModelSwitchFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onModelSwitch: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'model_switch',
+          tool: 'model_switch',
+          fromModel: 'claude-sonnet-5',
+          toModel: 'claude-opus-5',
+          timestamp: 1700000000000,
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].sessionId).toBeNull();
+    });
+
+    it('swallows errors from a throwing onModelSwitch callback', () => {
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onModelSwitch: () => {
+          throw new Error('boom');
+        },
+      });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'model_switch',
+            tool: 'model_switch',
+            fromModel: 'claude-sonnet-5',
+            toModel: 'claude-opus-5',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+    });
+
+    it('is a no-op when onModelSwitch is not configured', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'model_switch',
+            tool: 'model_switch',
+            fromModel: 'claude-sonnet-5',
+            toModel: 'claude-opus-5',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+      expect(records).toHaveLength(0);
+    });
+  });
+
   describe('platform tool-name mapping', () => {
     it('maps a non-canonical tool name using the injected platform adapter', () => {
       const fakeAdapter = {

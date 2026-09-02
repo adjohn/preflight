@@ -29,6 +29,7 @@ import type {
   ObservabilityHealthHookEvent,
   ApiFailureHookEvent,
   InstructionsLoadedHookEvent,
+  ModelSwitchHookEvent,
   ToolCallRecord,
   TokenEvent,
   SubagentTokenEvent,
@@ -84,6 +85,8 @@ export interface HookEventProcessorOptions {
   onApiFailure?: (event: ApiFailureFrame) => void;
   /** Fires for every `mode: 'instructions_loaded'` line; errors swallowed. */
   onInstructionsLoaded?: (event: InstructionsLoadedFrame) => void;
+  /** Fires for every `mode: 'model_switch'` line; errors swallowed. */
+  onModelSwitch?: (event: ModelSwitchFrame) => void;
   /**
    * Adapter used to map each platform's raw tool names (e.g. Kiro's `fs_read`)
    * to Preflight's canonical vocabulary (`Read`) before pairing/emitting.
@@ -158,6 +161,16 @@ export interface InstructionsLoadedFrame {
   readonly filePath: string;
   readonly memoryType?: string;
   readonly loadReason?: string;
+}
+
+/** Wire-shape data extracted from a `mode: 'model_switch'` entry. */
+export interface ModelSwitchFrame {
+  readonly timestamp: number;
+  readonly sessionId: string | null;
+  readonly fromModel: string;
+  readonly toModel: string;
+  readonly requestedModel?: string | null;
+  readonly source?: string;
 }
 
 function numAttr(v: unknown): number {
@@ -266,6 +279,7 @@ export class HookEventProcessor {
   private readonly onWorkflowRun: ((event: WorkflowRunEvent) => void) | null;
   private readonly onApiFailure: ((event: ApiFailureFrame) => void) | null;
   private readonly onInstructionsLoaded: ((event: InstructionsLoadedFrame) => void) | null;
+  private readonly onModelSwitch: ((event: ModelSwitchFrame) => void) | null;
   private readonly platformAdapter: PlatformAdapter;
   /**
    * Per-agent dedup rings for recent subagent turns (scoped by agentId, one
@@ -322,6 +336,7 @@ export class HookEventProcessor {
     this.onWorkflowRun = options.onWorkflowRun ?? null;
     this.onApiFailure = options.onApiFailure ?? null;
     this.onInstructionsLoaded = options.onInstructionsLoaded ?? null;
+    this.onModelSwitch = options.onModelSwitch ?? null;
     this.platformAdapter = options.platformAdapter ?? createDefaultRegistry().getActive();
 
     this.boundBeforeExit = () => {
@@ -438,6 +453,8 @@ export class HookEventProcessor {
           this.handleApiFailureEvent(event);
         } else if (event.mode === 'instructions_loaded') {
           this.handleInstructionsLoadedEvent(event);
+        } else if (event.mode === 'model_switch') {
+          this.handleModelSwitchEvent(event);
         }
       } catch (err) {
         logger.warn('Error processing hook event', {
@@ -917,6 +934,28 @@ export class HookEventProcessor {
       this.onInstructionsLoaded(frame);
     } catch (err) {
       logger.warn('onInstructionsLoaded callback failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private handleModelSwitchEvent(event: ModelSwitchHookEvent): void {
+    if (!this.onModelSwitch) return;
+    const frame: ModelSwitchFrame = {
+      timestamp:
+        typeof event.timestamp === 'number' && Number.isFinite(event.timestamp)
+          ? event.timestamp
+          : Date.now(),
+      sessionId: event.sessionId ?? null,
+      fromModel: event.fromModel,
+      toModel: event.toModel,
+      ...(event.requestedModel !== undefined ? { requestedModel: event.requestedModel } : {}),
+      ...(typeof event.source === 'string' ? { source: event.source } : {}),
+    };
+    try {
+      this.onModelSwitch(frame);
+    } catch (err) {
+      logger.warn('onModelSwitch callback failed', {
         error: err instanceof Error ? err.message : String(err),
       });
     }

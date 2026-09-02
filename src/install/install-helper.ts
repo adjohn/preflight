@@ -50,9 +50,11 @@ const HOOK_SUBCOMMANDS = {
  */
 export const HOOK_SUBCOMMAND_PATTERN = Object.values(HOOK_SUBCOMMANDS).join('|');
 
-// InstructionsLoaded is deliberately kept out of HOOK_SUBCOMMANDS/HOOK_EVENT_TYPES
-// (see the areHooksInstalled comment below) but still needs to be recognized here.
+// InstructionsLoaded and PostModelSwitch are deliberately kept out of
+// HOOK_SUBCOMMANDS/HOOK_EVENT_TYPES (see the areHooksInstalled comment below)
+// but still need to be recognized here.
 const INSTRUCTIONS_LOADED_SUBCOMMAND = 'instructions-loaded';
+const MODEL_SWITCH_SUBCOMMAND = 'model-switch';
 
 // Matches the hook commands this installer writes, in both bare-name and
 // absolute-path forms (quoted or unquoted):
@@ -60,8 +62,9 @@ const INSTRUCTIONS_LOADED_SUBCOMMAND = 'instructions-loaded';
 //   /abs/path/preflight-collector permission-request
 //   "/quoted/path/preflight-collector" post-tool
 //   preflight-collector instructions-loaded
+//   preflight-collector model-switch
 export const NR_HOOK_RE = new RegExp(
-  `preflight-collector"?\\s+(?:${HOOK_SUBCOMMAND_PATTERN}|${INSTRUCTIONS_LOADED_SUBCOMMAND})`,
+  `preflight-collector"?\\s+(?:${HOOK_SUBCOMMAND_PATTERN}|${INSTRUCTIONS_LOADED_SUBCOMMAND}|${MODEL_SWITCH_SUBCOMMAND})`,
 );
 
 // ---------------------------------------------------------------------------
@@ -78,10 +81,11 @@ export interface HookEntry {
   hooks: HookCommand[];
 }
 
-// InstructionsLoaded is appended separately rather than folded into
-// HookEventType — see the areHooksInstalled comment below.
+// InstructionsLoaded and PostModelSwitch are appended separately rather than
+// folded into HookEventType — see the areHooksInstalled comment below.
 export type HookEntries = Record<HookEventType, HookEntry[]> & {
   InstructionsLoaded: HookEntry[];
+  PostModelSwitch: HookEntry[];
 };
 
 export interface McpServerConfig {
@@ -143,6 +147,20 @@ export function generateHookEntries(
           {
             type: 'command',
             command: `${collectorInvocation} ${INSTRUCTIONS_LOADED_SUBCOMMAND}`,
+          },
+        ],
+      },
+    ],
+    // Only PostModelSwitch — PreModelSwitch exists to block/confirm a switch,
+    // which Preflight has no reason to do, and every field it needs is also
+    // on PostModelSwitch's own input.
+    PostModelSwitch: [
+      {
+        matcher: HOOK_MATCHER,
+        hooks: [
+          {
+            type: 'command',
+            command: `${collectorInvocation} ${MODEL_SWITCH_SUBCOMMAND}`,
           },
         ],
       },
@@ -265,7 +283,8 @@ function filterNrObserveEntries(entries: unknown[]): unknown[] {
  * this re-run their merge and add the missing permission hooks.
  * Pure — no file I/O.
  *
- * Deliberately does NOT check StopFailure or InstructionsLoaded: broadening
+ * Deliberately does NOT check StopFailure, InstructionsLoaded, or
+ * PostModelSwitch: broadening
  * what counts as "hooks installed" would change behavior for existing users,
  * which is a scope cut for this PR, not an oversight — don't "fix" this
  * without re-reading why.
@@ -309,6 +328,7 @@ const HooksFieldSchema = z
     PermissionDenied: z.array(z.unknown()).optional(),
     StopFailure: z.array(z.unknown()).optional(),
     InstructionsLoaded: z.array(z.unknown()).optional(),
+    PostModelSwitch: z.array(z.unknown()).optional(),
   })
   .passthrough();
 const SettingsSchema = z.object({ hooks: HooksFieldSchema.optional() }).passthrough();
@@ -347,7 +367,7 @@ export function mergeSettings(
       ? { ...(result.hooks as Record<string, unknown>) }
       : {};
 
-  for (const hookType of [...HOOK_EVENT_TYPES, 'InstructionsLoaded'] as const) {
+  for (const hookType of [...HOOK_EVENT_TYPES, 'InstructionsLoaded', 'PostModelSwitch'] as const) {
     const existingArr = Array.isArray(hooks[hookType]) ? [...(hooks[hookType] as unknown[])] : [];
 
     if (binPath !== null && binPath !== undefined) {
@@ -430,7 +450,11 @@ export function removeSettings(existing: Record<string, unknown>): Record<string
   if (typeof result.hooks === 'object' && result.hooks !== null) {
     const hooks = { ...(result.hooks as Record<string, unknown>) };
 
-    for (const hookType of [...HOOK_EVENT_TYPES, 'InstructionsLoaded'] as const) {
+    for (const hookType of [
+      ...HOOK_EVENT_TYPES,
+      'InstructionsLoaded',
+      'PostModelSwitch',
+    ] as const) {
       if (Array.isArray(hooks[hookType])) {
         const filtered = filterNrObserveEntries(hooks[hookType] as unknown[]);
         if (filtered.length > 0) {
