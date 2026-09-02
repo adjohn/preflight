@@ -223,6 +223,26 @@ const MCP_TOOLS: Readonly<Record<string, readonly string[]>> = {
 
 const ANTI_PATTERN_TYPES = ['thrashing', 'repeated_reads', 'blind_edits', 'stuck_loop'] as const;
 
+const TASK_OUTCOMES: ReadonlyArray<readonly [string, number]> = [
+  ['feature', 0.3],
+  ['refactor', 0.25],
+  ['bug_fix', 0.2],
+  ['investigation', 0.12],
+  ['documentation', 0.05],
+  ['configuration', 0.04],
+  ['failed_attempt', 0.04],
+];
+
+const OUTCOME_COST_FACTOR: Readonly<Record<string, number>> = {
+  feature: 1.3,
+  refactor: 1.0,
+  bug_fix: 0.9,
+  investigation: 0.4,
+  documentation: 0.3,
+  configuration: 0.3,
+  failed_attempt: 0.7,
+};
+
 type EventRow = Record<string, string | number | boolean>;
 
 interface MetricRow {
@@ -395,11 +415,28 @@ function main(): Promise<void> {
       for (let t = 0; t < taskCount; t++) {
         const tEnd = sessionStart + ((sessionEnd - sessionStart) * (t + 1)) / taskCount;
         const durationMs = Math.round((sessionEnd - sessionStart) / taskCount);
-        const cost = p.costPerTaskUsd * between(0.4, 1.9);
+        // outcome_type and model mirror the AiCodingTask attribution added in
+        // preflight#549; cost and test results correlate with the outcome so
+        // the Model × Task Type widgets tell a coherent story.
+        const outcome = weighted(TASK_OUTCOMES);
+        const model =
+          rand() < 0.15
+            ? p.model === 'claude-haiku-4-5'
+              ? 'claude-sonnet-5'
+              : 'claude-haiku-4-5'
+            : p.model;
+        const cost = p.costPerTaskUsd * OUTCOME_COST_FACTOR[outcome] * between(0.4, 1.9);
         const tokens = Math.round(cost * between(140_000, 220_000));
         sessionCost += cost;
         sessionTokens += tokens;
-        const testsRun = rand() < 0.7 ? Math.round(between(1, 40)) : 0;
+        const testsRun =
+          outcome === 'failed_attempt' || rand() < 0.7 ? Math.round(between(1, 40)) : 0;
+        const testsPassed =
+          outcome === 'failed_attempt'
+            ? Math.round(testsRun * between(0, 0.6))
+            : testsRun > 0
+              ? Math.round(testsRun * (rand() < 0.85 ? 1 : between(0.5, 0.95)))
+              : 0;
         const linesAdded = Math.round(between(8, 600));
         events.push({
           eventType: 'AiCodingTask',
@@ -415,12 +452,13 @@ function main(): Promise<void> {
           lines_removed: Math.round(linesAdded * between(0.1, 0.7)),
           bash_commands_run: Math.round(between(1, 15)),
           tests_run: testsRun,
-          tests_passed:
-            testsRun > 0 ? Math.round(testsRun * (rand() < 0.85 ? 1 : between(0.5, 0.95))) : 0,
+          tests_passed: testsPassed,
           estimated_cost_usd: Number(cost.toFixed(4)),
           cost_estimated: false,
           tokens_used: tokens,
           sub_agents_spawned: rand() < 0.25 ? Math.round(between(1, 4)) : 0,
+          outcome_type: outcome,
+          model,
           ...base,
         });
 
