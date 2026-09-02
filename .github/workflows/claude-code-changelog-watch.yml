@@ -2,8 +2,8 @@ name: Claude Code Changelog Watch
 
 # Weekly check for anything new in anthropics/claude-code's CHANGELOG.md
 # worth reacting to — new hook fields/events, cost/usage/pricing changes,
-# OTel changes. See scripts/check-claude-code-changelog.ts and #526 for why
-# this exists: filing #520-#527 required doing this scan by hand.
+# OTel changes. See scripts/check-claude-code-changelog.ts for why this
+# exists: scanning the changelog by hand doesn't scale.
 on:
   schedule:
     - cron: '17 9 * * 1' # Mondays ~09:17 UTC — off the hour, per cron etiquette

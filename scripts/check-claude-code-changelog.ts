@@ -8,7 +8,7 @@
  * Deliberately dumb: a keyword filter with false positives is fine — the
  * goal is turning "remember to go check" into "get told when there's
  * something to check". A human (or a future agent) still does the real
- * triage-against-the-codebase work; see #526 for how #520-#527 got found.
+ * triage-against-the-codebase work — this only automates the noticing.
  *
  * Outputs (for the GitHub Actions workflow step to consume):
  *   - GITHUB_OUTPUT: `matched=true|false`
