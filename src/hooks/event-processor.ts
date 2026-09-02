@@ -581,6 +581,12 @@ export class HookEventProcessor {
         ...(preEvent.permissionMode !== undefined && {
           permissionMode: preEvent.permissionMode,
         }),
+        ...((preEvent.agentId ?? event.agentId) !== undefined && {
+          agentId: preEvent.agentId ?? event.agentId,
+        }),
+        ...((preEvent.agentType ?? event.agentType) !== undefined && {
+          agentType: preEvent.agentType ?? event.agentType,
+        }),
         ...((preEvent.platform ?? event.platform) !== undefined && {
           platform: preEvent.platform ?? event.platform,
         }),
@@ -608,6 +614,8 @@ export class HookEventProcessor {
         ...(event.isInterrupt === true && { errorType: 'interrupted' }),
         ...(event.error !== undefined && { error: event.error }),
         ...(event.outputSize !== undefined && { outputSizeBytes: event.outputSize }),
+        ...(event.agentId !== undefined && { agentId: event.agentId }),
+        ...(event.agentType !== undefined && { agentType: event.agentType }),
         ...(event.platform !== undefined && { platform: event.platform }),
         ...toolFields,
       };

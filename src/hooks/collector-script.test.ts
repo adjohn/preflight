@@ -226,6 +226,22 @@ describe('collector-script', () => {
       expect(event.transcriptPath).toBe('/tmp/fake-session.jsonl');
     });
 
+    it('captures agent_id/agent_type as agentId/agentType', () => {
+      processHook(makePreToolUse({ agent_id: 'agent-abc123', agent_type: 'general-purpose' }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.agentId).toBe('agent-abc123');
+      expect(event.agentType).toBe('general-purpose');
+    });
+
+    it('omits agentId/agentType for the parent session (no agent_id sent)', () => {
+      processHook(makePreToolUse());
+
+      const event = readBufferEvents()[0]!;
+      expect(event.agentId).toBeUndefined();
+      expect(event.agentType).toBeUndefined();
+    });
+
     it('does not include content fields by default', () => {
       processHook(makePreToolUse());
 
@@ -496,6 +512,14 @@ describe('collector-script', () => {
       expect(event.success).toBe(true);
       expect(event.outputSize).toEqual(expect.any(Number));
       expect(event.outputSize).toBeGreaterThan(0);
+    });
+
+    it('captures agent_id/agent_type as agentId/agentType', () => {
+      processHook(makePostToolUse({ agent_id: 'agent-def456', agent_type: 'Explore' }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.agentId).toBe('agent-def456');
+      expect(event.agentType).toBe('Explore');
     });
 
     it('captures session metadata', () => {

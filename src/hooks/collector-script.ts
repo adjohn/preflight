@@ -344,6 +344,15 @@ interface HookInput {
   transcript_path?: string;
   error?: string;
   is_interrupt?: boolean;
+  // Present on every hook event (code.claude.com/docs/en/hooks.md): agent_id
+  // identifies the subagent that fired this hook (absent for the parent
+  // session), agent_type names its kind (subagents, and sessions started
+  // with `--agent`). Attached to every ToolCallRecord below — previously
+  // there was no per-tool-call subagent attribution at all; the only
+  // existing agentId (SubagentWatcher, from transcript filenames) tracks
+  // subagent token usage, a separate signal this doesn't replace.
+  agent_id?: string;
+  agent_type?: string;
   // PostToolUse/PostToolUseFailure (code.claude.com/docs/en/hooks.md): tool
   // execution time in milliseconds, excluding permission-prompt wait time and
   // PreToolUse hook execution — the number this collector's own pre/post
@@ -1102,6 +1111,8 @@ function processHook(raw: string): void {
   const explicitPlatform = process.env.MCP_CLIENT ?? process.env.NEW_RELIC_AI_PLATFORM;
   if (explicitPlatform) event.platform = explicitPlatform;
   if (data.tool_use_id) event.toolUseId = data.tool_use_id;
+  if (data.agent_id) event.agentId = data.agent_id;
+  if (data.agent_type) event.agentType = data.agent_type;
 
   // Write to buffer — wrapped in try/catch for resilience.
   try {

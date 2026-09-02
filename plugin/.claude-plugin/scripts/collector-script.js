@@ -660,6 +660,8 @@ function processHook(raw) {
   const explicitPlatform = process.env.MCP_CLIENT ?? process.env.NEW_RELIC_AI_PLATFORM;
   if (explicitPlatform) event.platform = explicitPlatform;
   if (data.tool_use_id) event.toolUseId = data.tool_use_id;
+  if (data.agent_id) event.agentId = data.agent_id;
+  if (data.agent_type) event.agentType = data.agent_type;
   try {
     const bufferPath = getBufferPath(sessionId);
     const bufferDir = dirname(bufferPath);
