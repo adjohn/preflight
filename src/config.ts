@@ -55,8 +55,8 @@ export interface McpServerConfig {
    * Flat discount multiplier (0 < x ≤ 1) applied to every dollar figure
    * `CostTracker` computes, so an org's contracted rate is reflected instead
    * of list price. Mirrors Claude Code's own `modelPricing.multiplier`
-   * semantics (see docs/525) without reading Claude Code's managed settings
-   * directly — those are delivered through several mechanisms (server-managed,
+   * semantics without reading Claude Code's managed settings directly —
+   * those are delivered through several mechanisms (server-managed,
    * MDM, a `managed-settings.json` file, a policy helper), only one of which
    * is a static file, and only the winning source is actually in effect, so
    * auto-discovery would risk silently applying a stale/overridden rate.
