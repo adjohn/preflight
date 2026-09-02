@@ -620,7 +620,7 @@
             "id": "viz.markdown"
           },
           "rawConfiguration": {
-            "text": "The MCP widgets below count hook-observed tool calls whose names start with `mcp__<server>__<tool>`. They read 0 until sessions actually invoke MCP tools — an all-zero row usually means no MCP usage in the window, not a broken widget. MCP traffic routed through the Preflight proxy is recorded separately as `AiMcpToolCall` (bottom table)."
+            "text": "MCP calls reach New Relic in two shapes depending on how Preflight is deployed. Hook-observed calls (stdio mode, the default) are `AiToolCall` events whose tool name is `mcp__<server>__<tool>`. Proxy-routed calls are `AiMcpToolCall` events with native `server` and `tool` fields. The billboards below count both shapes together; the breakdowns are labeled Hooks or Proxy. A blank breakdown means no MCP traffic of that shape in the window, not a broken widget."
           }
         },
         {
@@ -722,7 +722,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [],
-                "query": "FROM AiToolCall SELECT count(*) AS 'MCP Calls' WHERE tool LIKE 'mcp__%' SINCE 7 days ago"
+                "query": "FROM AiToolCall, AiMcpToolCall SELECT count(*) AS 'MCP Calls' WHERE tool LIKE 'mcp__%' OR eventType() = 'AiMcpToolCall' SINCE 7 days ago"
               }
             ],
             "platformOptions": {
@@ -748,7 +748,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [],
-                "query": "FROM AiToolCall SELECT percentage(count(*), WHERE success = false) AS 'Error %' WHERE tool LIKE 'mcp__%' SINCE 7 days ago"
+                "query": "FROM AiToolCall, AiMcpToolCall SELECT percentage(count(*), WHERE success = false) AS 'Error %' WHERE tool LIKE 'mcp__%' OR eventType() = 'AiMcpToolCall' SINCE 7 days ago"
               }
             ],
             "platformOptions": {
@@ -774,7 +774,7 @@
             "nrqlQueries": [
               {
                 "accountIds": [],
-                "query": "FROM AiToolCall SELECT uniqueCount(developer) AS 'Users' WHERE tool LIKE 'mcp__%' SINCE 7 days ago"
+                "query": "FROM AiToolCall, AiMcpToolCall SELECT uniqueCount(developer) AS 'Users' WHERE tool LIKE 'mcp__%' OR eventType() = 'AiMcpToolCall' SINCE 7 days ago"
               }
             ],
             "platformOptions": {
@@ -783,7 +783,7 @@
           }
         },
         {
-          "title": "Top MCP Servers (7d)",
+          "title": "Top MCP Servers — Hooks (7d)",
           "layout": {
             "column": 1,
             "row": 8,
@@ -809,11 +809,11 @@
           }
         },
         {
-          "title": "MCP Tools (7d)",
+          "title": "MCP Tools — Hooks (7d)",
           "layout": {
-            "column": 5,
-            "row": 8,
-            "width": 4,
+            "column": 1,
+            "row": 11,
+            "width": 6,
             "height": 3
           },
           "visualization": {
@@ -856,6 +856,10 @@
               {
                 "accountIds": [],
                 "query": "FROM AiToolCall SELECT count(*) WHERE tool LIKE 'mcp__%' FACET aparse(tool, 'mcp__*__%') AS 'MCP Server' SINCE 7 days ago TIMESERIES 1 day LIMIT 10"
+              },
+              {
+                "accountIds": [],
+                "query": "FROM AiMcpToolCall SELECT count(*) FACET server AS 'MCP Server (proxy)' SINCE 7 days ago TIMESERIES 1 day LIMIT 10"
               }
             ],
             "platformOptions": {
@@ -867,11 +871,11 @@
           }
         },
         {
-          "title": "Proxy MCP Calls (7d)",
+          "title": "MCP Tools — Proxy (7d)",
           "layout": {
-            "column": 1,
+            "column": 7,
             "row": 11,
-            "width": 12,
+            "width": 6,
             "height": 3
           },
           "visualization": {
@@ -888,6 +892,35 @@
               {
                 "accountIds": [],
                 "query": "FROM AiMcpToolCall SELECT count(*) AS 'Calls', average(duration_ms) AS 'Avg ms', percentage(count(*), WHERE success = false) AS 'Error %', uniqueCount(developer) AS 'Users' FACET server, tool SINCE 7 days ago LIMIT 50"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Top MCP Servers — Proxy (7d)",
+          "layout": {
+            "column": 5,
+            "row": 8,
+            "width": 4,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.bar"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM AiMcpToolCall SELECT count(*) AS 'Calls' FACET server SINCE 7 days ago LIMIT 25"
               }
             ],
             "platformOptions": {
@@ -1049,7 +1082,7 @@
             "id": "viz.markdown"
           },
           "rawConfiguration": {
-            "text": "Adoption momentum over 8 weeks and a 60-day look at who is compounding value. Leaderboards are normalized by **active days** (days with at least one recorded task), so a quiet calendar week is not mistaken for a productivity drop. Coding tasks are the output unit: one task is a detected unit of work (a feature, fix, or investigation inside a session). **Roadmap:** PRs shipped, commits, and edit accept rate need git telemetry export from Preflight and will join this page when that lands."
+            "text": "Adoption momentum over 8 weeks and a 60-day look at who is compounding value. Leaderboards are normalized by **active days** (days with at least one recorded task), so a quiet calendar week is not mistaken for a productivity drop. Coding tasks are the output unit: one task is a detected unit of work (a feature, fix, or investigation inside a session). **Git outcomes** (bottom rows) read the `ai.git.*` gauges added in Preflight #484 and the rejection signal from #485 — both need a Preflight release newer than 1.16.3. The gauges are per-session running totals, so tables show per-session maxima and Cost per PR divides one sum by another (both sums snapshot at the same cadence, so the ratio holds). Edit accept rate counts Edit/Write calls without a 'rejected'/'denied'/'interrupted' error_type."
           }
         },
         {
@@ -1386,6 +1419,157 @@
             ],
             "platformOptions": {
               "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Git Outcomes by Session (7d)",
+          "layout": {
+            "column": 1,
+            "row": 20,
+            "width": 6,
+            "height": 4
+          },
+          "visualization": {
+            "id": "viz.table"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM Metric SELECT max(ai.git.pr_created) AS 'PRs Created', max(ai.git.pr_merged) AS 'PRs Merged', max(ai.git.commit_count) AS 'Commits', max(ai.git.push_count) AS 'Pushes' FACET developer, session_id SINCE 7 days ago LIMIT 50"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Edit Accept Rate (7d)",
+          "layout": {
+            "column": 7,
+            "row": 20,
+            "width": 3,
+            "height": 4
+          },
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM AiToolCall SELECT percentage(count(*), WHERE error_type IS NULL OR error_type NOT IN ('rejected', 'denied', 'interrupted')) AS 'Accept %' WHERE tool IN ('Edit', 'Write', 'NotebookEdit') SINCE 7 days ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Cost per PR (7d)",
+          "layout": {
+            "column": 10,
+            "row": 20,
+            "width": 3,
+            "height": 4
+          },
+          "visualization": {
+            "id": "viz.billboard"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM Metric SELECT sum(ai.cost.session_total_usd) / sum(ai.git.pr_created) AS 'USD / PR' SINCE 7 days ago"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            }
+          }
+        },
+        {
+          "title": "Weekly Cost per PR",
+          "layout": {
+            "column": 1,
+            "row": 24,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM Metric SELECT sum(ai.cost.session_total_usd) / sum(ai.git.pr_created) AS 'USD / PR' SINCE 8 weeks ago TIMESERIES 1 week"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            },
+            "yAxisLeft": {
+              "zero": true
+            }
+          }
+        },
+        {
+          "title": "Weekly Sessions Shipping PRs",
+          "layout": {
+            "column": 7,
+            "row": 24,
+            "width": 6,
+            "height": 3
+          },
+          "visualization": {
+            "id": "viz.line"
+          },
+          "rawConfiguration": {
+            "facet": {
+              "showOtherSeries": false
+            },
+            "legend": {
+              "enabled": true
+            },
+            "nrqlQueries": [
+              {
+                "accountIds": [],
+                "query": "FROM Metric SELECT uniqueCount(session_id) AS 'Sessions with PRs' WHERE ai.git.pr_created > 0 SINCE 8 weeks ago TIMESERIES 1 week"
+              }
+            ],
+            "platformOptions": {
+              "ignoreTimeRange": false
+            },
+            "yAxisLeft": {
+              "zero": true
             }
           }
         }
