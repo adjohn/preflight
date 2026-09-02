@@ -138,7 +138,7 @@ function buildReport(newLines: string[]): { matchCount: number; body: string } {
     '',
     `Scanned ${newLines.length} new changelog line(s) since the last check; ${deduped.length} matched a keyword worth a look ([\`hook\`, \`cost\`, \`budget\`, \`usage\`, \`token\`, \`duration_ms\`, \`agent_id\`, \`agent_type\`, \`pricing\`, \`otel\`, \`opentelemetry\`, \`cache\`]).`,
     '',
-    'This is a dumb keyword filter, not a triage — check each line against the current codebase before filing anything (see how #520-#527 were found and confirmed against `origin/main` before filing, not assumed from the changelog text alone).',
+    'This is a dumb keyword filter, not a triage — check each line against the current codebase (`origin/main`) before filing anything; do not assume from the changelog text alone that something is still unaddressed.',
     '',
     ...deduped.map((m) => `- ${m.line}`),
     '',
