@@ -683,6 +683,16 @@ function processHook(raw) {
       ...data.requested_model !== void 0 && { requestedModel: data.requested_model },
       ...typeof data.source === "string" && { source: data.source }
     };
+  } else if (eventName === "userpromptsubmit") {
+    event = {
+      mode: "user_prompt_submit",
+      timestamp
+    };
+  } else if (eventName === "stop") {
+    event = {
+      mode: "stop",
+      timestamp
+    };
   } else {
     return;
   }

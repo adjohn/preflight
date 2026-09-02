@@ -1162,6 +1162,32 @@ function processHook(raw: string): void {
       ...(data.requested_model !== undefined && { requestedModel: data.requested_model }),
       ...(typeof data.source === 'string' && { source: data.source }),
     };
+  } else if (eventName === 'userpromptsubmit') {
+    // Fires when the user submits a prompt, before Claude processes it
+    // (code.claude.com/docs/en/hooks.md). Pure notification — no decision
+    // control used here (this hook CAN block/modify the prompt via a JSON
+    // decision, but this collector never emits one). Deliberately no
+    // content captured — `data.prompt` is free text this collector has no
+    // reason to read; only the timestamp matters, as a precise task-start
+    // boundary for TaskDetector.
+    event = {
+      mode: 'user_prompt_submit' as const,
+      timestamp,
+    };
+  } else if (eventName === 'stop') {
+    // Fires when the main agent has finished responding
+    // (code.claude.com/docs/en/hooks.md) — NOT on a user interrupt, so this
+    // is a corroborating precise signal for TurnTracker/TaskDetector, not a
+    // full replacement for their idle-gap heuristics. Pure notification —
+    // no decision control used here (Stop CAN block Claude from stopping
+    // via a JSON decision, but this collector never emits one).
+    // Deliberately no content captured — last_assistant_message/
+    // background_tasks/session_crons are all real fields on this hook's
+    // input, but none are needed just to mark "a turn/task ended here".
+    event = {
+      mode: 'stop' as const,
+      timestamp,
+    };
   } else {
     // Unknown hook event — ignore silently
     return;

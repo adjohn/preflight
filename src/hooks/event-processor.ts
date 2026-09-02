@@ -31,6 +31,8 @@ import type {
   SessionStartHookEvent,
   InstructionsLoadedHookEvent,
   ModelSwitchHookEvent,
+  UserPromptSubmitHookEvent,
+  StopHookEvent,
   ToolCallRecord,
   TokenEvent,
   SubagentTokenEvent,
@@ -90,6 +92,10 @@ export interface HookEventProcessorOptions {
   onInstructionsLoaded?: (event: InstructionsLoadedFrame) => void;
   /** Fires for every `mode: 'model_switch'` line; errors swallowed. */
   onModelSwitch?: (event: ModelSwitchFrame) => void;
+  /** Fires for every `mode: 'user_prompt_submit'` line; errors swallowed. */
+  onUserPromptSubmit?: (event: BoundaryFrame) => void;
+  /** Fires for every `mode: 'stop'` line; errors swallowed. */
+  onStop?: (event: BoundaryFrame) => void;
   /**
    * Adapter used to map each platform's raw tool names (e.g. Kiro's `fs_read`)
    * to Preflight's canonical vocabulary (`Read`) before pairing/emitting.
@@ -185,6 +191,17 @@ export interface ModelSwitchFrame {
   readonly toModel: string;
   readonly requestedModel?: string | null;
   readonly source?: string;
+}
+
+/**
+ * Wire-shape data extracted from a `mode: 'user_prompt_submit'` or
+ * `mode: 'stop'` entry — both carry nothing beyond a timestamp/sessionId
+ * (see the doc comments on `UserPromptSubmitHookEvent`/`StopHookEvent` in
+ * storage/types.ts for why), so one shared frame type covers both.
+ */
+export interface BoundaryFrame {
+  readonly timestamp: number;
+  readonly sessionId: string | null;
 }
 
 function numAttr(v: unknown): number {
@@ -295,6 +312,8 @@ export class HookEventProcessor {
   private readonly onSessionStart: ((event: SessionStartFrame) => void) | null;
   private readonly onInstructionsLoaded: ((event: InstructionsLoadedFrame) => void) | null;
   private readonly onModelSwitch: ((event: ModelSwitchFrame) => void) | null;
+  private readonly onUserPromptSubmit: ((event: BoundaryFrame) => void) | null;
+  private readonly onStop: ((event: BoundaryFrame) => void) | null;
   private readonly platformAdapter: PlatformAdapter;
   /**
    * Per-agent dedup rings for recent subagent turns (scoped by agentId, one
@@ -353,6 +372,8 @@ export class HookEventProcessor {
     this.onSessionStart = options.onSessionStart ?? null;
     this.onInstructionsLoaded = options.onInstructionsLoaded ?? null;
     this.onModelSwitch = options.onModelSwitch ?? null;
+    this.onUserPromptSubmit = options.onUserPromptSubmit ?? null;
+    this.onStop = options.onStop ?? null;
     this.platformAdapter = options.platformAdapter ?? createDefaultRegistry().getActive();
 
     this.boundBeforeExit = () => {
@@ -473,6 +494,10 @@ export class HookEventProcessor {
           this.handleInstructionsLoadedEvent(event);
         } else if (event.mode === 'model_switch') {
           this.handleModelSwitchEvent(event);
+        } else if (event.mode === 'user_prompt_submit') {
+          this.handleBoundaryEvent(event, this.onUserPromptSubmit, 'onUserPromptSubmit');
+        } else if (event.mode === 'stop') {
+          this.handleBoundaryEvent(event, this.onStop, 'onStop');
         }
       } catch (err) {
         logger.warn('Error processing hook event', {
@@ -1003,6 +1028,29 @@ export class HookEventProcessor {
       this.onModelSwitch(frame);
     } catch (err) {
       logger.warn('onModelSwitch callback failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /** Shared handler for `user_prompt_submit`/`stop` — both carry nothing beyond timestamp/sessionId. */
+  private handleBoundaryEvent(
+    event: UserPromptSubmitHookEvent | StopHookEvent,
+    callback: ((event: BoundaryFrame) => void) | null,
+    callbackName: string,
+  ): void {
+    if (!callback) return;
+    const frame: BoundaryFrame = {
+      timestamp:
+        typeof event.timestamp === 'number' && Number.isFinite(event.timestamp)
+          ? event.timestamp
+          : Date.now(),
+      sessionId: event.sessionId ?? null,
+    };
+    try {
+      callback(frame);
+    } catch (err) {
+      logger.warn(`${callbackName} callback failed`, {
         error: err instanceof Error ? err.message : String(err),
       });
     }

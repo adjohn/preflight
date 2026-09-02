@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.0] - 2026-09-02
+
+### Added
+
+- **Turn and task boundaries are now anchored to Claude Code's own prompt-submit and stop signals, not just idle gaps.** Turn and task tracking previously inferred boundaries from a short gap in tool-call activity, which could merge two quick back-to-back turns or understate a turn's true duration by missing the time spent generating a final response. Preflight now uses Claude Code's `UserPromptSubmit` and `Stop` hooks as a precise, corroborating signal for both, falling back to the existing gap-based detection when a conversation ends without a `Stop` (e.g. a user interrupt).
+
 ## [1.30.0] - 2026-09-02
 
 ### Added

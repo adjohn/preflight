@@ -2451,6 +2451,13 @@ async function main(): Promise<void> {
           timestampMs: frame.timestamp,
         });
       },
+      onUserPromptSubmit: (frame) => {
+        taskDetector!.startTaskIfNone(frame.timestamp);
+      },
+      onStop: (frame) => {
+        turnTracker.finalizeTurnAt(frame.timestamp);
+        taskDetector!.markBoundary(frame.timestamp);
+      },
     });
 
     persistSession = (opts?: { periodic?: boolean }) => {
