@@ -227,6 +227,38 @@ describe('generateHookEntries', () => {
       'wsl.exe -e "/home/user/bin/preflight-collector" stop-failure',
     );
   });
+
+  it('generates an InstructionsLoaded entry alongside PreToolUse/PostToolUse/StopFailure', () => {
+    const hooks = generateHookEntries('/usr/local/bin/preflight');
+
+    expect(hooks.InstructionsLoaded).toEqual([
+      {
+        matcher: '',
+        hooks: [
+          { type: 'command', command: '"/usr/local/bin/preflight-collector" instructions-loaded' },
+        ],
+      },
+    ]);
+  });
+
+  it('generates a bare-name InstructionsLoaded command when no binPath provided', () => {
+    const hooks = generateHookEntries();
+
+    expect(hooks.InstructionsLoaded).toEqual([
+      {
+        matcher: '',
+        hooks: [{ type: 'command', command: 'preflight-collector instructions-loaded' }],
+      },
+    ]);
+  });
+
+  it('wsl mode: generates a quoted wsl.exe InstructionsLoaded command', () => {
+    const hooks = generateHookEntries('/home/user/bin/preflight', { platform: 'wsl-windows-cc' });
+
+    expect(hooks.InstructionsLoaded[0].hooks[0].command).toBe(
+      'wsl.exe -e "/home/user/bin/preflight-collector" instructions-loaded',
+    );
+  });
 });
 
 describe('mergeSettings — wsl-windows-cc platform', () => {
@@ -378,6 +410,7 @@ describe('mergeSettings', () => {
     expect(hooks.PreToolUse).toHaveLength(1);
     expect(hooks.PostToolUse).toHaveLength(1);
     expect(hooks.StopFailure).toHaveLength(1);
+    expect(hooks.InstructionsLoaded).toHaveLength(1);
 
     const pre = hooks.PreToolUse[0] as Record<string, unknown>;
     expect(pre.hooks).toEqual([{ type: 'command', command: 'preflight-collector pre-tool' }]);
@@ -387,9 +420,44 @@ describe('mergeSettings', () => {
     expect(stopFailure.hooks).toEqual([
       { type: 'command', command: 'preflight-collector stop-failure' },
     ]);
+    const instructionsLoaded = hooks.InstructionsLoaded[0] as Record<string, unknown>;
+    expect(instructionsLoaded.hooks).toEqual([
+      { type: 'command', command: 'preflight-collector instructions-loaded' },
+    ]);
 
     // MCP servers are NOT managed in settings.json
     expect(result.mcpServers).toBeUndefined();
+  });
+
+  it('preserves an existing foreign InstructionsLoaded entry and appends ours', () => {
+    const existing = {
+      hooks: {
+        InstructionsLoaded: [
+          { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --audit' }] },
+        ],
+      },
+    };
+
+    const result = mergeSettings(existing);
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    expect(hooks.InstructionsLoaded).toHaveLength(2);
+    const foreignEntry = hooks.InstructionsLoaded[0] as Record<string, unknown>;
+    expect((foreignEntry.hooks as Array<Record<string, string>>)[0].command).toBe(
+      'some-other-tool --audit',
+    );
+    const ourEntry = hooks.InstructionsLoaded[1] as Record<string, unknown>;
+    expect((ourEntry.hooks as Array<Record<string, string>>)[0].command).toBe(
+      'preflight-collector instructions-loaded',
+    );
+  });
+
+  it('is idempotent for InstructionsLoaded — running twice does not duplicate entries', () => {
+    const once = mergeSettings({});
+    const twice = mergeSettings(once);
+
+    const hooks = twice.hooks as Record<string, unknown[]>;
+    expect(hooks.InstructionsLoaded).toHaveLength(1);
   });
 
   it('preserves an existing foreign StopFailure entry and appends ours', () => {
@@ -668,7 +736,28 @@ describe('removeSettings', () => {
     ]);
   });
 
-  it('removes a full install (Pre/Post/StopFailure) down to an empty hooks object', () => {
+  it('removes only preflight InstructionsLoaded entries, keeps foreign ones', () => {
+    const settings = {
+      hooks: {
+        InstructionsLoaded: [
+          { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --audit' }] },
+          {
+            matcher: '',
+            hooks: [{ type: 'command', command: 'preflight-collector instructions-loaded' }],
+          },
+        ],
+      },
+    };
+
+    const result = removeSettings(settings);
+
+    const hooks = result.hooks as Record<string, unknown[]>;
+    expect(hooks.InstructionsLoaded).toEqual([
+      { matcher: '', hooks: [{ type: 'command', command: 'some-other-tool --audit' }] },
+    ]);
+  });
+
+  it('removes a full install (Pre/Post/StopFailure/InstructionsLoaded) down to an empty hooks object', () => {
     const settings = mergeSettings({}, '/usr/local/bin/preflight');
     const result = removeSettings(settings);
 

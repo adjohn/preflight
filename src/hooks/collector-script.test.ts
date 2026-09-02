@@ -100,6 +100,19 @@ function makeStopFailure(overrides?: Record<string, unknown>): string {
   });
 }
 
+function makeInstructionsLoaded(overrides?: Record<string, unknown>): string {
+  return JSON.stringify({
+    session_id: 'abc123',
+    transcript_path: '/Users/test/.claude/projects/test/abc123.jsonl',
+    cwd: '/Users/test/project',
+    hook_event_name: 'InstructionsLoaded',
+    file_path: '/Users/test/project/CLAUDE.md',
+    memory_type: 'Project',
+    load_reason: 'session_start',
+    ...overrides,
+  });
+}
+
 function makeGeminiBeforeTool(overrides?: Record<string, unknown>): string {
   return JSON.stringify({
     hook_event_name: 'BeforeTool',
@@ -664,6 +677,52 @@ describe('collector-script', () => {
 
       const event = readBufferEvents()[0]!;
       expect(event.errorType).toBe('unknown');
+    });
+  });
+
+  describe('processHook() — InstructionsLoaded', () => {
+    it('writes an instructions_loaded event with filePath/memoryType/loadReason', () => {
+      processHook(makeInstructionsLoaded());
+
+      const events = readBufferEvents();
+      expect(events).toHaveLength(1);
+
+      const event = events[0]!;
+      expect(event.mode).toBe('instructions_loaded');
+      expect(event.filePath).toBe('/Users/test/project/CLAUDE.md');
+      expect(event.memoryType).toBe('Project');
+      expect(event.loadReason).toBe('session_start');
+    });
+
+    it('captures a lazy nested_traversal load for a subdirectory CLAUDE.md', () => {
+      processHook(
+        makeInstructionsLoaded({
+          file_path: '/Users/test/project/packages/api/CLAUDE.md',
+          memory_type: 'Project',
+          load_reason: 'nested_traversal',
+        }),
+      );
+
+      const event = readBufferEvents()[0]!;
+      expect(event.filePath).toBe('/Users/test/project/packages/api/CLAUDE.md');
+      expect(event.loadReason).toBe('nested_traversal');
+    });
+
+    it('defaults filePath to "unknown" when file_path is missing', () => {
+      processHook(makeInstructionsLoaded({ file_path: undefined }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.filePath).toBe('unknown');
+    });
+
+    it('does not gate filePath/memoryType/loadReason on recordContent', () => {
+      // Unlike StopFailure's error_details/last_assistant_message, these are
+      // path/enum metadata, not free-text content.
+      processHook(makeInstructionsLoaded());
+
+      const event = readBufferEvents()[0]!;
+      expect(event.filePath).toBe('/Users/test/project/CLAUDE.md');
+      expect(event.memoryType).toBe('Project');
     });
   });
 

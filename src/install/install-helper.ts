@@ -50,12 +50,19 @@ const HOOK_SUBCOMMANDS = {
  */
 export const HOOK_SUBCOMMAND_PATTERN = Object.values(HOOK_SUBCOMMANDS).join('|');
 
+// InstructionsLoaded is deliberately kept out of HOOK_SUBCOMMANDS/HOOK_EVENT_TYPES
+// (see the areHooksInstalled comment below) but still needs to be recognized here.
+const INSTRUCTIONS_LOADED_SUBCOMMAND = 'instructions-loaded';
+
 // Matches the hook commands this installer writes, in both bare-name and
 // absolute-path forms (quoted or unquoted):
 //   preflight-collector pre-tool
 //   /abs/path/preflight-collector permission-request
 //   "/quoted/path/preflight-collector" post-tool
-export const NR_HOOK_RE = new RegExp(`preflight-collector"?\\s+(?:${HOOK_SUBCOMMAND_PATTERN})`);
+//   preflight-collector instructions-loaded
+export const NR_HOOK_RE = new RegExp(
+  `preflight-collector"?\\s+(?:${HOOK_SUBCOMMAND_PATTERN}|${INSTRUCTIONS_LOADED_SUBCOMMAND})`,
+);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,7 +78,11 @@ export interface HookEntry {
   hooks: HookCommand[];
 }
 
-export type HookEntries = Record<HookEventType, HookEntry[]>;
+// InstructionsLoaded is appended separately rather than folded into
+// HookEventType — see the areHooksInstalled comment below.
+export type HookEntries = Record<HookEventType, HookEntry[]> & {
+  InstructionsLoaded: HookEntry[];
+};
 
 export interface McpServerConfig {
   command: string;
@@ -122,6 +133,20 @@ export function generateHookEntries(
     // "Stop" — see code.claude.com/docs/en/hooks.md ("once per turn:
     // UserPromptSubmit, Stop, and StopFailure" are three separate hook events).
     StopFailure: entryFor('StopFailure'),
+    // InstructionsLoaded fires when CLAUDE.md or .claude/rules/*.md files are
+    // loaded into context — the actual moment instructions take effect, not
+    // when an Edit/Write call happens to touch one of those files.
+    InstructionsLoaded: [
+      {
+        matcher: HOOK_MATCHER,
+        hooks: [
+          {
+            type: 'command',
+            command: `${collectorInvocation} ${INSTRUCTIONS_LOADED_SUBCOMMAND}`,
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -240,9 +265,10 @@ function filterNrObserveEntries(entries: unknown[]): unknown[] {
  * this re-run their merge and add the missing permission hooks.
  * Pure — no file I/O.
  *
- * Deliberately does NOT check StopFailure: broadening what counts as "hooks
- * installed" would change behavior for existing users, which is a scope cut
- * for this PR, not an oversight — don't "fix" this without re-reading why.
+ * Deliberately does NOT check StopFailure or InstructionsLoaded: broadening
+ * what counts as "hooks installed" would change behavior for existing users,
+ * which is a scope cut for this PR, not an oversight — don't "fix" this
+ * without re-reading why.
  */
 export function areHooksInstalled(settingsContent: Record<string, unknown>): boolean {
   const hooks = settingsContent.hooks;
@@ -282,6 +308,7 @@ const HooksFieldSchema = z
     PermissionRequest: z.array(z.unknown()).optional(),
     PermissionDenied: z.array(z.unknown()).optional(),
     StopFailure: z.array(z.unknown()).optional(),
+    InstructionsLoaded: z.array(z.unknown()).optional(),
   })
   .passthrough();
 const SettingsSchema = z.object({ hooks: HooksFieldSchema.optional() }).passthrough();
@@ -320,7 +347,7 @@ export function mergeSettings(
       ? { ...(result.hooks as Record<string, unknown>) }
       : {};
 
-  for (const hookType of HOOK_EVENT_TYPES) {
+  for (const hookType of [...HOOK_EVENT_TYPES, 'InstructionsLoaded'] as const) {
     const existingArr = Array.isArray(hooks[hookType]) ? [...(hooks[hookType] as unknown[])] : [];
 
     if (binPath !== null && binPath !== undefined) {
@@ -403,7 +430,7 @@ export function removeSettings(existing: Record<string, unknown>): Record<string
   if (typeof result.hooks === 'object' && result.hooks !== null) {
     const hooks = { ...(result.hooks as Record<string, unknown>) };
 
-    for (const hookType of HOOK_EVENT_TYPES) {
+    for (const hookType of [...HOOK_EVENT_TYPES, 'InstructionsLoaded'] as const) {
       if (Array.isArray(hooks[hookType])) {
         const filtered = filterNrObserveEntries(hooks[hookType] as unknown[]);
         if (filtered.length > 0) {

@@ -650,6 +650,14 @@ function processHook(raw) {
         event.lastAssistantMessage = redact(truncate(data.last_assistant_message, maxContentLen));
       }
     }
+  } else if (eventName === "instructionsloaded") {
+    event = {
+      mode: "instructions_loaded",
+      filePath: data.file_path ?? "unknown",
+      timestamp,
+      ...typeof data.memory_type === "string" && { memoryType: data.memory_type },
+      ...typeof data.load_reason === "string" && { loadReason: data.load_reason }
+    };
   } else {
     return;
   }
