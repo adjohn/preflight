@@ -3,6 +3,7 @@ import 'dotenv/config';
 
 import { Command, Option } from 'commander';
 import { readFileSync, realpathSync } from 'node:fs';
+import { timingSafeEqual } from 'node:crypto';
 import { resolve } from 'node:path';
 import { AlertLog } from './alerts/alert-log.js';
 import { AlertSnapshotCollector } from './alerts/alert-snapshot-collector.js';
@@ -108,6 +109,7 @@ import { TaskSpanTracker } from './tracing/task-span-tracker.js';
 import { emitToolCallSpan } from './tracing/tool-call-span.js';
 import { NrIngestManager } from './transport/nr-ingest.js';
 import type { CliOptions } from './types.js';
+import { HomelabAccumulator, HomelabForwarder } from './homelab/index.js';
 import { VERSION } from './version.js';
 
 export { loadMcpConfig, redactSensitive } from './config.js';
@@ -489,6 +491,7 @@ export function startDashboardRepoll(opts: DashboardRepollOptions): NodeJS.Timeo
 const SUBCOMMAND_NAMES = [
   'deploy-dashboards',
   'deploy-alerts',
+  'server',
   'install',
   'uninstall',
   'setup',
@@ -502,9 +505,9 @@ type SubcommandName = (typeof SUBCOMMAND_NAMES)[number];
 
 // Install-CLI subcommands — a subset of SUBCOMMAND_NAMES routed to runInstallCli.
 // Derived from SUBCOMMAND_NAMES to ensure a single source of truth: deploy-*
-// commands are excluded and handled by the commander path in dispatchSubcommand.
+// and server commands are excluded and handled by the commander path in dispatchSubcommand.
 const INSTALL_CLI_SUBCOMMANDS = SUBCOMMAND_NAMES.filter(
-  (s) => s !== 'deploy-dashboards' && s !== 'deploy-alerts',
+  (s) => s !== 'deploy-dashboards' && s !== 'deploy-alerts' && s !== 'server',
 ) as readonly string[];
 
 function isSubcommand(value: string | undefined): value is SubcommandName {
@@ -569,6 +572,90 @@ export async function dispatchSubcommand(argv: string[]): Promise<number | null>
           file: file ?? null,
         });
         process.exitCode = code;
+      });
+  } else if (sub === 'server') {
+    program
+      .command('server')
+      .description(
+        'Start Preflight in homelab server mode — receives events forwarded from remote clients and accumulates them to disk (no dashboard yet — see docs/homelab.md)',
+      )
+      .option(
+        '--port <port>',
+        'Port to bind to (default: 7777 or NEW_RELIC_AI_HOMELAB_SERVER_PORT)',
+      )
+      .option(
+        '--token <token>',
+        'Bearer token for /ingest auth (default: NEW_RELIC_AI_HOMELAB_TOKEN)',
+      )
+      .option(
+        '--bind <address>',
+        'Bind address (default: 0.0.0.0 or NEW_RELIC_AI_HOMELAB_BIND_ADDRESS)',
+      )
+      .option('--config <path>', 'Path to config file')
+      .action(async (opts: { port?: string; token?: string; bind?: string; config?: string }) => {
+        if (opts.port) process.env.NEW_RELIC_AI_HOMELAB_SERVER_PORT = opts.port;
+        if (opts.token) process.env.NEW_RELIC_AI_HOMELAB_TOKEN = opts.token;
+        if (opts.bind) process.env.NEW_RELIC_AI_HOMELAB_BIND_ADDRESS = opts.bind;
+        // server mode never needs cloud credentials — force local so loadMcpConfig
+        // doesn't require licenseKey/accountId.
+        process.env.NR_AI_MODE = 'local';
+
+        const config = loadConfigOrDie({ config: opts.config });
+
+        const token = config.homelabToken;
+        if (!token) {
+          process.stderr.write(
+            '[preflight] error: homelab server requires a token. Set --token or NEW_RELIC_AI_HOMELAB_TOKEN.\n',
+          );
+          process.exit(1);
+        }
+
+        const accumulator = new HomelabAccumulator({ storagePath: config.storagePath });
+        accumulator.start();
+
+        const bus = new LiveEventBus();
+        const dashboardServer = new DashboardServer({
+          port: config.homelabServer.port,
+          host: config.homelabServer.bindAddress,
+          bus,
+          serverMode: true,
+          ingestHandler: (authHeader, body) => {
+            const expected = `Bearer ${token}`;
+            const isAuthed =
+              authHeader !== undefined &&
+              authHeader.length === expected.length &&
+              timingSafeEqual(Buffer.from(authHeader), Buffer.from(expected));
+            if (!isAuthed) return 401;
+            const result = accumulator.handleIngest(body);
+            return result === 'ok' ? 204 : 400;
+          },
+        });
+
+        await dashboardServer.start();
+        logger.info('Homelab server ready', {
+          port: config.homelabServer.port,
+          bind: config.homelabServer.bindAddress,
+        });
+
+        // Keep the action (and therefore program.parseAsync) alive until a
+        // signal fires — without this, the action returns immediately and
+        // dispatchSubcommand exits the process.
+        await new Promise<void>((resolve) => {
+          let shutting = false;
+          const shutdown = async (): Promise<void> => {
+            if (shutting) return;
+            shutting = true;
+            accumulator.stop();
+            await dashboardServer.stop();
+            resolve();
+          };
+          process.on('SIGTERM', () => {
+            void shutdown();
+          });
+          process.on('SIGINT', () => {
+            void shutdown();
+          });
+        });
       });
   } else {
     program
@@ -781,6 +868,8 @@ async function main(): Promise<void> {
     pendingConfirmationCapTimer.unref?.();
   };
 
+  let homelabForwarder: HomelabForwarder | null = null;
+
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;
@@ -841,6 +930,7 @@ async function main(): Promise<void> {
         nrIngest ? nrIngest.stop() : Promise.resolve(),
         mcpServer ? mcpServer.close() : Promise.resolve(),
         proxyManager ? proxyManager.stop() : Promise.resolve(),
+        homelabForwarder ? homelabForwarder.stop() : Promise.resolve(),
       ]);
       for (const r of stopResults) {
         if (r.status === 'rejected') {
@@ -937,9 +1027,26 @@ async function main(): Promise<void> {
         }
       }
     } else {
-      // --local: force local mode so config validation skips cloud credentials.
-      process.env.NR_AI_MODE = 'local';
-      config = loadConfigOrDie(options);
+      // --local: try normal config resolution first, so a config file that
+      // already sets mode: 'cloud'/'both' with real credentials still gets
+      // cloud ingest from --local — previously this branch unconditionally
+      // forced mode: 'local', which silently dropped any activity --local
+      // drained on behalf of an unowned session (e.g. a Copilot chat with no
+      // dedicated owning --stdio engine): captured and shown in the local
+      // dashboard, but never forwarded to New Relic even when the user had
+      // configured real credentials. Only fall back to forcing local mode
+      // when credentials are genuinely absent, preserving the original
+      // intent of letting --local run without requiring cloud credentials.
+      try {
+        config = loadConfigOrDie(options);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/Missing required configuration: (licenseKey|accountId)/.test(msg)) {
+          throw err;
+        }
+        process.env.NR_AI_MODE = 'local';
+        config = loadConfigOrDie(options);
+      }
 
       if (!config.enabled) {
         logger.info('Server disabled via config — exiting');
@@ -1455,7 +1562,12 @@ async function main(): Promise<void> {
       localStore,
     });
 
-    const dashboardEnabled = config.mode === 'local' || config.mode === 'both';
+    // options.local always gets a dashboard, regardless of what config.mode
+    // resolves to — the try/catch above only forces mode: 'local' when cloud
+    // credentials are absent, so `--local` combined with an explicit
+    // `mode: 'cloud'` config (real credentials present) would otherwise skip
+    // the dashboard the user explicitly asked for by passing --local.
+    const dashboardEnabled = options.local || config.mode === 'local' || config.mode === 'both';
     let alertEngine: LocalAlertEngine | undefined;
     let alertSnapshotCollector: AlertSnapshotCollector | undefined;
     let alertLog: AlertLog | undefined;
@@ -1781,6 +1893,7 @@ async function main(): Promise<void> {
         teamId: config.teamId,
         projectId: config.projectId,
         orgId: config.orgId,
+        companionMode: config.companionMode,
         sessionTracker,
         localStore,
         auditTrail,
@@ -1790,10 +1903,33 @@ async function main(): Promise<void> {
         efficiencyScorer,
         feedbackCollector,
         apiFailureTracker,
+        gitEfficiencyTracker,
         turnCostAttributor,
         sessionTraceId,
       });
       capturedNrIngest = nrIngest;
+    }
+
+    // Start homelab forwarder if configured. Construction validates
+    // homelabServerUrl (scheme + cloud-metadata-endpoint check) and can
+    // throw — caught here so a bad/malicious URL only disables forwarding,
+    // matching the "forwarding failures are non-fatal" contract in
+    // docs/homelab.md, rather than crashing MCP startup.
+    if (config.homelabServerUrl && config.homelabToken) {
+      try {
+        homelabForwarder = new HomelabForwarder({
+          serverUrl: config.homelabServerUrl,
+          token: config.homelabToken,
+          developer: config.developer,
+          sessionId: sessionTraceId ?? 'unknown',
+        });
+        homelabForwarder.start();
+      } catch (err) {
+        homelabForwarder = null;
+        logger.error('Homelab forwarder failed to start — continuing without it', {
+          error: String(err),
+        });
+      }
     }
 
     const capturedAlertEngine = alertEngine;
@@ -1870,7 +2006,23 @@ async function main(): Promise<void> {
         contextWindowTracker.recordToolCall(rawRecord);
         contextTracker.recordToolCall(rawRecord);
         latencyTracker.recordToolCall(rawRecord);
-        retryDetector.recordToolCall(rawRecord);
+        const thrashingAlert = retryDetector.recordToolCall(rawRecord);
+        if (thrashingAlert) {
+          capturedNrIngest?.ingestRetryAlert(thrashingAlert, {
+            platform: typeof rawRecord.platform === 'string' ? rawRecord.platform : undefined,
+          });
+          liveBus.emit('retry-alert', {
+            // alert.sessionId (not sessionTraceId) — see RetryDetector's
+            // session-grouping comment: in --local mode this process's own
+            // RetryDetector drains every session's buffer, so only the
+            // alert's own sessionId can be trusted to name the offending one.
+            sessionId: thrashingAlert.sessionId ?? undefined,
+            toolName: thrashingAlert.toolName,
+            occurrences: thrashingAlert.occurrences,
+            tokensWasted: thrashingAlert.tokensWastedEstimate,
+            ts: thrashingAlert.timestamp,
+          });
+        }
         qualityProxyTracker.recordToolCall(rawRecord);
         const turnId = turnTracker.recordToolCall(rawRecord);
         const turnNumber = turnTracker.getCurrentTurnNumber();
@@ -2057,6 +2209,7 @@ async function main(): Promise<void> {
             });
           }
         }
+        homelabForwarder?.enqueue(record);
       },
       onTokenEvent: (tokenEvent) => {
         if (!costTracker || !config) return;
@@ -2633,6 +2786,7 @@ async function main(): Promise<void> {
           teamId: config!.teamId,
           projectId: config!.projectId,
           orgId: config!.orgId,
+          companionMode: config!.companionMode,
           sessionTracker: sessionTracker!,
           localStore: realLocalStore,
           auditTrail,
@@ -2642,6 +2796,7 @@ async function main(): Promise<void> {
           efficiencyScorer,
           feedbackCollector,
           apiFailureTracker,
+          gitEfficiencyTracker,
           turnCostAttributor,
           sessionTraceId: realId,
         });
@@ -2913,6 +3068,13 @@ async function main(): Promise<void> {
         }
       }
     } else {
+      // nrIngest is only constructed above when config.mode !== 'local' (see
+      // the try/catch at this branch's start) — i.e. only when real
+      // credentials are configured. Starting it here is what actually lets
+      // --local forward the unowned sessions it drains (see the comment on
+      // that try/catch): constructing NrIngestManager alone queues events
+      // in memory but never sends them until .start() runs its harvest loop.
+      nrIngest?.start();
       logger.info('Server running in local dashboard mode (Ctrl+C to stop)');
       // DashboardServer HTTP listener keeps the process alive.
       // SIGINT/SIGTERM are handled by the global shutdown handler registered above.
@@ -2980,6 +3142,7 @@ async function main(): Promise<void> {
         teamId: config.teamId,
         projectId: config.projectId,
         orgId: config.orgId,
+        companionMode: config.companionMode,
         sessionTracker: new SessionTracker(sessionTraceId),
         localStore: proxyLocalStore,
         eventHarvestIntervalMs: config.harvestIntervalMs.events,
