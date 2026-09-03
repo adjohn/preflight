@@ -183,6 +183,7 @@ const REDACT_FIELD_KEYS = new Set([
   'grepPath',
   'globPath',
   'agentTeamName',
+  'skillName',
 ]);
 
 /**

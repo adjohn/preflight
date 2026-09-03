@@ -434,6 +434,18 @@ describe('toolCallToNrEvent()', () => {
       expect(event.agentTeamName as string).not.toContain(SECRET_TOKEN);
     });
 
+    it('redacts secrets in skillName', () => {
+      const record = makeRecord({
+        toolName: 'Skill',
+        skillName: `api-key-${SECRET_TOKEN}`,
+      } as unknown as Partial<ToolCallRecord>);
+
+      const event = toolCallToNrEvent(record, { developer: 'd', appName: 'a' });
+
+      expect(event.skillName as string).not.toContain(SECRET_TOKEN);
+      expect(event.skillName as string).toContain('[REDACTED]');
+    });
+
     it('does not redact non-sensitive string fields', () => {
       const record = makeRecord({
         toolName: 'Bash',
