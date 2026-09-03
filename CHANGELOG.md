@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Preflight now attributes telemetry to a repo's full git remote URL, not just the shorter `org/repo` form.** A new `repo_url` field ships alongside `project_id` on every NR event and metric, auto-inferred from `git remote get-url origin` and credential-stripped before being sent, gated behind the same opt-out as `project_id`. New Relic Scorecard rule definitions for tracking AI-coding cost, anti-pattern rate, and per-team efficiency are now documented in `docs/SCORECARDS.md`.
+- **Preflight now attributes telemetry to a repo's full git remote URL, not just the shorter `org/repo` form.** A new `repo_url` field ships alongside `project_id` on every NR event and metric, auto-inferred from `git remote get-url origin` and credential-stripped before being sent. It has its own opt-out (`repoUrlEnabled: false`, or `NEW_RELIC_AI_REPO_URL_ENABLED=false`), independent of `project_id`'s, and the `preflight install` setup wizard prompts for it explicitly. New Relic Scorecard rule definitions for tracking AI-coding cost, anti-pattern rate, and per-team efficiency are now documented in `docs/SCORECARDS.md`.
 
 ## [1.33.2] - 2026-09-03
 

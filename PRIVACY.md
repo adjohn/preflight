@@ -40,7 +40,7 @@ When `mode` is `cloud` or `both`, the following is transmitted to New Relic as c
 | Retry-thrashing alerts      | `AiRetryAlert`                                                   | Tool name, occurrence count, and estimated tokens wasted when the same tool call repeats in a short window. No command/pattern/file-path content — just the flagged tool's name.                                                                                                                                                                                                                                             |
 | Audit events                | `AiAuditEvent`, `SecurityAlert`                                  | Every classified tool call; security alerts include the triggering file path or command.                                                                                                                                                                                                                                                                                                                                     |
 | Repository identifier       | `project_id`                                                     | Inferred from `git remote get-url origin` (e.g. `org/repo`) unless set explicitly. May expose internal repository names.                                                                                                                                                                                                                                                                                                     |
-| Repository URL              | `repo_url`                                                       | The full git remote URL (e.g. `https://github.com/org/repo`), inferred from the same `git remote get-url origin` read as `project_id`. More sensitive than `project_id`: it may reveal an internal git host, not just an org/repo pair. Embedded credentials (e.g. `https://user:token@host/...`) are stripped before egress. Disabled by the same opt-out as `project_id` — it is never sent when `project_id` is disabled. |
+| Repository URL              | `repo_url`                                                       | The full git remote URL (e.g. `https://github.com/org/repo`), inferred from the same `git remote get-url origin` read as `project_id`. More sensitive than `project_id`: it may reveal an internal git host, not just an org/repo pair. Embedded credentials (e.g. `https://user:token@host/...`) are stripped before egress. Sent by default; has its own opt-out (`repoUrlEnabled: false`), independent of `project_id`'s. |
 
 One additional event type, `NrAiObserveSetupCheck`, is sent directly to the Events API during license-key validation. It carries no session, developer, or file data — see [METRICS_TABLE.md → Setup Validation](./docs/METRICS_TABLE.md#setup-validation).
 
@@ -96,9 +96,9 @@ See [README.md → Key settings](./README.md#key-settings) for configuration.
 
 ### `repoUrl` — inferred from the same git remote as `projectId`
 
-By default the tool also sends the full git remote URL as `repo_url`, derived from the same `git remote get-url origin` read used for `projectId`. Any embedded credentials in the URL are stripped before the value is sent. Override it with the `NEW_RELIC_AI_REPO_URL` environment variable, or the `repoUrl` key in `~/.newrelic-preflight/config.json`.
+By default the tool also sends the full git remote URL as `repo_url`, derived from the same `git remote get-url origin` read used for `projectId`. Any embedded credentials in the URL are stripped before the value is sent. Override the value with the `NEW_RELIC_AI_REPO_URL` environment variable or the `repoUrl` key in `~/.newrelic-preflight/config.json`.
 
-**Privacy implication:** A full remote URL can reveal more than an `org/repo` pair alone, for example an internal git hostname. There is no separate toggle for this field: setting `projectId: null` disables `repo_url` too, since both derive from the same repository identity. If you explicitly set `NEW_RELIC_AI_REPO_URL` while `projectId` resolves to null, that value is silently discarded rather than sent — this is intentional (the opt-out takes priority) but easy to miss if you're only looking at your own env var.
+**Privacy implication:** A full remote URL can reveal more than an `org/repo` pair alone, for example an internal git hostname. It has its own opt-out, independent of `projectId`'s: set `repoUrlEnabled: false` in `~/.newrelic-preflight/config.json`, or `NEW_RELIC_AI_REPO_URL_ENABLED=false`, to stop sending it while still sending `project_id`. The `preflight install` setup wizard prompts for this explicitly, so sending it is an informed choice rather than a silent default.
 
 ### `mode: 'local'` — no data leaves the machine
 
@@ -138,6 +138,7 @@ See [README.md → Key settings](./README.md#key-settings) for configuration. Ne
 - [ ] Checked who has access to the target NR account and what NRQL query permissions they hold.
 - [ ] Decided whether the auto-inferred `developer` value (OS username) is appropriate, or set it explicitly.
 - [ ] Decided whether `projectId` auto-inference (from git remote) is appropriate, or set it to `null`.
+- [ ] Decided whether `repoUrl` — more sensitive than `projectId`, may reveal an internal git host — should be sent, or set `repoUrlEnabled: false`.
 - [ ] Confirmed `recordContent` is `false` (the default) or, if enabling it, reviewed what content will be captured and what is and is not redacted.
 - [ ] If enabling `highSecurity`, set it in the config file.
 - [ ] Reviewed the NR account's data retention settings for the event types this tool emits.

@@ -28,6 +28,8 @@ export interface McpServerConfig {
   readonly projectId: string | null;
   readonly orgId: string | null;
   readonly repoUrl: string | null;
+  /** Dedicated opt-out for `repoUrl`, independent of `projectId`'s. Defaults true. */
+  readonly repoUrlEnabled: boolean;
   readonly model: string;
   readonly enabled: boolean;
   readonly highSecurity: boolean;
@@ -164,6 +166,7 @@ export const ConfigFileSchema = z
     projectId: z.string().nullable().optional(),
     orgId: z.string().nullable().optional(),
     repoUrl: z.string().nullable().optional(),
+    repoUrlEnabled: z.boolean().optional(),
     model: z.string().optional(),
     enabled: z.boolean().optional(),
     highSecurity: z.boolean().optional(),
@@ -762,11 +765,19 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
     typeof file.highSecurity === 'boolean' ? file.highSecurity : false,
   );
 
-  // projectId must be resolved before repoUrl so repoUrl's opt-out gate reads
-  // the same value instead of recomputing it (and re-shelling out to git)
   const resolvedProjectId = sanitizeOrgField(
     process.env.NEW_RELIC_AI_PROJECT_ID ??
       (typeof file.projectId === 'string' ? file.projectId : inferProjectId()),
+  );
+
+  // Dedicated opt-out, independent of projectId's — repo_url can carry an
+  // internal git host that org/repo alone doesn't, so it gets its own toggle
+  // rather than riding along on projectId's. Defaults on; the setup wizard
+  // prompts for it explicitly (see setup-wizard.ts) so sending it is an
+  // informed choice, not a silent default.
+  const repoUrlEnabled = envBool(
+    'NEW_RELIC_AI_REPO_URL_ENABLED',
+    typeof file.repoUrlEnabled === 'boolean' ? file.repoUrlEnabled : true,
   );
 
   const config: McpServerConfig = {
@@ -795,15 +806,14 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
 
     projectId: resolvedProjectId,
 
-    // Same opt-out as projectId: if that resolved to null (explicit
-    // `projectId: null` or inference failed), don't compute repoUrl either.
-    repoUrl:
-      resolvedProjectId === null
-        ? null
-        : sanitizeOrgField(
-            process.env.NEW_RELIC_AI_REPO_URL ??
-              (typeof file.repoUrl === 'string' ? file.repoUrl : inferRepoUrl()),
-          ),
+    repoUrlEnabled,
+
+    repoUrl: !repoUrlEnabled
+      ? null
+      : sanitizeOrgField(
+          process.env.NEW_RELIC_AI_REPO_URL ??
+            (typeof file.repoUrl === 'string' ? file.repoUrl : inferRepoUrl()),
+        ),
 
     orgId: sanitizeOrgField(
       process.env.NEW_RELIC_AI_ORG_ID ?? (typeof file.orgId === 'string' ? file.orgId : null),

@@ -45,6 +45,7 @@ beforeEach(() => {
   delete process.env.NEW_RELIC_AI_PROJECT_ID;
   delete process.env.NEW_RELIC_AI_ORG_ID;
   delete process.env.NEW_RELIC_AI_REPO_URL;
+  delete process.env.NEW_RELIC_AI_REPO_URL_ENABLED;
   delete process.env.NEW_RELIC_API_KEY;
   delete process.env.NR_AI_MODE;
   // Most fixtures below set credentials without asserting on mode; an explicit
@@ -1352,16 +1353,13 @@ describe('developer sanitization via loadMcpConfig()', () => {
     expect(config.repoUrl).toBe('https://example.test/x');
   });
 
-  it('repoUrl resolves to null whenever projectId resolves to null, even if repoUrl is set explicitly', () => {
+  it('repoUrl opt-out is independent of projectId — an explicit projectId: null does not disable it', () => {
     const origDir = process.cwd();
     try {
-      // An explicit `projectId: null` in the config file doesn't force null by
-      // itself — loadMcpConfig() still falls through to git-remote inference
-      // (pre-existing behavior, unrelated to repoUrl). It's the non-git cwd
-      // below that makes inference return null, which is what this test
-      // actually exercises: repoUrl's opt-out gate reads the resolved
-      // projectId value, not the raw config-file field.
-      process.chdir(tmpDir); // non-git directory → projectId inference returns null
+      // Non-git cwd → projectId inference returns null. Prior behavior coupled
+      // repoUrl's opt-out to that resolved value; it's now a dedicated toggle
+      // (repoUrlEnabled), so an explicit repoUrl value still comes through.
+      process.chdir(tmpDir);
       delete process.env.GIT_DIR;
       delete process.env.GIT_WORK_TREE;
       process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
@@ -1369,10 +1367,35 @@ describe('developer sanitization via loadMcpConfig()', () => {
       const configPath = writeConfigFile({ projectId: null, repoUrl: 'https://example.test/x' });
       const config = loadMcpConfig({ config: configPath });
       expect(config.projectId).toBeNull();
-      expect(config.repoUrl).toBeNull();
+      expect(config.repoUrl).toBe('https://example.test/x');
+      expect(config.repoUrlEnabled).toBe(true);
     } finally {
       process.chdir(origDir);
     }
+  });
+
+  it('repoUrlEnabled: false disables repoUrl independent of projectId', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({
+      projectId: 'myorg/myrepo',
+      repoUrl: 'https://example.test/x',
+      repoUrlEnabled: false,
+    });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.projectId).toBe('myorg/myrepo');
+    expect(config.repoUrlEnabled).toBe(false);
+    expect(config.repoUrl).toBeNull();
+  });
+
+  it('NEW_RELIC_AI_REPO_URL_ENABLED=false disables repoUrl via env var', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NEW_RELIC_AI_REPO_URL_ENABLED = 'false';
+    const configPath = writeConfigFile({ repoUrl: 'https://example.test/x' });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.repoUrlEnabled).toBe(false);
+    expect(config.repoUrl).toBeNull();
   });
 
   it('repoUrl strips embedded credentials from an inferred git remote', () => {
