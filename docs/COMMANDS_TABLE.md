@@ -1238,6 +1238,81 @@ Source: `src/tools/analytics-tools.ts`, `src/metrics/model-usage-tracker.ts`
 
 ---
 
+### `nr_observe_get_model_recommendation`
+
+Data-driven model recommendation ranked by historical efficiency score, cost, and task success rate across past sessions, both overall and broken down by task outcome type.
+
+**Parameters:**
+
+- `developer` (optional) — Developer name to scope the ranking to; aggregate across all developers if omitted.
+- `since` (optional) — ISO date string; only consider sessions on or after this date.
+
+**Returns:**
+
+```json
+{
+  "ranked": [
+    {
+      "model": "claude-sonnet-4-20250514",
+      "sessionCount": 25,
+      "avgCostUsd": 0.04,
+      "avgEfficiencyScore": 0.82,
+      "avgTaskSuccessRate": 0.95
+    },
+    {
+      "model": "claude-opus-4-20250805",
+      "sessionCount": 12,
+      "avgCostUsd": 0.08,
+      "avgEfficiencyScore": 0.78,
+      "avgTaskSuccessRate": 0.92
+    }
+  ],
+  "recommendedModel": "claude-sonnet-4-20250514",
+  "confidence": "high",
+  "byOutcome": [
+    {
+      "outcome": "bug_fix",
+      "ranked": [
+        {
+          "model": "claude-sonnet-4-20250514",
+          "sessionCount": 15,
+          "avgCostUsd": 0.03,
+          "avgEfficiencyScore": 0.85,
+          "avgTaskSuccessRate": 0.97
+        }
+      ],
+      "recommendedModel": "claude-sonnet-4-20250514",
+      "confidence": "high"
+    }
+  ],
+  "generatedAt": 1746345600000
+}
+```
+
+**Field notes:**
+
+- `ranked` — All models ranked by efficiency score (descending), with ties broken by lower cost. Models with no scored sessions (`avgEfficiencyScore: null`) sort last.
+- `recommendedModel` — Top-ranked model, or `null` if insufficient data.
+- `confidence` — Confidence tier based on session count of the top-ranked model: `high` (≥20 sessions), `medium` (≥8), `low` (≥3), or `insufficient_data`.
+- `byOutcome` — Rankings broken down by task outcome type (bug_fix, feature, refactor, investigation, configuration, documentation, failed_attempt).
+- `avgTaskSuccessRate` — `testPassCount / testRunCount` for sessions of that outcome, 0 if no tests run.
+
+**Data source:** `TrendAnalyzer.rankModelsByOutcome()`
+
+**How it works:**
+
+- Loads all sessions (optionally filtered by `developer` and/or `since`).
+- Groups by model and outcome type (using `classifySessionOutcome`).
+- Computes per-model averages (cost, efficiency, task success).
+- Ranks by efficiency descending, cost ascending on ties, null-efficiency last.
+- Assigns confidence tier based on the top-ranked model's session count.
+
+**Requires:** `TrendAnalyzer`
+
+Source: `src/metrics/trend-analyzer.ts`, `src/tools/cross-session-tools.ts`
+
+---
+
 ### `nr_observe_get_context_tracking`
 
 Per-turn context window tracking: token growth, category breakdown (system/tools/user/assistant), fill percentage, and per-tool output contribution.

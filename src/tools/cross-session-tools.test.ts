@@ -31,6 +31,7 @@ import {
   handleGetClaudeMdImpact,
   handleGetCostPerOutcome,
   handleGetRecommendations,
+  handleGetModelRecommendation,
   handleGetPlatformComparison,
   handleGetTeamSummary,
   handleSubscribeDigest,
@@ -491,7 +492,6 @@ describe('Cross-session tool handlers', () => {
     const costPerOutcomeAnalyzer = new CostPerOutcomeAnalyzer();
 
     const engine = new RecommendationEngine({
-      sessionStore: store,
       trendAnalyzer,
       collaborationProfiler,
       claudeMdTracker,
@@ -512,6 +512,90 @@ describe('Cross-session tool handlers', () => {
     expect(rec).toHaveProperty('priority');
     expect(rec).toHaveProperty('detail');
     expect(rec).toHaveProperty('evidence');
+  });
+
+  // -------------------------------------------------------------------------
+  // 7b. handleGetModelRecommendation
+  // -------------------------------------------------------------------------
+
+  it('handleGetModelRecommendation returns model recommendation report', () => {
+    const trendAnalyzer = new TrendAnalyzer({ sessionStore: store });
+
+    // Create sessions with strong recommendation
+    for (let i = 0; i < 20; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `sonnet-${i}`,
+          model: 'sonnet',
+          efficiencyScore: 0.9,
+        }),
+      );
+      store.saveSession(
+        makeSummary({
+          sessionId: `opus-${i}`,
+          model: 'opus',
+          efficiencyScore: 0.6,
+        }),
+      );
+    }
+
+    const result = handleGetModelRecommendation(trendAnalyzer, {});
+    const parsed = JSON.parse(result.content[0]!.text);
+
+    expect(parsed).toHaveProperty('ranked');
+    expect(parsed).toHaveProperty('recommendedModel');
+    expect(parsed).toHaveProperty('confidence');
+    expect(parsed).toHaveProperty('byOutcome');
+    expect(parsed).toHaveProperty('generatedAt');
+    expect(parsed.recommendedModel).toBe('sonnet');
+    expect(parsed.confidence).toBe('high');
+  });
+
+  it('handleGetModelRecommendation returns error for invalid since date', () => {
+    const trendAnalyzer = new TrendAnalyzer({ sessionStore: store });
+
+    const result = handleGetModelRecommendation(trendAnalyzer, {
+      since: 'invalid-date',
+    });
+
+    expect(result.isError).toBe(true);
+    const parsed = JSON.parse(result.content[0]!.text);
+    expect(parsed.error).toContain('Invalid since date');
+  });
+
+  it('handleGetModelRecommendation respects developer filter', () => {
+    const trendAnalyzer = new TrendAnalyzer({ sessionStore: store });
+
+    // Alice with sonnet
+    for (let i = 0; i < 20; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `alice-sonnet-${i}`,
+          developer: 'alice',
+          model: 'sonnet',
+          efficiencyScore: 0.9,
+        }),
+      );
+    }
+
+    // Bob with opus
+    for (let i = 0; i < 20; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `bob-opus-${i}`,
+          developer: 'bob',
+          model: 'opus',
+          efficiencyScore: 0.5,
+        }),
+      );
+    }
+
+    const result = handleGetModelRecommendation(trendAnalyzer, {
+      developer: 'alice',
+    });
+    const parsed = JSON.parse(result.content[0]!.text);
+
+    expect(parsed.recommendedModel).toBe('sonnet');
   });
 
   // -------------------------------------------------------------------------
@@ -745,7 +829,6 @@ describe('Cross-session tool handlers', () => {
     });
     const costPerOutcomeAnalyzer = new CostPerOutcomeAnalyzer();
     const engine = new RecommendationEngine({
-      sessionStore: store,
       trendAnalyzer,
       collaborationProfiler,
       claudeMdTracker,
@@ -1183,6 +1266,7 @@ describe('registerCrossSessionTools()', () => {
       'nr_observe_get_claudemd_impact',
       'nr_observe_get_collaboration_profile',
       'nr_observe_get_cost_per_outcome',
+      'nr_observe_get_model_recommendation',
       'nr_observe_get_personal_insights',
       'nr_observe_get_platform_comparison',
       'nr_observe_get_recommendations',
@@ -1252,7 +1336,6 @@ describe('registerCrossSessionTools()', () => {
       costPerOutcomeAnalyzer,
       taskDetector: new TaskDetector(),
       recommendationEngine: new RecommendationEngine({
-        sessionStore: store,
         trendAnalyzer,
         collaborationProfiler,
         claudeMdTracker,
@@ -1269,6 +1352,7 @@ describe('registerCrossSessionTools()', () => {
       'nr_observe_get_claudemd_impact',
       'nr_observe_get_collaboration_profile',
       'nr_observe_get_cost_per_outcome',
+      'nr_observe_get_model_recommendation',
       'nr_observe_get_personal_insights',
       'nr_observe_get_platform_comparison',
       'nr_observe_get_recommendations',

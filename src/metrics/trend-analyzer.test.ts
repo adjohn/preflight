@@ -521,6 +521,198 @@ describe('significantChange', () => {
   });
 });
 
+describe('rankModelsByOutcome', () => {
+  it('returns insufficient_data when only 1-2 sessions exist', () => {
+    const analyzer = new TrendAnalyzer({ sessionStore: store });
+
+    store.saveSession(makeSummary({ sessionId: 's1', model: 'sonnet' }));
+
+    const report = analyzer.rankModelsByOutcome();
+
+    expect(report.confidence).toBe('insufficient_data');
+    expect(report.recommendedModel).toBeNull();
+  });
+
+  it('ranks models by efficiency score with high confidence when sufficient sessions', () => {
+    const analyzer = new TrendAnalyzer({ sessionStore: store });
+
+    // Model A: 20 sessions with high efficiency (0.9)
+    for (let i = 0; i < 20; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `a-${i}`,
+          model: 'sonnet',
+          efficiencyScore: 0.9,
+          estimatedCostUsd: 0.05,
+        }),
+      );
+    }
+
+    // Model B: 20 sessions with lower efficiency (0.6)
+    for (let i = 0; i < 20; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `b-${i}`,
+          model: 'opus',
+          efficiencyScore: 0.6,
+          estimatedCostUsd: 0.08,
+        }),
+      );
+    }
+
+    const report = analyzer.rankModelsByOutcome();
+
+    expect(report.confidence).toBe('high');
+    expect(report.recommendedModel).toBe('sonnet');
+    expect(report.ranked[0]?.model).toBe('sonnet');
+    expect(report.ranked[0]?.avgEfficiencyScore).toBeCloseTo(0.9, 1);
+    expect(report.ranked[1]?.model).toBe('opus');
+    expect(report.ranked[1]?.avgEfficiencyScore).toBeCloseTo(0.6, 1);
+  });
+
+  it('excludes sessions with model: null from rankings', () => {
+    const analyzer = new TrendAnalyzer({ sessionStore: store });
+
+    // Sessions with null model
+    for (let i = 0; i < 5; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `null-${i}`,
+          model: null,
+          efficiencyScore: 0.95,
+        }),
+      );
+    }
+
+    // Real model
+    for (let i = 0; i < 20; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `sonnet-${i}`,
+          model: 'sonnet',
+          efficiencyScore: 0.8,
+        }),
+      );
+    }
+
+    const report = analyzer.rankModelsByOutcome();
+
+    expect(report.ranked).toHaveLength(1);
+    expect(report.ranked[0]?.model).toBe('sonnet');
+  });
+
+  it('separates outcomes correctly in byOutcome', () => {
+    const analyzer = new TrendAnalyzer({ sessionStore: store });
+
+    // Bug fix session (tests + files modified)
+    for (let i = 0; i < 10; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `bug-${i}`,
+          model: 'sonnet',
+          efficiencyScore: 0.85,
+          testRunCount: 2,
+          testPassCount: 2,
+          filesModified: ['/src/index.ts'],
+        }),
+      );
+    }
+
+    // Investigation session (mostly read/grep)
+    for (let i = 0; i < 10; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `inv-${i}`,
+          model: 'opus',
+          efficiencyScore: 0.7,
+          testRunCount: 0,
+          filesModified: [],
+          toolBreakdown: { Read: 8, Grep: 2 },
+        }),
+      );
+    }
+
+    const report = analyzer.rankModelsByOutcome();
+
+    expect(report.byOutcome.length).toBeGreaterThan(0);
+
+    const bugFixOutcome = report.byOutcome.find((o) => o.outcome === 'bug_fix');
+    expect(bugFixOutcome?.ranked[0]?.model).toBe('sonnet');
+
+    const investigationOutcome = report.byOutcome.find((o) => o.outcome === 'investigation');
+    expect(investigationOutcome?.ranked[0]?.model).toBe('opus');
+  });
+
+  it('ties broken by lower cost when efficiency is equal', () => {
+    const analyzer = new TrendAnalyzer({ sessionStore: store });
+
+    // Model A: high efficiency, high cost
+    for (let i = 0; i < 8; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `a-${i}`,
+          model: 'sonnet',
+          efficiencyScore: 0.8,
+          estimatedCostUsd: 0.1,
+        }),
+      );
+    }
+
+    // Model B: same efficiency, lower cost
+    for (let i = 0; i < 8; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `b-${i}`,
+          model: 'haiku',
+          efficiencyScore: 0.8,
+          estimatedCostUsd: 0.02,
+        }),
+      );
+    }
+
+    const report = analyzer.rankModelsByOutcome();
+
+    expect(report.ranked[0]?.model).toBe('haiku');
+    expect(report.ranked[0]?.avgCostUsd).toBeLessThan(report.ranked[1]!.avgCostUsd);
+  });
+
+  it('respects developer filter', () => {
+    const analyzer = new TrendAnalyzer({ sessionStore: store });
+
+    // Alice with sonnet: high efficiency
+    for (let i = 0; i < 10; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `alice-${i}`,
+          developer: 'alice',
+          model: 'sonnet',
+          efficiencyScore: 0.9,
+        }),
+      );
+    }
+
+    // Bob with opus: low efficiency
+    for (let i = 0; i < 10; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `bob-${i}`,
+          developer: 'bob',
+          model: 'opus',
+          efficiencyScore: 0.5,
+        }),
+      );
+    }
+
+    const aliceReport = analyzer.rankModelsByOutcome({ developer: 'alice' });
+    expect(aliceReport.ranked[0]?.model).toBe('sonnet');
+    expect(aliceReport.ranked[0]?.avgEfficiencyScore).toBeCloseTo(0.9, 1);
+
+    const bobReport = analyzer.rankModelsByOutcome({ developer: 'bob' });
+    expect(bobReport.ranked[0]?.model).toBe('opus');
+    expect(bobReport.ranked[0]?.avgEfficiencyScore).toBeCloseTo(0.5, 1);
+  });
+});
+
 describe('movingAverage', () => {
   it('smooths correctly with window size 3', () => {
     const values = [2, 4, 6, 8, 10];
