@@ -1349,6 +1349,12 @@ Cost attribution per tool type — approximate, based on turn-level token correl
 FROM AiToolCall SELECT count(*), sum(duration_ms)/3.6e6 AS hours WHERE tool = 'Skill' FACET skillName SINCE 1 week ago
 ```
 
+Cost and tokens per skill over any window come from `AiTurnCost`:
+
+```sql
+FROM AiTurnCost SELECT sum(cost_usd) WHERE tool = 'Skill' FACET skillName SINCE 1 week ago
+```
+
 **Requires:** `TurnCostAttributor`
 
 Source: `src/tools/session-stats.ts`, `src/metrics/turn-cost-attributor.ts`

@@ -170,9 +170,10 @@ Beyond the fields above: per-developer/team/org identifiers, budget caps, digest
 
 ### Event Types
 
-| Event Type        | Emitted By      | Use Case                                  |
-| ----------------- | --------------- | ----------------------------------------- |
-| `AiBudgetWarning` | `BudgetTracker` | Budget threshold crossed (50%, 80%, 100%) |
+| Event Type        | Emitted By           | Use Case                                    |
+| ----------------- | -------------------- | ------------------------------------------- |
+| `AiBudgetWarning` | `BudgetTracker`      | Budget threshold crossed (50%, 80%, 100%)   |
+| `AiTurnCost`      | `TurnCostAttributor` | Cost and tokens per tool call and per skill |
 
 ### Team Attribution Fields
 

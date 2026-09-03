@@ -101,6 +101,7 @@ describe.each(dashboards)('Dashboard: $file', ({ dashboard }) => {
       'AiAuditEvent',
       'SecurityAlert',
       'AiMcpToolCall',
+      'AiTurnCost',
     ]);
 
     for (const query of queries) {
@@ -168,7 +169,7 @@ describe('Team View dashboard', () => {
   });
 
   it('has 5 rows of widgets (16 total)', () => {
-    expect(teamView!.dashboard.pages[0].widgets).toHaveLength(16);
+    expect(teamView!.dashboard.pages[0].widgets).toHaveLength(17);
   });
 
   it('includes FACET developer queries for team comparison', () => {
