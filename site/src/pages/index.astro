@@ -2,9 +2,10 @@
 import '../styles/landing.css';
 import commandsDoc from '../../../docs/COMMANDS_TABLE.md?raw';
 import metricsDoc from '../../../docs/METRICS_TABLE.md?raw';
-import whatsNewDoc from '../../../docs/WHATS_NEW.md?raw';
+import pkg from '../../../package.json';
 import CodePanel from '../components/CodePanel.astro';
 import CopyButton from '../components/CopyButton.astro';
+import { emphasizeNumbers } from '../highlight';
 import {
   AGENT_PROMPT,
   BASE,
@@ -22,7 +23,6 @@ const metricCount = new Set(metricsDoc.match(/^\| `ai\.[\w.]+`/gm)).size;
 const dashboardCount = Object.keys(import.meta.glob('../../../dashboards/*.json')).length;
 const fullHooksCount = PLATFORMS.filter((p) => p.coverage === 'full-hooks').length;
 const mcpOnlyCount = PLATFORMS.length - fullHooksCount;
-const whatsNewHeadline = whatsNewDoc.match(/^## (.+)$/m)?.[1] ?? "See what's new";
 
 const STATS = [
   { value: toolCount, label: 'MCP tools', href: `${BASE}/commands-table/` },
@@ -109,7 +109,7 @@ const logo = `${BASE}/demo/preflight-logo.svg`;
       <section class="hero wrap">
         <a class="pill" href={`${BASE}/whats-new/`}>
           <span class="dot"></span>
-          {whatsNewHeadline}
+          What's new in v{pkg.version}
           <span aria-hidden="true">→</span>
         </a>
         <h1>See what your AI coding assistant is actually doing</h1>
@@ -137,8 +137,8 @@ const logo = `${BASE}/demo/preflight-logo.svg`;
       <section class="showcase wrap" aria-labelledby="showcase-heading">
         <h2 id="showcase-heading">Ask your agent</h2>
         <p class="lede">
-          Preflight is an MCP server, so the assistant doing the work can read its own numbers.
-          Ask in chat and it calls the tool.
+          Preflight is an MCP server, so the assistant doing the work can answer questions about
+          its own session. Ask in chat and it looks up the numbers.
         </p>
         <div class="tabs" role="tablist" aria-label="Example questions">
           {
@@ -166,18 +166,24 @@ const logo = `${BASE}/demo/preflight-logo.svg`;
               hidden={i !== 0}
             >
               <div class="chat">
-                <p class="turn">
+                <div class="turn">
                   <span class="who">You</span>
                   <span class="ask">{tab.ask}</span>
-                </p>
-                <p class="turn">
+                </div>
+                <div class="turn">
                   <span class="who">Agent</span>
-                  <span>
-                    calls <code class="tool" data-tool>{tab.tool}</code>
-                  </span>
-                </p>
+                  <div>
+                    <p class="answer" data-answer>
+                      {emphasizeNumbers(tab.answer).map((s) =>
+                        s.figure ? <strong class="figure">{s.text}</strong> : s.text,
+                      )}
+                    </p>
+                    <p class="via" data-via>
+                      via <code>{tab.tool}</code>
+                    </p>
+                  </div>
+                </div>
               </div>
-              <CodePanel id={`response-${tab.id}`} lang="json" code={tab.response} label="Response" />
             </div>
           ))
         }

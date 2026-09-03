@@ -8,8 +8,8 @@ interface ShowcaseTab {
   readonly id: string;
   readonly label: string;
   readonly ask: string;
+  readonly answer: string;
   readonly tool: string;
-  readonly response: string;
 }
 
 export const SHOWCASE: readonly ShowcaseTab[] = [
@@ -17,33 +17,33 @@ export const SHOWCASE: readonly ShowcaseTab[] = [
     id: 'session',
     label: 'Session',
     ask: 'What has this session done so far?',
+    answer:
+      "About 17 minutes in, with 40 tool calls: 20 shell commands, 9 file reads, 6 edits, and 5 searches. 38 of them succeeded, a 95% success rate. You've changed 4 files. Tool calls are averaging 1.6 seconds.",
     tool: 'nr_observe_get_session_stats',
-    response:
-      '{"session_name":"preflight","session_duration_ms":1032043,"tool_calls":40,"tool_calls_by_type":{"Bash":20,"Read":9,"Edit":6,"Grep":5},"success_rate":0.95,"unique_files_modified":4,"avg_tool_duration_ms":1620}',
   },
   {
     id: 'cost',
     label: 'Cost',
     ask: 'How much has this cost?',
+    answer:
+      '$0.015 so far, all on Claude Sonnet 4.6. Almost everything came from cache: 1.45M tokens read from cache against 5K fresh input tokens, which works out to about a cent per million tokens. Output was 25K tokens.',
     tool: 'nr_observe_get_cost_breakdown',
-    response:
-      '{"total_usd":0.0152,"by_model":{"claude-sonnet-4-6":0.0152},"tokens":{"input":4976,"output":25202,"cache_read":1449739,"cache_creation":76000},"cost_per_million_tokens":0.0098}',
   },
   {
     id: 'efficiency',
     label: 'Efficiency',
     ask: 'How efficient was that last task?',
+    answer:
+      'The last task scored 0.63 out of 1. Autonomy and first-attempt quality were both perfect and correctness was 0.5, but speed scored 0, which pulled the average down. Across the 11 tasks scored this session, the average is also 0.63.',
     tool: 'nr_observe_get_efficiency_score',
-    response:
-      '{"latest":{"score":0.625,"components":{"speed":0,"correctness":0.5,"autonomy":1,"firstAttemptQuality":1}},"session_average":{"score":0.625,"tasks_scored":11}}',
   },
   {
     id: 'anti-patterns',
     label: 'Anti-patterns',
-    ask: 'Did it get stuck anywhere?',
+    ask: 'Did you get stuck anywhere?',
+    answer:
+      'Once. I read src/metrics/cost-tracker.ts four times, which usually means the context was compressed and I lost what I had already read. Splitting the task into smaller pieces would avoid that.',
     tool: 'nr_observe_get_anti_patterns',
-    response:
-      '[{"type":"re_reading","file":"src/metrics/cost-tracker.ts","read_count":4,"suggestion":"Context may have been compressed — consider breaking the task into smaller pieces"}]',
   },
 ];
 

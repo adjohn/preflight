@@ -139,23 +139,26 @@ try {
     check(`copy button #${target} reads Copied`, label === 'Copied', label);
   }
 
-  const tools = new Set();
+  const answers = new Set();
+  const vias = new Set();
   const visibleCounts = new Set();
   const tabs = await page.$$('[role="tab"]');
   for (const tab of tabs) {
     await tab.click();
     const visible = [];
     for (const panel of await page.$$('[role="tabpanel"]')) {
-      if (await panel.isVisible())
-        visible.push(await panel.$eval('[data-tool]', (el) => el.textContent));
+      if (await panel.isVisible()) {
+        visible.push(panel);
+        answers.add(await panel.$eval('[data-answer]', (el) => el.textContent.trim()));
+        vias.add(await panel.$eval('[data-via]', (el) => el.textContent.trim()));
+      }
     }
     visibleCounts.add(visible.length);
-    tools.add(visible[0]);
   }
   check(
-    `each of ${tabs.length} showcase tabs shows a distinct tool`,
-    tools.size === tabs.length,
-    [...tools].join(', '),
+    `each of ${tabs.length} showcase tabs shows a distinct answer and via line`,
+    answers.size === tabs.length && vias.size === tabs.length,
+    `${answers.size} answers, ${vias.size} via lines`,
   );
   check(
     'exactly one showcase panel is visible at a time',
