@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Skill invocations are now tracked per skill instead of collapsing into one `Skill` bucket.** The hook payload's `tool_input.skill` was dropped at the collector, so `/code-review` and `/security-review` were indistinguishable in every breakdown. Each `Skill` tool call now carries `skillName` and `skillArgsLength` on its record and on the `AiToolCall` event, so `FACET skillName WHERE tool = 'Skill'` works in NRQL with no dashboard change. The argument text itself is never recorded, only its length.
 - **`nr_observe_get_cost_per_tool` returns a new `costBySkill` field.** One row per skill with call count, attributed call count, estimated cost, estimated input/output/cache-read tokens, and total duration. Call count and duration are measured on every call; cost and tokens are the same even split of the turn's token event that `costByToolType` has always used. The existing `costByToolType` field is unchanged, and its `Skill` entry equals the sum of the skill rows.
+- **The local dashboard shows a Cost by Skill table, and the team-view New Relic dashboard gains two skill widgets.** The table lists calls, cost, tokens, and time per skill under the Cost by Tool card, and appears only once a skill has been invoked. The New Relic widgets chart skill calls and hours in skills over seven days, faceted by `skillName`.
 
 ## [1.33.1] - 2026-09-03
 
