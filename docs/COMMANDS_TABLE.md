@@ -1309,7 +1309,30 @@ Cost attribution per tool type — approximate, based on turn-level token correl
   ],
   "costByToolType": {
     "Read": { "totalCost": 0.012, "callCount": 15, "avgCost": 0.0008 },
-    "Edit": { "totalCost": 0.025, "callCount": 8, "avgCost": 0.003 }
+    "Edit": { "totalCost": 0.025, "callCount": 8, "avgCost": 0.003 },
+    "Skill": { "totalCost": 0.042, "callCount": 4, "avgCost": 0.0105 }
+  },
+  "costBySkill": {
+    "code-review": {
+      "callCount": 2,
+      "attributedCallCount": 2,
+      "totalCost": 0.025,
+      "avgCost": 0.0125,
+      "inputTokens": 3500,
+      "outputTokens": 280,
+      "cacheReadTokens": 15000,
+      "totalDurationMs": 4200
+    },
+    "pstack:how": {
+      "callCount": 2,
+      "attributedCallCount": 2,
+      "totalCost": 0.017,
+      "avgCost": 0.0085,
+      "inputTokens": 2100,
+      "outputTokens": 120,
+      "cacheReadTokens": 8000,
+      "totalDurationMs": 2800
+    }
   },
   "totalAttributedCost": 0.042,
   "attributionRate": 0.85
@@ -1319,6 +1342,12 @@ Cost attribution per tool type — approximate, based on turn-level token correl
 **Data source:** `TurnCostAttributor`
 
 **How it works:** Attributes token costs reported via `nr_observe_report_tokens` to the tool calls that occurred within the same conversation turn. Each turn's cost is split evenly across its tool calls, then aggregated by tool type. `attributionRate` is the fraction of total session cost that could be attributed (turns with no token report are excluded). Results are approximate — cost is correlated at the turn level, not the individual call level.
+
+`costBySkill` has one row per invoked skill name (`code-review`, `pstack:how`). `callCount` and `totalDurationMs` are measured on every call. `totalCost`, `inputTokens`, `outputTokens`, and `cacheReadTokens` are the same even split across the turn's tool calls that `costByToolType` uses, and they cover only the `attributedCallCount` calls whose turn received a token report. `costByToolType.Skill` equals the sum of the skill rows. Skill calls that arrive without a skill name (some non-Claude-Code adapters) count under `costByToolType.Skill` and get no row here. Calls and duration per skill over any window are also available in New Relic, since `skillName` rides on every `AiToolCall`:
+
+```sql
+FROM AiToolCall SELECT count(*), sum(duration_ms)/3.6e6 AS hours WHERE tool = 'Skill' FACET skillName SINCE 1 week ago
+```
 
 **Requires:** `TurnCostAttributor`
 
