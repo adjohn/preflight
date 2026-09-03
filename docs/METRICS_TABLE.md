@@ -66,7 +66,7 @@ Emitted for every tool call captured by the hook collector.
 | `session_id`        | string  | Session identifier (if available)                                                                                                                                                                                          |
 | `team_id`           | string  | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not configured.                                                                                              |
 | `project_id`        | string  | Project identifier (derived from git remote or configured)                                                                                                                                                                 |
-| `repo_url`          | string  | Full git remote URL, redacted for embedded credentials (same opt-out as project_id)                                                                                                                                        |
+| `repo_url`          | string  | Full git remote URL, redacted for embedded credentials (own opt-out: repoUrlEnabled)                                                                                                                                       |
 | `org_id`            | string  | Organization identifier (if configured)                                                                                                                                                                                    |
 | `platform`          | string  | Platform attribution (default: `claude-code`)                                                                                                                                                                              |
 | `duration_ms`       | number  | Tool call duration in milliseconds (if available)                                                                                                                                                                          |
@@ -107,7 +107,7 @@ Emitted for proxied tool calls (when the server forwards to upstream MCP servers
 | `session_id`          | string  | Session identifier (if available)                                                                                      |
 | `team_id`             | string  | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
 | `project_id`          | string  | Project identifier (derived from git remote or configured)                                                             |
-| `repo_url`            | string  | Full git remote URL, redacted for embedded credentials (same opt-out as project_id)                                    |
+| `repo_url`            | string  | Full git remote URL, redacted for embedded credentials (own opt-out: repoUrlEnabled)                                   |
 | `org_id`              | string  | Organization identifier (if configured)                                                                                |
 | `proxy_overhead_ms`   | number  | Time spent in proxy layer (if available)                                                                               |
 | `error_type`          | string  | Error classification (if failed)                                                                                       |
@@ -134,7 +134,7 @@ Emitted for non-tool proxy requests (discovery methods like `tools/list`, `resou
 | `app_name`            | string  | Application name                                                                                                       |
 | `team_id`             | string  | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
 | `project_id`          | string  | Project identifier (derived from git remote or configured)                                                             |
-| `repo_url`            | string  | Full git remote URL, redacted for embedded credentials (same opt-out as project_id)                                    |
+| `repo_url`            | string  | Full git remote URL, redacted for embedded credentials (own opt-out: repoUrlEnabled)                                   |
 | `org_id`              | string  | Organization identifier (if configured)                                                                                |
 | `proxy_overhead_ms`   | number  | Proxy layer overhead (if available)                                                                                    |
 | `response_size_bytes` | number  | Response size (if available)                                                                                           |
@@ -157,7 +157,7 @@ Emitted for every tool call as a security audit record.
 | `session_id`           | string  | Session identifier (if available)                                                                                      |
 | `team_id`              | string  | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
 | `project_id`           | string  | Project identifier (derived from git remote or configured)                                                             |
-| `repo_url`             | string  | Full git remote URL, redacted for embedded credentials (same opt-out as project_id)                                    |
+| `repo_url`             | string  | Full git remote URL, redacted for embedded credentials (own opt-out: repoUrlEnabled)                                   |
 | `org_id`               | string  | Organization identifier (if configured)                                                                                |
 | `file_path`            | string  | File path involved (if applicable)                                                                                     |
 | `command`              | string  | Command executed (if applicable)                                                                                       |
@@ -184,7 +184,7 @@ Emitted only when a security alert is triggered (subset of audit events).
 | `session_id`    | string | Session identifier (if available)                                                                                      |
 | `team_id`       | string | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
 | `project_id`    | string | Project identifier (derived from git remote or configured)                                                             |
-| `repo_url`      | string | Full git remote URL, redacted for embedded credentials (same opt-out as project_id)                                    |
+| `repo_url`      | string | Full git remote URL, redacted for embedded credentials (own opt-out: repoUrlEnabled)                                   |
 | `org_id`        | string | Organization identifier (if configured)                                                                                |
 | `file_path`     | string | File path (if sensitive file alert)                                                                                    |
 | `command`       | string | Command (if destructive command alert)                                                                                 |
@@ -213,7 +213,7 @@ Emitted when a task boundary is detected (a logical unit of work from task start
 | `session_id`           | string  | Session identifier (if available)                                                                                      |
 | `team_id`              | string  | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
 | `project_id`           | string  | Project identifier (derived from git remote or configured)                                                             |
-| `repo_url`             | string  | Full git remote URL, redacted for embedded credentials (same opt-out as project_id)                                    |
+| `repo_url`             | string  | Full git remote URL, redacted for embedded credentials (own opt-out: repoUrlEnabled)                                   |
 | `org_id`               | string  | Organization identifier (if configured)                                                                                |
 | `start_time`           | number  | Task start time (Unix epoch milliseconds)                                                                              |
 | `end_time`             | number  | Task end time (Unix epoch milliseconds)                                                                                |
@@ -253,7 +253,7 @@ Emitted for each anti-pattern detected within a completed task.
 | `session_id`    | string | Session identifier (if available)                                                                                      |
 | `team_id`       | string | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
 | `project_id`    | string | Project identifier (if configured)                                                                                     |
-| `repo_url`      | string | Full git remote URL, redacted for embedded credentials (same opt-out as project_id)                                    |
+| `repo_url`      | string | Full git remote URL, redacted for embedded credentials (own opt-out: repoUrlEnabled)                                   |
 | `org_id`        | string | Organization identifier (if configured)                                                                                |
 | `suggestion`    | string | Human-readable remediation suggestion                                                                                  |
 | `file`          | string | File involved (if applicable)                                                                                          |
@@ -285,7 +285,7 @@ Emitted when a configured budget threshold is crossed (50%, 80%, 100%).
 | `session_id`    | string | Session identifier (if available)                                                                                      |
 | `team_id`       | string | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
 | `project_id`    | string | Project identifier (if configured)                                                                                     |
-| `repo_url`      | string | Full git remote URL, redacted for embedded credentials (same opt-out as project_id)                                    |
+| `repo_url`      | string | Full git remote URL, redacted for embedded credentials (own opt-out: repoUrlEnabled)                                   |
 | `org_id`        | string | Organization identifier (if configured)                                                                                |
 
 **Firing rules:**
@@ -312,7 +312,7 @@ Emitted for each LLM turn when context-window tracking is enabled, capturing tok
 | `session_id`            | string | Session identifier (if available)                                                                                      |
 | `team_id`               | string | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
 | `project_id`            | string | Project identifier (if configured)                                                                                     |
-| `repo_url`              | string | Full git remote URL, redacted for embedded credentials (same opt-out as project_id)                                    |
+| `repo_url`              | string | Full git remote URL, redacted for embedded credentials (own opt-out: repoUrlEnabled)                                   |
 | `org_id`                | string | Organization identifier (if configured)                                                                                |
 | `turn_number`           | number | Sequential turn number within the session                                                                              |
 | `total_context_tokens`  | number | Total input tokens for this turn                                                                                       |

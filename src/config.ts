@@ -346,12 +346,7 @@ function inferProjectId(): string | null {
 }
 
 function inferRepoUrl(): string | null {
-  const remote = getGitRemoteUrl();
-  if (!remote) return null;
-  // Strip credentials (tokens, keys) from the remote URL
-  const redacted = redactSensitive(remote);
-  // Apply the same sanitization as other org fields (control chars, length)
-  return sanitizeOrgField(redacted);
+  return getGitRemoteUrl();
 }
 
 function envBool(key: string, defaultValue: boolean): boolean {
@@ -780,6 +775,17 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
     typeof file.repoUrlEnabled === 'boolean' ? file.repoUrlEnabled : true,
   );
 
+  // Credential redaction applies uniformly regardless of source — an
+  // explicit override (env var or config file) can carry embedded
+  // credentials just as easily as an inferred git remote (e.g. a URL
+  // copy-pasted from an authenticated `git remote -v`).
+  const rawRepoUrl =
+    process.env.NEW_RELIC_AI_REPO_URL ??
+    (typeof file.repoUrl === 'string' ? file.repoUrl : inferRepoUrl());
+  const resolvedRepoUrl = sanitizeOrgField(
+    rawRepoUrl === null ? null : redactSensitive(rawRepoUrl),
+  );
+
   const config: McpServerConfig = {
     licenseKey,
     accountId,
@@ -808,12 +814,7 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
 
     repoUrlEnabled,
 
-    repoUrl: !repoUrlEnabled
-      ? null
-      : sanitizeOrgField(
-          process.env.NEW_RELIC_AI_REPO_URL ??
-            (typeof file.repoUrl === 'string' ? file.repoUrl : inferRepoUrl()),
-        ),
+    repoUrl: repoUrlEnabled ? resolvedRepoUrl : null,
 
     orgId: sanitizeOrgField(
       process.env.NEW_RELIC_AI_ORG_ID ?? (typeof file.orgId === 'string' ? file.orgId : null),

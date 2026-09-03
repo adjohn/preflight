@@ -421,9 +421,13 @@ export async function runSetupWizard(opts: { staging?: boolean } = {}): Promise<
     )
       .trim()
       .toLowerCase();
-    const repoUrlEnabled = repoUrlAnswer
-      ? repoUrlAnswer === 'y' || repoUrlAnswer === 'yes'
-      : existingRepoUrlEnabled;
+    // Adaptive default: when the shown default is Y (existing/initial true),
+    // only an explicit decline flips it off — matching every other [Y/n]
+    // prompt in this wizard (e.g. installHooks below). When the shown
+    // default is N, only an explicit accept flips it on.
+    const repoUrlEnabled = existingRepoUrlEnabled
+      ? repoUrlAnswer !== 'n' && repoUrlAnswer !== 'no'
+      : repoUrlAnswer === 'y' || repoUrlAnswer === 'yes';
 
     // Step 5: Budget caps
     const existingBudget =

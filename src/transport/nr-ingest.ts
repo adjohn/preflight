@@ -826,6 +826,7 @@ export function retryAlertToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    repoUrl?: string | null;
   },
 ): NrEventData {
   const event: NrEventData = {
@@ -841,9 +842,7 @@ export function retryAlertToNrEvent(
     platform: attrs.platform ?? 'claude-code',
   };
 
-  if (attrs.teamId) event.team_id = attrs.teamId;
-  if (attrs.projectId) event.project_id = attrs.projectId;
-  if (attrs.orgId) event.org_id = attrs.orgId;
+  attachTeamAttribution(event, attrs);
   if (attrs.sessionId != null) event.session_id = attrs.sessionId;
 
   return event;
@@ -1311,6 +1310,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      repoUrl: this.repoUrl,
     });
     this.scheduler.addEvent(event);
   }

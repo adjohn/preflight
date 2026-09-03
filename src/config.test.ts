@@ -1398,6 +1398,35 @@ describe('developer sanitization via loadMcpConfig()', () => {
     expect(config.repoUrl).toBeNull();
   });
 
+  it('strips embedded credentials from an explicit repoUrl config-file value', () => {
+    // Redaction must not be limited to the git-remote-inferred path — a value
+    // pasted straight from an authenticated `git remote -v` is just as
+    // sensitive when set explicitly.
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({
+      repoUrl: 'https://someuser:ghp_faketoken1234567890abcd@github.com/org/repo.git',
+    });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.repoUrl).not.toBeNull();
+    expect(config.repoUrl).not.toContain('ghp_faketoken1234567890abcd');
+    expect(config.repoUrl).not.toContain('someuser:');
+    expect(config.repoUrl).toContain('[REDACTED]');
+  });
+
+  it('strips embedded credentials from an explicit NEW_RELIC_AI_REPO_URL env var', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NEW_RELIC_AI_REPO_URL =
+      'https://someuser:ghp_faketoken1234567890abcd@github.com/org/repo.git';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.repoUrl).not.toBeNull();
+    expect(config.repoUrl).not.toContain('ghp_faketoken1234567890abcd');
+    expect(config.repoUrl).not.toContain('someuser:');
+    expect(config.repoUrl).toContain('[REDACTED]');
+  });
+
   it('repoUrl strips embedded credentials from an inferred git remote', () => {
     const origDir = process.cwd();
     // A dedicated mkdtemp dir, not the shared per-test `tmpDir`, since this

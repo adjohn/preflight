@@ -635,6 +635,84 @@ describe('setup-wizard idempotency and env-detection', () => {
 });
 
 // ---------------------------------------------------------------------------
+// repoUrlEnabled prompt — adaptive Y/n default parsing
+// ---------------------------------------------------------------------------
+describe('setupWizard repoUrlEnabled prompt', () => {
+  let stdoutSpy: ReturnType<typeof jest.spyOn>;
+  let stderrSpy: ReturnType<typeof jest.spyOn>;
+  let mockRl: { question: jest.Mock; close: jest.Mock };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockRl = { question: jest.fn(), close: jest.fn() };
+    mockedRl.createInterface.mockReturnValue(mockRl);
+    mockedFs.mkdirSync.mockReturnValue(undefined);
+    mockedFs.writeFileSync.mockReturnValue(undefined);
+    mockedKeyValidator.validateLicenseKey.mockResolvedValue({ valid: true });
+    mockedKeyValidator.validateApiKey.mockResolvedValue({ valid: true });
+  });
+
+  afterEach(() => {
+    stdoutSpy.mockRestore();
+    stderrSpy.mockRestore();
+  });
+
+  // Cloud mode order: mode, accountId, licenseKey, environment, nrApiKey, developer,
+  //   teamId, projectId, repoUrlEnabled, sessionBudget, installHooks.
+  function sequenceAnswers(...answers: (string | undefined)[]): void {
+    let i = 0;
+    mockRl.question.mockImplementation(async () => answers[i++] ?? '');
+  }
+
+  it("explicit decline ('n') writes repoUrlEnabled: false", async () => {
+    mockedFs.readFileSync.mockReturnValue('{}');
+    sequenceAnswers('cloud', '12345', 'NRLIC-test', '', '', 'tester', '', '', 'n', '', 'n');
+
+    await runSetupWizard();
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string) as Record<
+      string,
+      unknown
+    >;
+    expect(written.repoUrlEnabled).toBe(false);
+  });
+
+  it('blank answer preserves an existing repoUrlEnabled: false (does not reset to the true default)', async () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({ accountId: '12345', licenseKey: 'NRLIC-existing', repoUrlEnabled: false }),
+    );
+    sequenceAnswers('cloud', '', '', '', '', 'tester', '', '', '', '', 'n');
+
+    await runSetupWizard();
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string) as Record<
+      string,
+      unknown
+    >;
+    expect(written.repoUrlEnabled).toBe(false);
+  });
+
+  it('unrecognized input preserves the shown Y default instead of silently flipping to false (regression)', async () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({ accountId: '12345', licenseKey: 'NRLIC-existing' }),
+    );
+    // repoUrlEnabled defaults true when unset → shown as [Y/n]. A garbage
+    // answer here must NOT disable it, same as any other [Y/n] prompt.
+    sequenceAnswers('cloud', '', '', '', '', 'tester', '', '', 'sure', '', 'n');
+
+    await runSetupWizard();
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string) as Record<
+      string,
+      unknown
+    >;
+    expect(written.repoUrlEnabled).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Mode branch: cloud / local / both
 // ---------------------------------------------------------------------------
 describe('setupWizard mode branch', () => {

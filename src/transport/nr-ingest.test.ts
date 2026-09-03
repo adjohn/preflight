@@ -1762,18 +1762,20 @@ describe('retryAlertToNrEvent()', () => {
     expect(event.platform).toBe('claude-code');
   });
 
-  it('includes team/project/org attribution when provided', () => {
+  it('includes team/project/org/repo attribution when provided', () => {
     const event = retryAlertToNrEvent(makeThrashingAlert(), {
       developer: 'd',
       appName: 'a',
       teamId: 'team-1',
       projectId: 'proj-1',
       orgId: 'org-1',
+      repoUrl: 'https://github.com/org/repo',
     });
 
     expect(event.team_id).toBe('team-1');
     expect(event.project_id).toBe('proj-1');
     expect(event.org_id).toBe('org-1');
+    expect(event.repo_url).toBe('https://github.com/org/repo');
   });
 });
 
@@ -1812,6 +1814,22 @@ describe('NrIngestManager.ingestRetryAlert()', () => {
     >;
     const retryEvent = sentEvents.find((e) => e.eventType === 'AiRetryAlert');
     expect(retryEvent?.session_id).toBe('the-trace-id');
+  });
+
+  it('includes repo_url on the queued event when configured', async () => {
+    const manager = new NrIngestManager(
+      makeIngestOptions({ repoUrl: 'https://github.com/org/repo' }),
+    );
+
+    manager.ingestRetryAlert(makeThrashingAlert());
+    manager.start();
+    await manager.stop();
+
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const retryEvent = sentEvents.find((e) => e.eventType === 'AiRetryAlert');
+    expect(retryEvent?.repo_url).toBe('https://github.com/org/repo');
   });
 });
 
