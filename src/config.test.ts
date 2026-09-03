@@ -1352,10 +1352,16 @@ describe('developer sanitization via loadMcpConfig()', () => {
     expect(config.repoUrl).toBe('https://example.test/x');
   });
 
-  it('repoUrl is null when projectId is null, even if repoUrl is set explicitly', () => {
+  it('repoUrl resolves to null whenever projectId resolves to null, even if repoUrl is set explicitly', () => {
     const origDir = process.cwd();
     try {
-      process.chdir(tmpDir); // non-git directory → projectId resolves to null
+      // An explicit `projectId: null` in the config file doesn't force null by
+      // itself — loadMcpConfig() still falls through to git-remote inference
+      // (pre-existing behavior, unrelated to repoUrl). It's the non-git cwd
+      // below that makes inference return null, which is what this test
+      // actually exercises: repoUrl's opt-out gate reads the resolved
+      // projectId value, not the raw config-file field.
+      process.chdir(tmpDir); // non-git directory → projectId inference returns null
       delete process.env.GIT_DIR;
       delete process.env.GIT_WORK_TREE;
       process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
