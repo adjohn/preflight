@@ -5,11 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.33.0] - 2026-09-02
+## [Unreleased]
 
 ### Added
 
 - **Preflight now attributes telemetry to a repo's full git remote URL, not just the shorter `org/repo` form.** A new `repo_url` field ships alongside `project_id` on every NR event and metric, auto-inferred from `git remote get-url origin` and credential-stripped before being sent, gated behind the same opt-out as `project_id`. New Relic Scorecard rule definitions for tracking AI-coding cost, anti-pattern rate, and per-team efficiency are now documented in `docs/SCORECARDS.md`.
+
+## [1.33.2] - 2026-09-03
+
+### Fixed
+
+- **The MCP Registry publish step in the Release workflow was failing on every run.** `server.json`'s `description` field was 106 characters, exceeding the registry's 100-character limit; shortened it so releases reach `registry.modelcontextprotocol.io` again.
+
+## [1.33.1] - 2026-09-03
+
+### Added
+
+- **Grok 4.6, Gemini 3.8 Flash, Claude Fable 5.1, and Claude Mythos 5.1 are now priced.**
+
+### Fixed
+
+- **Cached tokens on Bedrock's Claude 3.5 Haiku were being priced at $0.** That model's cache pricing was missing from the pricing table entirely; it now carries cache-write/cache-read rates consistent with every other Bedrock Claude entry.
+- **Grok 4.5's cached-input rate and context window were stale.** Cached input now prices at $0.3 per million tokens (was $0.5) and the context window is now 500K (was overstated as 1M), matching xAI's own published pricing.
+- **`ministral-3b-latest`, `ministral-8b-latest`, and `ministral-14b-latest` now resolve to real pricing instead of $0.** Mistral introduced "-latest" aliases for its Ministral 3 family; without them, sessions reporting those exact model strings had no matching entry.
+
+## [1.33.0] - 2026-09-03
+
+### Added
+
+- **Preflight now recognizes the GitHub Copilot desktop app as its own platform.** Previously its sessions captured tool-call activity but no cost data and filed under the generic MCP fallback; Preflight now labels them correctly and reads token-exact cost from the app's own local usage database.
+
+### Fixed
+
+- **Claude Code sessions were sometimes mislabeled as a generic MCP client instead of Claude Code.** Platform detection checked environment variables Claude Code doesn't actually set, so affected sessions' cost and tool-call data filed under the wrong platform label instead of being correctly attributed.
+
+## [1.32.1] - 2026-09-03
+
+### Fixed
+
+- **Tooltip value text is no longer unreadable black-on-dark on the Cost Per Outcome, Top Tools, and Cost by Tool charts.** These charts color each bar per-entry rather than on the `Bar` element itself, so Recharts fell back to a hardcoded black for the tooltip's value line while the label stayed themed — it now uses the same ink token as the rest of the tooltip.
 
 ## [1.32.0] - 2026-09-02
 

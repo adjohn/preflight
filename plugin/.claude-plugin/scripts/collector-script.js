@@ -40,6 +40,15 @@ function resolveRecordContent(highSecurity, explicitValue) {
   return highSecurity ? false : explicitValue;
 }
 
+// src/platforms/claude-code-adapter.ts
+var CLAUDE_CODE_ENV_SIGNALS = [
+  "CLAUDECODE",
+  "CLAUDE_CODE_ENTRYPOINT",
+  "CLAUDE_CODE_SESSION_ID",
+  "CLAUDE_CODE",
+  "CLAUDE_CODE_VERSION"
+];
+
 // src/hooks/collector-script.ts
 import { realpathSync } from "node:fs";
 var SESSION_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
@@ -79,6 +88,11 @@ function getMaxContentLength() {
   if (val === void 0) return 10240;
   const parsed = parseInt(val, 10);
   return Number.isNaN(parsed) ? 10240 : parsed;
+}
+function detectStampPlatform() {
+  const explicit = process.env.MCP_CLIENT ?? process.env.NEW_RELIC_AI_PLATFORM;
+  if (explicit) return explicit;
+  return CLAUDE_CODE_ENV_SIGNALS.some((key) => process.env[key] !== void 0) ? "claude-code" : void 0;
 }
 var MAX_REDACT_BYTES = 1048576;
 function redact(value) {
@@ -700,8 +714,8 @@ function processHook(raw) {
   if (data.transcript_path) event.transcriptPath = data.transcript_path;
   if (data.permission_mode) event.permissionMode = data.permission_mode;
   if (sessionId) event.sessionId = sessionId;
-  const explicitPlatform = process.env.MCP_CLIENT ?? process.env.NEW_RELIC_AI_PLATFORM;
-  if (explicitPlatform) event.platform = explicitPlatform;
+  const stampedPlatform = detectStampPlatform();
+  if (stampedPlatform) event.platform = stampedPlatform;
   if (data.tool_use_id) event.toolUseId = data.tool_use_id;
   if (data.agent_id) event.agentId = data.agent_id;
   if (data.agent_type) event.agentType = data.agent_type;
