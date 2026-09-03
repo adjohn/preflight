@@ -439,15 +439,34 @@ section.wrap {
 }
 
 .platform {
-  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
   font-size: 0.875rem;
+  transition: border-color 120ms;
+}
+
+.platform:hover {
+  border-color: var(--muted);
 }
 
 .platform.muted {
   border-style: dashed;
   color: var(--muted);
+}
+
+.mark {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+[data-theme='dark'] .mark[data-treatment='invert-on-dark'] {
+  filter: invert(1);
 }
 
 .legend {
@@ -519,7 +538,7 @@ section.wrap {
   transition: border-color 120ms;
 }
 
-.feature:hover {
+a.feature:hover {
   border-color: var(--muted);
 }
 
@@ -547,6 +566,22 @@ section.wrap {
   margin-top: 16px;
   font-size: 0.875rem;
   color: var(--muted);
+}
+
+.teams-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 32px;
+}
+
+.teams .panel {
+  width: min(100%, 720px);
+  margin-top: 28px;
+}
+
+.teams .text-link {
+  display: inline-block;
 }
 
 .cta {
@@ -637,17 +672,31 @@ section.wrap {
   }
 
   .nav-inner {
-    gap: 12px;
+    gap: 8px;
+  }
+
+  .nav nav ul {
+    gap: 0;
   }
 
   .nav nav a {
-    padding: 6px 8px;
-    font-size: 0.875rem;
+    padding: 6px;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+  }
+
+  .theme-toggle button {
+    width: 24px;
+    height: 24px;
   }
 
   .stats,
   .features {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .teams-grid {
+    grid-template-columns: 1fr;
   }
 
   .stat {
@@ -673,6 +722,10 @@ section.wrap {
 }
 
 @media (max-width: 420px) {
+  .nav .brand-name {
+    display: none;
+  }
+
   .features {
     grid-template-columns: 1fr;
   }

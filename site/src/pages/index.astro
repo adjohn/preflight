@@ -5,10 +5,12 @@ import metricsDoc from '../../../docs/METRICS_TABLE.md?raw';
 import pkg from '../../../package.json';
 import CodePanel from '../components/CodePanel.astro';
 import CopyButton from '../components/CopyButton.astro';
+import LogoMark from '../components/LogoMark.astro';
 import { emphasizeNumbers } from '../highlight';
 import {
   AGENT_PROMPT,
   BASE,
+  CLOUD_COMMAND,
   FEATURES,
   FOOTER,
   INSTALL_COMMAND,
@@ -16,6 +18,7 @@ import {
   PLATFORMS,
   SHOWCASE,
   SITE_URL,
+  TEAMS,
 } from '../landing';
 
 const toolCount = new Set(commandsDoc.match(/nr_observe_[a-z_]+/g)).size;
@@ -43,7 +46,7 @@ const THEMES = [
 
 const title = 'Preflight: observability for AI coding assistants';
 const description =
-  'Preflight captures every tool call, every dollar, and every stall from Claude Code, Cursor, Copilot, and more. Runs on your machine. Sends nothing anywhere by default.';
+  'Preflight captures every tool call, every dollar, and every stall from Claude Code, Cursor, Copilot, and more. Runs on your machine. Sends nothing anywhere by default. Connect New Relic to roll it up across your whole org.';
 const logo = `${BASE}/demo/preflight-logo.svg`;
 ---
 
@@ -76,9 +79,9 @@ const logo = `${BASE}/demo/preflight-logo.svg`;
     <a class="skip" href="#main">Skip to content</a>
     <header class="nav">
       <div class="wrap nav-inner">
-        <a class="brand" href={`${BASE}/`}>
+        <a class="brand" href={`${BASE}/`} aria-label="Preflight home">
           <img src={logo} width="28" height="28" alt="" />
-          Preflight
+          <span class="brand-name">Preflight</span>
         </a>
         <nav aria-label="Primary">
           <ul>
@@ -194,7 +197,15 @@ const logo = `${BASE}/demo/preflight-logo.svg`;
         <ul class="pills">
           {
             PLATFORMS.map((p) => (
-              <li class:list={['platform', { muted: p.coverage !== 'full-hooks' }]}>{p.name}</li>
+              <li>
+                <a
+                  class:list={['platform', { muted: p.coverage !== 'full-hooks' }]}
+                  href={`${BASE}/adapters/#${p.anchor}`}
+                >
+                  {p.logo && <LogoMark logo={p.logo} />}
+                  {p.name}
+                </a>
+              </li>
             ))
           }
         </ul>
@@ -243,6 +254,36 @@ const logo = `${BASE}/demo/preflight-logo.svg`;
         <p class="caption">
           Teams get <a href={`${BASE}/getting-started/`}>{dashboardCount} prebuilt New Relic dashboards</a>.
         </p>
+      </section>
+
+      <section id="teams" class="teams wrap" aria-labelledby="teams-heading">
+        <h2 id="teams-heading">Measure the return across your org</h2>
+        <p class="lede">
+          Connect New Relic and every session from every developer rolls up by team, project, and
+          platform. See what AI-assisted coding costs, what it produces, and where the money goes to
+          waste.
+        </p>
+        <div class="teams-grid">
+          {
+            TEAMS.map((t) => {
+              const Card = t.href ? 'a' : 'div';
+              return (
+                <Card class="feature" href={t.href}>
+                  <h3>{t.title}</h3>
+                  <p>{t.body}</p>
+                </Card>
+              );
+            })
+          }
+        </div>
+        <p class="caption">
+          Manager view carries team metrics with no tool-call content. Security audit tracks
+          sensitive file access and destructive commands.
+        </p>
+        <CodePanel id="cloud-command" label="Connect New Relic" code={CLOUD_COMMAND}>
+          <CopyButton slot="actions" text={CLOUD_COMMAND} target="cloud-command" />
+        </CodePanel>
+        <a class="text-link" href={`${BASE}/getting-started/`}>Team setup guide →</a>
       </section>
 
       <section class="cta wrap" aria-labelledby="cta-heading">

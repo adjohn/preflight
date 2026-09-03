@@ -12,7 +12,7 @@ const DIST = join(SITE, 'dist');
 const OUT = join(SITE, '.verify');
 const ASTRO = join(SITE, 'node_modules', '.bin', 'astro');
 
-const { INSTALL_COMMAND, AGENT_PROMPT } = await import('../src/landing.ts');
+const { INSTALL_COMMAND, AGENT_PROMPT, CLOUD_COMMAND } = await import('../src/landing.ts');
 
 const results = [];
 function check(name, ok, detail = '') {
@@ -124,6 +124,7 @@ try {
     'install-command': INSTALL_COMMAND,
     'agent-prompt': AGENT_PROMPT,
     'install-command-cta': INSTALL_COMMAND,
+    'cloud-command': CLOUD_COMMAND,
   };
   for (const button of await page.$$('button.copy')) {
     const target = await button.getAttribute('data-target');

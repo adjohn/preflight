@@ -1,8 +1,14 @@
+import type { LogoKey } from './logos';
+
 export const SITE_URL = 'https://newrelic-experimental.github.io/preflight';
 export const BASE = '/preflight';
 const REPO_URL = 'https://github.com/newrelic-experimental/preflight';
 export const INSTALL_COMMAND = 'npm install -g @newrelic/preflight && preflight setup';
 export const AGENT_PROMPT = `Read ${SITE_URL}/start.md and set up Preflight on this machine, then confirm it is capturing this session.`;
+export const CLOUD_COMMAND = [
+  'preflight install --mode cloud --license-key YOUR_LICENSE_KEY --account-id YOUR_ACCOUNT_ID',
+  'preflight deploy-dashboards --all',
+].join('\n');
 
 interface ShowcaseTab {
   readonly id: string;
@@ -52,28 +58,76 @@ type Coverage = 'full-hooks' | 'mcp-tools-only' | 'self-reported';
 interface Platform {
   readonly name: string;
   readonly coverage: Coverage;
+  /** Heading id on the Adapters page. */
+  readonly anchor: string;
+  readonly logo?: LogoKey;
 }
 
 export const PLATFORMS: readonly Platform[] = [
-  { name: 'Claude Code', coverage: 'full-hooks' },
-  { name: 'Kiro', coverage: 'full-hooks' },
-  { name: 'Amazon Q', coverage: 'full-hooks' },
-  { name: 'Droid', coverage: 'full-hooks' },
-  { name: 'Codex', coverage: 'full-hooks' },
-  { name: 'opencode', coverage: 'full-hooks' },
-  { name: 'Kilo Code', coverage: 'full-hooks' },
-  { name: 'Pi', coverage: 'full-hooks' },
-  { name: 'GitHub Copilot', coverage: 'full-hooks' },
-  { name: 'GitHub Copilot SDK', coverage: 'full-hooks' },
-  { name: 'GitHub Copilot app', coverage: 'full-hooks' },
-  { name: 'Gemini CLI', coverage: 'full-hooks' },
-  { name: 'Cursor', coverage: 'full-hooks' },
-  { name: 'Windsurf', coverage: 'full-hooks' },
-  { name: 'Antigravity', coverage: 'full-hooks' },
-  { name: 'Zed', coverage: 'mcp-tools-only' },
-  { name: 'Continue.dev', coverage: 'mcp-tools-only' },
-  { name: 'Cline', coverage: 'mcp-tools-only' },
-  { name: 'Generic MCP', coverage: 'self-reported' },
+  {
+    name: 'Claude Code',
+    coverage: 'full-hooks',
+    anchor: 'claude-code-claude-code',
+    logo: 'claude-code',
+  },
+  { name: 'Kiro', coverage: 'full-hooks', anchor: 'amazon-kiro-kiro', logo: 'kiro' },
+  {
+    name: 'Amazon Q',
+    coverage: 'full-hooks',
+    anchor: 'amazon-q-developer-cli-amazon-q',
+    logo: 'amazon-q',
+  },
+  { name: 'Droid', coverage: 'full-hooks', anchor: 'factory-droid-droid', logo: 'droid' },
+  { name: 'Codex', coverage: 'full-hooks', anchor: 'openai-codex-codex', logo: 'codex' },
+  { name: 'opencode', coverage: 'full-hooks', anchor: 'opencode-opencode', logo: 'opencode' },
+  { name: 'Kilo Code', coverage: 'full-hooks', anchor: 'kilo-code-kilocode', logo: 'kilo-code' },
+  { name: 'Pi', coverage: 'full-hooks', anchor: 'pi-pi', logo: 'pi' },
+  {
+    name: 'GitHub Copilot',
+    coverage: 'full-hooks',
+    anchor: 'github-copilot-copilot',
+    logo: 'github-copilot',
+  },
+  {
+    name: 'GitHub Copilot SDK',
+    coverage: 'full-hooks',
+    anchor: 'github-copilot-sdk-copilot-sdk',
+    logo: 'github-copilot',
+  },
+  {
+    name: 'GitHub Copilot app',
+    coverage: 'full-hooks',
+    anchor: 'github-copilot-app-copilot-app',
+    logo: 'github-copilot',
+  },
+  {
+    name: 'Gemini CLI',
+    coverage: 'full-hooks',
+    anchor: 'google-gemini-cli-gemini-cli',
+    logo: 'gemini-cli',
+  },
+  { name: 'Cursor', coverage: 'full-hooks', anchor: 'cursor-cursor', logo: 'cursor' },
+  { name: 'Windsurf', coverage: 'full-hooks', anchor: 'windsurf-windsurf', logo: 'windsurf' },
+  {
+    name: 'Antigravity',
+    coverage: 'full-hooks',
+    anchor: 'google-antigravity-antigravity',
+    logo: 'antigravity',
+  },
+  { name: 'Zed', coverage: 'mcp-tools-only', anchor: 'zed-zed', logo: 'zed' },
+  {
+    name: 'Continue.dev',
+    coverage: 'mcp-tools-only',
+    anchor: 'continuedev-continue',
+    logo: 'continue',
+  },
+  { name: 'Cline', coverage: 'mcp-tools-only', anchor: 'cline-cline', logo: 'cline' },
+  {
+    name: 'Generic MCP',
+    coverage: 'self-reported',
+    anchor: 'generic-mcp-fallback-generic-mcp',
+    logo: 'mcp',
+  },
 ];
 
 interface Feature {
@@ -105,6 +159,33 @@ export const FEATURES: readonly Feature[] = [
   },
 ];
 
+interface TeamItem {
+  readonly title: string;
+  readonly body: string;
+  readonly href?: string;
+}
+
+export const TEAMS: readonly TeamItem[] = [
+  {
+    title: 'Cost per outcome',
+    body: 'Spend split by bug fixes, features, and failed attempts, with a waste ratio and an ROI estimate against hours saved. Commits, pushes, and merged PRs arrive as metrics with the same team attribution as cost.',
+    href: `${BASE}/commands-table/#nr_observe_get_cost_per_outcome`,
+  },
+  {
+    title: 'Efficiency across developers',
+    body: "Efficiency scores, anti-patterns, and retry thrashing compared across the team and tracked week over week, with coaching reports against each developer's own baseline.",
+  },
+  {
+    title: 'Budgets and alerts',
+    body: 'Five prebuilt alert conditions: daily cost spike, low efficiency score, stuck-loop rate, anti-pattern rate, and per-session budget. One command deploys the policy.',
+    href: `${BASE}/advanced/#per-developer-alerts`,
+  },
+  {
+    title: 'Platform comparison',
+    body: 'Claude Code, Cursor, Copilot, and the rest side by side on cost and efficiency, so a decision about what to standardize on rests on your own numbers.',
+  },
+];
+
 interface Link {
   readonly label: string;
   readonly href: string;
@@ -112,6 +193,7 @@ interface Link {
 
 export const NAV: readonly Link[] = [
   { label: 'Docs', href: `${BASE}/getting-started/` },
+  { label: 'Teams', href: `${BASE}/#teams` },
   { label: "What's New", href: `${BASE}/whats-new/` },
   { label: 'GitHub', href: REPO_URL },
 ];
