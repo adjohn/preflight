@@ -39,7 +39,7 @@ Detection order matters: `createDefaultRegistry()` (`src/platforms/platform-regi
 
 **Mechanism:** Native `PreToolUse`/`PostToolUse`/`PostToolUseFailure` hooks, installed by Preflight itself, plus six separate top-level settings.json hooks keys (not `PostToolUse` payload variants): `StopFailure`, which feeds `ApiFailureTracker` with model-API-call failures; `SessionStart`, which fires on every session but is only actionable when Claude Code reports resume-cost fields (`source: 'resume'`/`'fork'` with a prior response) — those feed `SessionResumeTracker`, surfaced in `nr_observe_get_cost_forecast`'s `resumeContext`; `InstructionsLoaded`, which feeds `InstructionDriftTracker` the exact moment a CLAUDE.md/`.claude/rules/*.md` file enters context — including session-start eager loads, which have no visible `Read` tool call at all; `PostModelSwitch`, which feeds `ModelUsageTracker` a discrete switch event (deliberate `/model` changes, and persistent automatic changes tagged `source: 'auto'`) — `PreModelSwitch` is intentionally not installed, since Preflight has no reason to block or confirm a switch; and `UserPromptSubmit`/`Stop`, which feed precise turn/task-boundary timestamps into `TurnTracker.finalizeTurnAt()`/`TaskDetector.startTaskIfNone()`/`TaskDetector.markBoundary()` — corroborating signals for the existing idle-gap heuristics, not replacements (`Stop` doesn't fire on a user interrupt, so the heuristics stay as the fallback). No prompt/response content is captured from either hook, only timestamp and session ID.
 
-**Detection (`isSupported()`):** any of `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, or `CLAUDE_CODE_SESSION_ID` set (the vars current Claude Code actually sets in child process envs — see issue #539), or the legacy `CLAUDE_CODE`/`CLAUDE_CODE_VERSION`, or `MCP_CLIENT === 'claude-code'`. The list is the exported `CLAUDE_CODE_ENV_SIGNALS` const, shared with `collector-script.ts`'s hook-time platform stamping.
+**Detection (`isSupported()`):** any of `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, or `CLAUDE_CODE_SESSION_ID` set (the vars current Claude Code actually sets in child process envs), or the legacy `CLAUDE_CODE`/`CLAUDE_CODE_VERSION`, or `MCP_CLIENT === 'claude-code'`. The list is the exported `CLAUDE_CODE_ENV_SIGNALS` const, shared with `collector-script.ts`'s hook-time platform stamping.
 
 **Setup:**
 
@@ -644,7 +644,7 @@ then **reload the window** (`Developer: Reload Window`). Until then the debug-lo
 
 - **All empirical claims are macOS-only.** Windows/Linux install paths and directory layout are unverified.
 - **Cloud-sandbox sessions are unconfirmed.** A session with `execution_location != 'local'` runs where local hooks cannot fire; whether its economics still appear in the local `data.db` is unconfirmed.
-- **Session end is never observed.** The collector has no `Stop`/`SessionEnd` branch for this platform (upstream PR #535 tracks adding one), so a session's outcome stays "in progress".
+- **Session end is never observed.** The collector has no `Stop`/`SessionEnd` branch for this platform, so a session's outcome stays "in progress".
 - **MCP-server propagation to the pooled CLI processes is unconfirmed.** The app spawned its CLI pool with `observed_process_mcp_config=0`, so whether servers registered via `copilot mcp add` reach those processes — and therefore whether the `nr_observe_*` tools are callable inside app sessions — is unconfirmed.
 - **Concurrent multi-session capture is untested.** Multiple simultaneous app sessions on one machine have not been exercised.
 
