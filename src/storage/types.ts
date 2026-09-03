@@ -1,7 +1,11 @@
 interface HookEventBase {
   readonly tool: string;
   readonly timestamp: number;
-  /** True originating platform, stamped by collector-script.ts at write time. */
+  /**
+   * True originating platform, stamped by the collector in the hook
+   * subprocess, where platform env signals actually exist. Absent on lines
+   * written by older collectors and by watchers.
+   */
   readonly platform?: string;
 }
 

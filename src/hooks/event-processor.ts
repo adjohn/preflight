@@ -15,7 +15,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '../shared/index.js';
-import { createDefaultRegistry } from '../platforms/index.js';
+import { createDefaultRegistry, GENERIC_MCP_PLATFORM_NAME } from '../platforms/index.js';
 import type { PlatformAdapter } from '../platforms/types.js';
 import type { LocalStore } from '../storage/local-store.js';
 import type {
@@ -316,6 +316,27 @@ export class HookEventProcessor {
   private readonly onStop: ((event: BoundaryFrame) => void) | null;
   private readonly platformAdapter: PlatformAdapter;
   /**
+   * Set from a non-generic `platform` value carried on a pre/post event (see
+   * `applyStampedPlatform`) — overrides `platformAdapter` once a hook-time
+   * stamp names a registered adapter. Last non-generic stamp wins; a
+   * `generic-mcp` or unrecognized stamp never overrides. This process-level
+   * field only feeds `activePlatform` (the session-summary label); tool-name
+   * mapping uses the per-session map below, so in `drainAllSessions` mode
+   * concurrent sessions from different platforms each map with their own
+   * stamped adapter.
+   */
+  private stampedPlatformAdapter: PlatformAdapter | null = null;
+  /**
+   * Per-session stamped adapters, scoped by sessionId like
+   * subagentDedupRegistry/tokenDedupRegistry below — without this, one
+   * mutable process-level adapter would mis-map tool names for interleaved
+   * sessions from different platforms in `drainAllSessions` mode.
+   * FIFO-bounded; values are shared singletons from one registry.
+   */
+  private readonly stampedAdapterBySession = new Map<string, PlatformAdapter>();
+  private static readonly MAX_STAMPED_SESSIONS = 100;
+  private registeredAdaptersByName: Map<string, PlatformAdapter> | null = null;
+  /**
    * Per-agent dedup rings for recent subagent turns (scoped by agentId, one
    * DedupRing per agent, LRU-bounded across agents). Cursor recovery may
    * re-read a line after a crash mid-write; double-counting would be silent,
@@ -385,12 +406,70 @@ export class HookEventProcessor {
   }
 
   /**
-   * The platform name resolved for this process — either the explicitly
-   * injected `platformAdapter`, or the auto-detected default. Resolved
-   * once at construction time; this getter never re-detects.
+   * The platform name currently in effect — the last non-generic
+   * hook-stamped adapter (see `applyStampedPlatform`) if one has been seen,
+   * else the explicitly injected `platformAdapter`, else the auto-detected
+   * default. Not construction-time-only: a stamped event can flip this on
+   * any later read.
    */
   get activePlatform(): string {
-    return this.platformAdapter.platformName;
+    return this.currentAdapter.platformName;
+  }
+
+  private get currentAdapter(): PlatformAdapter {
+    return this.stampedPlatformAdapter ?? this.platformAdapter;
+  }
+
+  /**
+   * Lazily builds the platformName → adapter map from the full registry, once
+   * per process — avoids the registry-construction cost for the common case
+   * where no event ever carries a `platform` stamp.
+   */
+  private getRegisteredAdaptersByName(): Map<string, PlatformAdapter> {
+    if (this.registeredAdaptersByName === null) {
+      this.registeredAdaptersByName = new Map(
+        createDefaultRegistry()
+          .getRegistered()
+          .map((adapter) => [adapter.platformName, adapter]),
+      );
+    }
+    return this.registeredAdaptersByName;
+  }
+
+  /**
+   * See `stampedPlatformAdapter`'s and `stampedAdapterBySession`'s doc
+   * comments for the override rules. The name-equality shortcut skips
+   * registry construction for the common case where every stamp names the
+   * already-active adapter.
+   */
+  private applyStampedPlatform(sessionId: string | undefined, platformName: string): void {
+    if (platformName === GENERIC_MCP_PLATFORM_NAME) return;
+    const adapter =
+      platformName === this.currentAdapter.platformName
+        ? this.currentAdapter
+        : this.getRegisteredAdaptersByName().get(platformName);
+    if (!adapter) return;
+    this.stampedPlatformAdapter = adapter;
+    if (sessionId === undefined) return;
+    if (
+      !this.stampedAdapterBySession.has(sessionId) &&
+      this.stampedAdapterBySession.size >= HookEventProcessor.MAX_STAMPED_SESSIONS
+    ) {
+      const oldest = this.stampedAdapterBySession.keys().next().value;
+      if (oldest !== undefined) this.stampedAdapterBySession.delete(oldest);
+    }
+    this.stampedAdapterBySession.set(sessionId, adapter);
+  }
+
+  /**
+   * The adapter used to map this session's tool names — its own stamped
+   * adapter when one has been seen, else the process-level current adapter
+   * (which covers events from collectors too old to stamp).
+   */
+  private adapterForSession(sessionId: string | undefined): PlatformAdapter {
+    const stamped =
+      sessionId !== undefined ? this.stampedAdapterBySession.get(sessionId) : undefined;
+    return stamped ?? this.currentAdapter;
   }
 
   start(): void {
@@ -465,9 +544,21 @@ export class HookEventProcessor {
    */
   processEvents(events: HookEvent[]): void {
     for (const rawEvent of events) {
+      if (
+        (rawEvent.mode === 'pre' || rawEvent.mode === 'post') &&
+        rawEvent.platform !== undefined
+      ) {
+        this.applyStampedPlatform(rawEvent.sessionId, rawEvent.platform);
+      }
       const event: HookEvent =
         rawEvent.mode === 'pre' || rawEvent.mode === 'post'
-          ? { ...rawEvent, tool: mapToolNameOrOriginal(this.platformAdapter, rawEvent.tool) }
+          ? {
+              ...rawEvent,
+              tool: mapToolNameOrOriginal(
+                this.adapterForSession(rawEvent.sessionId),
+                rawEvent.tool,
+              ),
+            }
           : rawEvent;
       try {
         if (event.mode === 'token') {

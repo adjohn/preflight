@@ -18,8 +18,10 @@ import type { ObservabilityHealthSnapshot } from './dashboard/routes/api-handler
 import { SubagentTimelineStore } from './dashboard/subagent-timeline-store.js';
 import { WorkflowStore } from './dashboard/workflow-store.js';
 import { isCopilotSdkExtensionMissing } from './hooks/copilot-sdk-extension-health.js';
+import { CopilotAppUsageWatcher } from './hooks/copilot-app-usage-watcher.js';
 import { CopilotUsageWatcher } from './hooks/copilot-usage-watcher.js';
 import { HookEventProcessor } from './hooks/index.js';
+import { isPlatformDetectionFellBack } from './hooks/platform-detection-health.js';
 import { ParentTranscriptWatcher } from './hooks/parent-transcript-watcher.js';
 import {
   isSyntheticSessionId,
@@ -833,6 +835,7 @@ async function main(): Promise<void> {
   let activeWorkflowWatcher: WorkflowWatcher | null = null;
   let activeParentTranscriptWatcher: ParentTranscriptWatcher | null = null;
   let activeCopilotUsageWatcher: CopilotUsageWatcher | null = null;
+  let activeCopilotAppUsageWatcher: CopilotAppUsageWatcher | null = null;
   // Aborts the async resolveSessionId polling loop when shutdown fires so
   // the breadcrumb poll does not outlive the process.
   let sessionResolutionAbort: AbortController | undefined;
@@ -924,6 +927,7 @@ async function main(): Promise<void> {
       activeWorkflowWatcher?.stop();
       activeParentTranscriptWatcher?.stop();
       activeCopilotUsageWatcher?.stop();
+      activeCopilotAppUsageWatcher?.stop();
       liveSessionRegistry?.stopSampling();
       // Use allSettled so a failure in one stop() doesn't prevent the others.
       const stopResults = await Promise.allSettled([
@@ -1808,6 +1812,9 @@ async function main(): Promise<void> {
                 copilotDebugLoggingDisabled:
                   activeCopilotUsageWatcher?.getHealth().debugLoggingLikelyDisabled ?? false,
                 copilotSdkExtensionMissing: isCopilotSdkExtensionMissing(activePlatformName),
+                platformDetectionFellBack: isPlatformDetectionFellBack(
+                  eventProcessor?.activePlatform ?? activePlatformName,
+                ),
               };
             },
           },
@@ -2607,6 +2614,15 @@ async function main(): Promise<void> {
     // gated only by its own opt-out. It no-ops cheaply when no VS Code
     // workspaceStorage dirs exist.
     const copilotUsageWatcherEnabled = process.env['NR_AI_ENABLE_COPILOT_USAGE_WATCHER'] !== '0';
+    // CopilotAppUsageWatcher is the GitHub Copilot desktop app's analog of
+    // CopilotUsageWatcher: token-exact cost, but read from the app's own
+    // data.db SQLite store instead of a debug-log tail (the app has no
+    // extensions/ mechanism to produce one — see copilot-app-adapter.ts).
+    // Same always-run rationale as the other two: it feeds the primary cost
+    // signal for that platform, so it is gated only by its own opt-out, and
+    // it no-ops cheaply (a single existsSync) when data.db is absent.
+    const copilotAppUsageWatcherEnabled =
+      process.env['NR_AI_ENABLE_COPILOT_APP_USAGE_WATCHER'] !== '0';
 
     // Construct + start the watchers for a given session id. In `--stdio` mode
     // the watchers filter discovered transcript dirs by `parentSessionId`; in
@@ -2647,6 +2663,17 @@ async function main(): Promise<void> {
         });
         activeCopilotUsageWatcher.start();
         logger.info('CopilotUsageWatcher started', {
+          parentSessionId: isStdioWatcher ? watcherSessionId : null,
+        });
+      }
+      if (copilotAppUsageWatcherEnabled) {
+        activeCopilotAppUsageWatcher = new CopilotAppUsageWatcher({
+          storagePath: config!.storagePath,
+          parentSessionId: isStdioWatcher ? watcherSessionId : undefined,
+          localStore,
+        });
+        activeCopilotAppUsageWatcher.start();
+        logger.info('CopilotAppUsageWatcher started', {
           parentSessionId: isStdioWatcher ? watcherSessionId : null,
         });
       }
@@ -2723,6 +2750,10 @@ async function main(): Promise<void> {
       if (activeCopilotUsageWatcher) {
         activeCopilotUsageWatcher.stop();
         activeCopilotUsageWatcher = null;
+      }
+      if (activeCopilotAppUsageWatcher) {
+        activeCopilotAppUsageWatcher.stop();
+        activeCopilotAppUsageWatcher = null;
       }
       if (activeSubagentWatcher) {
         activeSubagentWatcher.stop();

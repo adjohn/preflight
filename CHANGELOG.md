@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - 2026-09-03
+
+### Added
+
+- **Preflight now recognizes the GitHub Copilot desktop app as its own platform.** Previously its sessions captured tool-call activity but no cost data and filed under the generic MCP fallback; Preflight now labels them correctly and reads token-exact cost from the app's own local usage database.
+
+### Fixed
+
+- **Claude Code sessions were sometimes mislabeled as a generic MCP client instead of Claude Code.** Platform detection checked environment variables Claude Code doesn't actually set, so affected sessions' cost and tool-call data filed under the wrong platform label instead of being correctly attributed.
+
 ## [1.32.1] - 2026-09-03
 
 ### Fixed
