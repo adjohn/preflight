@@ -21,6 +21,7 @@ import { isCopilotSdkExtensionMissing } from './hooks/copilot-sdk-extension-heal
 import { CopilotAppUsageWatcher } from './hooks/copilot-app-usage-watcher.js';
 import { CopilotUsageWatcher } from './hooks/copilot-usage-watcher.js';
 import { HookEventProcessor } from './hooks/index.js';
+import { isPlatformDetectionFellBack } from './hooks/platform-detection-health.js';
 import { ParentTranscriptWatcher } from './hooks/parent-transcript-watcher.js';
 import {
   isSyntheticSessionId,
@@ -86,11 +87,7 @@ import { TrendAnalyzer } from './metrics/trend-analyzer.js';
 import { TurnCostAttributor } from './metrics/turn-cost-attributor.js';
 import { TurnTracker } from './metrics/turn-tracker.js';
 import { WorkflowRunTracker } from './metrics/workflow-run-tracker.js';
-import {
-  createDefaultRegistry,
-  GENERIC_MCP_PLATFORM_NAME,
-  GenericMcpAdapter,
-} from './platforms/index.js';
+import { createDefaultRegistry, GenericMcpAdapter } from './platforms/index.js';
 import type { ProxyRequestRecord, ProxyToolCallRecord } from './proxy/index.js';
 import { ProxyManager } from './proxy/index.js';
 import { AuditTrailManager } from './security/audit-trail.js';
@@ -1815,9 +1812,9 @@ async function main(): Promise<void> {
                 copilotDebugLoggingDisabled:
                   activeCopilotUsageWatcher?.getHealth().debugLoggingLikelyDisabled ?? false,
                 copilotSdkExtensionMissing: isCopilotSdkExtensionMissing(activePlatformName),
-                platformDetectionFellBack:
-                  (eventProcessor?.activePlatform ?? activePlatformName) ===
-                  GENERIC_MCP_PLATFORM_NAME,
+                platformDetectionFellBack: isPlatformDetectionFellBack(
+                  eventProcessor?.activePlatform ?? activePlatformName,
+                ),
               };
             },
           },
