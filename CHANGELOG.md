@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.1] - 2026-09-03
+
+### Fixed
+
+- **Tooltip value text is no longer unreadable black-on-dark on the Cost Per Outcome, Top Tools, and Cost by Tool charts.** These charts color each bar per-entry rather than on the `Bar` element itself, so Recharts fell back to a hardcoded black for the tooltip's value line while the label stayed themed — it now uses the same ink token as the rest of the tooltip.
+
 ## [1.32.0] - 2026-09-02
 
 ### Added
