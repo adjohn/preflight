@@ -227,6 +227,7 @@ export function auditRecordToNrEvent(
 ): NrEventData {
   const event: NrEventData = {
     eventType: 'AiAuditEvent',
+    event_version: 1,
     timestamp: Math.floor(record.timestamp / 1000),
     action: record.action,
     tool: record.tool,
@@ -264,6 +265,7 @@ export function securityAlertToNrEvent(
   if (!alert) throw new Error('securityAlertToNrEvent called with no securityAlert on record');
   const event: NrEventData = {
     eventType: 'SecurityAlert',
+    event_version: 1,
     timestamp: Math.floor(record.timestamp / 1000),
     severity: alert.severity,
     alert_type: alert.alertType,

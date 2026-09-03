@@ -5,6 +5,90 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 2026-09-02
+
+### Added
+
+- **Preflight now supports correcting cost figures toward an organization's actual contracted rate.** Preflight previously computed every dollar figure from its own vendored public list-price table, with no way to reflect a negotiated discount or the data-residency inference premium — so for an org billed differently than list price, every cost figure was systematically off by a known amount. Two new config options close that gap: a flat discount multiplier, and a flag for the same 1.1× premium applied to data-residency workspaces.
+
+## [1.31.0] - 2026-09-02
+
+### Added
+
+- **Turn and task boundaries are now anchored to Claude Code's own prompt-submit and stop signals, not just idle gaps.** Turn and task tracking previously inferred boundaries from a short gap in tool-call activity, which could merge two quick back-to-back turns or understate a turn's true duration by missing the time spent generating a final response. Preflight now uses Claude Code's `UserPromptSubmit` and `Stop` hooks as a precise, corroborating signal for both, falling back to the existing gap-based detection when a conversation ends without a `Stop` (e.g. a user interrupt).
+
+## [1.30.0] - 2026-09-02
+
+### Added
+
+- **Preflight now understands when a resumed session's cost spike was expected.** Claude Code's `SessionStart` hook reports how long a session had been idle and its own estimate of what re-warming the prompt cache will cost when resuming a stale conversation. Preflight now surfaces that context alongside its cost forecast, so a resume-driven spike has an explanation attached instead of appearing as an unexplained cache-hit dip.
+
+## [1.29.0] - 2026-09-02
+
+### Added
+
+- **Preflight now sees model switches as they happen, not just as a change in token-usage reports.** Claude Code's `PostModelSwitch` hook fires whenever the session's model changes — a deliberate `/model` switch, a persistent automatic fallback, or the model restored on resume. Preflight now records each of these as a discrete event, including how many were automatic, instead of only inferring a change happened from a different model string showing up in usage data.
+
+## [1.28.0] - 2026-09-02
+
+### Added
+
+- **Instruction-file drift tracking now sees session-start loads, not just edits.** Claude Code's `InstructionsLoaded` hook fires the moment a CLAUDE.md or `.claude/rules/*.md` file enters context — including at session start, when no `Read` tool call happens at all. Preflight now uses that as the authoritative signal instead of relying solely on Edit/Write tool calls to infer when instructions changed.
+
+## [1.27.0] - 2026-09-02
+
+### Added
+
+- **Tool-call records now capture which subagent, if any, made the call.** When Claude Code reports its native `agent_id`/`agent_type` hook fields, Preflight attributes the tool call to that subagent — laying groundwork for future per-subagent cost and workflow breakdowns.
+
+## [1.26.1] - 2026-09-02
+
+### Fixed
+
+- **Tool-call latency no longer includes the time you spent approving a permission prompt.** Duration was measured as the wall-clock gap between when Preflight received a tool call and when it completed, which included any permission-prompt wait and PreToolUse hook overhead. Preflight now reads Claude Code's own reported tool-execution time when available, so latency percentiles and per-tool cost/latency breakdowns reflect actual tool speed.
+
+## [1.26.0] - 2026-09-02
+
+### Added
+
+- **Preflight now publishes to the official MCP Registry** (registry.modelcontextprotocol.io) after each release, making it discoverable through the registry and the surfaces that federate from it.
+
+## [1.25.0] - 2026-09-01
+
+### Added
+
+- **Preflight can now be installed directly as a Claude Code plugin** — `/plugin marketplace add newrelic-experimental/preflight` sets up hooks and the MCP server without a separate npm install or build step.
+
+## [1.24.0] - 2026-09-01
+
+### Added
+
+- **A new `companionMode` setting prevents double-counting cost and token metrics when an org also enables Claude Code's built-in OTel export.** With it on, Preflight's own cost gauges are suppressed and cost-bearing events are tagged for reconciliation instead of dropped, so a blended "org AI spend" dashboard reflects the true total rather than counting each session twice.
+
+## [1.23.0] - 2026-09-01
+
+### Added
+
+- **The inbound OTLP receiver now enriches protobuf-encoded payloads, not just JSON** — `application/x-protobuf` bodies (the default for most OTel SDKs, including Claude Code's own) are decoded, tagged with session/repo context, and re-encoded, matching what the JSON path already did. A payload using OTLP schema fields newer than the receiver's vendored descriptor loses those unrecognized fields on re-encode; a payload that fails to decode is forwarded unmodified rather than dropped.
+
+## [1.22.0] - 2026-09-01
+
+### Added
+
+- **Tool-call telemetry now distinguishes user rejections, auto-mode policy denials, and mid-run interrupts from a generic timeout** — `error_type` gains `rejected`, `denied`, and `interrupted` values (previously all three exported as `timeout`), enabling acceptance-rate analysis for Edit/Write tools. Wires Claude Code's `PermissionRequest`/`PermissionDenied` hooks alongside the existing ones; after upgrading, `preflight doctor`'s hooks-wired check will report a failure until `preflight install` is re-run to register the two new hooks.
+
+## [1.21.0] - 2026-09-01
+
+### Added
+
+- **Git activity — commits, pushes, force-pushes, and PR create/merge outcomes — is now exported to New Relic as `ai.git.*` metrics**, tagged with the same developer/team/project attribution as cost and efficiency metrics.
+
+## [1.20.0] - 2026-09-01
+
+### Added
+
+- **Every NR event Preflight sends now carries an `event_version` field**, giving NRQL dashboards and alerts a stable way to detect and branch on schema changes going forward.
+
 ## [1.19.0] - 2026-08-31
 
 ### Fixed
