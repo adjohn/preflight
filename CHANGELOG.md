@@ -5,11 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.34.0] - 2026-09-03
 
 ### Added
 
-- **Preflight now attributes telemetry to a repo's full git remote URL, not just the shorter `org/repo` form.** A new `repo_url` field ships alongside `project_id` on every NR event and metric, auto-inferred from `git remote get-url origin` and credential-stripped before being sent. It has its own opt-out (`repoUrlEnabled: false`, or `NEW_RELIC_AI_REPO_URL_ENABLED=false`), independent of `project_id`'s, and the `preflight install` setup wizard prompts for it explicitly. New Relic Scorecard rule definitions for tracking AI-coding cost, anti-pattern rate, and per-team efficiency are now documented in `docs/SCORECARDS.md`.
+- **Preflight now attributes telemetry to a repo's full git remote URL, not just the shorter `org/repo` form.** A new `repo_url` field ships alongside `project_id` on every NR event and metric, auto-inferred from `git remote get-url origin` and credential-stripped before being sent. It has its own opt-out (`repoUrlEnabled: false`, or `NEW_RELIC_AI_REPO_URL_ENABLED=false`), independent of `project_id`'s, and the `preflight install` setup wizard prompts for it explicitly.
+- **Five recommended New Relic Scorecard rule definitions are now documented in `docs/SCORECARDS.md`**, covering AI-coding cost, anti-pattern rate, efficiency score, cost-per-file, and security alerts per team — usable against Preflight's existing custom events with no entity synthesis required.
+
+### Fixed
+
+- **`project_id` (and now `repo_url`) could silently resolve from the wrong repository when running under a git hook or CI subprocess.** Both are inferred via `git remote get-url origin`, but that read didn't clear `GIT_DIR`/`GIT_WORK_TREE` — environment variables git sets for hook subprocesses (including this repo's own pre-push hook) that redirect git commands to a different repository's `.git` directory.
 
 ## [1.33.2] - 2026-09-03
 
