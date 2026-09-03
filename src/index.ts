@@ -39,6 +39,7 @@ import { checkNodeVersion } from './install/node-version-check.js';
 import { localDateKey, todayPortionOfSessionCost } from './lib/date.js';
 import { AntiPatternDetector } from './metrics/anti-patterns.js';
 import { ApiFailureTracker, mapClaudeCodeErrorType } from './metrics/api-failure-tracker.js';
+import { SessionResumeTracker } from './metrics/session-resume-tracker.js';
 import { BudgetTracker } from './metrics/budget-tracker.js';
 import { ClaudeMdTracker } from './metrics/claudemd-tracker.js';
 import { CollaborationProfiler } from './metrics/collaboration-profile.js';
@@ -1102,7 +1103,13 @@ async function main(): Promise<void> {
       }) ?? undefined;
 
     sessionTracker = new SessionTracker(sessionTraceId);
-    const costTracker = new CostTracker(sessionTracker);
+    // Combine the two independent correction factors here so CostTracker only
+    // ever deals with one number (see its constructor doc comment) — the raw
+    // config fields (costRateMultiplier, dataResidencyPremium) stay unmerged
+    // in config.ts since they're set/documented independently.
+    const rateMultiplier =
+      (config.costRateMultiplier ?? 1) * (config.dataResidencyPremium ? 1.1 : 1);
+    const costTracker = new CostTracker(sessionTracker, { rateMultiplier });
     taskDetector = new TaskDetector({ costTracker });
     const antiPatternDetector = new AntiPatternDetector();
     const efficiencyScorer = new EfficiencyScorer();
@@ -1137,6 +1144,11 @@ async function main(): Promise<void> {
     // inputs stay at their "unknown" defaults for the same reason. See
     // api-failure-tracker.ts's API_FAILURE_PARTIAL_DATA_NOTE for the full story.
     const apiFailureTracker = new ApiFailureTracker();
+    // Fed via Claude Code's SessionStart hook (see the onSessionStart
+    // callback on eventProcessor below), only for source: 'resume'/'fork'
+    // events that carry the resume-cost fields — a plain startup/clear/
+    // compact SessionStart has nothing to report and never calls recordResume().
+    const sessionResumeTracker = new SessionResumeTracker();
     liveSessionRegistry = new LiveSessionRegistry();
     liveSessionRegistry.startSampling();
     // Unconditional in every mode — decoupled from whether the `--local`
@@ -1893,6 +1905,7 @@ async function main(): Promise<void> {
         teamId: config.teamId,
         projectId: config.projectId,
         orgId: config.orgId,
+        companionMode: config.companionMode,
         sessionTracker,
         localStore,
         auditTrail,
@@ -2411,6 +2424,46 @@ async function main(): Promise<void> {
           duringToolExecution,
         });
       },
+      onSessionStart: (frame) => {
+        // Only 'resume'/'fork' SessionStart events with the resume-cost
+        // fields present are actionable — a plain startup/clear/compact
+        // start (or a resume with no prior response, per the docs) has
+        // nothing to report.
+        if (
+          typeof frame.secondsSinceLastResponse !== 'number' ||
+          typeof frame.contextTokens !== 'number' ||
+          typeof frame.promptCacheLikelyExpired !== 'boolean' ||
+          typeof frame.estimatedCacheWriteUsd !== 'number'
+        ) {
+          return;
+        }
+        sessionResumeTracker.recordResume({
+          secondsSinceLastResponse: frame.secondsSinceLastResponse,
+          contextTokens: frame.contextTokens,
+          promptCacheLikelyExpired: frame.promptCacheLikelyExpired,
+          estimatedCacheWriteUsd: frame.estimatedCacheWriteUsd,
+          timestampMs: frame.timestamp,
+        });
+      },
+      onInstructionsLoaded: (frame) => {
+        instructionDriftTracker.recordInstructionsLoaded(frame.filePath, frame.loadReason);
+      },
+      onModelSwitch: (frame) => {
+        modelUsageTracker.recordModelSwitch({
+          fromModel: frame.fromModel,
+          toModel: frame.toModel,
+          source: frame.source,
+          requestedModel: frame.requestedModel,
+          timestampMs: frame.timestamp,
+        });
+      },
+      onUserPromptSubmit: (frame) => {
+        taskDetector!.startTaskIfNone(frame.timestamp);
+      },
+      onStop: (frame) => {
+        turnTracker.finalizeTurnAt(frame.timestamp);
+        taskDetector!.markBoundary(frame.timestamp);
+      },
     });
 
     persistSession = (opts?: { periodic?: boolean }) => {
@@ -2782,6 +2835,7 @@ async function main(): Promise<void> {
           teamId: config!.teamId,
           projectId: config!.projectId,
           orgId: config!.orgId,
+          companionMode: config!.companionMode,
           sessionTracker: sessionTracker!,
           localStore: realLocalStore,
           auditTrail,
@@ -2849,6 +2903,7 @@ async function main(): Promise<void> {
         toolCallBuffer: toolCallBufferAccessor,
         qualityProxyTracker,
         apiFailureTracker,
+        sessionResumeTracker,
         turnCostAttributor,
         turnTracker,
         gitEfficiencyTracker,
@@ -3031,6 +3086,7 @@ async function main(): Promise<void> {
           toolCallBuffer: toolCallBufferAccessor,
           qualityProxyTracker,
           apiFailureTracker,
+          sessionResumeTracker,
           turnCostAttributor,
           turnTracker,
           gitEfficiencyTracker,
@@ -3137,6 +3193,7 @@ async function main(): Promise<void> {
         teamId: config.teamId,
         projectId: config.projectId,
         orgId: config.orgId,
+        companionMode: config.companionMode,
         sessionTracker: new SessionTracker(sessionTraceId),
         localStore: proxyLocalStore,
         eventHarvestIntervalMs: config.harvestIntervalMs.events,
