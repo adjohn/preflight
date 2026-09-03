@@ -1,7 +1,8 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { execSync } from 'node:child_process';
 import {
   loadMcpConfig,
   redactSensitive,
@@ -43,6 +44,8 @@ beforeEach(() => {
   delete process.env.NEW_RELIC_AI_TEAM_ID;
   delete process.env.NEW_RELIC_AI_PROJECT_ID;
   delete process.env.NEW_RELIC_AI_ORG_ID;
+  delete process.env.NEW_RELIC_AI_REPO_URL;
+  delete process.env.NEW_RELIC_AI_REPO_URL_ENABLED;
   delete process.env.NEW_RELIC_API_KEY;
   delete process.env.NR_AI_MODE;
   // Most fixtures below set credentials without asserting on mode; an explicit
@@ -399,6 +402,20 @@ describe('loadMcpConfig()', () => {
     expect(config.licenseKey).toBe('test-key');
     expect(config.accountId).toBe('12345');
     // No unknown-keys warning when file is empty
+    const stderrOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(stderrOutput).not.toMatch(/Unknown keys in config file/);
+  });
+
+  it('does not warn about repoUrl as an unknown config-file key (regression: was missing from ConfigFileSchema)', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const path = resolve(tmpDir, 'repo-url.json');
+    writeFileSync(
+      path,
+      JSON.stringify({ projectId: 'myorg/myrepo', repoUrl: 'https://example.test/x' }),
+    );
+    const config = loadMcpConfig({ config: path });
+    expect(config.repoUrl).toBe('https://example.test/x');
     const stderrOutput = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     expect(stderrOutput).not.toMatch(/Unknown keys in config file/);
   });
@@ -1322,6 +1339,125 @@ describe('developer sanitization via loadMcpConfig()', () => {
       expect(config.projectId).toBeNull();
     } finally {
       process.chdir(origDir);
+    }
+  });
+
+  it('repoUrl uses config file value when no env var set', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({
+      projectId: 'myorg/myrepo',
+      repoUrl: 'https://example.test/x',
+    });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.repoUrl).toBe('https://example.test/x');
+  });
+
+  it('repoUrl opt-out is independent of projectId — an explicit projectId: null does not disable it', () => {
+    const origDir = process.cwd();
+    try {
+      // Non-git cwd → projectId inference returns null. Prior behavior coupled
+      // repoUrl's opt-out to that resolved value; it's now a dedicated toggle
+      // (repoUrlEnabled), so an explicit repoUrl value still comes through.
+      process.chdir(tmpDir);
+      delete process.env.GIT_DIR;
+      delete process.env.GIT_WORK_TREE;
+      process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+      process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+      const configPath = writeConfigFile({ projectId: null, repoUrl: 'https://example.test/x' });
+      const config = loadMcpConfig({ config: configPath });
+      expect(config.projectId).toBeNull();
+      expect(config.repoUrl).toBe('https://example.test/x');
+      expect(config.repoUrlEnabled).toBe(true);
+    } finally {
+      process.chdir(origDir);
+    }
+  });
+
+  it('repoUrlEnabled: false disables repoUrl independent of projectId', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({
+      projectId: 'myorg/myrepo',
+      repoUrl: 'https://example.test/x',
+      repoUrlEnabled: false,
+    });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.projectId).toBe('myorg/myrepo');
+    expect(config.repoUrlEnabled).toBe(false);
+    expect(config.repoUrl).toBeNull();
+  });
+
+  it('NEW_RELIC_AI_REPO_URL_ENABLED=false disables repoUrl via env var', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NEW_RELIC_AI_REPO_URL_ENABLED = 'false';
+    const configPath = writeConfigFile({ repoUrl: 'https://example.test/x' });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.repoUrlEnabled).toBe(false);
+    expect(config.repoUrl).toBeNull();
+  });
+
+  it('strips embedded credentials from an explicit repoUrl config-file value', () => {
+    // Redaction must not be limited to the git-remote-inferred path — a value
+    // pasted straight from an authenticated `git remote -v` is just as
+    // sensitive when set explicitly.
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    const configPath = writeConfigFile({
+      repoUrl: 'https://someuser:ghp_faketoken1234567890abcd@github.com/org/repo.git',
+    });
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.repoUrl).not.toBeNull();
+    expect(config.repoUrl).not.toContain('ghp_faketoken1234567890abcd');
+    expect(config.repoUrl).not.toContain('someuser:');
+    expect(config.repoUrl).toContain('[REDACTED]');
+  });
+
+  it('strips embedded credentials from an explicit NEW_RELIC_AI_REPO_URL env var', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+    process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+    process.env.NEW_RELIC_AI_REPO_URL =
+      'https://someuser:ghp_faketoken1234567890abcd@github.com/org/repo.git';
+    const configPath = writeConfigFile({});
+    const config = loadMcpConfig({ config: configPath });
+    expect(config.repoUrl).not.toBeNull();
+    expect(config.repoUrl).not.toContain('ghp_faketoken1234567890abcd');
+    expect(config.repoUrl).not.toContain('someuser:');
+    expect(config.repoUrl).toContain('[REDACTED]');
+  });
+
+  it('repoUrl strips embedded credentials from an inferred git remote', () => {
+    const origDir = process.cwd();
+    // A dedicated mkdtemp dir, not the shared per-test `tmpDir`, since this
+    // test mutates real git state (init + remote add).
+    const gitDir = mkdtempSync(resolve(tmpdir(), 'nr-mcp-test-repo-'));
+    // GIT_DIR/GIT_WORK_TREE (set by git for hook subprocesses, e.g. this
+    // process running under husky's pre-push) override `cwd`, silently
+    // redirecting `git init`/`git remote add` to the real repo instead of
+    // gitDir — which is exactly what made this test flake only when run via
+    // `git push`, never via a direct `npm test`. See config.ts's
+    // getGitRemoteUrl() and local-session-aggregator.ts's GIT_OPTS for the
+    // same guard.
+    const gitEnv = { ...process.env, GIT_DIR: undefined, GIT_WORK_TREE: undefined };
+    try {
+      execSync('git init', { cwd: gitDir, env: gitEnv });
+      execSync(
+        'git remote add origin https://someuser:ghp_faketoken1234567890abcd@github.com/org/repo.git',
+        { cwd: gitDir, env: gitEnv },
+      );
+      process.chdir(gitDir);
+      process.env.NEW_RELIC_LICENSE_KEY = 'test-key';
+      process.env.NEW_RELIC_ACCOUNT_ID = '12345';
+      const configPath = writeConfigFile({});
+      const config = loadMcpConfig({ config: configPath });
+      expect(config.repoUrl).not.toBeNull();
+      expect(config.repoUrl).not.toContain('ghp_faketoken1234567890abcd');
+      expect(config.repoUrl).not.toContain('someuser:');
+      expect(config.repoUrl).toContain('[REDACTED]');
+    } finally {
+      process.chdir(origDir);
+      rmSync(gitDir, { recursive: true, force: true });
     }
   });
 

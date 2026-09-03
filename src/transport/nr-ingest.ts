@@ -111,6 +111,7 @@ export interface NrIngestOptions {
   teamId?: string | null;
   projectId?: string | null;
   orgId?: string | null;
+  repoUrl?: string | null;
   /** OTLP/HTTP endpoint URL. When set, telemetry is also exported via OTLP. */
   otlpEndpoint?: string | null;
   /** Additional HTTP headers for the OTLP exporter. */
@@ -185,6 +186,21 @@ const REDACT_FIELD_KEYS = new Set([
   'agentTeamName',
 ]);
 
+export function attachTeamAttribution(
+  event: NrEventData,
+  attrs: {
+    teamId?: string | null;
+    projectId?: string | null;
+    orgId?: string | null;
+    repoUrl?: string | null;
+  },
+): void {
+  if (attrs.teamId) event.team_id = attrs.teamId;
+  if (attrs.projectId) event.project_id = attrs.projectId;
+  if (attrs.orgId) event.org_id = attrs.orgId;
+  if (attrs.repoUrl) event.repo_url = attrs.repoUrl;
+}
+
 /**
  * Convert a ToolCallRecord into a flat NR event object.
  *
@@ -200,6 +216,7 @@ export function toolCallToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    repoUrl?: string | null;
   },
 ): NrEventData {
   const event: NrEventData = {
@@ -213,9 +230,7 @@ export function toolCallToNrEvent(
     app_name: attrs.appName,
   };
 
-  if (attrs.teamId) event.team_id = attrs.teamId;
-  if (attrs.projectId) event.project_id = attrs.projectId;
-  if (attrs.orgId) event.org_id = attrs.orgId;
+  attachTeamAttribution(event, attrs);
 
   if (attrs.sessionTraceId != null) event.session_id = attrs.sessionTraceId;
   if (record.durationMs != null) event.duration_ms = record.durationMs;
@@ -271,6 +286,7 @@ export function proxyToolCallToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    repoUrl?: string | null;
   },
 ): NrEventData {
   const event: NrEventData = {
@@ -286,9 +302,7 @@ export function proxyToolCallToNrEvent(
     app_name: attrs.appName,
   };
 
-  if (attrs.teamId) event.team_id = attrs.teamId;
-  if (attrs.projectId) event.project_id = attrs.projectId;
-  if (attrs.orgId) event.org_id = attrs.orgId;
+  attachTeamAttribution(event, attrs);
 
   // Prefer the record's own per-connection sessionId (the real per-client
   // identity — see ProxyManager.resolveSessionId) over the process-wide
@@ -315,6 +329,7 @@ export function proxyRequestToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    repoUrl?: string | null;
   },
 ): NrEventData {
   const event: NrEventData = {
@@ -330,9 +345,7 @@ export function proxyRequestToNrEvent(
     app_name: attrs.appName,
   };
 
-  if (attrs.teamId) event.team_id = attrs.teamId;
-  if (attrs.projectId) event.project_id = attrs.projectId;
-  if (attrs.orgId) event.org_id = attrs.orgId;
+  attachTeamAttribution(event, attrs);
 
   if (record.proxyOverheadMs != null) event.proxy_overhead_ms = record.proxyOverheadMs;
   if (record.responseSizeBytes != null) event.response_size_bytes = record.responseSizeBytes;
@@ -355,6 +368,7 @@ export function codingTaskToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    repoUrl?: string | null;
     /** See `NrIngestOptions.companionMode`. */
     companionMode?: boolean;
   },
@@ -392,9 +406,7 @@ export function codingTaskToNrEvent(
     sub_agents_spawned: task.subAgentsSpawned,
   };
 
-  if (attrs.teamId) event.team_id = attrs.teamId;
-  if (attrs.projectId) event.project_id = attrs.projectId;
-  if (attrs.orgId) event.org_id = attrs.orgId;
+  attachTeamAttribution(event, attrs);
 
   // sessionTraceId is the resolved Claude Code session_id; the
   // firstRecord?.sessionId fallback was only meaningful when the MCP fabricated
@@ -502,6 +514,7 @@ export function subagentTurnToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    repoUrl?: string | null;
     /** See `NrIngestOptions.companionMode`. */
     companionMode?: boolean;
   },
@@ -530,9 +543,7 @@ export function subagentTurnToNrEvent(
   if (metrics.usd !== null) event.usd = metrics.usd;
   if (metrics.stop_reason !== null) event.stop_reason = metrics.stop_reason;
   if (metrics.schema_fingerprint) event.schema_fingerprint = metrics.schema_fingerprint;
-  if (attrs.teamId) event.team_id = attrs.teamId;
-  if (attrs.projectId) event.project_id = attrs.projectId;
-  if (attrs.orgId) event.org_id = attrs.orgId;
+  attachTeamAttribution(event, attrs);
   // Subagent turns are always derived from a Claude Code transcript — no
   // platform check needed, unlike codingTaskToNrEvent.
   if (attrs.companionMode) event.cost_authority = 'external';
@@ -553,6 +564,7 @@ export function subagentTokenEventToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    repoUrl?: string | null;
     /** See `NrIngestOptions.companionMode`. */
     companionMode?: boolean;
   },
@@ -574,9 +586,7 @@ export function subagentTokenEventToNrEvent(
     app_name: attrs.appName,
   };
   if (event.workflowRunId != null) ev.workflow_run_id = event.workflowRunId;
-  if (attrs.teamId) ev.team_id = attrs.teamId;
-  if (attrs.projectId) ev.project_id = attrs.projectId;
-  if (attrs.orgId) ev.org_id = attrs.orgId;
+  attachTeamAttribution(ev, attrs);
   // Subagent token events are always derived from a Claude Code transcript —
   // no platform check needed, unlike codingTaskToNrEvent.
   if (attrs.companionMode) ev.cost_authority = 'external';
@@ -591,6 +601,7 @@ export function scriptWorkflowRunToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    repoUrl?: string | null;
     /** See `NrIngestOptions.companionMode`. */
     companionMode?: boolean;
   },
@@ -627,9 +638,7 @@ export function scriptWorkflowRunToNrEvent(
   if (metrics.token_reconciliation_delta !== null) {
     event.token_reconciliation_delta = metrics.token_reconciliation_delta;
   }
-  if (attrs.teamId) event.team_id = attrs.teamId;
-  if (attrs.projectId) event.project_id = attrs.projectId;
-  if (attrs.orgId) event.org_id = attrs.orgId;
+  attachTeamAttribution(event, attrs);
   // Script-driven workflow runs are always derived from a Claude Code
   // transcript — no platform check needed, unlike codingTaskToNrEvent.
   if (attrs.companionMode) event.cost_authority = 'external';
@@ -644,6 +653,7 @@ export function observabilityHealthToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    repoUrl?: string | null;
   },
 ): NrEventData {
   const event: NrEventData = {
@@ -670,9 +680,7 @@ export function observabilityHealthToNrEvent(
   if (typeof metrics.cost_self_check_delta_pct === 'number') {
     event.cost_self_check_delta_pct = metrics.cost_self_check_delta_pct;
   }
-  if (attrs.teamId) event.team_id = attrs.teamId;
-  if (attrs.projectId) event.project_id = attrs.projectId;
-  if (attrs.orgId) event.org_id = attrs.orgId;
+  attachTeamAttribution(event, attrs);
   return event;
 }
 
@@ -692,6 +700,7 @@ export function workflowRunToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    repoUrl?: string | null;
     /** See `NrIngestOptions.companionMode`. */
     companionMode?: boolean;
   },
@@ -729,9 +738,7 @@ export function workflowRunToNrEvent(
     event.exit_error = redactSensitive(metrics.exit_error);
   }
 
-  if (attrs.teamId) event.team_id = attrs.teamId;
-  if (attrs.projectId) event.project_id = attrs.projectId;
-  if (attrs.orgId) event.org_id = attrs.orgId;
+  attachTeamAttribution(event, attrs);
 
   // Prefer the resolved Claude Code session ID when threaded through the
   // manager (matches codingTaskToNrEvent); otherwise fall back to
@@ -762,6 +769,7 @@ export function antiPatternToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    repoUrl?: string | null;
     /** Detection wall-clock time in ms. Defaults to now if not provided. */
     detectedAt?: number;
   },
@@ -779,9 +787,7 @@ export function antiPatternToNrEvent(
     suggestion: pattern.suggestion,
   };
 
-  if (attrs.teamId) event.team_id = attrs.teamId;
-  if (attrs.projectId) event.project_id = attrs.projectId;
-  if (attrs.orgId) event.org_id = attrs.orgId;
+  attachTeamAttribution(event, attrs);
 
   if (attrs.sessionId != null) event.session_id = attrs.sessionId;
   // pattern.file is sourced from raw call.filePath in detectThrashing, and
@@ -820,6 +826,7 @@ export function retryAlertToNrEvent(
     teamId?: string | null;
     projectId?: string | null;
     orgId?: string | null;
+    repoUrl?: string | null;
   },
 ): NrEventData {
   const event: NrEventData = {
@@ -835,9 +842,7 @@ export function retryAlertToNrEvent(
     platform: attrs.platform ?? 'claude-code',
   };
 
-  if (attrs.teamId) event.team_id = attrs.teamId;
-  if (attrs.projectId) event.project_id = attrs.projectId;
-  if (attrs.orgId) event.org_id = attrs.orgId;
+  attachTeamAttribution(event, attrs);
   if (attrs.sessionId != null) event.session_id = attrs.sessionId;
 
   return event;
@@ -910,6 +915,7 @@ export class NrIngestManager {
   private readonly teamId: string | null | undefined;
   private readonly projectId: string | null | undefined;
   private readonly orgId: string | null | undefined;
+  private readonly repoUrl: string | null | undefined;
   private readonly metricHarvestIntervalMs: number;
   private readonly turnCostAttributor?: TurnCostAttributor;
   private readonly otlpTransport: OtlpTransport | null;
@@ -929,6 +935,7 @@ export class NrIngestManager {
     this.teamId = options.teamId;
     this.projectId = options.projectId;
     this.orgId = options.orgId;
+    this.repoUrl = options.repoUrl;
     this.sessionTracker = options.sessionTracker;
     this.proxyMetrics = new ProxyMetricsTracker();
     this.costTracker = options.costTracker;
@@ -1055,6 +1062,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      repoUrl: this.repoUrl,
     });
     this.scheduler.addEvent(event);
 
@@ -1086,6 +1094,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      repoUrl: this.repoUrl,
     });
 
     // Cost attribution is available via the nr_observe_get_cost_per_tool MCP tool only.
@@ -1105,6 +1114,7 @@ export class NrIngestManager {
     if (this.teamId) teamDims.team_id = this.teamId;
     if (this.projectId) teamDims.project_id = this.projectId;
     if (this.orgId) teamDims.org_id = this.orgId;
+    if (this.repoUrl) teamDims.repo_url = this.repoUrl;
 
     this.scheduler.recordMetric(
       'ai.tool.call_count',
@@ -1133,6 +1143,7 @@ export class NrIngestManager {
         teamId: this.teamId,
         projectId: this.projectId,
         orgId: this.orgId,
+        repoUrl: this.repoUrl,
       });
       this.scheduler.addEvent(proxyEvent);
       this.proxyMetrics.recordProxyCall(record);
@@ -1151,6 +1162,7 @@ export class NrIngestManager {
         teamId: this.teamId,
         projectId: this.projectId,
         orgId: this.orgId,
+        repoUrl: this.repoUrl,
       }),
     );
     if (finalAuditRecord.securityAlert) {
@@ -1159,6 +1171,7 @@ export class NrIngestManager {
           teamId: this.teamId,
           projectId: this.projectId,
           orgId: this.orgId,
+          repoUrl: this.repoUrl,
         }),
       );
     }
@@ -1174,6 +1187,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      repoUrl: this.repoUrl,
       companionMode: this.companionMode,
     });
     this.scheduler.addEvent(event);
@@ -1194,6 +1208,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      repoUrl: this.repoUrl,
       companionMode: this.companionMode,
     });
     this.scheduler.addEvent(event);
@@ -1212,6 +1227,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      repoUrl: this.repoUrl,
       companionMode: this.companionMode,
     });
     this.scheduler.addEvent(event);
@@ -1229,6 +1245,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      repoUrl: this.repoUrl,
       companionMode: this.companionMode,
     });
     this.scheduler.addEvent(event);
@@ -1246,6 +1263,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      repoUrl: this.repoUrl,
       companionMode: this.companionMode,
     });
     this.scheduler.addEvent(ev);
@@ -1259,6 +1277,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      repoUrl: this.repoUrl,
     });
     this.scheduler.addEvent(event);
   }
@@ -1276,6 +1295,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      repoUrl: this.repoUrl,
       detectedAt: context.detectedAt,
     });
     this.scheduler.addEvent(event);
@@ -1290,6 +1310,7 @@ export class NrIngestManager {
       teamId: this.teamId,
       projectId: this.projectId,
       orgId: this.orgId,
+      repoUrl: this.repoUrl,
     });
     this.scheduler.addEvent(event);
   }
@@ -1323,6 +1344,7 @@ export class NrIngestManager {
     if (this.teamId) nrEvent.team_id = this.teamId;
     if (this.projectId) nrEvent.project_id = this.projectId;
     if (this.orgId) nrEvent.org_id = this.orgId;
+    if (this.repoUrl) nrEvent.repo_url = this.repoUrl;
     if (this.sessionTraceId != null) nrEvent.session_id = this.sessionTraceId;
     this.scheduler.addEvent(nrEvent);
   }
@@ -1343,6 +1365,7 @@ export class NrIngestManager {
     if (this.teamId) nrEvent.team_id = this.teamId;
     if (this.projectId) nrEvent.project_id = this.projectId;
     if (this.orgId) nrEvent.org_id = this.orgId;
+    if (this.repoUrl) nrEvent.repo_url = this.repoUrl;
     if (this.sessionTraceId != null) nrEvent.session_id = this.sessionTraceId;
     this.scheduler.addEvent(nrEvent);
   }
@@ -1397,6 +1420,7 @@ export class NrIngestManager {
     if (this.teamId) teamAttrs.team_id = this.teamId;
     if (this.projectId) teamAttrs.project_id = this.projectId;
     if (this.orgId) teamAttrs.org_id = this.orgId;
+    if (this.repoUrl) teamAttrs.repo_url = this.repoUrl;
 
     const record = (name: string, value: number, attrs: Record<string, string | number> = {}) => {
       this.scheduler.recordMetric(
