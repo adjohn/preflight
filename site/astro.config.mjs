@@ -1,15 +1,18 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
+import { BASE } from './src/landing.ts';
+
 export default defineConfig({
   site: 'https://newrelic-experimental.github.io',
-  base: '/preflight',
+  base: BASE,
   integrations: [
     starlight({
       title: 'Preflight',
       description: 'Observability for AI coding assistants',
       customCss: ['./src/styles/custom.css'],
       sidebar: [
+        { label: "What's New", slug: 'whats-new' },
         {
           label: 'Getting Started',
           items: [{ label: 'Getting Started', slug: 'getting-started' }],

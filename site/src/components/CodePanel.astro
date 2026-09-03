@@ -1,0 +1,26 @@
+---
+import { tokenizeJson } from '../highlight';
+
+interface Props {
+  id: string;
+  code: string;
+  lang?: 'json' | 'text';
+  label?: string;
+}
+const { id, code, lang = 'text', label } = Astro.props;
+const tokens = lang === 'json' ? tokenizeJson(code) : null;
+---
+
+<div class="panel">
+  {
+    (label || Astro.slots.has('actions')) && (
+      <div class="panel-head">
+        {label && <span class="panel-label">{label}</span>}
+        <slot name="actions" />
+      </div>
+    )
+  }
+  <pre class={`panel-code lang-${lang}`}><code id={id}>{
+    tokens ? tokens.map((t) => <span class={`tk-${t.kind}`}>{t.text}</span>) : code
+  }</code></pre>
+</div>

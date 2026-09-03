@@ -3,6 +3,7 @@ import { docsSchema } from '@astrojs/starlight/schema';
 import { glob } from 'astro/loaders';
 
 const EXTERNAL_SLUGS: Record<string, string> = {
+  'docs/WHATS_NEW.md': 'whats-new',
   'docs/ADAPTERS.md': 'adapters',
   'docs/ADVANCED.md': 'advanced',
   'docs/ARCHITECTURE.md': 'architecture',
@@ -20,6 +21,7 @@ export const collections = {
       // added to docs/ is never accidentally built into a site page, even unlinked.
       pattern: [
         'site/src/content/docs/**/*.mdx',
+        'docs/WHATS_NEW.md',
         'docs/ADAPTERS.md',
         'docs/ADVANCED.md',
         'docs/ARCHITECTURE.md',
