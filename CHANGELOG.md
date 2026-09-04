@@ -5,17 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.0] - 2026-09-04
+
+### Added
+
+- **`nr_observe_get_model_recommendation` ranks the models in your session history by how they actually performed.** Every model seen in persisted sessions is ranked by average efficiency score, cost, and task success rate, overall and per task outcome type (`bug_fix`, `feature`, `refactor`, and the rest). Confidence is gated on sample size, so a handful of sessions never produces a recommendation.
+- **`nr_observe_get_recommendations` now compares your current model against the historical winner.** The `model_selection` recommendation fires only when the session's dominant model differs from the historically better-performing one and a comparable runner-up exists with a meaningful gap. It previously compared an arbitrary pair of models once three or more had been used.
+
+## [1.41.0] - 2026-09-04
+
+### Added
+
+- **A new Adoption & Cost dashboard for engineering managers.** `dashboards/ai-coding-assistant-adoption-cost.json` has five pages (Adoption, Cost, Tools & MCP, Team Leaderboard, Team Pulse) built entirely from Preflight's own events and metrics, including per-developer outcomes, MCP usage from both the hook and proxy paths, and the git-outcome gauges (PRs, commits, edit accept rate, cost per PR). Deploy it with `npm run deploy:dashboard:all`.
+- **A demo data generator for testing and demos.** `scripts/generate-demo-data.ts` seeds an account with realistic telemetry from ten developer personas covering every event type and the cumulative metric snapshots the dashboard relies on. Supports `--dry-run`, `--hours`, `--seed`, `--eu`, and `--staging`.
+
 ## [1.40.0] - 2026-09-04
 
 ### Added
 
-- **Audit records now name the subagent that made each tool call.** Tool calls from Task and Workflow subagents already reached the audit trail through hooks, but `AuditRecord` dropped the hook payload's `agent_id` and `agent_type`, so a search of `~/.newrelic-preflight/audit/*.jsonl` by agent id found nothing. The on-disk audit log, `AiAuditEvent`, `SecurityAlert`, the NR log entry, and the dashboard Audit page now carry `agent_id` and `agent_type` (`agentId` and `agentType` on disk and in the dashboard). Both are absent for calls the parent session made. (#578)
-- **A non-recursive `rm` or `unlink` now raises a `file_deletion` alert at `medium` severity.** Only recursive forms were flagged before, so `rm -f <file>` left no alert even when it deleted an untracked file. `rm -rf` and the other recursive forms stay `destructive_command` at `critical`. The rule matches `rm` in command position only, so `git rm`, `npm rm`, and `docker rm` do not match. Disable it with the new `deletionPatterns: []` option on `AuditTrailManager`. (#577)
-- **`git clean -f` and `find -delete` now raise a `destructive_command` alert at `critical`.** Both delete files with no recovery path and were flagged by nothing before. Dry-run and bare `git clean` stay unflagged.
+- **`preflight install --copilot` (and a prompt in `preflight setup`) now configures GitHub Copilot end-to-end.** Sets up Copilot CLI hooks and MCP registration, VS Code Copilot Chat's MCP config and token-exact cost logging, and a fix for VS Code double-counting tool calls when both Claude Code and Copilot hook files are present — plus a matching `preflight uninstall --copilot`. Previously this setup was entirely manual.
 
-### Changed
+### Fixed
 
-- `detectSecurityAlert` evaluates an ordered rule table and returns the highest-severity match instead of the first match in an if-chain. Verdicts for the three existing alert types are unchanged.
+- **GitHub Copilot tool-call capture (CLI and VS Code Copilot Chat) now actually reaches New Relic.** The hooks file Preflight generated used the wrong JSON shape, so Copilot's hooks-runner silently never executed any hook — tool-call count, tool selection, latency, audit, and session tracking were all missing for Copilot sessions, while cost tracking kept working through a separate path and masked the problem. Also fixes a related bug where a Copilot session drained by an unrelated running Preflight process could be mislabeled with that process's own platform instead of its own.
 
 ## [1.39.0] - 2026-09-04
 

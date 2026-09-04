@@ -1556,13 +1556,13 @@ async function main(): Promise<void> {
       claudeMdTracker,
     });
     const recommendationEngine = new RecommendationEngine({
-      sessionStore,
       trendAnalyzer,
       collaborationProfiler,
       claudeMdTracker,
       promptFeedbackEngine,
       costPerOutcomeAnalyzer,
       taskDetector,
+      modelUsageTracker,
     });
 
     const sessionStartMs = Date.now();
