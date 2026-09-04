@@ -108,6 +108,12 @@ export interface WorkspaceMetrics extends Omit<GitEfficiencyMetrics, 'repoContex
    *  this. */
   readonly mergeEventCount: number;
   readonly rebaseEventCount: number;
+  /** Latest `timestamp` across every record this workspace saw in the
+   *  requested window — git, edit, verify, and PR records alike, unlike
+   *  `lastPushTimestamp` which only tracks pushes. Null when the workspace
+   *  had no records at all. Drives "most recently active" sort ordering; a
+   *  max, so it merges safely at rollup the same way `commitTimestamps` does. */
+  readonly lastActivityMs: number | null;
 }
 
 export interface ScopeRef {
@@ -805,9 +811,13 @@ export function computeWorkspaceMetrics(
   let buildBeforePush: boolean | null = null;
   let quickConflictResolutions = 0;
   const prEvents: PrEvent[] = [];
+  let lastActivityMs: number | null = null;
 
   for (const record of records) {
     if (sessionStartTimestamp === null) sessionStartTimestamp = record.timestamp;
+    if (lastActivityMs === null || record.timestamp > lastActivityMs) {
+      lastActivityMs = record.timestamp;
+    }
 
     if (record.kind === 'edit') {
       editedFiles.add(record.filePath);
@@ -1112,6 +1122,7 @@ export function computeWorkspaceMetrics(
     hasForcePushedToDefaultBranch,
     mergeEventCount,
     rebaseEventCount,
+    lastActivityMs,
   };
 }
 
@@ -1291,6 +1302,11 @@ export function rollupWorkspaceMetrics(
     hasForcePushedToDefaultBranch,
     mergeEventCount,
     rebaseEventCount,
+    lastActivityMs: nodes.reduce<number | null>((max, n) => {
+      const ts = n.metrics.lastActivityMs;
+      if (ts === null) return max;
+      return max === null || ts > max ? ts : max;
+    }, null),
   };
 }
 

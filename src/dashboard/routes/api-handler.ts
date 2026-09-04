@@ -554,6 +554,7 @@ export interface ApiHandlerDeps {
       since: number;
       until: number;
       historical?: readonly GitActivityRecord[];
+      historicalIdentities?: ReadonlyMap<string, WorktreeIdentity>;
     }): GitWorkspaceReport;
     knownWorkspaces(): ReadonlyMap<string, WorktreeIdentity>;
   };
@@ -2330,6 +2331,7 @@ export function createApiHandler(
     // later by skipping this when `since` is provably within the live
     // in-memory retention, but correctness-first for now.
     let historical: GitActivityRecord[] = [];
+    const historicalIdentities = new Map<string, WorktreeIdentity>();
     if (deps.sessionStore?.loadAllSessions) {
       const identityResolver = new WorktreeIdentityResolver();
       const sessions = deps.sessionStore.loadAllSessions({
@@ -2337,13 +2339,21 @@ export function createApiHandler(
       }) as unknown as readonly {
         sessionId: string;
         timeline?: readonly ReplayTimelineEntry[];
+        repoName?: string | null;
       }[];
       for (const session of sessions) {
-        historical = historical.concat(replaySessionToActivityRecords(session, identityResolver));
+        const replayed = replaySessionToActivityRecords(session, identityResolver);
+        historical = historical.concat(replayed.records);
+        for (const [key, identity] of replayed.identities) {
+          historicalIdentities.set(key, identity);
+        }
       }
     }
 
-    jsonOk(res, deps.gitWorkspaceReporter.report({ scope, since, until, historical }));
+    jsonOk(
+      res,
+      deps.gitWorkspaceReporter.report({ scope, since, until, historical, historicalIdentities }),
+    );
   });
 
   routes.set('GET /api/context', (req, res) => {

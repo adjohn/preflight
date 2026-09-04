@@ -394,6 +394,61 @@ describe('rollupWorkspaceMetrics', () => {
   });
 });
 
+describe('lastActivityMs', () => {
+  it('is null when a workspace has no records', () => {
+    const identity = makeIdentity();
+    const metrics = computeWorkspaceMetrics([], identity, null);
+    expect(metrics.lastActivityMs).toBeNull();
+  });
+
+  it('tracks the latest record timestamp across git, edit, and other kinds — not just commits', () => {
+    const identity = makeIdentity();
+    const metrics = computeWorkspaceMetrics(
+      [
+        gitActivity('git commit -m "1"', 'ws-a', { timestamp: 100 }),
+        editActivity('a.ts', 'ws-a', 9000),
+        gitActivity('git status', 'ws-a', { timestamp: 500 }),
+      ],
+      identity,
+      null,
+    );
+    // The latest activity is the edit at 9000, not the commit at 100 — a
+    // sort keyed off commitTimestamps/lastPushTimestamp alone would miss it.
+    expect(metrics.lastActivityMs).toBe(9000);
+  });
+
+  it('rolls up as the max across workspaces, not the sum or the last node', () => {
+    const identityA = makeIdentity({ worktreeKey: '/repo/a', worktreeLabel: 'a' });
+    const identityB = makeIdentity({ worktreeKey: '/repo/b', worktreeLabel: 'b' });
+
+    const metricsA = computeWorkspaceMetrics(
+      [gitActivity('git commit -m "1"', 'ws-a', { timestamp: 5000 })],
+      identityA,
+      null,
+    );
+    // B is chronologically earlier but declared second — rollup must pick
+    // the max timestamp, not whichever node happens to come last.
+    const metricsB = computeWorkspaceMetrics(
+      [gitActivity('git commit -m "1"', 'ws-b', { timestamp: 100 })],
+      identityB,
+      null,
+    );
+
+    const rolled = rollupWorkspaceMetrics([
+      { identity: identityB, metrics: metricsB },
+      { identity: identityA, metrics: metricsA },
+    ]);
+    expect(rolled.lastActivityMs).toBe(5000);
+  });
+
+  it('rolls up to null when every workspace has a null lastActivityMs', () => {
+    const identityA = makeIdentity({ worktreeKey: '/repo/a', worktreeLabel: 'a' });
+    const metricsA = computeWorkspaceMetrics([], identityA, null);
+    const rolled = rollupWorkspaceMetrics([{ identity: identityA, metrics: metricsA }]);
+    expect(rolled.lastActivityMs).toBeNull();
+  });
+});
+
 describe('buildGitWorkspaceReport — parallel_isolation (repo scope)', () => {
   const repoKey = '/repo';
 

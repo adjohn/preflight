@@ -856,6 +856,7 @@ export interface WorkspaceMetrics {
   readonly hasForcePushedToDefaultBranch: boolean;
   readonly mergeEventCount: number;
   readonly rebaseEventCount: number;
+  readonly lastActivityMs: number | null;
 }
 
 // Mirrors ScopeRef in src/metrics/git-workspace-report.ts (not importable).

@@ -61,7 +61,6 @@ import {
   GitEfficiencyTracker,
   parseDefaultBranchFromSymbolicRef,
 } from './metrics/git-efficiency-tracker.js';
-import type { WorktreeIdentity } from './metrics/git-workspace-identity.js';
 import { WorktreeIdentityResolver } from './metrics/git-workspace-identity.js';
 import {
   GitWorkspaceReporter,
@@ -1436,10 +1435,8 @@ async function main(): Promise<void> {
     // against whichever repo this process's header currently names.
     const todaySessions = sessionStore.loadSessionsOverlappingToday();
     // Shared across every session in this loop (not one fresh resolver per
-    // session) so its per-directory cache is warm by the time
-    // replaySessionToActivityRecords resolves the same cwds again below —
-    // and so the identities collected below are guaranteed to match whatever
-    // that call resolved internally for the same directories.
+    // session) so its per-directory cache stays warm across sessions that
+    // touch the same worktree.
     const gitWorkspaceIdentityResolver = new WorktreeIdentityResolver();
     for (const session of todaySessions) {
       if (session.sessionId === currentSessionId) continue;
@@ -1447,14 +1444,9 @@ async function main(): Promise<void> {
         gitEfficiencyTracker.replayTimeline(session.timeline, session.repoName);
       }
 
-      const replayedRecords = replaySessionToActivityRecords(session, gitWorkspaceIdentityResolver);
-      if (replayedRecords.length === 0) continue;
-      const replayedIdentities = new Map<string, WorktreeIdentity>();
-      for (const entry of session.timeline ?? []) {
-        const identity = gitWorkspaceIdentityResolver.resolve(entry.cwd);
-        if (identity) replayedIdentities.set(identity.worktreeKey, identity);
-      }
-      gitWorkspaceReporter.ingestRecords(replayedRecords, replayedIdentities);
+      const replayed = replaySessionToActivityRecords(session, gitWorkspaceIdentityResolver);
+      if (replayed.records.length === 0) continue;
+      gitWorkspaceReporter.ingestRecords(replayed.records, replayed.identities);
     }
 
     // Hydrate instruction-drift tracker with the last 7 days of prior

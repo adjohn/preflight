@@ -215,7 +215,7 @@ describe('GitWorkspaceReporter', () => {
       ];
 
       const identityResolver = new WorktreeIdentityResolver();
-      const records = replaySessionToActivityRecords(
+      const { records } = replaySessionToActivityRecords(
         { sessionId: 'sess-1', timeline },
         identityResolver,
       );
@@ -244,13 +244,71 @@ describe('GitWorkspaceReporter', () => {
       ];
 
       const identityResolver = new WorktreeIdentityResolver();
-      const records = replaySessionToActivityRecords(
+      const { records } = replaySessionToActivityRecords(
         { sessionId: 'sess-no-cwd', timeline },
         identityResolver,
       );
 
       expect(records).toHaveLength(1);
       expect(records[0].workspaceKey).toBe('unattributed');
+    });
+
+    it('falls back to a synthetic unresolved-repo identity when repoName is known but cwd is not', () => {
+      const timeline: ReplayTimelineEntry[] = [
+        {
+          timestamp: 1000,
+          toolName: 'Edit',
+          durationMs: 20,
+          success: true,
+          filePath: '/some/file.ts',
+          // no cwd, but the session still knows which repo it ran in.
+        },
+      ];
+
+      const identityResolver = new WorktreeIdentityResolver();
+      const { records, identities } = replaySessionToActivityRecords(
+        { sessionId: 'sess-repo-only', timeline, repoName: 'acme/widgets' },
+        identityResolver,
+      );
+
+      expect(records).toHaveLength(1);
+      const fallbackKey = 'unresolved-repo:acme/widgets';
+      expect(records[0].workspaceKey).toBe(fallbackKey);
+
+      const identity = identities.get(fallbackKey);
+      expect(identity).toBeDefined();
+      expect(identity!.repoName).toBe('acme/widgets');
+      expect(identity!.worktreeRoot).toBeNull();
+      expect(identity!.branch).toBeNull();
+    });
+
+    it('leaves already-resolved entries alone even when repoName fallback is available', () => {
+      const repoDir = join(tmpDir, 'repo-with-cwd');
+      execSync(`mkdir -p "${repoDir}"`);
+      initGitRepo(repoDir);
+
+      const timeline: ReplayTimelineEntry[] = [
+        {
+          timestamp: 1000,
+          toolName: 'Bash',
+          durationMs: 50,
+          success: true,
+          command: 'git commit -m "replayed"',
+          cwd: repoDir,
+        },
+      ];
+
+      const identityResolver = new WorktreeIdentityResolver();
+      const { records, identities } = replaySessionToActivityRecords(
+        { sessionId: 'sess-mixed', timeline, repoName: 'acme/widgets' },
+        identityResolver,
+      );
+
+      expect(records).toHaveLength(1);
+      expect(records[0].workspaceKey).not.toBe('unresolved-repo:acme/widgets');
+      const realIdentity = identityResolver.resolve(repoDir);
+      expect(records[0].workspaceKey).toBe(realIdentity!.worktreeKey);
+      expect(identities.has('unresolved-repo:acme/widgets')).toBe(false);
     });
 
     it('produces stable ids across repeated replays, so ingesting both is idempotent', () => {
@@ -274,15 +332,13 @@ describe('GitWorkspaceReporter', () => {
       const firstPass = replaySessionToActivityRecords(session, identityResolver);
       const secondPass = replaySessionToActivityRecords(session, identityResolver);
 
-      expect(firstPass.map((r) => r.recordId)).toEqual(secondPass.map((r) => r.recordId));
-
-      const identity = identityResolver.resolve(repoDir);
-      expect(identity).not.toBeNull();
-      const identities = new Map([[identity!.worktreeKey, identity!]]);
+      expect(firstPass.records.map((r) => r.recordId)).toEqual(
+        secondPass.records.map((r) => r.recordId),
+      );
 
       const reporter = new GitWorkspaceReporter();
-      reporter.ingestRecords(firstPass, identities);
-      reporter.ingestRecords(secondPass, identities);
+      reporter.ingestRecords(firstPass.records, firstPass.identities);
+      reporter.ingestRecords(secondPass.records, secondPass.identities);
 
       const report = reporter.report({
         scope: { kind: 'all' },
@@ -317,15 +373,11 @@ describe('GitWorkspaceReporter', () => {
 
       const identityResolver = new WorktreeIdentityResolver();
       const session = { sessionId: 'sess-overlap', timeline };
-      const records = replaySessionToActivityRecords(session, identityResolver);
-
-      const identity = identityResolver.resolve(repoDir);
-      expect(identity).not.toBeNull();
-      const identities = new Map([[identity!.worktreeKey, identity!]]);
+      const replayed = replaySessionToActivityRecords(session, identityResolver);
 
       const reporter = new GitWorkspaceReporter();
       // Already live, e.g. from startup replay.
-      reporter.ingestRecords(records, identities);
+      reporter.ingestRecords(replayed.records, replayed.identities);
 
       // The SAME session, re-replayed fresh (as the API route does per
       // request) and passed as `historical` — same recordId, different array.
@@ -334,7 +386,8 @@ describe('GitWorkspaceReporter', () => {
         scope: { kind: 'all' },
         since: 0,
         until: Date.now() + 60_000,
-        historical: replayedAgain,
+        historical: replayedAgain.records,
+        historicalIdentities: replayedAgain.identities,
       });
 
       expect(report.rows).toHaveLength(1);
