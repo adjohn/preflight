@@ -1724,6 +1724,44 @@ describe('api-handler GET /api/audit', () => {
     expect(status()).toBe(503);
   });
 
+  it('carries agentId and agentType through to the DTO when present, and omits them when absent', async () => {
+    const fakeAuditLog = [
+      {
+        timestamp: 1700000000000,
+        sessionId: 'session-a',
+        action: 'BashCommand',
+        tool: 'Bash',
+        detail: 'Bash: rm -rf /tmp/x',
+        developer: 'alice',
+        agentId: 'a9f8',
+        agentType: 'workflow',
+        securityAlert: { severity: 'critical', alertType: 'destructive_command' },
+      },
+      {
+        timestamp: 1700000001000,
+        sessionId: 'session-a',
+        action: 'FileRead',
+        tool: 'Read',
+        detail: '/some/file.ts',
+        developer: 'alice',
+      },
+    ];
+    const handler = createApiHandler({
+      auditTrailManager: { getAuditLog: () => fakeAuditLog } as unknown as Parameters<
+        typeof createApiHandler
+      >[0]['auditTrailManager'],
+    });
+    const req = { method: 'GET', url: '/api/audit' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as Array<Record<string, unknown>>;
+    expect(parsed[0]!.agentId).toBe('a9f8');
+    expect(parsed[0]!.agentType).toBe('workflow');
+    expect(parsed[1]).not.toHaveProperty('agentId');
+    expect(parsed[1]).not.toHaveProperty('agentType');
+  });
+
   it('redacts secret-bearing strings in target (formerly detail) before serializing', async () => {
     // Use a Bearer token that matches DEFAULT_REDACTION_PATTERNS (>=20 chars after prefix).
     const secret = 'Bearer abcdefghijklmnopqrstuvwxyz0123456789';

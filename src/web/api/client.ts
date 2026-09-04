@@ -475,6 +475,8 @@ export interface AuditEntry {
   readonly target: string;
   readonly classification: string;
   readonly severity?: string;
+  readonly agentId?: string;
+  readonly agentType?: string;
 }
 
 export const fetchAuditLog = (): Promise<AuditEntry[]> => getJson<AuditEntry[]>('/api/audit');

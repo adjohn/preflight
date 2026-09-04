@@ -87,6 +87,8 @@ interface RawAuditRecord {
   readonly developer: string;
   readonly filePath?: string;
   readonly command?: string;
+  readonly agentId?: string;
+  readonly agentType?: string;
   readonly securityAlert?: { readonly severity: string; readonly alertType: string } | undefined;
 }
 
@@ -104,6 +106,8 @@ interface AuditEntryDto {
   readonly target: string;
   readonly classification: string;
   readonly severity?: string;
+  readonly agentId?: string;
+  readonly agentType?: string;
 }
 
 function toAuditEntry(entry: unknown): AuditEntryDto {
@@ -122,6 +126,8 @@ function toAuditEntry(entry: unknown): AuditEntryDto {
     target,
     classification,
     severity: r.securityAlert?.severity,
+    agentId: typeof r.agentId === 'string' ? r.agentId : undefined,
+    agentType: typeof r.agentType === 'string' ? r.agentType : undefined,
   };
 }
 
