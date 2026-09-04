@@ -788,6 +788,7 @@ export function buildSessionSummary(sources: BuildSessionSummarySources): FullSe
     success: tc.success,
     filePath: tc.filePath ? redactSensitive(String(tc.filePath)) : undefined,
     command: tc.command ? redactSensitive(String(tc.command)) : undefined,
+    cwd: tc.cwd ? redactSensitive(String(tc.cwd)) : undefined,
     isTestCommand: (tc.isTestCommand as boolean | undefined) || undefined,
     isBuildCommand: (tc.isBuildCommand as boolean | undefined) || undefined,
     isLintCommand: (tc.isLintCommand as boolean | undefined) || undefined,
