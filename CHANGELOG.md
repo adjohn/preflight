@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.45.0] - 2026-09-04
+
+### Fixed
+
+- **The Model Usage panel's $/1M tok rate now counts every billed token, and the "Most efficient" footer is gone.** The rate priced cache reads, cache writes, and thinking in its numerator but divided by uncached input and output tokens only. Subagent turns re-read a large cached prompt and emit a short tool call, so Haiku and Opus subagents showed rates of $1,000 to $9,000 per million while the parent Fable session showed $29, and the footer named Fable the most efficient model. The rate now divides by input, output, thinking, cache read, and cache creation tokens, which makes it comparable with list prices and with `nr_observe_get_cost_breakdown`. The History view's per-model rate uses the same denominator. The `nr_observe_get_model_usage` tool drops `mostEfficientModel` and `costPerOutputToken` (total cost over output tokens alone, the ratio behind the wrong ranking) and adds `totalCacheReadTokens`, `totalCacheCreationTokens`, and `totalThinkingTokens` per model. Session files written before this release lack the three fields and are read as 0, so their rate matches the old figure until they age out.
+
 ## [1.40.0] - 2026-09-04
 
 ### Added
