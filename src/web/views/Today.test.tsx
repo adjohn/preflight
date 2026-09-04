@@ -2304,63 +2304,141 @@ describe('Today view — Cost by Tool panel', () => {
   });
 });
 
-describe('Today view — Model Usage panel', () => {
+describe('Today view — Cost by Skill panel', () => {
   beforeEach(() => {
-    resetStore();
+    useLiveStore.setState({
+      connected: true,
+      recentToolCalls: [],
+      cost: { sessionTotalUsd: 0, todayTotalUsd: 0, forecastEodUsd: null },
+      antiPatterns: [],
+      firingAlerts: new Map(),
+      dismissedAlerts: new Set(),
+    });
   });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  const stats = (requestCount: number, totalCostUsd: number, costPerOutputToken: number) => ({
-    requestCount,
-    totalCostUsd,
-    costPerOutputToken,
-    costPerMillionTokens: costPerOutputToken * 500_000,
+  it('renders the Cost by Skill eyebrow and one row per skill with the formatted calls, cost, and time values visible', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    qc.setQueryData(qk.costPerTool, {
+      costByToolType: {},
+      costBySkill: {
+        'skill-1': {
+          callCount: 5,
+          attributedCallCount: 5,
+          totalCost: 0.15,
+          avgCost: 0.03,
+          inputTokens: 1000,
+          outputTokens: 500,
+          cacheReadTokens: 100,
+          totalDurationMs: 5000,
+        },
+        'skill-2': {
+          callCount: 3,
+          attributedCallCount: 3,
+          totalCost: 0.08,
+          avgCost: 0.0267,
+          inputTokens: 800,
+          outputTokens: 400,
+          cacheReadTokens: 0,
+          totalDurationMs: 3000,
+        },
+      },
+      totalAttributedCost: 0.23,
+      attributionRate: 0.95,
+    });
+    renderToday(qc);
+    expect(screen.getByText('Cost by Skill')).toBeInTheDocument();
+    expect(screen.getByText('skill-1')).toBeInTheDocument();
+    expect(screen.getByText('skill-2')).toBeInTheDocument();
+    expect(screen.getByText('$0.1500')).toBeInTheDocument();
+    expect(screen.getByText('$0.0800')).toBeInTheDocument();
   });
 
-  function stubModelUsage(byModel: Record<string, unknown>, mostEfficientModel: string): void {
-    globalThis.fetch = vi.fn(async (input) => {
-      const url = String(input);
-      if (url.includes('/api/model-usage')) {
-        return new Response(
-          JSON.stringify({ byModel, mostUsedModel: 'claude-fable-5', mostEfficientModel }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }
-      return new Response(JSON.stringify([]), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }) as typeof fetch;
-  }
-
-  const fiveModels = {
-    'claude-fable-5': stats(1080, 210.72, 0.00009),
-    'claude-opus-5': stats(555, 24.99, 0.00006),
-    'claude-sonnet-5': stats(729, 20.96, 0.00005),
-    'claude-haiku-4-5-20251001': stats(599, 6.1, 0.00002),
-    'claude-fable-5-1': stats(3, 0.02, 0.00001),
-  };
-
-  it('keeps the most efficient model visible when it falls outside the top 4 by spend', async () => {
-    stubModelUsage(fiveModels, 'claude-fable-5-1');
-    renderToday();
-    expect(await screen.findByText('claude-fable-5-1')).toBeInTheDocument();
-    expect(screen.getByText('3req')).toBeInTheDocument();
-    expect(
-      screen.getByText('Most efficient: claude-fable-5-1 ($10.00/1M output tok)'),
-    ).toBeInTheDocument();
+  it('sorts by cost descending', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    qc.setQueryData(qk.costPerTool, {
+      costByToolType: {},
+      costBySkill: {
+        'expensive-skill': {
+          callCount: 10,
+          attributedCallCount: 10,
+          totalCost: 1.5,
+          avgCost: 0.15,
+          inputTokens: 5000,
+          outputTokens: 3000,
+          cacheReadTokens: 200,
+          totalDurationMs: 10000,
+        },
+        'cheap-skill': {
+          callCount: 2,
+          attributedCallCount: 2,
+          totalCost: 0.05,
+          avgCost: 0.025,
+          inputTokens: 500,
+          outputTokens: 200,
+          cacheReadTokens: 0,
+          totalDurationMs: 1000,
+        },
+      },
+      totalAttributedCost: 1.55,
+      attributionRate: 0.9,
+    });
+    renderToday(qc);
+    const rows = screen.getAllByRole('row');
+    const firstDataRow = rows[1];
+    expect(firstDataRow.textContent).toContain('expensive-skill');
   });
 
-  it('still caps the list at 4 rows when the most efficient model is already listed', async () => {
-    stubModelUsage(fiveModels, 'claude-haiku-4-5-20251001');
-    renderToday();
-    expect(await screen.findByText('claude-haiku-4-5-20251001')).toBeInTheDocument();
-    expect(screen.queryByText('claude-fable-5-1')).toBeNull();
-    expect(
-      screen.getByText('Most efficient: claude-haiku-4-5-20251001 ($20.00/1M output tok)'),
-    ).toBeInTheDocument();
+  it('renders nothing when costBySkill is an empty object', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    qc.setQueryData(qk.costPerTool, {
+      costByToolType: {},
+      costBySkill: {},
+      totalAttributedCost: 0,
+      attributionRate: 1.0,
+    });
+    renderToday(qc);
+    expect(screen.queryByText('Cost by Skill')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing when the response has no costBySkill field at all', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    qc.setQueryData(qk.costPerTool, {
+      costByToolType: {
+        Read: { totalCost: 0.1, callCount: 10, avgCost: 0.01 },
+      },
+      totalAttributedCost: 0.1,
+      attributionRate: 1.0,
+    });
+    renderToday(qc);
+    expect(screen.queryByText('Cost by Skill')).not.toBeInTheDocument();
+  });
+
+  it('sets the title attribute on the cost cell when attributedCallCount is less than callCount', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    qc.setQueryData(qk.costPerTool, {
+      costByToolType: {},
+      costBySkill: {
+        'partial-skill': {
+          callCount: 5,
+          attributedCallCount: 2,
+          totalCost: 0.1,
+          avgCost: 0.05,
+          inputTokens: 1000,
+          outputTokens: 500,
+          cacheReadTokens: 0,
+          totalDurationMs: 2000,
+        },
+      },
+      totalAttributedCost: 0.1,
+      attributionRate: 0.8,
+    });
+    renderToday(qc);
+    const costCell = screen.getByText('$0.1000');
+    expect(costCell).toHaveAttribute('title', 'Cost covers 2 of 5 calls');
   });
 });
 
@@ -2487,5 +2565,65 @@ describe('Today view — API Failures panel', () => {
 
     renderToday();
     expect(await screen.findByText(/Rate-limit throttling detected/)).toBeInTheDocument();
+  });
+});
+
+describe('Today view — Model Usage panel', () => {
+  beforeEach(() => {
+    resetStore();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const stats = (requestCount: number, totalCostUsd: number, costPerOutputToken: number) => ({
+    requestCount,
+    totalCostUsd,
+    costPerOutputToken,
+    costPerMillionTokens: costPerOutputToken * 500_000,
+  });
+
+  function stubModelUsage(byModel: Record<string, unknown>, mostEfficientModel: string): void {
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('/api/model-usage')) {
+        return new Response(
+          JSON.stringify({ byModel, mostUsedModel: 'claude-fable-5', mostEfficientModel }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+  }
+
+  const fiveModels = {
+    'claude-fable-5': stats(1080, 210.72, 0.00009),
+    'claude-opus-5': stats(555, 24.99, 0.00006),
+    'claude-sonnet-5': stats(729, 20.96, 0.00005),
+    'claude-haiku-4-5-20251001': stats(599, 6.1, 0.00002),
+    'claude-fable-5-1': stats(3, 0.02, 0.00001),
+  };
+
+  it('keeps the most efficient model visible when it falls outside the top 4 by spend', async () => {
+    stubModelUsage(fiveModels, 'claude-fable-5-1');
+    renderToday();
+    expect(await screen.findByText('claude-fable-5-1')).toBeInTheDocument();
+    expect(screen.getByText('3req')).toBeInTheDocument();
+    expect(
+      screen.getByText('Most efficient: claude-fable-5-1 ($10.00/1M output tok)'),
+    ).toBeInTheDocument();
+  });
+
+  it('still caps the list at 4 rows when the most efficient model is already listed', async () => {
+    stubModelUsage(fiveModels, 'claude-haiku-4-5-20251001');
+    renderToday();
+    expect(await screen.findByText('claude-haiku-4-5-20251001')).toBeInTheDocument();
+    expect(screen.queryByText('claude-fable-5-1')).toBeNull();
+    expect(
+      screen.getByText('Most efficient: claude-haiku-4-5-20251001 ($20.00/1M output tok)'),
+    ).toBeInTheDocument();
   });
 });

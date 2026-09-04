@@ -315,6 +315,10 @@ export interface ToolCallRecord {
    */
   readonly agentId?: string;
   readonly agentType?: string;
+  /** Skill invoked, from the hook's `tool_input.skill`; only on `toolName === 'Skill'` records. */
+  readonly skillName?: string;
+  /** Length of the free-text `tool_input.args`; the text itself is never recorded. */
+  readonly skillArgsLength?: number;
   readonly [key: string]: unknown;
 }
 

@@ -5,11 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.34.1] - 2026-09-03
+## [1.42.1] - 2026-09-04
 
 ### Fixed
 
 - **The Today dashboard's Model Usage panel no longer names a "most efficient" model that it doesn't list.** The panel shows the top 4 models by spend, and the cheapest model per output token is often the one that spent the least, so its row was cut while the footer still named it. The most-efficient model's row now stays visible even when it falls outside the top 4, and the footer prints the rate it was judged on ($ per 1M output tokens), which differs from the blended $/1M tok column.
+
+## [1.39.0] - 2026-09-04
+
+### Added
+
+- **Cost per tool call and per skill now reaches New Relic as a new `AiTurnCost` event.** When a turn's token usage arrives, Preflight emits one row per tool call in that turn with its share of the cost and tokens, plus `tool`, `skillName`, `tool_use_id`, and `turn_id`, so `FROM AiTurnCost SELECT sum(cost_usd) WHERE tool = 'Skill' FACET skillName` works over any window. A Cost by Skill widget is added to the team-view dashboard. Under `companionMode`, rows from Claude Code turns are tagged `cost_authority: 'external'` like `AiCodingTask`.
+- **`nr_observe_get_cost_per_tool` now applies `costRateMultiplier` and `dataResidencyPremium`.** The turn-cost attributor priced at list rate while every other cost figure was scaled, so `costByToolType` and `costBySkill` did not reconcile with `AiCodingTask` for orgs with a configured multiplier. They do now.
+
+## [1.38.0] - 2026-09-03
+
+### Added
+
+- **The local dashboard shows a Cost by Skill table, and the team-view New Relic dashboard gains two skill widgets.** The table lists calls, cost, tokens, and time per skill under the Cost by Tool card, and appears only once a skill has been invoked. The New Relic widgets chart skill calls and hours in skills over seven days, faceted by `skillName`.
+
+## [1.37.0] - 2026-09-03
+
+### Added
+
+- **Skill invocations are now tracked per skill instead of collapsing into one `Skill` bucket.** Each `Skill` tool call now carries the invoked skill's name on its record and on the `AiToolCall` event, so `code-review` and `security-review` are distinguishable in every breakdown. The argument text itself is never recorded, only its length.
+- **`nr_observe_get_cost_per_tool` returns a new `costBySkill` field.** One row per skill with call count, attributed call count, estimated cost, estimated input/output/cache-read tokens, and total duration. The existing `costByToolType` field is unchanged, and its `Skill` entry equals the sum of the skill rows.
+
+## [1.36.0] - 2026-09-03
+
+### Added
+
+- **The docs site has a new landing page** with an install command for humans and a copy-to-clipboard setup prompt for coding agents, plus a What's New page summarizing recent releases in plain language.
+
+## [1.35.0] - 2026-09-03
+
+### Added
+
+- **Preflight is now available as a [Kiro Power](docs/KIRO_POWER.md)** — install it from Kiro's Powers panel for the `nr_observe_*` MCP tools without manually editing `~/.kiro/settings/mcp.json`.
+
+### Fixed
+
+- **Session resolution failed when the MCP server was launched through a wrapper process (e.g. `npx`), which affected Kiro and could affect other launchers.**
+- **Kiro sessions were misdetected as a generic MCP client, and Kiro's tool names weren't recognized** — both silently zeroed out file, edit, and shell metrics.
+- **MCP clients that connect before the full tool set is registered now get notified once it is**, instead of seeing only a partial tool list for the rest of the session.
 
 ## [1.34.0] - 2026-09-03
 
