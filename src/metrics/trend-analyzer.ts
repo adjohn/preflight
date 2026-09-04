@@ -238,6 +238,12 @@ const MIN_SESSIONS_LOW_CONFIDENCE = 3;
 const MIN_SESSIONS_MEDIUM_CONFIDENCE = 8;
 const MIN_SESSIONS_HIGH_CONFIDENCE = 20;
 
+// A model only "wins" if it beats the runner-up by a real margin, not just
+// noise — same hand-picked-judgment-call caveat as the sample thresholds
+// above. On the [0,1] efficiency scale, 0.05 is treated as the smallest gap
+// worth acting on.
+const MIN_MEANINGFUL_EFFICIENCY_GAP = 0.05;
+
 function confidenceForSampleSize(n: number): ModelRecommendationConfidence {
   if (n >= MIN_SESSIONS_HIGH_CONFIDENCE) return 'high';
   if (n >= MIN_SESSIONS_MEDIUM_CONFIDENCE) return 'medium';
@@ -285,7 +291,24 @@ function rankModelsForSessions(sessions: FullSessionSummary[]): {
   });
 
   const top = ranked[0];
-  const confidence = top ? confidenceForSampleSize(top.sessionCount) : 'insufficient_data';
+  const runnerUp = ranked[1];
+
+  // A recommendation requires a real comparison: a runner-up backed by
+  // enough of its own sessions to not be noise, and a gap between the two
+  // large enough to not be noise either. Without both, there's nothing
+  // confidently recommendable — regardless of how many sessions the
+  // leader alone has. This also correctly handles the case of only one
+  // model ever being used: no runner-up means no comparison happened.
+  const hasComparableRunnerUp =
+    runnerUp != null && runnerUp.sessionCount >= MIN_SESSIONS_LOW_CONFIDENCE;
+  const hasMeaningfulGap =
+    hasComparableRunnerUp &&
+    top!.avgEfficiencyScore !== null &&
+    runnerUp!.avgEfficiencyScore !== null &&
+    top!.avgEfficiencyScore - runnerUp!.avgEfficiencyScore >= MIN_MEANINGFUL_EFFICIENCY_GAP;
+
+  const confidence =
+    top && hasMeaningfulGap ? confidenceForSampleSize(top.sessionCount) : 'insufficient_data';
 
   return {
     ranked,

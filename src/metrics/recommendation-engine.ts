@@ -336,7 +336,7 @@ export class RecommendationEngine {
     const recs: Recommendation[] = [];
     const report = this.trendAnalyzer.rankModelsByOutcome();
 
-    if (report.confidence === 'insufficient_data' || report.recommendedModel === null) {
+    if (report.confidence !== 'high' || report.recommendedModel === null) {
       return recs;
     }
 
@@ -352,7 +352,7 @@ export class RecommendationEngine {
     recs.push(
       makeRec(
         'model_selection',
-        report.confidence === 'high' ? 'high' : 'medium',
+        'high',
         'Historically better-performing model available',
         `Across ${top.sessionCount} past sessions, ${report.recommendedModel} averaged a higher efficiency score than your current default (${currentModel}). Consider switching.`,
         `${report.recommendedModel}: avg efficiency ${top.avgEfficiencyScore ?? 'n/a'}, $${top.avgCostUsd}/session (n=${top.sessionCount})` +

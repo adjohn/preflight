@@ -711,6 +711,103 @@ describe('rankModelsByOutcome', () => {
     expect(bobReport.ranked[0]?.model).toBe('opus');
     expect(bobReport.ranked[0]?.avgEfficiencyScore).toBeCloseTo(0.5, 1);
   });
+
+  it('close-gap case with ample samples on both sides still yields insufficient_data', () => {
+    const analyzer = new TrendAnalyzer({ sessionStore: store });
+
+    // Model A: 20 sessions with efficiency 0.80
+    for (let i = 0; i < 20; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `a-${i}`,
+          model: 'sonnet',
+          efficiencyScore: 0.8,
+          estimatedCostUsd: 0.05,
+        }),
+      );
+    }
+
+    // Model B: 20 sessions with efficiency 0.78 (gap = 0.02, below 0.05 threshold)
+    for (let i = 0; i < 20; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `b-${i}`,
+          model: 'opus',
+          efficiencyScore: 0.78,
+          estimatedCostUsd: 0.08,
+        }),
+      );
+    }
+
+    const report = analyzer.rankModelsByOutcome();
+
+    // Despite having 20 sessions for both, the gap is too small
+    expect(report.confidence).toBe('insufficient_data');
+    expect(report.recommendedModel).toBeNull();
+    // But ranked list is still populated and sorted
+    expect(report.ranked[0]?.model).toBe('sonnet');
+    expect(report.ranked[0]?.avgEfficiencyScore).toBeCloseTo(0.8, 1);
+  });
+
+  it('single model in entire history never gets a confident recommendation', () => {
+    const analyzer = new TrendAnalyzer({ sessionStore: store });
+
+    // 25 sessions with only one model
+    for (let i = 0; i < 25; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `s-${i}`,
+          model: 'sonnet',
+          efficiencyScore: 0.9,
+          estimatedCostUsd: 0.05,
+        }),
+      );
+    }
+
+    const report = analyzer.rankModelsByOutcome();
+
+    // No runner-up means no comparison, no recommendation
+    expect(report.confidence).toBe('insufficient_data');
+    expect(report.recommendedModel).toBeNull();
+    // But the single model is still listed
+    expect(report.ranked).toHaveLength(1);
+    expect(report.ranked[0]?.model).toBe('sonnet');
+  });
+
+  it('meaningful gap still recommends even at low confidence tier', () => {
+    const analyzer = new TrendAnalyzer({ sessionStore: store });
+
+    // Model A: 3 sessions with efficiency 0.9 (meets MIN_SESSIONS_LOW_CONFIDENCE)
+    for (let i = 0; i < 3; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `a-${i}`,
+          model: 'sonnet',
+          efficiencyScore: 0.9,
+          estimatedCostUsd: 0.05,
+        }),
+      );
+    }
+
+    // Model B: 3 sessions with efficiency 0.5 (gap = 0.4, well above 0.05 threshold)
+    for (let i = 0; i < 3; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `b-${i}`,
+          model: 'opus',
+          efficiencyScore: 0.5,
+          estimatedCostUsd: 0.08,
+        }),
+      );
+    }
+
+    const report = analyzer.rankModelsByOutcome();
+
+    // With comparable runner-up AND meaningful gap, recommendation fires even at low confidence
+    expect(report.confidence).toBe('low');
+    expect(report.recommendedModel).toBe('sonnet');
+    expect(report.ranked[0]?.model).toBe('sonnet');
+  });
 });
 
 describe('movingAverage', () => {

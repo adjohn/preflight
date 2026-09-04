@@ -1293,7 +1293,7 @@ Data-driven model recommendation ranked by historical efficiency score, cost, an
 
 - `ranked` — All models ranked by efficiency score (descending), with ties broken by lower cost. Models with no scored sessions (`avgEfficiencyScore: null`) sort last.
 - `recommendedModel` — Top-ranked model, or `null` if insufficient data.
-- `confidence` — Confidence tier based on session count of the top-ranked model: `high` (≥20 sessions), `medium` (≥8), `low` (≥3), or `insufficient_data`.
+- `confidence` — `insufficient_data` unless there's a runner-up model with at least 3 sessions of its own AND the gap between the top and runner-up average efficiency scores is at least 0.05; otherwise gated by the top model's own session count: `high` (≥20 sessions), `medium` (≥8), `low` (≥3).
 - `byOutcome` — Rankings broken down by task outcome type (bug_fix, feature, refactor, investigation, configuration, documentation, failed_attempt).
 - `avgTaskSuccessRate` — `testPassCount / testRunCount` for sessions of that outcome, 0 if no tests run.
 

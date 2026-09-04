@@ -566,7 +566,7 @@ describe('Cross-session tool handlers', () => {
   it('handleGetModelRecommendation respects developer filter', () => {
     const trendAnalyzer = new TrendAnalyzer({ sessionStore: store });
 
-    // Alice with sonnet
+    // Alice with sonnet (better) and opus (worse) for comparison
     for (let i = 0; i < 20; i++) {
       store.saveSession(
         makeSummary({
@@ -577,15 +577,25 @@ describe('Cross-session tool handlers', () => {
         }),
       );
     }
-
-    // Bob with opus
     for (let i = 0; i < 20; i++) {
       store.saveSession(
         makeSummary({
-          sessionId: `bob-opus-${i}`,
-          developer: 'bob',
+          sessionId: `alice-opus-${i}`,
+          developer: 'alice',
           model: 'opus',
           efficiencyScore: 0.5,
+        }),
+      );
+    }
+
+    // Bob with only haiku (should not affect Alice's recommendation)
+    for (let i = 0; i < 20; i++) {
+      store.saveSession(
+        makeSummary({
+          sessionId: `bob-haiku-${i}`,
+          developer: 'bob',
+          model: 'haiku',
+          efficiencyScore: 0.7,
         }),
       );
     }
@@ -595,7 +605,10 @@ describe('Cross-session tool handlers', () => {
     });
     const parsed = JSON.parse(result.content[0]!.text);
 
+    // Alice should get sonnet recommendation (0.9 vs 0.5 = 0.4 gap)
+    // with high confidence (20 sessions) due to meaningful gap and comparable runner-up
     expect(parsed.recommendedModel).toBe('sonnet');
+    expect(parsed.confidence).toBe('high');
   });
 
   // -------------------------------------------------------------------------
