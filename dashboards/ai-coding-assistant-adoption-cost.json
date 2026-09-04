@@ -1082,7 +1082,7 @@
             "id": "viz.markdown"
           },
           "rawConfiguration": {
-            "text": "Adoption momentum over 8 weeks and a 60-day look at who is compounding value. Leaderboards are normalized by **active days** (days with at least one recorded task), so a quiet calendar week is not mistaken for a productivity drop. Coding tasks are the output unit: one task is a detected unit of work (a feature, fix, or investigation inside a session). **Git outcomes** (bottom rows) read the `ai.git.*` gauges added in Preflight #484 and the rejection signal from #485 — both need a Preflight release newer than 1.16.3. The gauges are per-session running totals, so tables show per-session maxima and Cost per PR divides one sum by another (both sums snapshot at the same cadence, so the ratio holds). Edit accept rate counts Edit/Write calls without a 'rejected'/'denied'/'interrupted' error_type. Model-level drill-down lives on the **Models** page."
+            "text": "Adoption momentum over 8 weeks and a 60-day look at who is compounding value. Leaderboards are normalized by **active days** (days with at least one recorded task), so a quiet calendar week is not mistaken for a productivity drop. Coding tasks are the output unit: one task is a detected unit of work (a feature, fix, or investigation inside a session). **Git outcomes** (bottom rows) read the `ai.git.*` gauges (Preflight 1.21.0+) and the edit-rejection signal (Preflight 1.22.0+). The gauges are per-session running totals, so tables show per-session maxima and Cost per PR divides one sum by another (both sums snapshot at the same cadence, so the ratio holds). Edit accept rate counts Edit/Write calls without a 'rejected'/'denied'/'interrupted' error_type. Model-level drill-down lives on the **Models** page."
           }
         },
         {
@@ -1591,7 +1591,7 @@
             "id": "viz.markdown"
           },
           "rawConfiguration": {
-            "text": "Which models are working best for which work. Task-level widgets read the `model` and `outcome_type` attributes added to `AiCodingTask` in Preflight #549 — tasks from older versions appear without them, and a task that switched models mid-flight attributes wholly to the model active at completion. Cache Hit % reads `ai.cost.*` gauges, which exist only when a live server exports metrics. Success % counts tasks whose last test run passed (or that ran no tests)."
+            "text": "Which models are working best for which work. Task-level widgets read the `model` and `outcome_type` attributes on `AiCodingTask` — tasks from versions that don't stamp them appear without them, and a task that switched models mid-flight attributes wholly to the model active at completion. Cache Hit % reads `ai.cost.*` gauges, which exist only when a live server exports metrics. Success % counts tasks whose last test run passed (or that ran no tests)."
           }
         },
         {
