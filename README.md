@@ -8,7 +8,7 @@
 [![Local First](https://img.shields.io/badge/Local%20First-Offline%20by%20default-brightgreen)](#quick-start)
 [![Dashboards Included](https://img.shields.io/badge/Dashboards-7%20Included-blue)](#dashboards)
 
-[**Docs**](docs/ADVANCED.md) • [**Examples**](examples/) • [**Community**](https://support.newrelic.com/s/) • [**Contributing**](CONTRIBUTING.md)
+[**Docs**](https://newrelic-experimental.github.io/preflight/) • [**What's New**](https://newrelic-experimental.github.io/preflight/whats-new/) • [**Examples**](examples/) • [**Community**](https://support.newrelic.com/s/) • [**Contributing**](CONTRIBUTING.md)
 
 </div>
 
@@ -97,6 +97,10 @@ When prompted, pick a mode:
 ### 3. Start coding
 
 Restart your AI tool — hooks and the MCP server load at session start. Every tool call is captured automatically. Open **http://localhost:7777** to watch your session live.
+
+> **Using Kiro?** Add Preflight as a [Kiro Power](docs/KIRO_POWER.md) for the
+> `nr_observe_*` query tools — see the doc for install steps and how to add
+> automatic tool-call capture on top.
 
 > **Using Claude Code?** You can skip the npm install above and add Preflight as a [Claude Code plugin](docs/PLUGIN.md) instead:
 >
