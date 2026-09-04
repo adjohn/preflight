@@ -185,6 +185,7 @@ export interface SessionListEntry {
   readonly tokensOutput?: number;
   readonly tokensCacheRead?: number;
   readonly tokensCacheCreation?: number;
+  readonly tokensThinking?: number;
 }
 
 export interface LiveSessionEntry {
