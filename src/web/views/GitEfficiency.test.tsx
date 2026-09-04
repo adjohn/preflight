@@ -84,6 +84,7 @@ const BASE_METRICS: WorkspaceMetrics = {
   hasForcePushedToDefaultBranch: false,
   mergeEventCount: 0,
   rebaseEventCount: 0,
+  lastActivityMs: null,
 };
 
 const IDENTITY_A: WorktreeIdentity = {
@@ -124,6 +125,23 @@ function renderGitEfficiency(report: unknown) {
   );
 }
 
+/** Like renderGitEfficiency, but resolves a different response per `window=`
+ *  query param — needed to test the today-vs-yesterday delta and the
+ *  opt-in weekly summary, since the real component now fires all three. */
+function renderGitEfficiencyByWindow(reportsByWindow: Readonly<Record<string, unknown>>) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+  globalThis.fetch = (async (input: string | URL) => {
+    const url = new URL(String(input), 'http://localhost');
+    const window = url.searchParams.get('window') ?? 'today';
+    return jsonResponse(reportsByWindow[window]);
+  }) as typeof fetch;
+  return render(
+    <QueryClientProvider client={qc}>
+      <GitEfficiency />
+    </QueryClientProvider>,
+  );
+}
+
 describe('GitEfficiency view — loading and error', () => {
   it('shows a loading state while the query is pending', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
@@ -150,7 +168,7 @@ describe('GitEfficiency view — loading and error', () => {
 });
 
 describe('GitEfficiency view — empty state', () => {
-  it('shows "No Git activity yet" and the workspace table empty state when totalGitCommands is 0', async () => {
+  it('shows "No Git activity yet" and the repo/worktree tree empty state when totalGitCommands is 0', async () => {
     renderGitEfficiency(
       makeReport({ metrics: { ...BASE_METRICS, totalGitCommands: 0 }, rows: [] }),
     );
@@ -311,7 +329,9 @@ describe('GitEfficiency view — hero KPIs and gated sections', () => {
     );
     await screen.findByText('Git Efficiency');
     expect(screen.queryByText('3 aborted')).toBeNull();
-    expect(screen.getByText('2 resolved')).toBeInTheDocument();
+    // The KPI's sub text now also carries a "vs yesterday" delta alongside
+    // the resolved count, so match the substring rather than the exact node.
+    expect(screen.getByText(/2 resolved/)).toBeInTheDocument();
   });
 
   it('hides the Conflict Resolution section when there are no conflicts', async () => {
@@ -336,6 +356,109 @@ describe('GitEfficiency view — hero KPIs and gated sections', () => {
   it('shows the Destructive Operations section when a force push occurred', async () => {
     renderGitEfficiency(makeReport({ metrics: { ...BASE_METRICS, forcePushes: 1 } }));
     expect(await screen.findByText('Destructive Operations')).toBeInTheDocument();
+  });
+});
+
+describe('GitEfficiency view — no timeframe picker, today-only by default', () => {
+  it('renders no timeframe tab control and always shows the "today" subtitle', async () => {
+    renderGitEfficiency(makeReport());
+    await screen.findByText('Git Efficiency');
+    expect(screen.getByText("Today's activity across all sessions")).toBeInTheDocument();
+    expect(screen.queryByText('Yesterday')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'This week' })).toBeNull();
+  });
+
+  it('shows a "+N vs yesterday" delta on the commits KPI once yesterday loads', async () => {
+    renderGitEfficiencyByWindow({
+      today: makeReport({ metrics: { ...BASE_METRICS, commitCount: 7 } }),
+      yesterday: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
+    });
+    await screen.findByText('Git Efficiency');
+    expect(await screen.findByText('+3 vs yesterday')).toBeInTheDocument();
+  });
+
+  it('shows "same as yesterday" when today and yesterday match', async () => {
+    renderGitEfficiencyByWindow({
+      today: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
+      yesterday: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
+    });
+    await screen.findByText('Git Efficiency');
+    // Commits AND PRs-created both compare equal here (both KPIs default to
+    // matching values in BASE_METRICS), so more than one KPI legitimately
+    // renders this text — assert it appears at least once, not exactly once.
+    const matches = await screen.findAllByText('same as yesterday');
+    expect(matches.length).toBeGreaterThan(0);
+  });
+
+  it('does not fetch or render a week summary until "View this week" is clicked', async () => {
+    let weekFetched = false;
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    globalThis.fetch = (async (input: string | URL) => {
+      const url = new URL(String(input), 'http://localhost');
+      if (url.searchParams.get('window') === 'week') weekFetched = true;
+      return jsonResponse(makeReport({ metrics: { ...BASE_METRICS, commitCount: 9 } }));
+    }) as typeof fetch;
+    render(
+      <QueryClientProvider client={qc}>
+        <GitEfficiency />
+      </QueryClientProvider>,
+    );
+    await screen.findByText('Git Efficiency');
+    expect(weekFetched).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'View this week' }));
+    await screen.findByText(/This week:/);
+    expect(weekFetched).toBe(true);
+  });
+
+  it('shows the week rollup summary line and can hide it again', async () => {
+    renderGitEfficiencyByWindow({
+      today: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
+      yesterday: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
+      week: makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          commitCount: 20,
+          mergeConflicts: 1,
+          prMetrics: { ...BASE_METRICS.prMetrics, created: 3 },
+        },
+      }),
+    });
+    await screen.findByText('Git Efficiency');
+    fireEvent.click(screen.getByRole('button', { name: 'View this week' }));
+    expect(await screen.findByText(/This week:/)).toBeInTheDocument();
+    expect(screen.getByText('20')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide this week' }));
+    expect(screen.queryByText(/This week:/)).toBeNull();
+  });
+
+  it('never lets the week summary affect coaching/best-practices, which always reflect today', async () => {
+    renderGitEfficiencyByWindow({
+      today: makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          bestPractices: [
+            { id: 'sync', label: 'Synced before editing', status: 'pass', detail: 'ok' },
+          ],
+        },
+      }),
+      yesterday: makeReport(),
+      week: makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          bestPractices: [
+            { id: 'sync', label: 'Synced before editing', status: 'fail', detail: 'not today' },
+          ],
+        },
+      }),
+    });
+    await screen.findByText('Git Efficiency');
+    fireEvent.click(screen.getByRole('button', { name: 'View this week' }));
+    await screen.findByText(/This week:/);
+    // Coaching is still today's — the passing chip, not the week's failing one.
+    expect(screen.getByText(/Synced before editing/)).toBeInTheDocument();
+    expect(screen.queryByText('not today')).toBeNull();
   });
 });
 
@@ -373,8 +496,8 @@ describe('GitEfficiency view — Recent Git Activity ordering', () => {
   });
 });
 
-describe('GitEfficiency view — workspace table', () => {
-  it('renders one row per report.rows entry', async () => {
+describe('GitEfficiency view — repo/worktree tree', () => {
+  it('renders one repo group and one worktree row per report.rows entry', async () => {
     renderGitEfficiency(
       makeReport({
         rows: [
@@ -383,25 +506,20 @@ describe('GitEfficiency view — workspace table', () => {
         ],
       }),
     );
-    expect(await screen.findByText('Workspaces')).toBeInTheDocument();
+    expect(await screen.findByText('Repos & Worktrees')).toBeInTheDocument();
+    // IDENTITY_A and IDENTITY_B share a repoKey — one repo header, two
+    // worktree rows nested beneath it.
     expect(screen.getAllByText('org/repo-a').length).toBeGreaterThan(0);
     expect(screen.getByText('primary')).toBeInTheDocument();
     expect(screen.getByText('feature')).toBeInTheDocument();
   });
 
-  it('shows an empty state instead of an empty table when rows is empty', async () => {
+  it('shows an empty state instead of an empty tree when rows is empty', async () => {
     renderGitEfficiency(makeReport({ rows: [] }));
     expect(await screen.findByText('No git activity in this window')).toBeInTheDocument();
   });
-});
 
-describe('GitEfficiency view — scope breadcrumb', () => {
-  it('starts at "All workspaces"', async () => {
-    renderGitEfficiency(makeReport());
-    expect(await screen.findByText('All workspaces')).toBeInTheDocument();
-  });
-
-  it('clicking a repo name in the workspace table drills into repo scope and updates the breadcrumb', async () => {
+  it('collapses and re-expands a repo group without affecting selection', async () => {
     renderGitEfficiency(
       makeReport({
         rows: [
@@ -410,11 +528,35 @@ describe('GitEfficiency view — scope breadcrumb', () => {
         ],
       }),
     );
-    await screen.findByText('Workspaces');
+    await screen.findByText('Repos & Worktrees');
+    expect(screen.getByText('primary')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }));
+    expect(screen.queryByText('primary')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }));
+    expect(screen.getByText('primary')).toBeInTheDocument();
+  });
+});
+
+describe('GitEfficiency view — scope breadcrumb', () => {
+  it('starts at "All repos"', async () => {
+    renderGitEfficiency(makeReport());
+    expect(await screen.findByText('All repos')).toBeInTheDocument();
+  });
+
+  it('clicking a repo name in the tree drills into repo scope and updates the breadcrumb', async () => {
+    renderGitEfficiency(
+      makeReport({
+        rows: [
+          { identity: IDENTITY_A, metrics: BASE_METRICS },
+          { identity: IDENTITY_B, metrics: BASE_METRICS },
+        ],
+      }),
+    );
+    await screen.findByText('Repos & Worktrees');
     fireEvent.click(screen.getAllByRole('button', { name: 'org/repo-a' })[0]!);
-    // Breadcrumb now reads "All workspaces / org/repo-a" — the first segment
+    // Breadcrumb now reads "All repos / org/repo-a" — the first segment
     // (a button) is clickable, the repo segment is the current, non-link tail.
-    expect(await screen.findByRole('button', { name: 'All workspaces' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'All repos' })).toBeInTheDocument();
   });
 
   it('clicking a worktree label drills into worktree scope with a three-segment breadcrumb', async () => {
@@ -423,23 +565,42 @@ describe('GitEfficiency view — scope breadcrumb', () => {
         rows: [{ identity: IDENTITY_B, metrics: BASE_METRICS }],
       }),
     );
-    await screen.findByText('Workspaces');
+    await screen.findByText('Repos & Worktrees');
     fireEvent.click(screen.getByRole('button', { name: 'feature' }));
-    expect(await screen.findByRole('button', { name: 'All workspaces' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'All repos' })).toBeInTheDocument();
     // Repo segment is clickable at worktree scope (both the breadcrumb link
-    // and the table's own repo cell render this same text as a button).
+    // and the tree's own repo header render this same text as a button).
     expect(screen.getAllByRole('button', { name: 'org/repo-a' }).length).toBeGreaterThan(0);
   });
 
-  it('clicking "All workspaces" resets the scope', async () => {
+  it('clicking "All repos" resets the scope', async () => {
     renderGitEfficiency(makeReport({ rows: [{ identity: IDENTITY_A, metrics: BASE_METRICS }] }));
-    await screen.findByText('Workspaces');
+    await screen.findByText('Repos & Worktrees');
     fireEvent.click(screen.getAllByRole('button', { name: 'org/repo-a' })[0]!);
-    const backButton = await screen.findByRole('button', { name: 'All workspaces' });
+    const backButton = await screen.findByRole('button', { name: 'All repos' });
     fireEvent.click(backButton);
-    // Back to the plain (non-link) "All workspaces" label.
-    expect(await screen.findByText('All workspaces')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'All workspaces' })).toBeNull();
+    // Back to the plain (non-link) "All repos" label.
+    expect(await screen.findByText('All repos')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'All repos' })).toBeNull();
+  });
+
+  it('highlights the selected repo and worktree row in the tree', async () => {
+    renderGitEfficiency(
+      makeReport({
+        rows: [
+          { identity: IDENTITY_A, metrics: BASE_METRICS },
+          { identity: IDENTITY_B, metrics: BASE_METRICS },
+        ],
+      }),
+    );
+    await screen.findByText('Repos & Worktrees');
+    fireEvent.click(screen.getByRole('button', { name: 'feature' }));
+    // The selected worktree row renders a distinct marker glyph alongside
+    // its label — not just a breadcrumb change elsewhere on the page.
+    const featureButton = await screen.findByRole('button', { name: /feature/ });
+    expect(featureButton.textContent).toContain('●');
+    const primaryButton = screen.getByRole('button', { name: 'primary' });
+    expect(primaryButton.textContent).not.toContain('●');
   });
 });
 

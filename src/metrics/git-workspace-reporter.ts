@@ -133,20 +133,24 @@ export class GitWorkspaceReporter {
    * samples live state for every workspace with activity in the resulting
    * record set, and calls `buildGitWorkspaceReport`.
    *
-   * The `identities` map `buildGitWorkspaceReport` needs comes straight from
-   * this reporter's own `knownWorkspaces()` registry. `historical` records
-   * carry no identity of their own — a workspaceKey among them that isn't
-   * already in the registry is skipped gracefully; `buildGitWorkspaceReport`
-   * already logs a warning and drops any record whose workspaceKey it can't
-   * resolve, so there is nothing extra to do here for that case.
+   * The `identities` map `buildGitWorkspaceReport` needs comes from this
+   * reporter's own `knownWorkspaces()` registry, merged with the caller's
+   * `historicalIdentities` (identities the caller's own replay resolved for
+   * `historical`'s records — this reporter never resolved them itself, so it
+   * has no other way to know them). The live registry wins on key collision.
+   * A workspaceKey with no identity in either map is skipped gracefully;
+   * `buildGitWorkspaceReport` already logs a warning and drops any record
+   * whose workspaceKey it can't resolve, so there is nothing extra to do here
+   * for that case.
    */
   report(input: {
     readonly scope: ScopeRef;
     readonly since: number;
     readonly until: number;
     readonly historical?: readonly GitActivityRecord[];
+    readonly historicalIdentities?: ReadonlyMap<string, WorktreeIdentity>;
   }): GitWorkspaceReport {
-    const { scope, since, until, historical } = input;
+    const { scope, since, until, historical, historicalIdentities } = input;
 
     const liveRecords = this.store.query({ since, until });
     // Dedup `historical` against what's already live, on the same
@@ -163,7 +167,7 @@ export class GitWorkspaceReporter {
     const dedupedHistorical = (historical ?? []).filter((r) => !liveKeys.has(keyOf(r)));
     const records = [...liveRecords, ...dedupedHistorical];
 
-    const identities = new Map(this.knownWorkspacesRegistry);
+    const identities = new Map([...(historicalIdentities ?? []), ...this.knownWorkspacesRegistry]);
 
     const liveStates = new Map<string, WorktreeLiveState>();
     const workspaceKeys = new Set(records.map((r) => r.workspaceKey));
@@ -250,16 +254,34 @@ export class GitWorkspaceReporter {
   }
 }
 
+export interface ReplayedActivity {
+  readonly records: readonly GitActivityRecord[];
+  readonly identities: ReadonlyMap<string, WorktreeIdentity>;
+}
+
+// Prefix for a synthetic identity representing "this repo, but we don't know
+// which worktree" — the fallback used when a session predates the `cwd`
+// field on ReplayTimelineEntry but still carries a resolved `repoName`.
+const UNKNOWN_WORKTREE_PREFIX = 'unresolved-repo:';
+
 /**
  * Re-classifies a persisted session's timeline into `GitActivityRecord`s,
  * using the SAME `GitActivityRecorder` dispatch the live path uses (so a
  * regex improvement in the classifier retro-applies to history) and each
- * entry's own `cwd` to resolve workspace identity. An entry with no `cwd` (a
- * session persisted before that field existed) resolves to the
- * `'unattributed'` workspaceKey, the same fallback `GitActivityRecorder`
- * uses live — `identityResolver.resolve(undefined)` returns null, and
- * `GitActivityRecorder`'s own `resolveWorkspaceKey` maps that to
- * `'unattributed'`.
+ * entry's own `cwd` to resolve workspace identity, returning both the
+ * records and the identities resolved for them so a caller never needs to
+ * re-walk `session.timeline` itself to recover the same information.
+ *
+ * An entry with no `cwd` (a session persisted before that field existed)
+ * resolves to the `'unattributed'` workspaceKey via the same path
+ * `GitActivityRecorder` uses live — UNLESS `session.repoName` is known, in
+ * which case it's remapped to a synthetic "this repo, worktree unknown"
+ * identity instead. `repoName` is coarser than a real worktree identity (one
+ * remote can't distinguish which of its worktrees a session ran in), so this
+ * can't merge into a real worktree's own rollup — it surfaces as its own
+ * row, grouped with the real ones by display name rather than by identity
+ * key. Still strictly more honest than folding every pre-`cwd` session into
+ * one anonymous bucket regardless of which repo it touched.
  *
  * Implementation: build one synthetic `ToolCallRecord` per timeline entry
  * (mirroring `GitEfficiencyTracker.replayTimeline()`'s own pattern) with a
@@ -276,16 +298,21 @@ export class GitWorkspaceReporter {
  * whatever the dispatch produces; this function just drains it back out.
  */
 export function replaySessionToActivityRecords(
-  session: { readonly sessionId: string; readonly timeline?: readonly ReplayTimelineEntry[] },
+  session: {
+    readonly sessionId: string;
+    readonly timeline?: readonly ReplayTimelineEntry[];
+    readonly repoName?: string | null;
+  },
   identityResolver: WorktreeIdentityResolver,
-): GitActivityRecord[] {
+): ReplayedActivity {
   const replayStore = new ActivityStore<GitActivityRecord>();
   const replayRecorder = new GitActivityRecorder(replayStore, identityResolver);
   const timeline = session.timeline ?? [];
+  const identities = new Map<string, WorktreeIdentity>();
 
   for (let index = 0; index < timeline.length; index++) {
     const entry = timeline[index];
-    const toolUseId = `replay:${session.sessionId}:${index}`;
+    const toolUseId = 'replay:' + session.sessionId + ':' + String(index);
     const syntheticRecord: ToolCallRecord = {
       id: toolUseId,
       sessionId: session.sessionId,
@@ -302,9 +329,38 @@ export function replaySessionToActivityRecords(
       errorType: entry.errorType,
     };
     replayRecorder.recordToolCall(syntheticRecord);
+
+    const identity = identityResolver.resolve(entry.cwd);
+    if (identity) {
+      identities.set(identity.worktreeKey, identity);
+    }
   }
 
   // The replay store is private to this call and holds nothing else, so
   // querying the full open range just drains everything that was ingested.
-  return [...replayStore.query({ since: -Infinity, until: Infinity })];
+  const drained = [...replayStore.query({ since: -Infinity, until: Infinity })];
+
+  if (!session.repoName) {
+    return { records: drained, identities };
+  }
+
+  const fallbackKey = UNKNOWN_WORKTREE_PREFIX + session.repoName;
+  let usedFallback = false;
+  const records = drained.map((record) => {
+    if (record.workspaceKey !== 'unattributed') return record;
+    usedFallback = true;
+    return { ...record, workspaceKey: fallbackKey };
+  });
+  if (usedFallback) {
+    identities.set(fallbackKey, {
+      repoKey: fallbackKey,
+      worktreeKey: fallbackKey,
+      repoName: session.repoName,
+      worktreeRoot: null,
+      worktreeLabel: 'worktree unknown',
+      branch: null,
+    });
+  }
+
+  return { records, identities };
 }

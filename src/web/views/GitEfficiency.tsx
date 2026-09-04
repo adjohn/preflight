@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -17,22 +17,19 @@ import { AnimatedCard } from '../components/AnimatedCard';
 import { EmptyState } from '../components/EmptyState';
 import { GeoBanner } from '../components/GeoBanner';
 import { Kpi } from '../components/Kpi';
-import { Card, Eyebrow, Pill, SectionHeader, Tabs } from '../components/ui';
+import { Card, Eyebrow, Pill, SectionHeader } from '../components/ui';
 import type { PillTone } from '../components/ui';
 
-type Timeframe = 'today' | 'yesterday' | 'week';
+const TODAY_SUBTITLE = "Today's activity across all sessions";
 
-const TIMEFRAME_OPTIONS: ReadonlyArray<{ value: Timeframe; label: string }> = [
-  { value: 'today', label: 'Today' },
-  { value: 'yesterday', label: 'Yesterday' },
-  { value: 'week', label: 'This week' },
-];
-
-const TIMEFRAME_SUBTITLE: Record<Timeframe, string> = {
-  today: "Today's activity across all sessions",
-  yesterday: "Yesterday's activity across all sessions",
-  week: "This week's activity across all sessions",
-};
+/** Formats a same-metric delta against yesterday for a `Kpi`'s `sub` text.
+ *  Null when yesterday's data isn't loaded yet — never rendered as "+0". */
+function formatDeltaVsYesterday(today: number, yesterday: number | null): string | null {
+  if (yesterday === null) return null;
+  const delta = today - yesterday;
+  if (delta === 0) return 'same as yesterday';
+  return delta > 0 ? `+${delta} vs yesterday` : `${delta} vs yesterday`;
+}
 
 const SEVERITY_STYLE: Record<GitSuggestion['severity'], string> = {
   info: 'border-l-accent-blue bg-accent-blue/5',
@@ -167,31 +164,98 @@ function ScoreRing({ score }: { score: number | null }): JSX.Element {
   );
 }
 
-interface WorkspaceTableProps {
+interface WorkspaceGroup {
+  readonly repoKey: string;
+  readonly repoName: string | null;
   readonly rows: readonly WorkspaceRow[];
+  readonly lastActivityMs: number | null;
+}
+
+/** Nulls sort last — an unknown last-activity time is worse information than
+ *  "definitely long ago," never better, so it never floats above real data. */
+function byLastActivityDesc(a: number | null, b: number | null): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return b - a;
+}
+
+/** Groups rows by `identity.repoKey` (the real identity — `repoName` can be
+ *  null or, in principle, shared by two unrelated repos), sorting worktrees
+ *  within a repo and repos themselves by most-recent activity. */
+function groupWorkspaceRows(rows: readonly WorkspaceRow[]): readonly WorkspaceGroup[] {
+  const byRepo = new Map<string, WorkspaceRow[]>();
+  for (const row of rows) {
+    const existing = byRepo.get(row.identity.repoKey);
+    if (existing) existing.push(row);
+    else byRepo.set(row.identity.repoKey, [row]);
+  }
+
+  const groups: WorkspaceGroup[] = [];
+  for (const [repoKey, groupRows] of byRepo) {
+    const sortedRows = [...groupRows].sort((a, b) =>
+      byLastActivityDesc(a.metrics.lastActivityMs, b.metrics.lastActivityMs),
+    );
+    const lastActivityMs = sortedRows.reduce<number | null>((max, r) => {
+      const ts = r.metrics.lastActivityMs;
+      if (ts === null) return max;
+      return max === null || ts > max ? ts : max;
+    }, null);
+    groups.push({
+      repoKey,
+      repoName: sortedRows[0]?.identity.repoName ?? null,
+      rows: sortedRows,
+      lastActivityMs,
+    });
+  }
+
+  return groups.sort((a, b) => byLastActivityDesc(a.lastActivityMs, b.lastActivityMs));
+}
+
+interface WorkspaceTreeProps {
+  readonly rows: readonly WorkspaceRow[];
+  readonly scope: ScopeRefInput;
   readonly onSelectRepo: (identity: WorktreeIdentity) => void;
   readonly onSelectWorktree: (identity: WorktreeIdentity) => void;
 }
 
-/** One row per workspace with activity in the window — NOT filtered by the
- *  currently-selected scope (the scope drills into the cards below; this
- *  table is always the full picture so a click can broaden or narrow). */
-function WorkspaceTable({
+/** Repo -> worktree tree, sorted by most-recent activity — NOT filtered by
+ *  the currently-selected scope (the scope drills into the cards below; this
+ *  tree is always the full picture so a click can broaden or narrow it).
+ *  The currently-selected repo or worktree is highlighted directly in the
+ *  tree, since the breadcrumb above is easy to miss. */
+function WorkspaceTree({
   rows,
+  scope,
   onSelectRepo,
   onSelectWorktree,
-}: WorkspaceTableProps): JSX.Element {
+}: WorkspaceTreeProps): JSX.Element {
+  const [collapsedRepos, setCollapsedRepos] = useState<ReadonlySet<string>>(new Set());
+
   if (rows.length === 0) {
     return <EmptyState icon="code" title="No git activity in this window" />;
   }
 
+  const groups = groupWorkspaceRows(rows);
+  const selectedRepoKey = typeof scope === 'object' && 'repo' in scope ? scope.repo : null;
+  const selectedWorktreeKey =
+    typeof scope === 'object' && 'worktree' in scope ? scope.worktree : null;
+
+  const toggleGroup = (repoKey: string): void => {
+    setCollapsedRepos((prev) => {
+      const next = new Set(prev);
+      if (next.has(repoKey)) next.delete(repoKey);
+      else next.add(repoKey);
+      return next;
+    });
+  };
+
   return (
-    <div className="max-h-56 overflow-auto">
+    <div className="max-h-64 overflow-auto">
       <table className="w-full text-xs">
         <thead className="text-ink-muted bg-surface-3 sticky top-0">
           <tr>
-            <th className="text-left p-2">Repo</th>
-            <th className="text-left p-2">Worktree</th>
+            <th className="text-left p-2">Repo / worktree</th>
             <th className="text-left p-2">Branch</th>
             <th className="text-left p-2">Commits</th>
             <th className="text-left p-2">Conflicts</th>
@@ -199,45 +263,96 @@ function WorkspaceTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
-            const known = row.metrics.bestPractices.filter(
-              (bp) => bp.status !== 'unknown' && bp.status !== 'n/a',
-            );
-            const passing = row.metrics.bestPractices.filter((bp) => bp.status === 'pass').length;
-            const conflicts = row.metrics.mergeConflicts + row.metrics.rebaseConflicts;
+          {groups.map((group) => {
+            const isCollapsed = collapsedRepos.has(group.repoKey);
+            // "Selected" at the repo row means scope is narrowed to exactly
+            // this repo (not a specific worktree within it) — a worktree
+            // selection is indicated on its own row below instead.
+            const repoSelected = selectedRepoKey === group.repoKey && selectedWorktreeKey === null;
+            const repoIdentity = group.rows[0]!.identity;
             return (
-              <tr key={row.identity.worktreeKey} className="border-t border-border-subtle">
-                <td className="p-2 whitespace-nowrap">
-                  {row.identity.repoName ? (
-                    <button
-                      type="button"
-                      onClick={() => onSelectRepo(row.identity)}
-                      className="font-mono text-accent-blue hover:underline"
-                    >
-                      {row.identity.repoName}
-                    </button>
-                  ) : (
-                    <span className="text-ink-muted">—</span>
-                  )}
-                </td>
-                <td className="p-2 whitespace-nowrap">
-                  <button
-                    type="button"
-                    onClick={() => onSelectWorktree(row.identity)}
-                    className="font-mono text-accent-blue hover:underline"
-                  >
-                    {row.identity.worktreeLabel}
-                  </button>
-                </td>
-                <td className="p-2 font-mono text-ink-subtle whitespace-nowrap">
-                  {row.identity.branch ?? '—'}
-                </td>
-                <td className="p-2 tabular-nums">{row.metrics.commitCount}</td>
-                <td className="p-2 tabular-nums">{conflicts}</td>
-                <td className="p-2 tabular-nums text-ink-subtle">
-                  {known.length > 0 ? `${passing}/${known.length}` : '—'}
-                </td>
-              </tr>
+              <Fragment key={group.repoKey}>
+                <tr
+                  className={`border-t border-border-subtle ${repoSelected ? 'bg-accent-blue/10' : ''}`}
+                >
+                  <td className="p-2 whitespace-nowrap" colSpan={5}>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(group.repoKey)}
+                        aria-label={isCollapsed ? 'Expand' : 'Collapse'}
+                        aria-expanded={!isCollapsed}
+                        className="text-ink-muted hover:text-ink-base w-4 shrink-0 text-center"
+                      >
+                        {isCollapsed ? '▸' : '▾'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onSelectRepo(repoIdentity)}
+                        className={`font-mono font-semibold hover:underline ${
+                          repoSelected ? 'text-accent-blue' : 'text-ink-base'
+                        }`}
+                      >
+                        {repoSelected && (
+                          <span aria-hidden="true" className="mr-1">
+                            &#9679;
+                          </span>
+                        )}
+                        {group.repoName ?? group.repoKey}
+                      </button>
+                      <span className="text-ink-muted text-[10px]">
+                        {group.rows.length} worktree{group.rows.length === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+                {!isCollapsed &&
+                  group.rows.map((row) => {
+                    const known = row.metrics.bestPractices.filter(
+                      (bp) => bp.status !== 'unknown' && bp.status !== 'n/a',
+                    );
+                    const passing = row.metrics.bestPractices.filter(
+                      (bp) => bp.status === 'pass',
+                    ).length;
+                    const conflicts = row.metrics.mergeConflicts + row.metrics.rebaseConflicts;
+                    const worktreeSelected = selectedWorktreeKey === row.identity.worktreeKey;
+                    return (
+                      <tr
+                        key={row.identity.worktreeKey}
+                        className={`border-t border-border-subtle ${
+                          worktreeSelected ? 'bg-accent-blue/10' : ''
+                        }`}
+                      >
+                        <td className="p-2 pl-8 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => onSelectWorktree(row.identity)}
+                            className={`font-mono hover:underline ${
+                              worktreeSelected
+                                ? 'text-accent-blue font-semibold'
+                                : 'text-ink-subtle'
+                            }`}
+                          >
+                            {worktreeSelected && (
+                              <span aria-hidden="true" className="mr-1">
+                                &#9679;
+                              </span>
+                            )}
+                            {row.identity.worktreeLabel}
+                          </button>
+                        </td>
+                        <td className="p-2 font-mono text-ink-subtle whitespace-nowrap">
+                          {row.identity.branch ?? '—'}
+                        </td>
+                        <td className="p-2 tabular-nums">{row.metrics.commitCount}</td>
+                        <td className="p-2 tabular-nums">{conflicts}</td>
+                        <td className="p-2 tabular-nums text-ink-subtle">
+                          {known.length > 0 ? `${passing}/${known.length}` : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </Fragment>
             );
           })}
         </tbody>
@@ -247,21 +362,47 @@ function WorkspaceTable({
 }
 
 export function GitEfficiency(): JSX.Element {
-  const [timeframe, setTimeframe] = useState<Timeframe>('today');
   const [scope, setScope] = useState<ScopeRefInput>('all');
   // The identity of whichever row was last clicked into — carried alongside
   // `scope` purely so the breadcrumb always has a display name/label, even if
-  // a later timeframe change makes that workspace drop out of `report.rows`.
+  // that workspace later drops out of `report.rows` (e.g. it goes idle).
   const [scopeIdentity, setScopeIdentity] = useState<WorktreeIdentity | null>(null);
+  // The one remaining secondary time-window affordance: an opt-in weekly
+  // summary strip, off by default so nothing is fetched for it until asked.
+  // Everything else on this page — hero KPIs, coaching, velocity, PRs,
+  // timeline — is always "today"; there is no picker that can change what
+  // window those are computed over.
+  const [showWeekSummary, setShowWeekSummary] = useState(false);
 
   const {
     data: report,
     isLoading,
     error,
   } = useQuery<GitWorkspaceReport>({
-    queryKey: qk.gitEfficiency(timeframe, formatScope(scope)),
-    queryFn: () => fetchGitEfficiency(timeframe, formatScope(scope)),
+    queryKey: qk.gitEfficiency('today', formatScope(scope)),
+    queryFn: () => fetchGitEfficiency('today', formatScope(scope)),
     refetchInterval: 5000,
+  });
+
+  // Yesterday's numbers for the same scope, fetched purely to compute the
+  // "+N vs yesterday" deltas on the hero KPIs below — never rendered on its
+  // own, and never affects coaching/best-practices, which only ever read
+  // `report` (today's).
+  const { data: yesterdayReport } = useQuery<GitWorkspaceReport>({
+    queryKey: qk.gitEfficiency('yesterday', formatScope(scope)),
+    queryFn: () => fetchGitEfficiency('yesterday', formatScope(scope)),
+    // Yesterday is a fixed comparison baseline within a UI session — no need
+    // to poll it as aggressively as today's live numbers.
+    refetchInterval: 60_000,
+  });
+
+  // This week's rollup for the same scope — only fetched once the user opts
+  // into the secondary "view this week" strip, so it costs nothing by default.
+  const { data: weekReport } = useQuery<GitWorkspaceReport>({
+    queryKey: qk.gitEfficiency('week', formatScope(scope)),
+    queryFn: () => fetchGitEfficiency('week', formatScope(scope)),
+    enabled: showWeekSummary,
+    refetchInterval: showWeekSummary ? 60_000 : false,
   });
 
   const handleSelectRepo = (identity: WorktreeIdentity): void => {
@@ -291,6 +432,16 @@ export function GitEfficiency(): JSX.Element {
     (c) => c.resolution === 'resolved',
   ).length;
 
+  // Deltas vs yesterday for the same scope — undefined until yesterdayReport
+  // loads, in which case formatDeltaVsYesterday returns null and the Kpi
+  // renders without a delta rather than a misleading "+0".
+  const yesterdayCommitCount = yesterdayReport?.metrics.commitCount ?? null;
+  const yesterdayPrsCreated = yesterdayReport?.metrics.prMetrics.created ?? null;
+  const yesterdayConflictCount = yesterdayReport
+    ? yesterdayReport.metrics.mergeConflicts + yesterdayReport.metrics.rebaseConflicts
+    : null;
+  const conflictCount = metrics.mergeConflicts + metrics.rebaseConflicts;
+
   return (
     <section>
       <GeoBanner theme="git" />
@@ -298,11 +449,11 @@ export function GitEfficiency(): JSX.Element {
         <div>
           <h1 className="text-xl font-semibold gradient-text">Git Efficiency</h1>
 
-          {/* Scope breadcrumb — starts at "All workspaces"; drills in as the
-              workspace table or a suggestion below is clicked. */}
+          {/* Scope breadcrumb — starts at "All repos"; drills in as the
+              repo/worktree tree or a suggestion below is clicked. */}
           <div className="flex items-center gap-1.5 mt-1 text-[11px]">
             {scope === 'all' ? (
-              <span className="text-ink-subtle">All workspaces</span>
+              <span className="text-ink-subtle">All repos</span>
             ) : (
               <>
                 <button
@@ -310,7 +461,7 @@ export function GitEfficiency(): JSX.Element {
                   onClick={handleResetScope}
                   className="text-ink-muted hover:text-ink-base hover:underline"
                 >
-                  All workspaces
+                  All repos
                 </button>
                 <span aria-hidden="true" className="text-ink-muted">
                   /
@@ -340,18 +491,36 @@ export function GitEfficiency(): JSX.Element {
             )}
           </div>
 
-          <div className="mt-1 text-[11px] text-ink-muted">{TIMEFRAME_SUBTITLE[timeframe]}</div>
-
-          <div className="mt-2">
-            <Tabs<Timeframe>
-              value={timeframe}
-              onChange={setTimeframe}
-              options={TIMEFRAME_OPTIONS}
-              size="sm"
-              tone="green"
-              ariaLabel="Timeframe"
-            />
+          <div className="mt-1 flex items-center gap-2 text-[11px] text-ink-muted">
+            <span>{TODAY_SUBTITLE}</span>
+            <span aria-hidden="true">·</span>
+            <button
+              type="button"
+              onClick={() => setShowWeekSummary((v) => !v)}
+              className="text-ink-muted hover:text-ink-base hover:underline"
+            >
+              {showWeekSummary ? 'Hide this week' : 'View this week'}
+            </button>
           </div>
+
+          {showWeekSummary && (
+            <div className="mt-1.5 text-[11px] text-ink-subtle">
+              {weekReport ? (
+                <span>
+                  This week: <span className="tabular-nums">{weekReport.metrics.commitCount}</span>{' '}
+                  commits ·{' '}
+                  <span className="tabular-nums">
+                    {weekReport.metrics.mergeConflicts + weekReport.metrics.rebaseConflicts}
+                  </span>{' '}
+                  conflicts ·{' '}
+                  <span className="tabular-nums">{weekReport.metrics.prMetrics.created}</span> PRs
+                  created
+                </span>
+              ) : (
+                <span>Loading this week&apos;s activity…</span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-4">
           <div className="text-center">
@@ -369,21 +538,25 @@ export function GitEfficiency(): JSX.Element {
         </div>
       </header>
 
-      {/* Workspace table — every workspace with activity in the window,
-          regardless of the currently-selected scope. Clicking a repo/worktree
-          drills the cards below into it. */}
+      {/* Repo/worktree tree — every repo and worktree with activity in the
+          window, regardless of the currently-selected scope. Clicking a repo
+          or worktree drills the cards below into it. */}
       <AnimatedCard index={0} className="mb-3">
         <Card padding="md">
           <SectionHeader
-            title="Workspaces"
+            title="Repos & Worktrees"
             action={
               <span className="text-[11px] text-ink-muted">
-                {report.rows.length} workspace{report.rows.length === 1 ? '' : 's'}
+                {(() => {
+                  const repoCount = new Set(report.rows.map((r) => r.identity.repoKey)).size;
+                  return `${repoCount} repo${repoCount === 1 ? '' : 's'} · ${report.rows.length} worktree${report.rows.length === 1 ? '' : 's'}`;
+                })()}
               </span>
             }
           />
-          <WorkspaceTable
+          <WorkspaceTree
             rows={report.rows}
+            scope={scope}
             onSelectRepo={handleSelectRepo}
             onSelectWorktree={handleSelectWorktree}
           />
@@ -406,27 +579,35 @@ export function GitEfficiency(): JSX.Element {
                   label="commits"
                   hero
                   value={String(metrics.commitCount)}
+                  sub={
+                    formatDeltaVsYesterday(metrics.commitCount, yesterdayCommitCount) ?? undefined
+                  }
                   animate
                   numericValue={metrics.commitCount}
                 />
                 <Kpi
-                  label="PRs opened"
+                  label="PRs created today"
                   tone={metrics.prMetrics.created > 0 ? 'good' : 'neutral'}
                   value={String(metrics.prMetrics.created)}
+                  sub={
+                    formatDeltaVsYesterday(metrics.prMetrics.created, yesterdayPrsCreated) ??
+                    undefined
+                  }
                   animate
                   numericValue={metrics.prMetrics.created}
                 />
                 <Kpi
                   label="conflicts"
-                  tone={metrics.mergeConflicts + metrics.rebaseConflicts > 0 ? 'bad' : 'good'}
-                  value={String(metrics.mergeConflicts + metrics.rebaseConflicts)}
-                  sub={
-                    metrics.mergeConflicts + metrics.rebaseConflicts === 0
-                      ? 'clean session'
-                      : `${resolvedConflictCount} resolved`
-                  }
+                  tone={conflictCount > 0 ? 'bad' : 'good'}
+                  value={String(conflictCount)}
+                  sub={[
+                    conflictCount === 0 ? 'clean session' : `${resolvedConflictCount} resolved`,
+                    formatDeltaVsYesterday(conflictCount, yesterdayConflictCount),
+                  ]
+                    .filter((s): s is string => s !== null)
+                    .join(' · ')}
                   animate
-                  numericValue={metrics.mergeConflicts + metrics.rebaseConflicts}
+                  numericValue={conflictCount}
                 />
                 {report.scope.kind === 'worktree' ? (
                   <Kpi
