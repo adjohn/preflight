@@ -599,6 +599,11 @@ function extractInputMeta(toolName: string, input: unknown): Record<string, unkn
       if (typeof obj.status === 'string') meta.status = obj.status;
       if (typeof obj.subject === 'string') meta.subject = obj.subject;
       break;
+    case 'Skill':
+      // Capped because it becomes a per-skill map key and an NR facet downstream.
+      if (typeof obj.skill === 'string') meta.skill = obj.skill.slice(0, 128);
+      if (typeof obj.args === 'string') meta.argsLength = obj.args.length;
+      break;
   }
 
   return Object.keys(meta).length > 0 ? meta : undefined;

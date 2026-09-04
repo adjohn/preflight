@@ -392,4 +392,232 @@ describe('TurnCostAttributor', () => {
       expect(metrics.totalAttributedCost).toBeGreaterThan(0);
     });
   });
+
+  describe('costBySkill', () => {
+    it('two skills in one turn split cost and tokens evenly and each get their duration', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(
+        makeRecord({
+          toolName: 'Skill',
+          skillName: 'code-review',
+          durationMs: 1000,
+          timestamp: 1000,
+          toolUseId: 'skill-1',
+        }),
+      );
+      attributor.recordToolCall(
+        makeRecord({
+          toolName: 'Skill',
+          skillName: 'pstack:how',
+          durationMs: 2000,
+          timestamp: 1500,
+          toolUseId: 'skill-2',
+        }),
+      );
+      attributor.recordTokenEvent(
+        makeTokenEvent({
+          timestamp: 3500,
+          inputTokens: 20_000,
+          outputTokens: 4_000,
+        }),
+      );
+
+      const metrics = attributor.getMetrics();
+      const skills = metrics.costBySkill;
+
+      expect(Object.keys(skills)).toHaveLength(2);
+      expect(skills['code-review']).toBeDefined();
+      expect(skills['pstack:how']).toBeDefined();
+
+      const totalCost = metrics.turns[0].estimatedCostUsd;
+      expect(skills['code-review'].totalCost).toBeCloseTo(totalCost / 2, 10);
+      expect(skills['pstack:how'].totalCost).toBeCloseTo(totalCost / 2, 10);
+
+      expect(skills['code-review'].totalDurationMs).toBe(1000);
+      expect(skills['pstack:how'].totalDurationMs).toBe(2000);
+
+      expect(skills['code-review'].callCount).toBe(1);
+      expect(skills['pstack:how'].callCount).toBe(1);
+
+      expect(skills['code-review'].attributedCallCount).toBe(1);
+      expect(skills['pstack:how'].attributedCallCount).toBe(1);
+    });
+
+    it('a skill in a turn with no token event has attributedCallCount 0, avgCost 0, but real callCount and totalDurationMs', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(
+        makeRecord({
+          toolName: 'Skill',
+          skillName: 'design',
+          durationMs: 500,
+          timestamp: 1000,
+          toolUseId: 'skill-1',
+        }),
+      );
+      const metrics = attributor.getMetrics();
+
+      expect(metrics.costBySkill.design).toEqual({
+        callCount: 1,
+        attributedCallCount: 0,
+        totalCost: 0,
+        avgCost: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        totalDurationMs: 500,
+      });
+      expect(metrics.costByToolType).toEqual({});
+      expect(metrics.attributionRate).toBe(0);
+    });
+
+    it('costByToolType.Skill equals the sum of costBySkill rows', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(
+        makeRecord({
+          toolName: 'Skill',
+          skillName: 'code-review',
+          timestamp: 1000,
+          toolUseId: 'skill-1',
+        }),
+      );
+      attributor.recordToolCall(
+        makeRecord({
+          toolName: 'Skill',
+          skillName: 'design',
+          timestamp: 1500,
+          toolUseId: 'skill-2',
+        }),
+      );
+      attributor.recordTokenEvent(makeTokenEvent({ timestamp: 2100 }));
+
+      const metrics = attributor.getMetrics();
+      const skillCostSum = Object.values(metrics.costBySkill).reduce(
+        (sum, skill) => sum + skill.totalCost,
+        0,
+      );
+
+      expect(metrics.costByToolType['Skill'].totalCost).toBeCloseTo(skillCostSum, 10);
+    });
+
+    it('Skill with no skillName is absent from costBySkill and present in costByToolType.Skill', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(
+        makeRecord({
+          toolName: 'Skill',
+          durationMs: 100,
+          timestamp: 1000,
+          toolUseId: 'skill-noname',
+        }),
+      );
+      attributor.recordToolCall(
+        makeRecord({
+          toolName: 'Skill',
+          skillName: 'code-review',
+          timestamp: 1200,
+          toolUseId: 'skill-named',
+        }),
+      );
+      attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1300 }));
+
+      const metrics = attributor.getMetrics();
+
+      expect(Object.keys(metrics.costBySkill)).toEqual(['code-review']);
+
+      expect(metrics.costByToolType['Skill'].callCount).toBe(2);
+
+      expect(metrics.turns[0].toolNames).toContain('Skill');
+    });
+
+    it('no-arg getMetrics() merges costBySkill across sessions', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(
+        makeRecord({
+          sessionId: 'session-a',
+          toolName: 'Skill',
+          skillName: 'code-review',
+          timestamp: 1000,
+          toolUseId: 'a-skill-1',
+        }),
+      );
+      attributor.recordTokenEvent(
+        makeTokenEvent({
+          sessionId: 'session-a',
+          timestamp: 1100,
+          inputTokens: 1_000,
+          outputTokens: 100,
+        }),
+      );
+
+      attributor.recordToolCall(
+        makeRecord({
+          sessionId: 'session-b',
+          toolName: 'Skill',
+          skillName: 'code-review',
+          timestamp: 5000,
+          toolUseId: 'b-skill-1',
+        }),
+      );
+      attributor.recordToolCall(
+        makeRecord({
+          sessionId: 'session-b',
+          toolName: 'Skill',
+          skillName: 'design',
+          timestamp: 5500,
+          toolUseId: 'b-skill-2',
+        }),
+      );
+      attributor.recordTokenEvent(
+        makeTokenEvent({
+          sessionId: 'session-b',
+          timestamp: 5600,
+          inputTokens: 2_000,
+          outputTokens: 200,
+        }),
+      );
+
+      const allMetrics = attributor.getMetrics();
+      const skills = allMetrics.costBySkill;
+
+      expect(skills['code-review']).toBeDefined();
+      expect(skills['code-review'].callCount).toBe(2);
+
+      expect(skills['design']).toBeDefined();
+      expect(skills['design'].callCount).toBe(1);
+    });
+
+    it('returns {} costBySkill when no Skill seen', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(makeRecord({ toolName: 'Read' }));
+      attributor.recordTokenEvent(makeTokenEvent());
+
+      const metrics = attributor.getMetrics();
+      expect(metrics.costBySkill).toEqual({});
+    });
+
+    it('reset() clears costBySkill state', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(
+        makeRecord({
+          toolName: 'Skill',
+          skillName: 'design',
+          timestamp: 1000,
+          toolUseId: 'skill-1',
+        }),
+      );
+      attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1100 }));
+
+      attributor.reset();
+
+      const metrics = attributor.getMetrics();
+      expect(metrics.costBySkill).toEqual({});
+      expect(metrics.costByToolType).toEqual({});
+    });
+  });
 });

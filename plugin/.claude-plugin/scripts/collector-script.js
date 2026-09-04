@@ -358,6 +358,10 @@ function extractInputMeta(toolName, input) {
       if (typeof obj.status === "string") meta.status = obj.status;
       if (typeof obj.subject === "string") meta.subject = obj.subject;
       break;
+    case "Skill":
+      if (typeof obj.skill === "string") meta.skill = obj.skill.slice(0, 128);
+      if (typeof obj.args === "string") meta.argsLength = obj.args.length;
+      break;
   }
   return Object.keys(meta).length > 0 ? meta : void 0;
 }

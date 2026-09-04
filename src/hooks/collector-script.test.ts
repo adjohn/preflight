@@ -465,6 +465,33 @@ describe('collector-script', () => {
       const event = readBufferEvents()[0]!;
       expect(event.toolOutput).toEqual({ agentResultLength: 11 });
     });
+
+    it('extracts Skill name and args length', () => {
+      const input = { skill: 'code-review', args: 'Check the error handling' };
+      processHook(makePreToolUse({ tool_name: 'Skill', tool_input: input }));
+
+      const event = readBufferEvents()[0]!;
+      const toolInput = event.toolInput as Record<string, unknown>;
+      expect(toolInput.skill).toBe('code-review');
+      expect(toolInput.argsLength).toBe('Check the error handling'.length);
+    });
+
+    it('caps Skill name to 128 characters', () => {
+      const longName = 'a'.repeat(200);
+      const input = { skill: longName };
+      processHook(makePreToolUse({ tool_name: 'Skill', tool_input: input }));
+
+      const event = readBufferEvents()[0]!;
+      const toolInput = event.toolInput as Record<string, unknown>;
+      expect((toolInput.skill as string).length).toBe(128);
+    });
+
+    it('omits toolInput when Skill has no parseable data', () => {
+      processHook(makePreToolUse({ tool_name: 'Skill', tool_input: {} }));
+
+      const event = readBufferEvents()[0]!;
+      expect(event.toolInput).toBeUndefined();
+    });
   });
 
   // VS Code Copilot agent hooks send the uniform PreToolUse/PostToolUse envelope

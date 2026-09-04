@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.0] - 2026-09-03
+
+### Added
+
+- **Skill invocations are now tracked per skill instead of collapsing into one `Skill` bucket.** Each `Skill` tool call now carries the invoked skill's name on its record and on the `AiToolCall` event, so `code-review` and `security-review` are distinguishable in every breakdown. The argument text itself is never recorded, only its length.
+- **`nr_observe_get_cost_per_tool` returns a new `costBySkill` field.** One row per skill with call count, attributed call count, estimated cost, estimated input/output/cache-read tokens, and total duration. The existing `costByToolType` field is unchanged, and its `Skill` entry equals the sum of the skill rows.
+
 ## [1.36.0] - 2026-09-03
 
 ### Added
