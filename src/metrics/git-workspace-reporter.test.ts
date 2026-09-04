@@ -293,5 +293,52 @@ describe('GitWorkspaceReporter', () => {
       expect(report.rows).toHaveLength(1);
       expect(report.rows[0].metrics.commitCount).toBe(1);
     });
+
+    it('report() dedupes historical records against what is already live, not just what ingestRecords already deduped', () => {
+      // Mirrors the real shape of the bug: a session already ingested live
+      // (e.g. at daemon startup, via ingestRecords) gets independently
+      // re-replayed and passed as `historical` on a request for a window
+      // that also covers today — report() must not double-count it just
+      // because the two record arrays never touched the same ActivityStore.
+      const repoDir = join(tmpDir, 'historical-overlap-repo');
+      execSync(`mkdir -p "${repoDir}"`);
+      initGitRepo(repoDir);
+
+      const timeline: ReplayTimelineEntry[] = [
+        {
+          timestamp: 1000,
+          toolName: 'Bash',
+          durationMs: 50,
+          success: true,
+          command: 'git commit -m "replayed"',
+          cwd: repoDir,
+        },
+      ];
+
+      const identityResolver = new WorktreeIdentityResolver();
+      const session = { sessionId: 'sess-overlap', timeline };
+      const records = replaySessionToActivityRecords(session, identityResolver);
+
+      const identity = identityResolver.resolve(repoDir);
+      expect(identity).not.toBeNull();
+      const identities = new Map([[identity!.worktreeKey, identity!]]);
+
+      const reporter = new GitWorkspaceReporter();
+      // Already live, e.g. from startup replay.
+      reporter.ingestRecords(records, identities);
+
+      // The SAME session, re-replayed fresh (as the API route does per
+      // request) and passed as `historical` — same recordId, different array.
+      const replayedAgain = replaySessionToActivityRecords(session, identityResolver);
+      const report = reporter.report({
+        scope: { kind: 'all' },
+        since: 0,
+        until: Date.now() + 60_000,
+        historical: replayedAgain,
+      });
+
+      expect(report.rows).toHaveLength(1);
+      expect(report.rows[0].metrics.commitCount).toBe(1);
+    });
   });
 });

@@ -1206,6 +1206,7 @@ export function deserializeFullSessionSummary(
             success: typeof e.success === 'boolean' ? e.success : true,
             filePath: typeof e.filePath === 'string' ? e.filePath : undefined,
             command: typeof e.command === 'string' ? e.command : undefined,
+            cwd: typeof e.cwd === 'string' ? e.cwd : undefined,
             isTestCommand: typeof e.isTestCommand === 'boolean' ? e.isTestCommand : undefined,
             isBuildCommand: typeof e.isBuildCommand === 'boolean' ? e.isBuildCommand : undefined,
             isLintCommand: typeof e.isLintCommand === 'boolean' ? e.isLintCommand : undefined,
