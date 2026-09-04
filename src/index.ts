@@ -2953,6 +2953,12 @@ async function main(): Promise<void> {
         configFilePath,
         configSummary,
       });
+
+      // The client cached tools/list during the pending window, when only the
+      // health/install/config tools existed. Tell it to re-list now that the
+      // full set is registered, or it keeps the pending three for the whole
+      // connection.
+      void mcpServer!.notifyToolListChanged();
     };
 
     // Arms a background watch for the ppid breadcrumb after an initial
@@ -3136,6 +3142,10 @@ async function main(): Promise<void> {
           configFilePath,
           configSummary,
         });
+
+        // Harmless if the client hasn't listed yet, and necessary if it listed
+        // in the window between connectStdio() and this call.
+        void mcpServer!.notifyToolListChanged();
 
         nrIngest?.start();
         logger.info('Server running on stdio transport');

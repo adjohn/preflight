@@ -98,6 +98,10 @@ When prompted, pick a mode:
 
 Restart your AI tool — hooks and the MCP server load at session start. Every tool call is captured automatically. Open **http://localhost:7777** to watch your session live.
 
+> **Using Kiro?** Add Preflight as a [Kiro Power](docs/KIRO_POWER.md) for the
+> `nr_observe_*` query tools — see the doc for install steps and how to add
+> automatic tool-call capture on top.
+
 > **Using Claude Code?** You can skip the npm install above and add Preflight as a [Claude Code plugin](docs/PLUGIN.md) instead:
 >
 > ```
