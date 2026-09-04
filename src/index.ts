@@ -1228,7 +1228,7 @@ async function main(): Promise<void> {
     // --local ids are synthetic, so this is a no-op for them — the provisional
     // window is named later via adoptRealSessionId once its real id resolves.
     if (options.stdio) applyAuthoritativeSessionName(sessionTraceId);
-    const turnCostAttributor = new TurnCostAttributor();
+    const turnCostAttributor = new TurnCostAttributor({ rateMultiplier });
     const turnTracker = new TurnTracker();
     const gitEfficiencyTracker = new GitEfficiencyTracker();
     // Day-boundary reset bookkeeping for gitEfficiencyTracker: the
@@ -2233,7 +2233,8 @@ async function main(): Promise<void> {
       },
       onTokenEvent: (tokenEvent) => {
         if (!costTracker || !config) return;
-        turnCostAttributor.recordTokenEvent(tokenEvent);
+        const closedTurn = turnCostAttributor.recordTokenEvent(tokenEvent);
+        if (closedTurn) capturedNrIngest?.ingestTurnCost(closedTurn);
         const usage = {
           inputTokens: tokenEvent.inputTokens,
           outputTokens: tokenEvent.outputTokens,
