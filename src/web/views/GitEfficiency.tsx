@@ -20,15 +20,14 @@ import { Kpi } from '../components/Kpi';
 import { Card, Eyebrow, Pill, SectionHeader } from '../components/ui';
 import type { PillTone } from '../components/ui';
 
-const TODAY_SUBTITLE = "Today's activity across all sessions";
-
-/** Formats a same-metric delta against yesterday for a `Kpi`'s `sub` text.
- *  Null when yesterday's data isn't loaded yet — never rendered as "+0". */
-function formatDeltaVsYesterday(today: number, yesterday: number | null): string | null {
-  if (yesterday === null) return null;
-  const delta = today - yesterday;
-  if (delta === 0) return 'same as yesterday';
-  return delta > 0 ? `+${delta} vs yesterday` : `${delta} vs yesterday`;
+/** Formats a same-metric delta against the previous 7-day period for a
+ *  `Kpi`'s `sub` text. Null while that comparison window hasn't loaded yet —
+ *  never rendered as "+0". */
+function formatDeltaVsLastWeek(thisWeek: number, lastWeek: number | null): string | null {
+  if (lastWeek === null) return null;
+  const delta = thisWeek - lastWeek;
+  if (delta === 0) return 'same as last week';
+  return delta > 0 ? `+${delta} vs last week` : `${delta} vs last week`;
 }
 
 const SEVERITY_STYLE: Record<GitSuggestion['severity'], string> = {
@@ -97,6 +96,20 @@ function formatAgo(measuredAtMs: number): string {
   if (hr < 24) return `as of ${hr}h ago`;
   const days = Math.floor(hr / 24);
   return `as of ${days}d ago`;
+}
+
+/** Renders an exact `[sinceMs, untilMs)` window as a short date range, e.g.
+ *  "Aug 29 – Sep 4" — used everywhere a window's real bounds need to be
+ *  shown rather than a vague word like "recent". `untilMs` is shown as its
+ *  own date (not "today") since a comparison-baseline window's `until` is
+ *  never "now". */
+function formatDateRange(sinceMs: number, untilMs: number): string {
+  const fmt = (ms: number): string =>
+    new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  // `untilMs` is an exclusive upper bound (start-of-day for a fixed window,
+  // or "now" for a live one) — subtract a millisecond so a window ending at
+  // midnight displays as the prior calendar day, not the next one.
+  return `${fmt(sinceMs)} – ${fmt(untilMs - 1)}`;
 }
 
 /** Tone for a "commits behind" style KPI — null (unknown) stays neutral so it
@@ -367,42 +380,42 @@ export function GitEfficiency(): JSX.Element {
   // `scope` purely so the breadcrumb always has a display name/label, even if
   // that workspace later drops out of `report.rows` (e.g. it goes idle).
   const [scopeIdentity, setScopeIdentity] = useState<WorktreeIdentity | null>(null);
-  // The one remaining secondary time-window affordance: an opt-in weekly
-  // summary strip, off by default so nothing is fetched for it until asked.
-  // Everything else on this page — hero KPIs, coaching, velocity, PRs,
-  // timeline — is always "today"; there is no picker that can change what
-  // window those are computed over.
-  const [showWeekSummary, setShowWeekSummary] = useState(false);
 
+  // Hero KPIs, coaching, velocity, PRs, and the timeline are always "last 7
+  // days" for the currently-selected scope — there is no picker that can
+  // change this window; the exact date range is rendered from
+  // report.since/until so it's never ambiguous what "recent" means here.
   const {
     data: report,
     isLoading,
     error,
   } = useQuery<GitWorkspaceReport>({
-    queryKey: qk.gitEfficiency('today', formatScope(scope)),
-    queryFn: () => fetchGitEfficiency('today', formatScope(scope)),
+    queryKey: qk.gitEfficiency('week', formatScope(scope)),
+    queryFn: () => fetchGitEfficiency('week', formatScope(scope)),
     refetchInterval: 5000,
   });
 
-  // Yesterday's numbers for the same scope, fetched purely to compute the
-  // "+N vs yesterday" deltas on the hero KPIs below — never rendered on its
-  // own, and never affects coaching/best-practices, which only ever read
-  // `report` (today's).
-  const { data: yesterdayReport } = useQuery<GitWorkspaceReport>({
-    queryKey: qk.gitEfficiency('yesterday', formatScope(scope)),
-    queryFn: () => fetchGitEfficiency('yesterday', formatScope(scope)),
-    // Yesterday is a fixed comparison baseline within a UI session — no need
-    // to poll it as aggressively as today's live numbers.
+  // The 7 days immediately before `report`'s window, same scope — a
+  // week-over-week comparison baseline for the "+N vs last week" deltas
+  // below. Never rendered on its own, and never affects coaching/best-
+  // practices, which only ever read `report` (the current week).
+  const { data: previousWeekReport } = useQuery<GitWorkspaceReport>({
+    queryKey: qk.gitEfficiency('previous_week', formatScope(scope)),
+    queryFn: () => fetchGitEfficiency('previous_week', formatScope(scope)),
+    // A fully-past, fixed comparison baseline — no need to poll it as
+    // aggressively as the current week's live numbers.
     refetchInterval: 60_000,
   });
 
-  // This week's rollup for the same scope — only fetched once the user opts
-  // into the secondary "view this week" strip, so it costs nothing by default.
-  const { data: weekReport } = useQuery<GitWorkspaceReport>({
-    queryKey: qk.gitEfficiency('week', formatScope(scope)),
-    queryFn: () => fetchGitEfficiency('week', formatScope(scope)),
-    enabled: showWeekSummary,
-    refetchInterval: showWeekSummary ? 60_000 : false,
+  // The repo/worktree tree below always shows the last 30 days across every
+  // repo — deliberately a wider, independent window from the 7-day hero KPIs
+  // above, and deliberately always scope 'all' regardless of what's
+  // currently selected for the KPI cards (rows are never scope-filtered
+  // server-side either — the tree is always the full picture to drill from).
+  const { data: treeReport } = useQuery<GitWorkspaceReport>({
+    queryKey: qk.gitEfficiency('30', 'all'),
+    queryFn: () => fetchGitEfficiency('30', 'all'),
+    refetchInterval: 30_000,
   });
 
   const handleSelectRepo = (identity: WorktreeIdentity): void => {
@@ -432,13 +445,13 @@ export function GitEfficiency(): JSX.Element {
     (c) => c.resolution === 'resolved',
   ).length;
 
-  // Deltas vs yesterday for the same scope — undefined until yesterdayReport
-  // loads, in which case formatDeltaVsYesterday returns null and the Kpi
+  // Week-over-week deltas for the same scope — null until previousWeekReport
+  // loads, in which case formatDeltaVsLastWeek returns null and the Kpi
   // renders without a delta rather than a misleading "+0".
-  const yesterdayCommitCount = yesterdayReport?.metrics.commitCount ?? null;
-  const yesterdayPrsCreated = yesterdayReport?.metrics.prMetrics.created ?? null;
-  const yesterdayConflictCount = yesterdayReport
-    ? yesterdayReport.metrics.mergeConflicts + yesterdayReport.metrics.rebaseConflicts
+  const lastWeekCommitCount = previousWeekReport?.metrics.commitCount ?? null;
+  const lastWeekPrsCreated = previousWeekReport?.metrics.prMetrics.created ?? null;
+  const lastWeekConflictCount = previousWeekReport
+    ? previousWeekReport.metrics.mergeConflicts + previousWeekReport.metrics.rebaseConflicts
     : null;
   const conflictCount = metrics.mergeConflicts + metrics.rebaseConflicts;
 
@@ -491,36 +504,10 @@ export function GitEfficiency(): JSX.Element {
             )}
           </div>
 
-          <div className="mt-1 flex items-center gap-2 text-[11px] text-ink-muted">
-            <span>{TODAY_SUBTITLE}</span>
-            <span aria-hidden="true">·</span>
-            <button
-              type="button"
-              onClick={() => setShowWeekSummary((v) => !v)}
-              className="text-ink-muted hover:text-ink-base hover:underline"
-            >
-              {showWeekSummary ? 'Hide this week' : 'View this week'}
-            </button>
+          <div className="mt-1 text-[11px] text-ink-muted">
+            Last 7 days ({formatDateRange(report.since, report.until)}) · compared to the previous 7
+            days
           </div>
-
-          {showWeekSummary && (
-            <div className="mt-1.5 text-[11px] text-ink-subtle">
-              {weekReport ? (
-                <span>
-                  This week: <span className="tabular-nums">{weekReport.metrics.commitCount}</span>{' '}
-                  commits ·{' '}
-                  <span className="tabular-nums">
-                    {weekReport.metrics.mergeConflicts + weekReport.metrics.rebaseConflicts}
-                  </span>{' '}
-                  conflicts ·{' '}
-                  <span className="tabular-nums">{weekReport.metrics.prMetrics.created}</span> PRs
-                  created
-                </span>
-              ) : (
-                <span>Loading this week&apos;s activity…</span>
-              )}
-            </div>
-          )}
         </div>
         <div className="flex items-center gap-4">
           <div className="text-center">
@@ -539,8 +526,9 @@ export function GitEfficiency(): JSX.Element {
       </header>
 
       {/* Repo/worktree tree — every repo and worktree with activity in the
-          window, regardless of the currently-selected scope. Clicking a repo
-          or worktree drills the cards below into it. */}
+          last 30 days (deliberately wider than the 7-day hero KPIs, and
+          always scope 'all' regardless of what's selected below). Clicking a
+          repo or worktree drills the cards below into it. */}
       <AnimatedCard index={0} className="mb-3">
         <Card padding="md">
           <SectionHeader
@@ -548,18 +536,28 @@ export function GitEfficiency(): JSX.Element {
             action={
               <span className="text-[11px] text-ink-muted">
                 {(() => {
-                  const repoCount = new Set(report.rows.map((r) => r.identity.repoKey)).size;
-                  return `${repoCount} repo${repoCount === 1 ? '' : 's'} · ${report.rows.length} worktree${report.rows.length === 1 ? '' : 's'}`;
+                  const rows = treeReport?.rows ?? [];
+                  const repoCount = new Set(rows.map((r) => r.identity.repoKey)).size;
+                  return `${repoCount} repo${repoCount === 1 ? '' : 's'} · ${rows.length} worktree${rows.length === 1 ? '' : 's'}`;
                 })()}
               </span>
             }
           />
-          <WorkspaceTree
-            rows={report.rows}
-            scope={scope}
-            onSelectRepo={handleSelectRepo}
-            onSelectWorktree={handleSelectWorktree}
-          />
+          <div className="mb-2 text-[11px] text-ink-muted">
+            {treeReport
+              ? `Last 30 days (${formatDateRange(treeReport.since, treeReport.until)})`
+              : 'Loading…'}
+          </div>
+          {treeReport ? (
+            <WorkspaceTree
+              rows={treeReport.rows}
+              scope={scope}
+              onSelectRepo={handleSelectRepo}
+              onSelectWorktree={handleSelectWorktree}
+            />
+          ) : (
+            <EmptyState icon="clock" variant="loading" title="Loading..." />
+          )}
         </Card>
       </AnimatedCard>
 
@@ -579,18 +577,16 @@ export function GitEfficiency(): JSX.Element {
                   label="commits"
                   hero
                   value={String(metrics.commitCount)}
-                  sub={
-                    formatDeltaVsYesterday(metrics.commitCount, yesterdayCommitCount) ?? undefined
-                  }
+                  sub={formatDeltaVsLastWeek(metrics.commitCount, lastWeekCommitCount) ?? undefined}
                   animate
                   numericValue={metrics.commitCount}
                 />
                 <Kpi
-                  label="PRs created today"
+                  label="PRs created"
                   tone={metrics.prMetrics.created > 0 ? 'good' : 'neutral'}
                   value={String(metrics.prMetrics.created)}
                   sub={
-                    formatDeltaVsYesterday(metrics.prMetrics.created, yesterdayPrsCreated) ??
+                    formatDeltaVsLastWeek(metrics.prMetrics.created, lastWeekPrsCreated) ??
                     undefined
                   }
                   animate
@@ -602,7 +598,7 @@ export function GitEfficiency(): JSX.Element {
                   value={String(conflictCount)}
                   sub={[
                     conflictCount === 0 ? 'clean session' : `${resolvedConflictCount} resolved`,
-                    formatDeltaVsYesterday(conflictCount, yesterdayConflictCount),
+                    formatDeltaVsLastWeek(conflictCount, lastWeekConflictCount),
                   ]
                     .filter((s): s is string => s !== null)
                     .join(' · ')}
@@ -641,12 +637,228 @@ export function GitEfficiency(): JSX.Element {
                   />
                 )}
               </div>
+              <div className="mt-3 text-[11px] text-ink-muted leading-relaxed">
+                <strong className="text-ink-subtle">Conflicts</strong> = merge/rebase/pull attempts
+                that git itself reported a real conflict on (not a live GitHub check).{' '}
+                <strong className="text-ink-subtle">Behind</strong> = commits your branch is missing
+                vs. its upstream (or the repo&apos;s default branch), as of your last local{' '}
+                <code className="font-mono">git fetch</code> — Preflight never fetches on your
+                behalf, so this can be stale if you haven&apos;t synced recently.
+              </div>
             </Card>
           </AnimatedCard>
 
-          {/* Best practices checklist — compact: only expand failures */}
-          {metrics.bestPractices.length > 0 && (
+          {/* Velocity & workflow — grouped with the other "what happened" data
+              sections (this, Pull Requests, Conflict Resolution, Destructive
+              Operations), all ahead of the coaching sections below. */}
+          {metrics.commitCount >= 2 && (
             <AnimatedCard index={2} className="mb-3">
+              <Card padding="md">
+                <SectionHeader
+                  title="Velocity & Workflow"
+                  subtitle="How your commits were paced — steady, incremental work is easier to review and revert than one big batch at the end."
+                />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <Kpi
+                    label="Avg time between commits"
+                    value={formatMs(metrics.velocityMetrics.avgTimeBetweenCommitsMs)}
+                  />
+                  <Kpi
+                    label="Longest gap"
+                    value={formatMs(metrics.velocityMetrics.longestGapMs)}
+                    sub="biggest idle stretch between commits"
+                  />
+                  <Kpi
+                    label="Commit bursts"
+                    value={String(metrics.velocityMetrics.commitBurstCount)}
+                    sub="3+ commits within 2 min — often splitting one change up after the fact"
+                  />
+                  <Kpi
+                    label="Worktree ops"
+                    value={String(metrics.velocityMetrics.worktreeCount)}
+                    sub="git worktree add/remove commands run"
+                  />
+                </div>
+                {metrics.velocityMetrics.buildBeforePush !== null && (
+                  <div className="mt-3 text-xs">
+                    <span className="text-ink-muted">Verified before push: </span>
+                    {metrics.velocityMetrics.buildBeforePush ? (
+                      <span className="text-accent-green">yes (build/test ran first)</span>
+                    ) : (
+                      <span className="text-accent-amber">no build/test detected before push</span>
+                    )}
+                  </div>
+                )}
+              </Card>
+            </AnimatedCard>
+          )}
+
+          {/* Pull requests */}
+          {(metrics.prMetrics.created > 0 ||
+            metrics.prMetrics.merged > 0 ||
+            metrics.prMetrics.checksViewed > 0) && (
+            <AnimatedCard index={3} className="mb-3">
+              <Card padding="md">
+                <SectionHeader
+                  title="Pull Requests"
+                  subtitle="Counts commands you (or the AI) ran — gh CLI and MCP PR tools — not live GitHub state."
+                />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <Kpi
+                    label="PRs created"
+                    value={String(metrics.prMetrics.created)}
+                    tone={metrics.prMetrics.created > 0 ? 'good' : 'neutral'}
+                  />
+                  <Kpi
+                    label="PRs merged"
+                    value={String(metrics.prMetrics.merged)}
+                    tone={metrics.prMetrics.merged > 0 ? 'good' : 'neutral'}
+                  />
+                  <Kpi
+                    label="CI checks viewed"
+                    value={String(metrics.prMetrics.checksViewed)}
+                    sub="times you ran `gh pr checks`"
+                  />
+                  <Kpi
+                    label="Time to PR"
+                    value={formatMs(metrics.prMetrics.avgTimeToCreateMs)}
+                    sub={
+                      metrics.prMetrics.avgTimeToCreateMs === null
+                        ? 'no commit found in this window before the PR was created'
+                        : undefined
+                    }
+                  />
+                </div>
+                {metrics.prMetrics.prActivity.length > 0 && (
+                  <div className="mt-3">
+                    <Eyebrow as="h3" className="mb-2">
+                      Activity
+                    </Eyebrow>
+                    <div className="flex flex-wrap gap-1.5">
+                      {metrics.prMetrics.prActivity.map((e) => {
+                        const tone: PillTone =
+                          e.action === 'create'
+                            ? 'success'
+                            : e.action === 'merge'
+                              ? 'info'
+                              : 'neutral';
+                        return (
+                          <Pill key={`${e.timestamp}-${e.action}`} tone={tone} size="sm">
+                            {e.action}
+                            {e.prNumber ? ` #${e.prNumber}` : ''}
+                          </Pill>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            </AnimatedCard>
+          )}
+
+          {/* Conflict resolution stats */}
+          {(metrics.mergeConflicts > 0 || metrics.rebaseConflicts > 0) && (
+            <AnimatedCard index={4} className="mb-3">
+              <Card padding="md">
+                <SectionHeader title="Conflict Resolution" />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <Kpi
+                    label="Resolution rate"
+                    value={
+                      metrics.conflictResolutionRate !== null
+                        ? `${Math.round(metrics.conflictResolutionRate * 100)}%`
+                        : '—'
+                    }
+                  />
+                  <Kpi
+                    label="Avg resolution time"
+                    value={formatMs(metrics.avgConflictResolutionMs)}
+                  />
+                  <Kpi label="Aborted ops" value={String(metrics.abortedOperations)} />
+                  <Kpi label="Stale branch pulls" value={String(metrics.staleBranchPulls)} />
+                </div>
+
+                {metrics.conflictHistory.length > 0 && (
+                  <div className="mt-3">
+                    <Eyebrow as="h3" className="mb-2">
+                      Conflict History
+                    </Eyebrow>
+                    <div className="space-y-1">
+                      {metrics.conflictHistory.map((c) => (
+                        <div
+                          key={`${c.timestamp}-${c.command}`}
+                          className="flex items-center gap-3 text-xs py-1 border-t border-border-subtle"
+                        >
+                          <span className="tabular-nums text-ink-subtle w-28 shrink-0">
+                            {new Date(c.timestamp).toLocaleTimeString(undefined, {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                              second: '2-digit',
+                            })}
+                          </span>
+                          <span className={`font-medium ${RESOLUTION_STYLE[c.resolution]}`}>
+                            {c.resolution}
+                          </span>
+                          <span className="text-ink-muted">{formatMs(c.resolutionTimeMs)}</span>
+                          <span className="text-ink-subtle font-mono text-[11px] truncate">
+                            {c.command}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            </AnimatedCard>
+          )}
+
+          {/* Conflict resolution strategy */}
+          {metrics.conflictResolutionStrategy.totalResolutions > 0 && (
+            <AnimatedCard index={5} className="mb-3">
+              <Card padding="md">
+                <SectionHeader title="Conflict Resolution Strategy" />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <Kpi
+                    label="Accept ours"
+                    value={String(metrics.conflictResolutionStrategy.oursCount)}
+                  />
+                  <Kpi
+                    label="Accept theirs"
+                    value={String(metrics.conflictResolutionStrategy.theirsCount)}
+                  />
+                  <Kpi
+                    label="Manual merge"
+                    value={String(metrics.conflictResolutionStrategy.manualMergeCount)}
+                  />
+                  <Kpi
+                    label="Cherry-picks"
+                    value={String(metrics.conflictResolutionStrategy.cherryPickCount)}
+                  />
+                </div>
+              </Card>
+            </AnimatedCard>
+          )}
+
+          {/* Destructive operations summary */}
+          {(metrics.resetHards > 0 || metrics.discardedChanges > 0 || metrics.forcePushes > 0) && (
+            <AnimatedCard index={6} className="mb-3">
+              <Card padding="md">
+                <SectionHeader title="Destructive Operations" />
+                <div className="grid grid-cols-3 gap-3">
+                  <Kpi label="Hard resets" value={String(metrics.resetHards)} />
+                  <Kpi label="Discarded changes" value={String(metrics.discardedChanges)} />
+                  <Kpi label="Force pushes" value={String(metrics.forcePushes)} />
+                </div>
+              </Card>
+            </AnimatedCard>
+          )}
+
+          {/* Best practices checklist — compact: only expand failures. Grouped
+              with Suggestions right after every "what happened" data section
+              above, and before the raw Recent Git Activity log — not sandwiched
+              in between two unrelated data sections. */}
+          {metrics.bestPractices.length > 0 && (
+            <AnimatedCard index={7} className="mb-3">
               <Card padding="md">
                 <SectionHeader
                   title="Best Practices"
@@ -718,65 +930,9 @@ export function GitEfficiency(): JSX.Element {
             </AnimatedCard>
           )}
 
-          {/* Conflict resolution stats */}
-          {(metrics.mergeConflicts > 0 || metrics.rebaseConflicts > 0) && (
-            <AnimatedCard index={3} className="mb-3">
-              <Card padding="md">
-                <SectionHeader title="Conflict Resolution" />
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <Kpi
-                    label="Resolution rate"
-                    value={
-                      metrics.conflictResolutionRate !== null
-                        ? `${Math.round(metrics.conflictResolutionRate * 100)}%`
-                        : '—'
-                    }
-                  />
-                  <Kpi
-                    label="Avg resolution time"
-                    value={formatMs(metrics.avgConflictResolutionMs)}
-                  />
-                  <Kpi label="Aborted ops" value={String(metrics.abortedOperations)} />
-                  <Kpi label="Stale branch pulls" value={String(metrics.staleBranchPulls)} />
-                </div>
-
-                {metrics.conflictHistory.length > 0 && (
-                  <div className="mt-3">
-                    <Eyebrow as="h3" className="mb-2">
-                      Conflict History
-                    </Eyebrow>
-                    <div className="space-y-1">
-                      {metrics.conflictHistory.map((c) => (
-                        <div
-                          key={`${c.timestamp}-${c.command}`}
-                          className="flex items-center gap-3 text-xs py-1 border-t border-border-subtle"
-                        >
-                          <span className="tabular-nums text-ink-subtle w-28 shrink-0">
-                            {new Date(c.timestamp).toLocaleTimeString(undefined, {
-                              hour: 'numeric',
-                              minute: '2-digit',
-                              second: '2-digit',
-                            })}
-                          </span>
-                          <span className={`font-medium ${RESOLUTION_STYLE[c.resolution]}`}>
-                            {c.resolution}
-                          </span>
-                          <span className="text-ink-muted">{formatMs(c.resolutionTimeMs)}</span>
-                          <span className="text-ink-subtle font-mono text-[11px] truncate">
-                            {c.command}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </Card>
-            </AnimatedCard>
-          )}
-
           {/* Suggestions */}
           {metrics.suggestions.length > 0 && (
-            <AnimatedCard index={4} className="mb-3">
+            <AnimatedCard index={8} className="mb-3">
               <Card padding="md">
                 <SectionHeader title="Suggestions" />
                 <div className="space-y-2">
@@ -796,126 +952,6 @@ export function GitEfficiency(): JSX.Element {
                       </div>
                     </div>
                   ))}
-                </div>
-              </Card>
-            </AnimatedCard>
-          )}
-
-          {/* Velocity & workflow */}
-          {metrics.commitCount >= 2 && (
-            <AnimatedCard index={5} className="mb-3">
-              <Card padding="md">
-                <SectionHeader title="Velocity & Workflow" />
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <Kpi
-                    label="Avg time between commits"
-                    value={formatMs(metrics.velocityMetrics.avgTimeBetweenCommitsMs)}
-                  />
-                  <Kpi label="Longest gap" value={formatMs(metrics.velocityMetrics.longestGapMs)} />
-                  <Kpi
-                    label="Commit bursts"
-                    value={String(metrics.velocityMetrics.commitBurstCount)}
-                  />
-                  <Kpi label="Worktree ops" value={String(metrics.velocityMetrics.worktreeCount)} />
-                </div>
-                {metrics.velocityMetrics.buildBeforePush !== null && (
-                  <div className="mt-3 text-xs">
-                    <span className="text-ink-muted">Verified before push: </span>
-                    {metrics.velocityMetrics.buildBeforePush ? (
-                      <span className="text-accent-green">yes (build/test ran first)</span>
-                    ) : (
-                      <span className="text-accent-amber">no build/test detected before push</span>
-                    )}
-                  </div>
-                )}
-              </Card>
-            </AnimatedCard>
-          )}
-
-          {/* Pull requests */}
-          {(metrics.prMetrics.created > 0 ||
-            metrics.prMetrics.merged > 0 ||
-            metrics.prMetrics.checksViewed > 0) && (
-            <AnimatedCard index={6} className="mb-3">
-              <Card padding="md">
-                <SectionHeader title="Pull Requests" />
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <Kpi
-                    label="PRs created"
-                    value={String(metrics.prMetrics.created)}
-                    tone={metrics.prMetrics.created > 0 ? 'good' : 'neutral'}
-                  />
-                  <Kpi
-                    label="PRs merged"
-                    value={String(metrics.prMetrics.merged)}
-                    tone={metrics.prMetrics.merged > 0 ? 'good' : 'neutral'}
-                  />
-                  <Kpi label="CI checks viewed" value={String(metrics.prMetrics.checksViewed)} />
-                  <Kpi label="Time to PR" value={formatMs(metrics.prMetrics.avgTimeToCreateMs)} />
-                </div>
-                {metrics.prMetrics.prActivity.length > 0 && (
-                  <div className="mt-3">
-                    <Eyebrow as="h3" className="mb-2">
-                      Activity
-                    </Eyebrow>
-                    <div className="flex flex-wrap gap-1.5">
-                      {metrics.prMetrics.prActivity.map((e) => {
-                        const tone: PillTone =
-                          e.action === 'create'
-                            ? 'success'
-                            : e.action === 'merge'
-                              ? 'info'
-                              : 'neutral';
-                        return (
-                          <Pill key={`${e.timestamp}-${e.action}`} tone={tone} size="sm">
-                            {e.action}
-                            {e.prNumber ? ` #${e.prNumber}` : ''}
-                          </Pill>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </Card>
-            </AnimatedCard>
-          )}
-
-          {/* Conflict resolution strategy */}
-          {metrics.conflictResolutionStrategy.totalResolutions > 0 && (
-            <AnimatedCard index={7} className="mb-3">
-              <Card padding="md">
-                <SectionHeader title="Conflict Resolution Strategy" />
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <Kpi
-                    label="Accept ours"
-                    value={String(metrics.conflictResolutionStrategy.oursCount)}
-                  />
-                  <Kpi
-                    label="Accept theirs"
-                    value={String(metrics.conflictResolutionStrategy.theirsCount)}
-                  />
-                  <Kpi
-                    label="Manual merge"
-                    value={String(metrics.conflictResolutionStrategy.manualMergeCount)}
-                  />
-                  <Kpi
-                    label="Cherry-picks"
-                    value={String(metrics.conflictResolutionStrategy.cherryPickCount)}
-                  />
-                </div>
-              </Card>
-            </AnimatedCard>
-          )}
-
-          {/* Destructive operations summary */}
-          {(metrics.resetHards > 0 || metrics.discardedChanges > 0 || metrics.forcePushes > 0) && (
-            <AnimatedCard index={8} className="mb-3">
-              <Card padding="md">
-                <SectionHeader title="Destructive Operations" />
-                <div className="grid grid-cols-3 gap-3">
-                  <Kpi label="Hard resets" value={String(metrics.resetHards)} />
-                  <Kpi label="Discarded changes" value={String(metrics.discardedChanges)} />
-                  <Kpi label="Force pushes" value={String(metrics.forcePushes)} />
                 </div>
               </Card>
             </AnimatedCard>

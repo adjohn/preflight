@@ -65,6 +65,14 @@ describe('GitWorkspaceReporter', () => {
     expect(report.rows[0].metrics.commitCount).toBe(1);
   });
 
+  it('report() echoes back the exact since/until it was called with', () => {
+    const reporter = new GitWorkspaceReporter();
+    const until = Date.now() + 1000;
+    const report = reporter.report({ scope: { kind: 'all' }, since: 0, until });
+    expect(report.since).toBe(0);
+    expect(report.until).toBe(until);
+  });
+
   it('knownWorkspaces() reflects a workspace even when the report window has no activity', () => {
     const repoDir = join(tmpDir, 'repo');
     execSync(`mkdir -p "${repoDir}"`);

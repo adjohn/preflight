@@ -895,6 +895,11 @@ export interface GitWorkspaceReport {
     readonly identity: WorktreeIdentity;
     readonly behind: number;
   } | null;
+  /** The exact `[since, until)` bounds the server resolved the requested
+   *  `window` string into — lets the UI render the real date range instead
+   *  of re-deriving "what 'week' means" itself. */
+  readonly since: number;
+  readonly until: number;
 }
 
 export const fetchGitEfficiency = (

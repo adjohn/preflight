@@ -10,10 +10,12 @@ export interface ResolvedWindow {
 }
 
 /**
- * `today` (default), `yesterday`, `week` (7 days), or a bare positive
- * integer string meaning "N days back" — same vocabulary and math as
- * `GET /api/cost-per-outcome`'s `?days=` parsing (see that route in
- * api-handler.ts for the exact `localStartOfDay()`-anchored windowing this
+ * `today` (default), `yesterday`, `week` (rolling last 7 days, ending now),
+ * `previous_week` (the 7-day period immediately before `week` — a fixed,
+ * fully-past window, used as `week`'s week-over-week comparison baseline),
+ * or a bare positive integer string meaning "N days back" — same vocabulary
+ * and math as `GET /api/cost-per-outcome`'s `?days=` parsing (see that route
+ * in api-handler.ts for the exact `localStartOfDay()`-anchored windowing this
  * mirrors), so this tab's "last N days" lines up with the rest of the
  * dashboard. Anything unparseable degrades to `today` rather than erroring.
  */
@@ -29,6 +31,10 @@ export function resolveWindowParam(
 
   if (raw === 'week') {
     return { since: todayStart - 6 * MS_PER_DAY, until: now };
+  }
+
+  if (raw === 'previous_week') {
+    return { since: todayStart - 13 * MS_PER_DAY, until: todayStart - 6 * MS_PER_DAY };
   }
 
   if (raw != null && raw !== 'today') {

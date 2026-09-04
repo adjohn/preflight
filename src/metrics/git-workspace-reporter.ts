@@ -26,6 +26,21 @@ const GIT_OPTS = {
 
 const DEFAULT_LIVE_STATE_TTL_MS = 5 * 60_000;
 
+/**
+ * `GitWorkspaceReport` plus the exact `[since, until)` bounds `report()`
+ * queried — the caller (a route/MCP tool) already resolved these from a
+ * `window` string, and echoing them back is cheaper and less error-prone
+ * than having every consumer re-derive "what does 'week' actually mean"
+ * itself just to render a date range. Kept as a supertype of the pure
+ * aggregator's own return type rather than a field on `GitWorkspaceReport`
+ * itself — `buildGitWorkspaceReport` has no window of its own, only the
+ * records it was handed, so it stays untouched.
+ */
+export interface GitWorkspaceReportWithWindow extends GitWorkspaceReport {
+  readonly since: number;
+  readonly until: number;
+}
+
 function gitOut(root: string, args: readonly string[]): string | null {
   try {
     const result = spawnSync('git', ['-C', root, ...args], GIT_OPTS);
@@ -149,7 +164,7 @@ export class GitWorkspaceReporter {
     readonly until: number;
     readonly historical?: readonly GitActivityRecord[];
     readonly historicalIdentities?: ReadonlyMap<string, WorktreeIdentity>;
-  }): GitWorkspaceReport {
+  }): GitWorkspaceReportWithWindow {
     const { scope, since, until, historical, historicalIdentities } = input;
 
     const liveRecords = this.store.query({ since, until });
@@ -178,7 +193,7 @@ export class GitWorkspaceReporter {
       }
     }
 
-    return buildGitWorkspaceReport({ scope, records, identities, liveStates });
+    return { ...buildGitWorkspaceReport({ scope, records, identities, liveStates }), since, until };
   }
 
   /**

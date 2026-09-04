@@ -33,8 +33,9 @@ import type { GitEfficiencyMetrics } from '../../metrics/git-efficiency-tracker.
 import { resolveScopeParam, resolveWindowParam } from '../../metrics/git-window-params.js';
 import type { WorktreeIdentity } from '../../metrics/git-workspace-identity.js';
 import { WorktreeIdentityResolver } from '../../metrics/git-workspace-identity.js';
-import type { GitWorkspaceReport, ScopeRef } from '../../metrics/git-workspace-report.js';
+import type { ScopeRef } from '../../metrics/git-workspace-report.js';
 import { replaySessionToActivityRecords } from '../../metrics/git-workspace-reporter.js';
+import type { GitWorkspaceReportWithWindow } from '../../metrics/git-workspace-reporter.js';
 import type { InstructionDriftMetrics } from '../../metrics/instruction-drift-tracker.js';
 import type { LatencyMetrics } from '../../metrics/latency-tracker.js';
 import { DEFAULT_STALE_THRESHOLD_MS } from '../../metrics/live-session-registry.js';
@@ -555,7 +556,7 @@ export interface ApiHandlerDeps {
       until: number;
       historical?: readonly GitActivityRecord[];
       historicalIdentities?: ReadonlyMap<string, WorktreeIdentity>;
-    }): GitWorkspaceReport;
+    }): GitWorkspaceReportWithWindow;
     knownWorkspaces(): ReadonlyMap<string, WorktreeIdentity>;
   };
   readonly qualityProxyTracker?: {

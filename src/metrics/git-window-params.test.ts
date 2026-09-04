@@ -34,6 +34,21 @@ describe('resolveWindowParam', () => {
     });
   });
 
+  it("resolves 'previous_week' to the 7 days immediately before 'week', a fixed fully-past window", () => {
+    const todayStart = localStartOfDay(NOW);
+    const week = resolveWindowParam('week', NOW);
+    const previousWeek = resolveWindowParam('previous_week', NOW);
+    expect(previousWeek).toEqual({
+      since: todayStart - 13 * DAY_MS,
+      until: todayStart - 6 * DAY_MS,
+    });
+    // Back-to-back, no gap and no overlap with 'week'.
+    expect(previousWeek.until).toBe(week.since);
+    // Unlike 'week' (until: now), previous_week's boundary never moves
+    // within the same calendar day — both ends are day-anchored.
+    expect(previousWeek.until).toBe(todayStart - 6 * DAY_MS);
+  });
+
   it('resolves a bare integer as N days back, until now', () => {
     const todayStart = localStartOfDay(NOW);
     expect(resolveWindowParam('14', NOW)).toEqual({
