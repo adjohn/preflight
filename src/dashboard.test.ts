@@ -168,7 +168,7 @@ describe('Team View dashboard', () => {
     expect(teamView!.dashboard.name).toBe('AI Coding Assistant — Team View');
   });
 
-  it('has 5 rows of widgets (16 total)', () => {
+  it('has 5 rows of widgets (17 total)', () => {
     expect(teamView!.dashboard.pages[0].widgets).toHaveLength(17);
   });
 

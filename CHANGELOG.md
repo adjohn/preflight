@@ -5,15 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.0] - 2026-09-03
+
+### Added
+
+- **The local dashboard shows a Cost by Skill table, and the team-view New Relic dashboard gains two skill widgets.** The table lists calls, cost, tokens, and time per skill under the Cost by Tool card, and appears only once a skill has been invoked. The New Relic widgets chart skill calls and hours in skills over seven days, faceted by `skillName`.
+
+## [1.37.0] - 2026-09-03
+
+### Added
+
+- **Skill invocations are now tracked per skill instead of collapsing into one `Skill` bucket.** Each `Skill` tool call now carries the invoked skill's name on its record and on the `AiToolCall` event, so `code-review` and `security-review` are distinguishable in every breakdown. The argument text itself is never recorded, only its length.
+- **`nr_observe_get_cost_per_tool` returns a new `costBySkill` field.** One row per skill with call count, attributed call count, estimated cost, estimated input/output/cache-read tokens, and total duration. The existing `costByToolType` field is unchanged, and its `Skill` entry equals the sum of the skill rows.
+
+## [1.36.0] - 2026-09-03
+
+### Added
+
+- **The docs site has a new landing page** with an install command for humans and a copy-to-clipboard setup prompt for coding agents, plus a What's New page summarizing recent releases in plain language.
+
+## [1.35.0] - 2026-09-03
+
+### Added
+
+- **Preflight is now available as a [Kiro Power](docs/KIRO_POWER.md)** — install it from Kiro's Powers panel for the `nr_observe_*` MCP tools without manually editing `~/.kiro/settings/mcp.json`.
+
+### Fixed
+
+- **Session resolution failed when the MCP server was launched through a wrapper process (e.g. `npx`), which affected Kiro and could affect other launchers.**
+- **Kiro sessions were misdetected as a generic MCP client, and Kiro's tool names weren't recognized** — both silently zeroed out file, edit, and shell metrics.
+- **MCP clients that connect before the full tool set is registered now get notified once it is**, instead of seeing only a partial tool list for the rest of the session.
+
 ## [1.34.0] - 2026-09-03
 
 ### Added
 
-- **Skill invocations are now tracked per skill instead of collapsing into one `Skill` bucket.** The hook payload's `tool_input.skill` was dropped at the collector, so `/code-review` and `/security-review` were indistinguishable in every breakdown. Each `Skill` tool call now carries `skillName` and `skillArgsLength` on its record and on the `AiToolCall` event, so `FACET skillName WHERE tool = 'Skill'` works in NRQL with no dashboard change. The argument text itself is never recorded, only its length.
-- **`nr_observe_get_cost_per_tool` returns a new `costBySkill` field.** One row per skill with call count, attributed call count, estimated cost, estimated input/output/cache-read tokens, and total duration. Call count and duration are measured on every call; cost and tokens are the same even split of the turn's token event that `costByToolType` has always used. The existing `costByToolType` field is unchanged, and its `Skill` entry equals the sum of the skill rows.
-- **The local dashboard shows a Cost by Skill table, and the team-view New Relic dashboard gains two skill widgets.** The table lists calls, cost, tokens, and time per skill under the Cost by Tool card, and appears only once a skill has been invoked. The New Relic widgets chart skill calls and hours in skills over seven days, faceted by `skillName`.
-- **Cost per tool call and per skill now reaches New Relic as a new `AiTurnCost` event.** When a turn's token usage arrives, Preflight emits one row per tool call in that turn with its share of the cost and tokens, plus `tool`, `skillName`, `tool_use_id`, and `turn_id`, so `FROM AiTurnCost SELECT sum(cost_usd) WHERE tool = 'Skill' FACET skillName` works over any window. A Cost by Skill widget is added to the team-view dashboard. Under `companionMode`, rows from Claude Code turns are tagged `cost_authority: 'external'` like `AiCodingTask`. See `docs/METRICS_TABLE.md` for the fields and the approximation the rows carry.
-- **`nr_observe_get_cost_per_tool` now applies `costRateMultiplier` and `dataResidencyPremium`.** The turn-cost attributor priced at list rate while every other cost figure was scaled, so `costByToolType` and `costBySkill` did not reconcile with `AiCodingTask` for orgs with a configured multiplier. They do now.
+- **Preflight now attributes telemetry to a repo's full git remote URL, not just the shorter `org/repo` form.** A new `repo_url` field ships alongside `project_id` on every NR event and metric, auto-inferred from `git remote get-url origin` and credential-stripped before being sent. It has its own opt-out (`repoUrlEnabled: false`, or `NEW_RELIC_AI_REPO_URL_ENABLED=false`), independent of `project_id`'s, and the `preflight install` setup wizard prompts for it explicitly.
+- **Five recommended New Relic Scorecard rule definitions are now documented in `docs/SCORECARDS.md`**, covering AI-coding cost, anti-pattern rate, efficiency score, cost-per-file, and security alerts per team — usable against Preflight's existing custom events with no entity synthesis required.
+
+### Fixed
+
+- **`project_id` (and now `repo_url`) could silently resolve from the wrong repository when running under a git hook or CI subprocess.** Both are inferred via `git remote get-url origin`, but that read didn't clear `GIT_DIR`/`GIT_WORK_TREE` — environment variables git sets for hook subprocesses (including this repo's own pre-push hook) that redirect git commands to a different repository's `.git` directory.
+
+## [1.33.2] - 2026-09-03
+
+### Fixed
+
+- **The MCP Registry publish step in the Release workflow was failing on every run.** `server.json`'s `description` field was 106 characters, exceeding the registry's 100-character limit; shortened it so releases reach `registry.modelcontextprotocol.io` again.
 
 ## [1.33.1] - 2026-09-03
 
