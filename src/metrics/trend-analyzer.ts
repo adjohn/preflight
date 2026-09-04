@@ -14,6 +14,18 @@ import type { FullSessionSummary } from '../storage/session-store.js';
 import { getIsoWeekId, getWeekDateRange } from '../storage/weekly-summary.js';
 import { classifySessionOutcome, type OutcomeType } from './cost-per-outcome.js';
 
+// Canonical display order for outcome breakdowns — matches the order
+// OutcomeType is declared in cost-per-outcome.ts, not session iteration order.
+const OUTCOME_ORDER: readonly OutcomeType[] = [
+  'bug_fix',
+  'feature',
+  'refactor',
+  'investigation',
+  'configuration',
+  'documentation',
+  'failed_attempt',
+];
+
 const logger = createLogger('trend-analyzer');
 
 // ---------------------------------------------------------------------------
@@ -537,9 +549,9 @@ export class TrendAnalyzer {
       byOutcomeSessions.set(outcome, group);
     }
 
-    const byOutcome: OutcomeModelRanking[] = [...byOutcomeSessions.entries()].map(
-      ([outcome, group]) => ({ outcome, ...rankModelsForSessions(group) }),
-    );
+    const byOutcome: OutcomeModelRanking[] = OUTCOME_ORDER.filter((outcome) =>
+      byOutcomeSessions.has(outcome),
+    ).map((outcome) => ({ outcome, ...rankModelsForSessions(byOutcomeSessions.get(outcome)!) }));
 
     return {
       ranked: overall.ranked,
