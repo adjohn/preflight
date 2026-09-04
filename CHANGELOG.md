@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.0] - 2026-09-04
+
+### Added
+
+- **Cost per tool call and per skill now reaches New Relic as a new `AiTurnCost` event.** When a turn's token usage arrives, Preflight emits one row per tool call in that turn with its share of the cost and tokens, plus `tool`, `skillName`, `tool_use_id`, and `turn_id`, so `FROM AiTurnCost SELECT sum(cost_usd) WHERE tool = 'Skill' FACET skillName` works over any window. A Cost by Skill widget is added to the team-view dashboard. Under `companionMode`, rows from Claude Code turns are tagged `cost_authority: 'external'` like `AiCodingTask`.
+- **`nr_observe_get_cost_per_tool` now applies `costRateMultiplier` and `dataResidencyPremium`.** The turn-cost attributor priced at list rate while every other cost figure was scaled, so `costByToolType` and `costBySkill` did not reconcile with `AiCodingTask` for orgs with a configured multiplier. They do now.
+
 ## [1.38.0] - 2026-09-03
 
 ### Added
