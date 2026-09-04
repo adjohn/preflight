@@ -28,6 +28,7 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { REDACTION_PATTERNS } from '../redaction-patterns.js';
 import { resolveRecordContent } from '../record-content-gate.js';
+import { CLAUDE_CODE_ENV_SIGNALS } from '../platforms/claude-code-adapter.js';
 
 // ---------------------------------------------------------------------------
 // Lightweight config (env vars only — no file reads)
@@ -93,6 +94,19 @@ function getMaxContentLength(): number {
   if (val === undefined) return 10_240;
   const parsed = parseInt(val, 10);
   return Number.isNaN(parsed) ? 10_240 : parsed;
+}
+
+/**
+ * Ambient stamping is deliberately limited to Claude Code, the only platform
+ * whose hook-process env signal is verified; other platforms stamp via
+ * explicit MCP_CLIENT in their generated hook commands.
+ */
+function detectStampPlatform(): string | undefined {
+  const explicit = process.env.MCP_CLIENT ?? process.env.NEW_RELIC_AI_PLATFORM;
+  if (explicit) return explicit;
+  return CLAUDE_CODE_ENV_SIGNALS.some((key) => process.env[key] !== undefined)
+    ? 'claude-code'
+    : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +358,33 @@ interface HookInput {
   transcript_path?: string;
   error?: string;
   is_interrupt?: boolean;
+  // Present on every hook event (code.claude.com/docs/en/hooks.md): agent_id
+  // identifies the subagent that fired this hook (absent for the parent
+  // session), agent_type names its kind (subagents, and sessions started
+  // with `--agent`). Attached to every ToolCallRecord below — previously
+  // there was no per-tool-call subagent attribution at all; the only
+  // existing agentId (SubagentWatcher, from transcript filenames) tracks
+  // subagent token usage, a separate signal this doesn't replace.
+  agent_id?: string;
+  agent_type?: string;
+  // PostToolUse/PostToolUseFailure (code.claude.com/docs/en/hooks.md): tool
+  // execution time in milliseconds, excluding permission-prompt wait time and
+  // PreToolUse hook execution — the number this collector's own pre/post
+  // wall-clock delta (event-processor.ts's durationMs computation) can't
+  // separate out on its own. Read below and preferred over that delta when
+  // present and valid.
+  //
+  // The posttooluse/posttoolusefailure branches below are shared by every
+  // platform using this uniform hook envelope (Kiro, Amazon Q, Droid, Codex,
+  // VS Code Copilot — see ADAPTERS.md), so this field is read the same way
+  // regardless of sender. Confirmed against Factory Droid's own hooks
+  // reference that its PostToolUse payload carries no duration_ms at all, so
+  // the wall-clock fallback applies cleanly there; not independently
+  // confirmed for the others. If a platform other than Claude Code is later
+  // found to send duration_ms with different semantics (e.g. including
+  // permission-prompt wait), this generic read would need to become
+  // platform-aware.
+  duration_ms?: number;
   // StopFailure (code.claude.com/docs/en/hooks.md) reuses `error` above for its
   // closed error-type enum and adds these two free-text fields: error_details
   // ("when available", no strict type — string or an object to JSON.stringify)
@@ -352,6 +393,35 @@ interface HookInput {
   error_details?: unknown;
   last_assistant_message?: string;
   denied_reason?: string;
+  // InstructionsLoaded (code.claude.com/docs/en/hooks.md): fires each time a
+  // CLAUDE.md or .claude/rules/*.md file is loaded into context, including
+  // at session start (load_reason: 'session_start') — a moment no tool-call
+  // heuristic can see, since eager loads happen with no visible Read call.
+  // Reuses file_path (declared below for Cursor) for the loaded file's
+  // absolute path.
+  memory_type?: string;
+  load_reason?: string;
+  // PostModelSwitch (code.claude.com/docs/en/hooks.md): fires after the
+  // session's model changes. requested_model is null for an automatic
+  // change (source: 'auto') or absent entirely on older payload shapes.
+  // Deliberately not capturing the cost-estimate fields (context_tokens,
+  // prompt_cache_warm, cache_ttl, estimated_cache_write_usd, pricing) —
+  // that's a richer cache-cost-forecast feature, out of scope here.
+  from_model?: string;
+  to_model?: string;
+  requested_model?: string | null;
+  // SessionStart (code.claude.com/docs/en/hooks.md): fires on every session.
+  // `source` is always present (shared with PostModelSwitch's own `source`
+  // above — same field name, same string type, distinguished by which hook
+  // sent the payload); the four resume-cost fields only appear when source
+  // is 'resume'/'fork' and the transcript already has a response (Claude
+  // Code v2.1.251+). Not gated behind recordContent — source is a closed
+  // enum and the rest are numbers/booleans, none of it free text.
+  source?: string;
+  seconds_since_last_response?: number;
+  context_tokens?: number;
+  prompt_cache_likely_expired?: boolean;
+  estimated_cache_write_usd?: number;
   // Cursor (https://cursor.com/docs/agent/hooks) sends a different field
   // vocabulary per hook type instead of the uniform tool_name/tool_input
   // Claude Code and Kiro use. conversation_id is Cursor's closest analog to
@@ -451,6 +521,41 @@ function extractInputMeta(toolName: string, input: unknown): Record<string, unkn
       }
       if (typeof obj.replace_all === 'boolean') meta.replace_all = obj.replace_all;
       break;
+    // Amazon Kiro. Tool names and tool_input field names captured from a live
+    // Kiro install (42.08, macOS) — `read_file` sends {path, offset, limit} and
+    // `str_replace` sends {path, oldStr, newStr, replace_all}. Two deltas from
+    // Claude Code worth noting: the file key is `path`, not `file_path`, and the
+    // edit strings are `oldStr`/`newStr`, not `old_string`/`new_string`.
+    //
+    // These are explicit cases rather than hoisting `path` into the
+    // name-independent file_path block above, because Grep/Glob also send `path`
+    // — there it means a search root, not a file, and promoting it to file_path
+    // would misreport searches as file access for every platform.
+    //
+    // The path Kiro sends is workspace-relative ("cloudformation/export-env.sh"),
+    // unlike Claude Code's absolute paths. That's fine for the unique-file
+    // counting these fields feed, but don't assume absolute downstream.
+    case 'read_file':
+      if (typeof obj.path === 'string') meta.file_path = obj.path;
+      if (typeof obj.offset === 'number') meta.offset = obj.offset;
+      if (typeof obj.limit === 'number') meta.limit = obj.limit;
+      break;
+    case 'str_replace': {
+      if (typeof obj.path === 'string') meta.file_path = obj.path;
+      const kiroOld = obj.oldStr;
+      const kiroNew = obj.newStr;
+      if (typeof kiroOld === 'string') {
+        meta.oldStringLength = kiroOld.length;
+        meta.oldLineCount = kiroOld.length > 0 ? countLines(kiroOld) : 0;
+      }
+      if (typeof kiroNew === 'string') {
+        meta.newStringLength = kiroNew.length;
+        meta.newLineCount = kiroNew.length > 0 ? countLines(kiroNew) : 0;
+        meta.isDelete = kiroNew.length === 0;
+      }
+      if (typeof obj.replace_all === 'boolean') meta.replace_all = obj.replace_all;
+      break;
+    }
     // PowerShell is a real, first-party Claude Code tool on native Windows,
     // auto-enabled without Git Bash (code.claude.com/docs/en/tools-reference,
     // /setup, /env-vars) — same command/description/timeout/run_in_background
@@ -493,6 +598,11 @@ function extractInputMeta(toolName: string, input: unknown): Record<string, unkn
       if (typeof obj.taskId === 'string') meta.taskId = obj.taskId;
       if (typeof obj.status === 'string') meta.status = obj.status;
       if (typeof obj.subject === 'string') meta.subject = obj.subject;
+      break;
+    case 'Skill':
+      // Capped because it becomes a per-skill map key and an NR facet downstream.
+      if (typeof obj.skill === 'string') meta.skill = obj.skill.slice(0, 128);
+      if (typeof obj.args === 'string') meta.argsLength = obj.args.length;
       break;
   }
 
@@ -709,6 +819,14 @@ function processHook(raw: string): void {
       success: typeof responseSuccess === 'boolean' ? responseSuccess : true,
     };
 
+    if (
+      typeof data.duration_ms === 'number' &&
+      Number.isFinite(data.duration_ms) &&
+      data.duration_ms >= 0
+    ) {
+      event.nativeDurationMs = data.duration_ms;
+    }
+
     // Store input metadata as fallback for orphaned-post pairing (pre-event may be missing)
     const postInputMeta = extractInputMeta(toolName, data.tool_input);
     if (postInputMeta !== undefined) event.toolInput = postInputMeta;
@@ -731,6 +849,14 @@ function processHook(raw: string): void {
       error: redact(data.error ?? 'unknown error'),
       isInterrupt: data.is_interrupt ?? false,
     };
+
+    if (
+      typeof data.duration_ms === 'number' &&
+      Number.isFinite(data.duration_ms) &&
+      data.duration_ms >= 0
+    ) {
+      event.nativeDurationMs = data.duration_ms;
+    }
   } else if (eventName === 'permissionrequest' || eventName === 'permissiondenied') {
     // A user rejection produces no hook event of its own — the processor
     // infers it from a permission-requested pre that never completes, and can
@@ -1041,6 +1167,81 @@ function processHook(raw: string): void {
         event.lastAssistantMessage = redact(truncate(data.last_assistant_message, maxContentLen));
       }
     }
+  } else if (eventName === 'sessionstart') {
+    // Fires on every session — startup/resume/clear/compact/fork, per
+    // data.source (code.claude.com/docs/en/hooks.md). Pure notification —
+    // no decision control used here. The four resume-cost fields are only
+    // ever present for source 'resume'/'fork'; SessionResumeTracker (the
+    // consumer) treats their absence as "nothing to report", not an error.
+    event = {
+      mode: 'session_start' as const,
+      timestamp,
+      ...(typeof data.source === 'string' && { source: data.source }),
+      ...(typeof data.seconds_since_last_response === 'number' && {
+        secondsSinceLastResponse: data.seconds_since_last_response,
+      }),
+      ...(typeof data.context_tokens === 'number' && { contextTokens: data.context_tokens }),
+      ...(typeof data.prompt_cache_likely_expired === 'boolean' && {
+        promptCacheLikelyExpired: data.prompt_cache_likely_expired,
+      }),
+      ...(typeof data.estimated_cache_write_usd === 'number' && {
+        estimatedCacheWriteUsd: data.estimated_cache_write_usd,
+      }),
+    };
+  } else if (eventName === 'instructionsloaded') {
+    // Fires each time a CLAUDE.md or .claude/rules/*.md file is loaded into
+    // context (code.claude.com/docs/en/hooks.md), including at session start
+    // — a moment no tool-call heuristic can see. Pure notification — no
+    // decision control. file_path is a path, not file content, so it's
+    // unconditional like transcript_path/cwd above, not gated on recordContent.
+    event = {
+      mode: 'instructions_loaded' as const,
+      filePath: data.file_path ?? 'unknown',
+      timestamp,
+      ...(typeof data.memory_type === 'string' && { memoryType: data.memory_type }),
+      ...(typeof data.load_reason === 'string' && { loadReason: data.load_reason }),
+    };
+  } else if (eventName === 'postmodelswitch') {
+    // Fires after the session's model changes (code.claude.com/docs/en/hooks.md).
+    // Pure notification — no decision control (PreModelSwitch has that; not
+    // installed here). Model IDs are a closed-ish identifier vocabulary
+    // (e.g. 'claude-opus-5'), not free-text content, so unlike
+    // error_details/last_assistant_message above these aren't gated behind
+    // recordContent.
+    event = {
+      mode: 'model_switch' as const,
+      fromModel: data.from_model ?? 'unknown',
+      toModel: data.to_model ?? 'unknown',
+      timestamp,
+      ...(data.requested_model !== undefined && { requestedModel: data.requested_model }),
+      ...(typeof data.source === 'string' && { source: data.source }),
+    };
+  } else if (eventName === 'userpromptsubmit') {
+    // Fires when the user submits a prompt, before Claude processes it
+    // (code.claude.com/docs/en/hooks.md). Pure notification — no decision
+    // control used here (this hook CAN block/modify the prompt via a JSON
+    // decision, but this collector never emits one). Deliberately no
+    // content captured — `data.prompt` is free text this collector has no
+    // reason to read; only the timestamp matters, as a precise task-start
+    // boundary for TaskDetector.
+    event = {
+      mode: 'user_prompt_submit' as const,
+      timestamp,
+    };
+  } else if (eventName === 'stop') {
+    // Fires when the main agent has finished responding
+    // (code.claude.com/docs/en/hooks.md) — NOT on a user interrupt, so this
+    // is a corroborating precise signal for TurnTracker/TaskDetector, not a
+    // full replacement for their idle-gap heuristics. Pure notification —
+    // no decision control used here (Stop CAN block Claude from stopping
+    // via a JSON decision, but this collector never emits one).
+    // Deliberately no content captured — last_assistant_message/
+    // background_tasks/session_crons are all real fields on this hook's
+    // input, but none are needed just to mark "a turn/task ended here".
+    event = {
+      mode: 'stop' as const,
+      timestamp,
+    };
   } else {
     // Unknown hook event — ignore silently
     return;
@@ -1056,18 +1257,15 @@ function processHook(raw: string): void {
   // that reliably reflects the real host, since whichever process later
   // drains the buffer (e.g. --local's unscoped drain of an unowned session,
   // see LocalSessionAggregator) may have detected a completely different
-  // platform for itself. Deliberately reads MCP_CLIENT/NEW_RELIC_AI_PLATFORM
-  // directly instead of going through PlatformRegistry: registry-based
-  // ambient detection would mis-tag every Claude Code hook event as
-  // generic-mcp (ClaudeCodeAdapter.isSupported() doesn't match Claude Code's
-  // real hook env — see #539), and pulling in the full adapter registry adds
-  // measurable overhead on this hot, pre+post-per-tool-call path. Explicit
-  // platforms (currently just Copilot SDK) are the only ones that need
-  // stamping here anyway; leaving it unset lets nr-ingest.ts's existing
-  // default-to-claude-code apply for everything else.
-  const explicitPlatform = process.env.MCP_CLIENT ?? process.env.NEW_RELIC_AI_PLATFORM;
-  if (explicitPlatform) event.platform = explicitPlatform;
+  // platform for itself. Deliberately reads env vars directly (and imports
+  // only the light claude-code-adapter const, not the full registry) instead
+  // of going through PlatformRegistry — registry-based detection adds
+  // measurable overhead on this hot, pre+post-per-tool-call path.
+  const stampedPlatform = detectStampPlatform();
+  if (stampedPlatform) event.platform = stampedPlatform;
   if (data.tool_use_id) event.toolUseId = data.tool_use_id;
+  if (data.agent_id) event.agentId = data.agent_id;
+  if (data.agent_type) event.agentType = data.agent_type;
 
   // Write to buffer — wrapped in try/catch for resilience.
   try {

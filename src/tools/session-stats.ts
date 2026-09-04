@@ -50,6 +50,7 @@ import type { InstructionDriftTracker } from '../metrics/instruction-drift-track
 import type { ToolSelectionScorer } from '../metrics/tool-selection-scorer.js';
 import type { QualityProxyTracker } from '../metrics/quality-proxy-tracker.js';
 import type { ApiFailureTracker } from '../metrics/api-failure-tracker.js';
+import type { SessionResumeTracker } from '../metrics/session-resume-tracker.js';
 import type { TurnCostAttributor } from '../metrics/turn-cost-attributor.js';
 import type { TurnTracker } from '../metrics/turn-tracker.js';
 import type { GitEfficiencyTracker } from '../metrics/git-efficiency-tracker.js';
@@ -121,7 +122,7 @@ const SESSION_TIMELINE_TOOL = {
 const COST_PER_TOOL_TOOL = {
   name: 'nr_observe_get_cost_per_tool',
   description:
-    'Cost attribution per tool type — approximate, based on turn-level token correlation. Shows which tools cost the most and average cost per call.',
+    'Cost attribution per tool type — approximate, based on turn-level token correlation. Shows which tools cost the most and average cost per call. Also breaks Skill calls down per skill in costBySkill (calls, estimated cost and tokens, total duration).',
   inputSchema: {
     type: 'object' as const,
     properties: {},
@@ -400,6 +401,7 @@ export interface ToolRegistrationOptions {
   toolCallBuffer?: { getRecords(): readonly import('../storage/types.js').ToolCallRecord[] };
   qualityProxyTracker?: QualityProxyTracker;
   apiFailureTracker?: ApiFailureTracker;
+  sessionResumeTracker?: SessionResumeTracker;
   turnCostAttributor?: TurnCostAttributor;
   turnTracker?: TurnTracker;
   gitEfficiencyTracker?: GitEfficiencyTracker;
