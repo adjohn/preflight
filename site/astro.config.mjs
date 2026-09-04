@@ -22,9 +22,11 @@ export default defineConfig({
           items: [
             { label: 'Architecture', slug: 'architecture' },
             { label: 'Platform Adapters', slug: 'adapters' },
+            { label: 'Kiro Power', slug: 'kiro-power' },
             { label: 'MCP Commands Reference', slug: 'commands-table' },
             { label: 'Metrics Reference', slug: 'metrics-table' },
             { label: 'Advanced Configuration', slug: 'advanced' },
+            { label: 'New Relic Scorecard Rules', slug: 'scorecards' },
             { label: 'Test Patterns', slug: 'test-patterns' },
             { label: 'Contributing', slug: 'contributing' },
           ],

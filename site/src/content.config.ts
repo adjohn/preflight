@@ -10,6 +10,8 @@ const EXTERNAL_SLUGS: Record<string, string> = {
   'docs/COMMANDS_TABLE.md': 'commands-table',
   'docs/METRICS_TABLE.md': 'metrics-table',
   'docs/TEST_PATTERNS.md': 'test-patterns',
+  'docs/KIRO_POWER.md': 'kiro-power',
+  'docs/SCORECARDS.md': 'scorecards',
   'CONTRIBUTING.md': 'contributing',
 };
 
@@ -28,6 +30,8 @@ export const collections = {
         'docs/COMMANDS_TABLE.md',
         'docs/METRICS_TABLE.md',
         'docs/TEST_PATTERNS.md',
+        'docs/KIRO_POWER.md',
+        'docs/SCORECARDS.md',
         'CONTRIBUTING.md',
       ],
       generateId: ({ entry }) =>
