@@ -27,6 +27,9 @@ export interface McpServerConfig {
   readonly teamId: string | null;
   readonly projectId: string | null;
   readonly orgId: string | null;
+  readonly repoUrl: string | null;
+  /** Dedicated opt-out for `repoUrl`, independent of `projectId`'s. Defaults true. */
+  readonly repoUrlEnabled: boolean;
   readonly model: string;
   readonly enabled: boolean;
   readonly highSecurity: boolean;
@@ -162,6 +165,8 @@ export const ConfigFileSchema = z
     teamId: z.string().nullable().optional(),
     projectId: z.string().nullable().optional(),
     orgId: z.string().nullable().optional(),
+    repoUrl: z.string().nullable().optional(),
+    repoUrlEnabled: z.boolean().optional(),
     model: z.string().optional(),
     enabled: z.boolean().optional(),
     highSecurity: z.boolean().optional(),
@@ -313,21 +318,35 @@ function inferDeveloper(): string {
   }
 }
 
-function inferProjectId(): string | null {
+function getGitRemoteUrl(): string | null {
   try {
-    const remote = execSync('git remote get-url origin', {
+    return execSync('git remote get-url origin', {
       encoding: 'utf-8',
       timeout: 2000,
-      env: { ...process.env },
+      // GIT_DIR/GIT_WORK_TREE (set by git for hook subprocesses, e.g. this
+      // process running under husky's pre-push) override the cwd-implied
+      // repo, silently redirecting this call to whatever repo the ambient
+      // env points at. See local-session-aggregator.ts's GIT_OPTS for the
+      // same guard.
+      env: { ...process.env, GIT_DIR: undefined, GIT_WORK_TREE: undefined },
     }).trim();
-    // Extract "org/repo" from HTTPS or SSH remotes:
-    // https://github.com/org/repo.git  → org/repo
-    // git@github.com:org/repo.git      → org/repo
-    const match = remote.match(/[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
-    return match ? match[1] : null;
   } catch {
     return null;
   }
+}
+
+function inferProjectId(): string | null {
+  const remote = getGitRemoteUrl();
+  if (!remote) return null;
+  // Extract "org/repo" from HTTPS or SSH remotes:
+  // https://github.com/org/repo.git  → org/repo
+  // git@github.com:org/repo.git      → org/repo
+  const match = remote.match(/[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
+  return match ? match[1] : null;
+}
+
+function inferRepoUrl(): string | null {
+  return getGitRemoteUrl();
 }
 
 function envBool(key: string, defaultValue: boolean): boolean {
@@ -741,6 +760,32 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
     typeof file.highSecurity === 'boolean' ? file.highSecurity : false,
   );
 
+  const resolvedProjectId = sanitizeOrgField(
+    process.env.NEW_RELIC_AI_PROJECT_ID ??
+      (typeof file.projectId === 'string' ? file.projectId : inferProjectId()),
+  );
+
+  // Dedicated opt-out, independent of projectId's — repo_url can carry an
+  // internal git host that org/repo alone doesn't, so it gets its own toggle
+  // rather than riding along on projectId's. Defaults on; the setup wizard
+  // prompts for it explicitly (see setup-wizard.ts) so sending it is an
+  // informed choice, not a silent default.
+  const repoUrlEnabled = envBool(
+    'NEW_RELIC_AI_REPO_URL_ENABLED',
+    typeof file.repoUrlEnabled === 'boolean' ? file.repoUrlEnabled : true,
+  );
+
+  // Credential redaction applies uniformly regardless of source — an
+  // explicit override (env var or config file) can carry embedded
+  // credentials just as easily as an inferred git remote (e.g. a URL
+  // copy-pasted from an authenticated `git remote -v`).
+  const rawRepoUrl =
+    process.env.NEW_RELIC_AI_REPO_URL ??
+    (typeof file.repoUrl === 'string' ? file.repoUrl : inferRepoUrl());
+  const resolvedRepoUrl = sanitizeOrgField(
+    rawRepoUrl === null ? null : redactSensitive(rawRepoUrl),
+  );
+
   const config: McpServerConfig = {
     licenseKey,
     accountId,
@@ -765,10 +810,11 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       process.env.NEW_RELIC_AI_TEAM_ID ?? (typeof file.teamId === 'string' ? file.teamId : null),
     ),
 
-    projectId: sanitizeOrgField(
-      process.env.NEW_RELIC_AI_PROJECT_ID ??
-        (typeof file.projectId === 'string' ? file.projectId : inferProjectId()),
-    ),
+    projectId: resolvedProjectId,
+
+    repoUrlEnabled,
+
+    repoUrl: repoUrlEnabled ? resolvedRepoUrl : null,
 
     orgId: sanitizeOrgField(
       process.env.NEW_RELIC_AI_ORG_ID ?? (typeof file.orgId === 'string' ? file.orgId : null),
