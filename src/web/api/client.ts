@@ -376,6 +376,19 @@ export interface TurnCostsResponse {
     string,
     { totalCost: number; callCount: number; avgCost: number }
   >;
+  readonly costBySkill?: Record<
+    string,
+    {
+      callCount: number;
+      attributedCallCount: number;
+      totalCost: number;
+      avgCost: number;
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      totalDurationMs: number;
+    }
+  >;
   readonly totalAttributedCost: number;
   readonly attributionRate: number;
 }
@@ -462,6 +475,8 @@ export interface AuditEntry {
   readonly target: string;
   readonly classification: string;
   readonly severity?: string;
+  readonly agentId?: string;
+  readonly agentType?: string;
 }
 
 export const fetchAuditLog = (): Promise<AuditEntry[]> => getJson<AuditEntry[]>('/api/audit');

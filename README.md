@@ -8,7 +8,7 @@
 [![Local First](https://img.shields.io/badge/Local%20First-Offline%20by%20default-brightgreen)](#quick-start)
 [![Dashboards Included](https://img.shields.io/badge/Dashboards-7%20Included-blue)](#dashboards)
 
-[**Docs**](docs/ADVANCED.md) • [**Examples**](examples/) • [**Community**](https://support.newrelic.com/s/) • [**Contributing**](CONTRIBUTING.md)
+[**Docs**](https://newrelic-experimental.github.io/preflight/) • [**What's New**](https://newrelic-experimental.github.io/preflight/whats-new/) • [**Examples**](examples/) • [**Community**](https://support.newrelic.com/s/) • [**Contributing**](CONTRIBUTING.md)
 
 </div>
 
@@ -57,12 +57,13 @@ See cost breakdown, efficiency scoring, anti-patterns, and live session tracking
 ### Dashboards
 
 - **Local dashboard** — live session view at `localhost:7777`, no account required
-- **7 pre-built New Relic dashboards** — deploy in seconds _(New Relic mode)_:
+- **8 pre-built New Relic dashboards** — deploy in seconds _(New Relic mode)_:
   - **Overview** — session stats, cost summary, top tools
   - **Personal** — 30-day self-reflection scoped to you
   - **Session Detail** — deep-dive into a single session's tool calls
   - **Team View** — aggregated cost and efficiency across developers
   - **Manager View** — high-level team metrics, no tool-call content
+  - **Adoption & Cost** — adoption momentum, spend, MCP usage, and per-developer outcomes for engineering managers
   - **Platform Comparison** — Claude Code vs. Cursor vs. Windsurf, etc.
   - **Security Audit** — audit trail of sensitive file access
 
@@ -86,6 +87,8 @@ preflight setup
 
 The wizard defaults to **local mode** — press Enter through the prompts and you're set. It wires Preflight into your AI tool (hooks + MCP server) and writes config to `~/.newrelic-preflight/`. Takes under a minute, no account required.
 
+> **Using GitHub Copilot?** The wizard also asks to install Copilot hooks — saying yes configures both the Copilot CLI and VS Code Copilot Chat automatically (hooks, MCP registration, and the fix for VS Code's hook double-capture), so Copilot gets the same tool-call and cost metrics Claude Code does. Run it standalone anytime with `preflight install --copilot`. See [docs/ADAPTERS.md](./docs/ADAPTERS.md#github-copilot-copilot) for details.
+
 When prompted, pick a mode:
 
 | Mode                  | What it does                                                         | New Relic account? |
@@ -97,6 +100,10 @@ When prompted, pick a mode:
 ### 3. Start coding
 
 Restart your AI tool — hooks and the MCP server load at session start. Every tool call is captured automatically. Open **http://localhost:7777** to watch your session live.
+
+> **Using Kiro?** Add Preflight as a [Kiro Power](docs/KIRO_POWER.md) for the
+> `nr_observe_*` query tools — see the doc for install steps and how to add
+> automatic tool-call capture on top.
 
 > **Using Claude Code?** You can skip the npm install above and add Preflight as a [Claude Code plugin](docs/PLUGIN.md) instead:
 >
