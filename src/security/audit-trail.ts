@@ -183,59 +183,78 @@ function matchesAny(value: string, patterns: readonly RegExp[]): boolean {
   return patterns.some((p) => p.test(value));
 }
 
+type AlertSubject = 'command' | 'filePath';
+
+interface AlertRule {
+  readonly alertType: string;
+  readonly severity: AlertSeverity;
+  readonly subject: AlertSubject;
+  readonly patterns: readonly RegExp[];
+  readonly classifierHit?: (record: ToolCallRecord) => boolean;
+  readonly describe: (redacted: string) => string;
+}
+
+interface AuditPatternSet {
+  readonly sensitive: readonly RegExp[];
+  readonly destructive: readonly RegExp[];
+  readonly network: readonly RegExp[];
+}
+
+const SEVERITY_RANK: Record<AlertSeverity, number> = { critical: 3, high: 2, medium: 1 };
+
+function buildAlertRules(p: AuditPatternSet): readonly AlertRule[] {
+  return [
+    {
+      alertType: 'destructive_command',
+      severity: 'critical',
+      subject: 'command',
+      patterns: p.destructive,
+      classifierHit: (r) => r.bashDestructive === true,
+      describe: (c) => `Destructive command detected: ${c}`,
+    },
+    {
+      alertType: 'sensitive_file',
+      severity: 'high',
+      subject: 'filePath',
+      patterns: p.sensitive,
+      describe: (f) => `Sensitive file accessed: ${f}`,
+    },
+    {
+      alertType: 'external_network',
+      severity: 'medium',
+      subject: 'command',
+      patterns: p.network,
+      classifierHit: (r) => r.bashNetwork === true,
+      describe: (c) => `External network request: ${c}`,
+    },
+  ];
+}
+
 function detectSecurityAlert(
   record: ToolCallRecord,
   sensitivePatterns: readonly RegExp[],
   destructivePatterns: readonly RegExp[],
   networkPatterns: readonly RegExp[],
 ): SecurityAlert | undefined {
-  const command = record.command as string | undefined;
-  const filePath = record.filePath as string | undefined;
-  // Defense in depth: the classifier's verdict and the pattern lists are
-  // OR-ed together. Either layer flagging is enough to alert. We deliberately
-  // do NOT short-circuit on `bashDestructive === false` — the two layers can
-  // diverge (the classifier and the audit pattern list maintain independent
-  // regexes), so treating the classifier as authoritative would let a
-  // narrower classifier silently suppress a hit the audit list would have
-  // caught. Treat the classifier as additive, not authoritative, for
-  // security-critical decisions.
-  const classifierDestructive = record.bashDestructive === true;
-  const classifierNetwork = record.bashNetwork === true;
+  const rules = buildAlertRules({
+    sensitive: sensitivePatterns,
+    destructive: destructivePatterns,
+    network: networkPatterns,
+  });
 
-  // Destructive commands (critical) — check first, highest priority
-  if (command) {
-    const isDestructive = classifierDestructive || matchesAny(command, destructivePatterns);
-    if (isDestructive) {
-      return {
-        severity: 'critical',
-        alertType: 'destructive_command',
-        description: `Destructive command detected: ${redactSensitive(command)}`,
-      };
-    }
-  }
-
-  // Sensitive file access (high)
-  if (filePath && matchesAny(filePath, sensitivePatterns)) {
-    return {
-      severity: 'high',
-      alertType: 'sensitive_file',
-      description: `Sensitive file accessed: ${redactSensitive(filePath)}`,
+  let best: SecurityAlert | undefined;
+  for (const rule of rules) {
+    const value = record[rule.subject];
+    if (typeof value !== 'string' || value.length === 0) continue;
+    if (!rule.classifierHit?.(record) && !matchesAny(value, rule.patterns)) continue;
+    if (best && SEVERITY_RANK[best.severity] >= SEVERITY_RANK[rule.severity]) continue;
+    best = {
+      severity: rule.severity,
+      alertType: rule.alertType,
+      description: rule.describe(redactSensitive(value)),
     };
   }
-
-  // External network request (medium) — only for Bash commands
-  if (command) {
-    const isNetwork = classifierNetwork || matchesAny(command, networkPatterns);
-    if (isNetwork) {
-      return {
-        severity: 'medium',
-        alertType: 'external_network',
-        description: `External network request: ${redactSensitive(command)}`,
-      };
-    }
-  }
-
-  return undefined;
+  return best;
 }
 
 // ---------------------------------------------------------------------------
