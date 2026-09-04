@@ -14,17 +14,16 @@
  *   - GITHUB_OUTPUT: `matched=true|false`
  *   - REPORT_PATH (default: changelog-report.md): the comment/issue body,
  *     written only when matched=true
- *   - CURSOR_PATH is rewritten to the changelog's current top version,
- *     regardless of whether anything matched — the workflow commits it.
+ *   - CURSOR_PATH (default: changelog-cursor.txt) is rewritten to the
+ *     changelog's current top version regardless of whether anything
+ *     matched — the workflow reads it back and stores it in the tracking
+ *     issue's body, since branch protection forbids pushing it to `main`.
  */
 import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const CHANGELOG_URL = 'https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md';
-const CURSOR_PATH = resolve(
-  process.cwd(),
-  process.env.CURSOR_PATH ?? '.github/claude-code-changelog-cursor.txt',
-);
+const CURSOR_PATH = resolve(process.cwd(), process.env.CURSOR_PATH ?? 'changelog-cursor.txt');
 const REPORT_PATH = resolve(process.cwd(), process.env.REPORT_PATH ?? 'changelog-report.md');
 // How far back to scan when the stored cursor version can't be found in the
 // fetched changelog at all (first run, or the entry got squashed/renamed) —
