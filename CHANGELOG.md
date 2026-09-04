@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.0] - 2026-09-04
+
+### Added
+
+- **`nr_observe_get_model_recommendation` ranks the models in your session history by how they actually performed.** Every model seen in persisted sessions is ranked by average efficiency score, cost, and task success rate, overall and per task outcome type (`bug_fix`, `feature`, `refactor`, and the rest). Confidence is gated on sample size, so a handful of sessions never produces a recommendation.
+- **`nr_observe_get_recommendations` now compares your current model against the historical winner.** The `model_selection` recommendation fires only when the session's dominant model differs from the historically better-performing one and a comparable runner-up exists with a meaningful gap. It previously compared an arbitrary pair of models once three or more had been used.
+
 ## [1.41.0] - 2026-09-04
 
 ### Added
