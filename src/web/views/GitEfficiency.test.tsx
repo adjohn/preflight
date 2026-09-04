@@ -1,8 +1,13 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import { GitEfficiency } from './GitEfficiency';
-import type { GitEfficiencyData, GitEfficiencyReposResponse, BestPractice } from '../api/client';
+import type {
+  GitWorkspaceReport,
+  WorkspaceMetrics,
+  WorktreeIdentity,
+  BestPractice,
+} from '../api/client';
 
 function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -11,9 +16,7 @@ function jsonResponse(body: unknown) {
   });
 }
 
-const EMPTY_REPOS: GitEfficiencyReposResponse = { repos: [], currentRepo: null };
-
-const BASE_DATA: GitEfficiencyData = {
+const BASE_METRICS: WorkspaceMetrics = {
   totalGitCommands: 5,
   mergeConflicts: 0,
   rebaseConflicts: 0,
@@ -72,44 +75,54 @@ const BASE_DATA: GitEfficiencyData = {
     prActivity: [],
     avgTimeToCreateMs: null,
   },
-  repoContext: {
-    repoName: null,
-    branch: null,
-    remoteName: null,
-    defaultBranch: null,
-  },
+  liveState: null,
+  commitTimestamps: [],
+  lastPushTimestamp: null,
+  editedFiles: [],
+  hasUsedBareForcePush: false,
+  bareForcePushCount: 0,
+  hasForcePushedToDefaultBranch: false,
+  mergeEventCount: 0,
+  rebaseEventCount: 0,
 };
 
-function renderGitEfficiency(data: unknown, repos: unknown = EMPTY_REPOS) {
+const IDENTITY_A: WorktreeIdentity = {
+  repoKey: '/Users/x/repo-a/.git',
+  worktreeKey: '/Users/x/repo-a/.git',
+  repoName: 'org/repo-a',
+  worktreeRoot: '/Users/x/repo-a',
+  worktreeLabel: 'primary',
+  branch: 'main',
+};
+
+const IDENTITY_B: WorktreeIdentity = {
+  repoKey: '/Users/x/repo-a/.git',
+  worktreeKey: '/Users/x/repo-a/.git/worktrees/feature',
+  repoName: 'org/repo-a',
+  worktreeRoot: '/Users/x/repo-a-feature',
+  worktreeLabel: 'feature',
+  branch: 'feature/foo',
+};
+
+function makeReport(overrides: Partial<GitWorkspaceReport> = {}): GitWorkspaceReport {
+  return {
+    scope: { kind: 'all' },
+    metrics: BASE_METRICS,
+    rows: [{ identity: IDENTITY_A, metrics: BASE_METRICS }],
+    worstBehind: null,
+    ...overrides,
+  };
+}
+
+function renderGitEfficiency(report: unknown) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
-  globalThis.fetch = (async (url: string) => {
-    if (url === '/api/git-efficiency') return jsonResponse(data);
-    if (url === '/api/git-efficiency/repos') return jsonResponse(repos);
-    return jsonResponse({});
-  }) as typeof fetch;
+  globalThis.fetch = (async () => jsonResponse(report)) as typeof fetch;
   return render(
     <QueryClientProvider client={qc}>
       <GitEfficiency />
     </QueryClientProvider>,
   );
 }
-
-describe('GitEfficiency view — empty state', () => {
-  it('shows "No Git activity yet" when totalGitCommands is 0', async () => {
-    renderGitEfficiency({ ...BASE_DATA, totalGitCommands: 0 });
-    expect(await screen.findByText('No Git activity yet')).toBeInTheDocument();
-  });
-
-  it('shows the Repos Today chips in the empty state when repos are known', async () => {
-    renderGitEfficiency(
-      { ...BASE_DATA, totalGitCommands: 0 },
-      { repos: ['org/repo-a', 'org/repo-b'], currentRepo: 'org/repo-a' },
-    );
-    expect(await screen.findByText('Repos Today:')).toBeInTheDocument();
-    expect(screen.getByText('repo-a')).toBeInTheDocument();
-    expect(screen.getByText('repo-b')).toBeInTheDocument();
-  });
-});
 
 describe('GitEfficiency view — loading and error', () => {
   it('shows a loading state while the query is pending', () => {
@@ -133,6 +146,16 @@ describe('GitEfficiency view — loading and error', () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByText('Error loading git efficiency data.')).toBeInTheDocument();
+  });
+});
+
+describe('GitEfficiency view — empty state', () => {
+  it('shows "No Git activity yet" and the workspace table empty state when totalGitCommands is 0', async () => {
+    renderGitEfficiency(
+      makeReport({ metrics: { ...BASE_METRICS, totalGitCommands: 0 }, rows: [] }),
+    );
+    expect(await screen.findByText('No Git activity yet')).toBeInTheDocument();
+    expect(screen.getByText('No git activity in this window')).toBeInTheDocument();
   });
 });
 
@@ -166,13 +189,13 @@ describe('GitEfficiency view — bestPractices filtering', () => {
   ];
 
   it('uses only known (non-unknown) entries as the denominator and pass entries as the numerator', async () => {
-    renderGitEfficiency({ ...BASE_DATA, bestPractices });
+    renderGitEfficiency(makeReport({ metrics: { ...BASE_METRICS, bestPractices } }));
     // known = 4 (excludes the 1 'unknown' entry), passing = 2 ('pass' entries).
     expect(await screen.findByText('2/4 passing')).toBeInTheDocument();
   });
 
   it('renders pass entries as compact chips and unknown entries as neutral chips', async () => {
-    renderGitEfficiency({ ...BASE_DATA, bestPractices });
+    renderGitEfficiency(makeReport({ metrics: { ...BASE_METRICS, bestPractices } }));
     await screen.findByText('2/4 passing');
     expect(screen.getByText(/Synced before editing/)).toBeInTheDocument();
     expect(screen.getByText(/Small commits/)).toBeInTheDocument();
@@ -180,17 +203,21 @@ describe('GitEfficiency view — bestPractices filtering', () => {
   });
 
   it('renders fail and warn entries as expanded detail cards with their detail text', async () => {
-    renderGitEfficiency({ ...BASE_DATA, bestPractices });
+    renderGitEfficiency(makeReport({ metrics: { ...BASE_METRICS, bestPractices } }));
     await screen.findByText('2/4 passing');
     expect(screen.getByText('Force push without --force-with-lease.')).toBeInTheDocument();
     expect(screen.getByText('No build run detected before push.')).toBeInTheDocument();
   });
 
   it('shows "No data yet" when every bestPractice entry is unknown', async () => {
-    renderGitEfficiency({
-      ...BASE_DATA,
-      bestPractices: [{ id: 'a', label: 'A', status: 'unknown', detail: 'n/a' }],
-    });
+    renderGitEfficiency(
+      makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          bestPractices: [{ id: 'a', label: 'A', status: 'unknown', detail: 'n/a' }],
+        },
+      }),
+    );
     expect(await screen.findByText('No data yet')).toBeInTheDocument();
   });
 
@@ -207,7 +234,9 @@ describe('GitEfficiency view — bestPractices filtering', () => {
         detail: 'No conflicts and no worktree usage detected this session.',
       },
     ];
-    renderGitEfficiency({ ...BASE_DATA, bestPractices: practicesWithNA });
+    renderGitEfficiency(
+      makeReport({ metrics: { ...BASE_METRICS, bestPractices: practicesWithNA } }),
+    );
     // known/passing unchanged from the no-n/a case (2/4) — the n/a entry
     // must not inflate the denominator.
     expect(await screen.findByText('2/4 passing')).toBeInTheDocument();
@@ -217,39 +246,17 @@ describe('GitEfficiency view — bestPractices filtering', () => {
 
 describe('GitEfficiency view — hero KPIs and gated sections', () => {
   it('renders hero KPI values from the response', async () => {
-    renderGitEfficiency({
-      ...BASE_DATA,
-      commitCount: 7,
-      prMetrics: { ...BASE_DATA.prMetrics, created: 3, merged: 2 },
-      riskIndicators: { ...BASE_DATA.riskIndicators, commitsBehindMain: 12 },
-    });
-    expect(await screen.findByText('commits today')).toBeInTheDocument();
+    renderGitEfficiency(
+      makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          commitCount: 7,
+          prMetrics: { ...BASE_METRICS.prMetrics, created: 3, merged: 2 },
+        },
+      }),
+    );
+    expect(await screen.findByText('commits')).toBeInTheDocument();
     expect(screen.getByText('7')).toBeInTheDocument();
-    expect(screen.getByText('rebase soon')).toBeInTheDocument();
-  });
-
-  // The "behind main" KPI passes `animate`, so it must not coalesce a null
-  // commitsBehindMain to 0 before it reaches Kpi — that would render a
-  // misleading "0" instead of falling through to the "—" (unknown) string.
-  it('shows "—" (not "0") for "behind main" when commitsBehindMain is null — unknown, not a confirmed zero', async () => {
-    renderGitEfficiency({
-      ...BASE_DATA,
-      riskIndicators: { ...BASE_DATA.riskIndicators, commitsBehindMain: null },
-    });
-    const label = await screen.findByText('behind main');
-    expect(label.nextElementSibling?.textContent).toBe('—');
-    // A null value must render with a neutral tone, not the "good" green
-    // that a coalesced-to-0 value would fall through to.
-    expect(label.nextElementSibling?.className).not.toContain('text-accent-green');
-  });
-
-  it('renders the real "behind main" count when commitsBehindMain is a known number', async () => {
-    renderGitEfficiency({
-      ...BASE_DATA,
-      riskIndicators: { ...BASE_DATA.riskIndicators, commitsBehindMain: 12 },
-    });
-    const label = await screen.findByText('behind main');
-    expect(label.nextElementSibling?.textContent).toBe('12');
   });
 
   // A `merge` event has no per-PR correlation with `create` — a session that
@@ -259,10 +266,14 @@ describe('GitEfficiency view — hero KPIs and gated sections', () => {
   // down the page (in the Pull Requests section) already reports this
   // number without that coupling problem.
   it('does not present "PRs opened" as if merged were a subset/outcome of it', async () => {
-    renderGitEfficiency({
-      ...BASE_DATA,
-      prMetrics: { ...BASE_DATA.prMetrics, created: 0, merged: 2 },
-    });
+    renderGitEfficiency(
+      makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          prMetrics: { ...BASE_METRICS.prMetrics, created: 0, merged: 2 },
+        },
+      }),
+    );
     await screen.findByText('Git Efficiency');
     expect(screen.queryByText('2 merged')).toBeNull();
   });
@@ -273,49 +284,57 @@ describe('GitEfficiency view — hero KPIs and gated sections', () => {
   // qualification reads as "0 aborted" even when conflicts were fully
   // resolved, with no confirmation that resolution actually happened.
   it('shows a resolved count under "conflicts" instead of the tracker-wide aborted-operations count', async () => {
-    renderGitEfficiency({
-      ...BASE_DATA,
-      mergeConflicts: 2,
-      abortedOperations: 3,
-      conflictHistory: [
-        {
-          timestamp: 1,
-          resolution: 'resolved',
-          resolutionTimeMs: 100,
-          command: 'git commit -m "fix"',
+    renderGitEfficiency(
+      makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          mergeConflicts: 2,
+          abortedOperations: 3,
+          conflictHistory: [
+            {
+              timestamp: 1,
+              resolution: 'resolved',
+              resolutionTimeMs: 100,
+              command: 'git commit -m "fix"',
+              files: [],
+            },
+            {
+              timestamp: 2,
+              resolution: 'resolved',
+              resolutionTimeMs: 200,
+              command: 'git commit -m "fix2"',
+              files: [],
+            },
+          ],
         },
-        {
-          timestamp: 2,
-          resolution: 'resolved',
-          resolutionTimeMs: 200,
-          command: 'git commit -m "fix2"',
-        },
-      ],
-    });
+      }),
+    );
     await screen.findByText('Git Efficiency');
     expect(screen.queryByText('3 aborted')).toBeNull();
     expect(screen.getByText('2 resolved')).toBeInTheDocument();
   });
 
   it('hides the Conflict Resolution section when there are no conflicts', async () => {
-    renderGitEfficiency(BASE_DATA);
+    renderGitEfficiency(makeReport());
     await screen.findByText('Git Efficiency');
     expect(screen.queryByText('Conflict Resolution')).toBeNull();
   });
 
   it('shows the Conflict Resolution section when conflicts are present', async () => {
-    renderGitEfficiency({ ...BASE_DATA, mergeConflicts: 2, abortedOperations: 1 });
+    renderGitEfficiency(
+      makeReport({ metrics: { ...BASE_METRICS, mergeConflicts: 2, abortedOperations: 1 } }),
+    );
     expect(await screen.findByText('Conflict Resolution')).toBeInTheDocument();
   });
 
   it('hides the Destructive Operations section when all destructive counts are zero', async () => {
-    renderGitEfficiency(BASE_DATA);
+    renderGitEfficiency(makeReport());
     await screen.findByText('Git Efficiency');
     expect(screen.queryByText('Destructive Operations')).toBeNull();
   });
 
   it('shows the Destructive Operations section when a force push occurred', async () => {
-    renderGitEfficiency({ ...BASE_DATA, forcePushes: 1 });
+    renderGitEfficiency(makeReport({ metrics: { ...BASE_METRICS, forcePushes: 1 } }));
     expect(await screen.findByText('Destructive Operations')).toBeInTheDocument();
   });
 });
@@ -324,28 +343,142 @@ describe('GitEfficiency view — Recent Git Activity ordering', () => {
   it('orders rows newest first regardless of insertion order', async () => {
     // The API serves epoch millis, not ISO strings.
     const base = new Date().setHours(9, 0, 0, 0);
-    renderGitEfficiency({
-      ...BASE_DATA,
-      gitCommandTimeline: [
-        { type: 'diff', timestamp: base, command: 'git diff', success: true, durationMs: null },
-        {
-          type: 'push',
-          timestamp: base + 7_200_000,
-          command: 'git push',
-          success: true,
-          durationMs: null,
+    renderGitEfficiency(
+      makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          gitCommandTimeline: [
+            { type: 'diff', timestamp: base, command: 'git diff', success: true, durationMs: null },
+            {
+              type: 'push',
+              timestamp: base + 7_200_000,
+              command: 'git push',
+              success: true,
+              durationMs: null,
+            },
+            {
+              type: 'log',
+              timestamp: base + 3_600_000,
+              command: 'git log',
+              success: true,
+              durationMs: null,
+            },
+          ],
         },
-        {
-          type: 'log',
-          timestamp: base + 3_600_000,
-          command: 'git log',
-          success: true,
-          durationMs: null,
-        },
-      ],
-    });
+      }),
+    );
     await screen.findByText('Recent Git Activity');
     const order = screen.getAllByText(/^git (diff|push|log)$/).map((el) => el.textContent?.trim());
     expect(order).toEqual(['git push', 'git log', 'git diff']);
+  });
+});
+
+describe('GitEfficiency view — workspace table', () => {
+  it('renders one row per report.rows entry', async () => {
+    renderGitEfficiency(
+      makeReport({
+        rows: [
+          { identity: IDENTITY_A, metrics: BASE_METRICS },
+          { identity: IDENTITY_B, metrics: BASE_METRICS },
+        ],
+      }),
+    );
+    expect(await screen.findByText('Workspaces')).toBeInTheDocument();
+    expect(screen.getAllByText('org/repo-a').length).toBeGreaterThan(0);
+    expect(screen.getByText('primary')).toBeInTheDocument();
+    expect(screen.getByText('feature')).toBeInTheDocument();
+  });
+
+  it('shows an empty state instead of an empty table when rows is empty', async () => {
+    renderGitEfficiency(makeReport({ rows: [] }));
+    expect(await screen.findByText('No git activity in this window')).toBeInTheDocument();
+  });
+});
+
+describe('GitEfficiency view — scope breadcrumb', () => {
+  it('starts at "All workspaces"', async () => {
+    renderGitEfficiency(makeReport());
+    expect(await screen.findByText('All workspaces')).toBeInTheDocument();
+  });
+
+  it('clicking a repo name in the workspace table drills into repo scope and updates the breadcrumb', async () => {
+    renderGitEfficiency(
+      makeReport({
+        rows: [
+          { identity: IDENTITY_A, metrics: BASE_METRICS },
+          { identity: IDENTITY_B, metrics: BASE_METRICS },
+        ],
+      }),
+    );
+    await screen.findByText('Workspaces');
+    fireEvent.click(screen.getAllByRole('button', { name: 'org/repo-a' })[0]!);
+    // Breadcrumb now reads "All workspaces / org/repo-a" — the first segment
+    // (a button) is clickable, the repo segment is the current, non-link tail.
+    expect(await screen.findByRole('button', { name: 'All workspaces' })).toBeInTheDocument();
+  });
+
+  it('clicking a worktree label drills into worktree scope with a three-segment breadcrumb', async () => {
+    renderGitEfficiency(
+      makeReport({
+        rows: [{ identity: IDENTITY_B, metrics: BASE_METRICS }],
+      }),
+    );
+    await screen.findByText('Workspaces');
+    fireEvent.click(screen.getByRole('button', { name: 'feature' }));
+    expect(await screen.findByRole('button', { name: 'All workspaces' })).toBeInTheDocument();
+    // Repo segment is clickable at worktree scope (both the breadcrumb link
+    // and the table's own repo cell render this same text as a button).
+    expect(screen.getAllByRole('button', { name: 'org/repo-a' }).length).toBeGreaterThan(0);
+  });
+
+  it('clicking "All workspaces" resets the scope', async () => {
+    renderGitEfficiency(makeReport({ rows: [{ identity: IDENTITY_A, metrics: BASE_METRICS }] }));
+    await screen.findByText('Workspaces');
+    fireEvent.click(screen.getAllByRole('button', { name: 'org/repo-a' })[0]!);
+    const backButton = await screen.findByRole('button', { name: 'All workspaces' });
+    fireEvent.click(backButton);
+    // Back to the plain (non-link) "All workspaces" label.
+    expect(await screen.findByText('All workspaces')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'All workspaces' })).toBeNull();
+  });
+});
+
+describe('GitEfficiency view — "behind" KPI scope-dependent behavior', () => {
+  it('at worktree scope, reads liveState.behind and labels the compare branch dynamically', async () => {
+    renderGitEfficiency(
+      makeReport({
+        scope: { kind: 'worktree', id: IDENTITY_A.worktreeKey },
+        metrics: {
+          ...BASE_METRICS,
+          liveState: {
+            branch: 'feature/foo',
+            defaultBranch: 'develop',
+            ahead: 1,
+            behind: 12,
+            measuredAtMs: Date.now() - 60_000,
+          },
+        },
+      }),
+    );
+    expect(await screen.findByText('behind develop')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
+  });
+
+  it('at rollup scope, reads worstBehind and names the workspace instead of a bare number', async () => {
+    renderGitEfficiency(
+      makeReport({
+        scope: { kind: 'all' },
+        worstBehind: { identity: IDENTITY_B, behind: 25 },
+      }),
+    );
+    expect(await screen.findByText('worst behind')).toBeInTheDocument();
+    expect(screen.getByText('25')).toBeInTheDocument();
+    expect(screen.getByText(/feature/)).toBeInTheDocument();
+  });
+
+  it('at rollup scope with no worstBehind data, shows a neutral "—" instead of a misleading zero', async () => {
+    renderGitEfficiency(makeReport({ scope: { kind: 'all' }, worstBehind: null }));
+    const label = await screen.findByText('worst behind');
+    expect(label.nextElementSibling?.textContent).toBe('—');
   });
 });
