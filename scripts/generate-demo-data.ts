@@ -415,9 +415,9 @@ function main(): Promise<void> {
       for (let t = 0; t < taskCount; t++) {
         const tEnd = sessionStart + ((sessionEnd - sessionStart) * (t + 1)) / taskCount;
         const durationMs = Math.round((sessionEnd - sessionStart) / taskCount);
-        // outcome_type and model mirror the AiCodingTask attribution added in
-        // preflight#549; cost and test results correlate with the outcome so
-        // the Model × Task Type widgets tell a coherent story.
+        // outcome_type and model mirror AiCodingTask's attribution fields;
+        // cost and test results correlate with the outcome so the Model ×
+        // Task Type widgets tell a coherent story.
         const outcome = weighted(TASK_OUTCOMES);
         const model =
           rand() < 0.15
