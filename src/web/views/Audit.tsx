@@ -12,6 +12,7 @@ const FILTERS = [
   { key: 'sensitive_file', label: 'Sensitive files' },
   { key: 'destructive_command', label: 'Destructive' },
   { key: 'external_network', label: 'External network' },
+  { key: 'file_deletion', label: 'File deletion' },
 ] as const;
 
 type FilterKey = (typeof FILTERS)[number]['key'];
@@ -30,6 +31,7 @@ const CLASSIFICATION_LABELS: Record<string, string> = {
   sensitive_file: 'Sensitive files',
   destructive_command: 'Destructive',
   external_network: 'External network',
+  file_deletion: 'File deletion',
   other: 'Other',
 };
 

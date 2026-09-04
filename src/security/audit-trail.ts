@@ -113,6 +113,9 @@ export const DEFAULT_NETWORK_COMMAND_PATTERNS: RegExp[] = [
   /\bssh\b/,
 ];
 
+const RM_OR_UNLINK_IN_COMMAND_POSITION = /(?:^|[;&|(])\s*(?:sudo\s+)?(?:rm|unlink)\s/m;
+
+export const DEFAULT_DELETION_COMMAND_PATTERNS: RegExp[] = [RM_OR_UNLINK_IN_COMMAND_POSITION];
 
 const ATTRIBUTION_WIRE_KEYS: Record<keyof AuditAttribution, string> = {
   sessionId: 'session_id',
@@ -198,6 +201,7 @@ interface AuditPatternSet {
   readonly sensitive: readonly RegExp[];
   readonly destructive: readonly RegExp[];
   readonly network: readonly RegExp[];
+  readonly deletion: readonly RegExp[];
 }
 
 const SEVERITY_RANK: Record<AlertSeverity, number> = { critical: 3, high: 2, medium: 1 };
@@ -227,21 +231,21 @@ function buildAlertRules(p: AuditPatternSet): readonly AlertRule[] {
       classifierHit: (r) => r.bashNetwork === true,
       describe: (c) => `External network request: ${c}`,
     },
+    {
+      alertType: 'file_deletion',
+      severity: 'medium',
+      subject: 'command',
+      patterns: p.deletion,
+      classifierHit: (r) => r.bashLeading === 'rm' || r.bashLeading === 'unlink',
+      describe: (c) => `File deletion: ${c}`,
+    },
   ];
 }
 
 function detectSecurityAlert(
   record: ToolCallRecord,
-  sensitivePatterns: readonly RegExp[],
-  destructivePatterns: readonly RegExp[],
-  networkPatterns: readonly RegExp[],
+  rules: readonly AlertRule[],
 ): SecurityAlert | undefined {
-  const rules = buildAlertRules({
-    sensitive: sensitivePatterns,
-    destructive: destructivePatterns,
-    network: networkPatterns,
-  });
-
   let best: SecurityAlert | undefined;
   for (const rule of rules) {
     const value = record[rule.subject];
@@ -463,15 +467,16 @@ export interface AuditTrailManagerOptions {
   sensitivePatterns?: RegExp[];
   destructivePatterns?: RegExp[];
   networkPatterns?: RegExp[];
+  /** Non-recursive delete detection (medium). Pass [] to disable. Defaults to DEFAULT_DELETION_COMMAND_PATTERNS. */
+  deletionPatterns?: RegExp[];
+  /** Optional local store for persisting each audit record to disk immediately. */
   localStore?: LocalStore;
 }
 
 export class AuditTrailManager {
   private readonly developer: string;
   private sessionId: string | null;
-  private readonly sensitivePatterns: readonly RegExp[];
-  private readonly destructivePatterns: readonly RegExp[];
-  private readonly networkPatterns: readonly RegExp[];
+  private readonly rules: readonly AlertRule[];
   private readonly localStore: LocalStore | null;
 
   private entries: AuditRecord[] = [];
@@ -491,9 +496,12 @@ export class AuditTrailManager {
   constructor(options: AuditTrailManagerOptions) {
     this.developer = options.developer;
     this.sessionId = options.sessionId;
-    this.sensitivePatterns = options.sensitivePatterns ?? DEFAULT_SENSITIVE_FILE_PATTERNS;
-    this.destructivePatterns = options.destructivePatterns ?? DEFAULT_DESTRUCTIVE_COMMAND_PATTERNS;
-    this.networkPatterns = options.networkPatterns ?? DEFAULT_NETWORK_COMMAND_PATTERNS;
+    this.rules = buildAlertRules({
+      sensitive: options.sensitivePatterns ?? DEFAULT_SENSITIVE_FILE_PATTERNS,
+      destructive: options.destructivePatterns ?? DEFAULT_DESTRUCTIVE_COMMAND_PATTERNS,
+      network: options.networkPatterns ?? DEFAULT_NETWORK_COMMAND_PATTERNS,
+      deletion: options.deletionPatterns ?? DEFAULT_DELETION_COMMAND_PATTERNS,
+    });
     this.localStore = options.localStore ?? null;
   }
 
@@ -509,12 +517,7 @@ export class AuditTrailManager {
   }
 
   private commit(record: ToolCallRecord, action: AuditAction, detail: string): AuditRecord {
-    const alert = detectSecurityAlert(
-      record,
-      this.sensitivePatterns,
-      this.destructivePatterns,
-      this.networkPatterns,
-    );
+    const alert = detectSecurityAlert(record, this.rules);
 
     const rawFilePath = record.filePath as string | undefined;
     const rawCommand = record.command as string | undefined;

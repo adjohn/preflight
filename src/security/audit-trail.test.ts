@@ -181,10 +181,75 @@ describe('AuditTrailManager', () => {
     expect(audit.securityAlert!.alertType).toBe('destructive_command');
   });
 
-  it('does not flag "rm -f file.txt" as destructive (no recursive flag)', () => {
+  it('flags "rm -f file.txt" as file_deletion at medium severity (no recursive flag)', () => {
     const mgr = makeManager();
     const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command: 'rm -f file.txt' }));
-    expect(audit.securityAlert?.alertType).not.toBe('destructive_command');
+    expect(audit.securityAlert).toMatchObject({ severity: 'medium', alertType: 'file_deletion' });
+    expect(audit.securityAlert!.description).toMatch(/^File deletion:/);
+  });
+
+  it.each(['rm file.txt', 'sudo rm file.txt', 'cd x && rm -f y', 'unlink f'])(
+    'flags "%s" as file_deletion',
+    (command) => {
+      const mgr = makeManager();
+      const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command }));
+      expect(audit.securityAlert?.alertType).toBe('file_deletion');
+    },
+  );
+
+  it.each(['rm -rf /tmp/x', 'rm -r d'])(
+    'still flags "%s" as destructive_command at critical (recursive form wins over file_deletion)',
+    (command) => {
+      const mgr = makeManager();
+      const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command }));
+      expect(audit.securityAlert).toMatchObject({
+        severity: 'critical',
+        alertType: 'destructive_command',
+      });
+    },
+  );
+
+  it('flags "rm f && curl http://x" as external_network (tie goes to the earlier row)', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(
+      makeRecord({ toolName: 'Bash', command: 'rm f && curl http://x' }),
+    );
+    expect(audit.securityAlert?.alertType).toBe('external_network');
+  });
+
+  it.each(['npm rm lodash', 'git rm f', 'docker rm c', 'echo "rm foo"', 'npm test'])(
+    '"%s" yields no security alert',
+    (command) => {
+      const mgr = makeManager();
+      const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command }));
+      expect(audit.securityAlert).toBeUndefined();
+    },
+  );
+
+  it('flags an env-prefixed rm through the classifier leading token when the regex misses', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(
+      makeRecord({ toolName: 'Bash', command: 'FOO=bar rm -f f', bashLeading: 'rm' }),
+    );
+    expect(audit.securityAlert?.alertType).toBe('file_deletion');
+  });
+
+  it('does not treat a package-manager rm subcommand as a deletion via the leading token', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(
+      makeRecord({ toolName: 'Bash', command: 'npm rm lodash', bashLeading: 'npm' }),
+    );
+    expect(audit.securityAlert).toBeUndefined();
+  });
+
+  it('does not flag file deletion when deletionPatterns is explicitly disabled', () => {
+    const mgr = new AuditTrailManager({
+      developer: 'dev',
+      sessionId: 'sess-001',
+      deletionPatterns: [],
+    });
+    const audit = mgr.recordToolCall(makeRecord({ toolName: 'Bash', command: 'rm -f f' }));
+    expect(audit.securityAlert).toBeUndefined();
   });
 
   // Classifier consolidation: detectSecurityAlert is the OR of the
