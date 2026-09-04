@@ -57,12 +57,13 @@ See cost breakdown, efficiency scoring, anti-patterns, and live session tracking
 ### Dashboards
 
 - **Local dashboard** — live session view at `localhost:7777`, no account required
-- **7 pre-built New Relic dashboards** — deploy in seconds _(New Relic mode)_:
+- **8 pre-built New Relic dashboards** — deploy in seconds _(New Relic mode)_:
   - **Overview** — session stats, cost summary, top tools
   - **Personal** — 30-day self-reflection scoped to you
   - **Session Detail** — deep-dive into a single session's tool calls
   - **Team View** — aggregated cost and efficiency across developers
   - **Manager View** — high-level team metrics, no tool-call content
+  - **Adoption & Cost** — adoption momentum, spend, MCP usage, and per-developer outcomes for engineering managers
   - **Platform Comparison** — Claude Code vs. Cursor vs. Windsurf, etc.
   - **Security Audit** — audit trail of sensitive file access
 

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.41.0] - 2026-09-04
+
+### Added
+
+- **A new Adoption & Cost dashboard for engineering managers.** `dashboards/ai-coding-assistant-adoption-cost.json` has five pages (Adoption, Cost, Tools & MCP, Team Leaderboard, Team Pulse) built entirely from Preflight's own events and metrics, including per-developer outcomes, MCP usage from both the hook and proxy paths, and the git-outcome gauges (PRs, commits, edit accept rate, cost per PR). Deploy it with `npm run deploy:dashboard:all`.
+- **A demo data generator for testing and demos.** `scripts/generate-demo-data.ts` seeds an account with realistic telemetry from ten developer personas covering every event type and the cumulative metric snapshots the dashboard relies on. Supports `--dry-run`, `--hours`, `--seed`, `--eu`, and `--staging`.
+
 ## [1.40.0] - 2026-09-04
 
 ### Added
