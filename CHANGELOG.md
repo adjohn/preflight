@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.1] - 2026-09-04
+
+### Fixed
+
+- **Chart tooltips no longer get clipped inside cards that hide overflow.** The Concurrent Sessions tooltip is now portaled to the page and positioned from the cursor's on-screen location, so it always renders in full instead of being cut off at the card's edge. The Forecast card's hourly-spend chart also now shares the same square-block style and tooltip as Concurrent Sessions.
+
 ## [1.43.0] - 2026-09-04
 
 ### Added
