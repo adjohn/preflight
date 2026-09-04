@@ -50,12 +50,28 @@ const HOOK_SUBCOMMANDS = {
  */
 export const HOOK_SUBCOMMAND_PATTERN = Object.values(HOOK_SUBCOMMANDS).join('|');
 
+// InstructionsLoaded, PostModelSwitch, SessionStart, UserPromptSubmit, and
+// Stop are deliberately kept out of HOOK_SUBCOMMANDS/HOOK_EVENT_TYPES (see
+// the areHooksInstalled comment below) but still need to be recognized here.
+const INSTRUCTIONS_LOADED_SUBCOMMAND = 'instructions-loaded';
+const MODEL_SWITCH_SUBCOMMAND = 'model-switch';
+const SESSION_START_SUBCOMMAND = 'session-start';
+const USER_PROMPT_SUBMIT_SUBCOMMAND = 'user-prompt-submit';
+const STOP_SUBCOMMAND = 'stop';
+
 // Matches the hook commands this installer writes, in both bare-name and
 // absolute-path forms (quoted or unquoted):
 //   preflight-collector pre-tool
 //   /abs/path/preflight-collector permission-request
 //   "/quoted/path/preflight-collector" post-tool
-export const NR_HOOK_RE = new RegExp(`preflight-collector"?\\s+(?:${HOOK_SUBCOMMAND_PATTERN})`);
+//   preflight-collector instructions-loaded
+//   preflight-collector model-switch
+//   preflight-collector session-start
+//   preflight-collector user-prompt-submit
+//   preflight-collector stop
+export const NR_HOOK_RE = new RegExp(
+  `preflight-collector"?\\s+(?:${HOOK_SUBCOMMAND_PATTERN}|${INSTRUCTIONS_LOADED_SUBCOMMAND}|${MODEL_SWITCH_SUBCOMMAND}|${SESSION_START_SUBCOMMAND}|${USER_PROMPT_SUBMIT_SUBCOMMAND}|${STOP_SUBCOMMAND})`,
+);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,7 +87,16 @@ export interface HookEntry {
   hooks: HookCommand[];
 }
 
-export type HookEntries = Record<HookEventType, HookEntry[]>;
+// InstructionsLoaded, PostModelSwitch, SessionStart, UserPromptSubmit, and
+// Stop are appended separately rather than folded into HookEventType — see
+// the areHooksInstalled comment below.
+export type HookEntries = Record<HookEventType, HookEntry[]> & {
+  InstructionsLoaded: HookEntry[];
+  PostModelSwitch: HookEntry[];
+  SessionStart: HookEntry[];
+  UserPromptSubmit: HookEntry[];
+  Stop: HookEntry[];
+};
 
 export interface McpServerConfig {
   command: string;
@@ -122,6 +147,77 @@ export function generateHookEntries(
     // "Stop" — see code.claude.com/docs/en/hooks.md ("once per turn:
     // UserPromptSubmit, Stop, and StopFailure" are three separate hook events).
     StopFailure: entryFor('StopFailure'),
+    // InstructionsLoaded fires when CLAUDE.md or .claude/rules/*.md files are
+    // loaded into context — the actual moment instructions take effect, not
+    // when an Edit/Write call happens to touch one of those files.
+    InstructionsLoaded: [
+      {
+        matcher: HOOK_MATCHER,
+        hooks: [
+          {
+            type: 'command',
+            command: `${collectorInvocation} ${INSTRUCTIONS_LOADED_SUBCOMMAND}`,
+          },
+        ],
+      },
+    ],
+    // Only PostModelSwitch — PreModelSwitch exists to block/confirm a switch,
+    // which Preflight has no reason to do, and every field it needs is also
+    // on PostModelSwitch's own input.
+    PostModelSwitch: [
+      {
+        matcher: HOOK_MATCHER,
+        hooks: [
+          {
+            type: 'command',
+            command: `${collectorInvocation} ${MODEL_SWITCH_SUBCOMMAND}`,
+          },
+        ],
+      },
+    ],
+    // SessionStart fires on every session (startup/resume/clear/compact/fork)
+    // — this collector only acts on the resume-cost fields, present for a
+    // subset of those; every other case is a fast no-op.
+    SessionStart: [
+      {
+        matcher: HOOK_MATCHER,
+        hooks: [
+          {
+            type: 'command',
+            command: `${collectorInvocation} ${SESSION_START_SUBCOMMAND}`,
+          },
+        ],
+      },
+    ],
+    // UserPromptSubmit/Stop are corroborating precise turn/task-boundary
+    // signals for TurnTracker/TaskDetector's existing idle-gap heuristics —
+    // neither replaces the heuristic (Stop doesn't fire on a user
+    // interrupt), so both stay wired regardless. Purely observational: this
+    // collector never returns a JSON decision, even though both hooks
+    // support one (UserPromptSubmit can block/modify a prompt, Stop can
+    // block Claude from stopping).
+    UserPromptSubmit: [
+      {
+        matcher: HOOK_MATCHER,
+        hooks: [
+          {
+            type: 'command',
+            command: `${collectorInvocation} ${USER_PROMPT_SUBMIT_SUBCOMMAND}`,
+          },
+        ],
+      },
+    ],
+    Stop: [
+      {
+        matcher: HOOK_MATCHER,
+        hooks: [
+          {
+            type: 'command',
+            command: `${collectorInvocation} ${STOP_SUBCOMMAND}`,
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -240,9 +336,11 @@ function filterNrObserveEntries(entries: unknown[]): unknown[] {
  * this re-run their merge and add the missing permission hooks.
  * Pure — no file I/O.
  *
- * Deliberately does NOT check StopFailure: broadening what counts as "hooks
- * installed" would change behavior for existing users, which is a scope cut
- * for this PR, not an oversight — don't "fix" this without re-reading why.
+ * Deliberately does NOT check StopFailure, InstructionsLoaded,
+ * PostModelSwitch, SessionStart, UserPromptSubmit, or Stop: broadening what
+ * counts as "hooks installed" would change behavior for existing users,
+ * which is a scope cut for this PR, not an oversight — don't "fix" this
+ * without re-reading why.
  */
 export function areHooksInstalled(settingsContent: Record<string, unknown>): boolean {
   const hooks = settingsContent.hooks;
@@ -282,6 +380,11 @@ const HooksFieldSchema = z
     PermissionRequest: z.array(z.unknown()).optional(),
     PermissionDenied: z.array(z.unknown()).optional(),
     StopFailure: z.array(z.unknown()).optional(),
+    InstructionsLoaded: z.array(z.unknown()).optional(),
+    PostModelSwitch: z.array(z.unknown()).optional(),
+    SessionStart: z.array(z.unknown()).optional(),
+    UserPromptSubmit: z.array(z.unknown()).optional(),
+    Stop: z.array(z.unknown()).optional(),
   })
   .passthrough();
 const SettingsSchema = z.object({ hooks: HooksFieldSchema.optional() }).passthrough();
@@ -320,7 +423,14 @@ export function mergeSettings(
       ? { ...(result.hooks as Record<string, unknown>) }
       : {};
 
-  for (const hookType of HOOK_EVENT_TYPES) {
+  for (const hookType of [
+    ...HOOK_EVENT_TYPES,
+    'InstructionsLoaded',
+    'PostModelSwitch',
+    'SessionStart',
+    'UserPromptSubmit',
+    'Stop',
+  ] as const) {
     const existingArr = Array.isArray(hooks[hookType]) ? [...(hooks[hookType] as unknown[])] : [];
 
     if (binPath !== null && binPath !== undefined) {
@@ -403,7 +513,14 @@ export function removeSettings(existing: Record<string, unknown>): Record<string
   if (typeof result.hooks === 'object' && result.hooks !== null) {
     const hooks = { ...(result.hooks as Record<string, unknown>) };
 
-    for (const hookType of HOOK_EVENT_TYPES) {
+    for (const hookType of [
+      ...HOOK_EVENT_TYPES,
+      'InstructionsLoaded',
+      'PostModelSwitch',
+      'SessionStart',
+      'UserPromptSubmit',
+      'Stop',
+    ] as const) {
       if (Array.isArray(hooks[hookType])) {
         const filtered = filterNrObserveEntries(hooks[hookType] as unknown[]);
         if (filtered.length > 0) {

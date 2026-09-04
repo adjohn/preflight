@@ -1,6 +1,7 @@
 {
   "name": "@newrelic/preflight",
-  "version": "1.25.0",
+  "version": "1.43.0",
+  "mcpName": "io.github.newrelic-experimental/preflight",
   "type": "module",
   "license": "Apache-2.0",
   "private": false,
@@ -18,7 +19,7 @@
   "bugs": {
     "url": "https://github.com/newrelic-experimental/preflight/issues"
   },
-  "description": "New Relic MCP server for observing AI coding assistants (Claude Code, Cursor, Windsurf, Copilot, and more)",
+  "description": "New Relic MCP server for observing AI coding assistants (Claude Code, Cursor, Copilot, etc.)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -41,6 +42,8 @@
     "build:web": "vite build",
     "build": "npm run build:server && npm run build:web",
     "build:clean": "tsc --build --clean && rimraf dist/web",
+    "build:plugin-hook": "esbuild src/hooks/collector-script.ts --bundle --platform=node --target=node22 --format=esm --outfile=plugin/.claude-plugin/scripts/collector-script.js",
+    "verify:plugin-hook": "npm run build:plugin-hook && git diff --exit-code plugin/.claude-plugin/scripts/collector-script.js",
     "dev:web": "vite",
     "test": "jest",
     "test:integration": "jest --testPathPattern='src/multi-instance\\.integration\\.test\\.ts' --testTimeout=120000",
@@ -62,6 +65,7 @@
     "regenerate:otlp-descriptor": "npx tsx scripts/regenerate-otlp-descriptor.ts",
     "check:bundle-size": "npx tsx scripts/check-bundle-size.ts",
     "check:docs-inventory": "npx tsx scripts/check-docs-inventory.ts",
+    "whats-new:draft": "npx tsx scripts/draft-whats-new.ts",
     "dev": "node dist/index.js --local",
     "dev:all": "npm run build && npm run dev",
     "dev:full": "npm run build:server && { npm run dev & BACK=$!; npm run dev:web; kill $BACK 2>/dev/null || true; }",
@@ -116,6 +120,7 @@
     "@typescript-eslint/parser": "8.68.0",
     "@vitejs/plugin-react": "6.0.2",
     "@vitest/coverage-v8": "4.1.11",
+    "esbuild": "0.28.2",
     "eslint": "10.9.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "7.37.5",

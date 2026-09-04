@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { LocalStore } from '../storage/local-store.js';
 import { HookEventProcessor, DedupRingRegistry } from './event-processor.js';
 import { AntigravityAdapter } from '../platforms/antigravity-adapter.js';
+import { CLAUDE_CODE_ENV_SIGNALS } from '../platforms/claude-code-adapter.js';
 import type {
   HookEvent,
   PermissionDeniedHookEvent,
@@ -19,6 +20,23 @@ let tmpDir: string;
 let store: LocalStore;
 let records: ToolCallRecord[];
 let onRecord: jest.Mock<(record: ToolCallRecord) => void>;
+const savedEnv: Record<string, string | undefined> = {};
+// jest itself runs under Claude Code, so CLAUDECODE is set ambiently in this
+// process env — clear it (and its siblings) so the "no platform adapter
+// injected" tests exercise a genuine generic-mcp default, not an accidental
+// Claude Code match.
+const PLATFORM_ENV_KEYS = [
+  ...CLAUDE_CODE_ENV_SIGNALS,
+  'MCP_CLIENT',
+  'NEW_RELIC_AI_PLATFORM',
+  'NEW_RELIC_AI_COPILOT_DIR',
+];
+// CopilotAppAdapter ambient-detects via NEW_RELIC_AI_COPILOT_DIR (defaulting
+// to ~/.copilot). A machine that really has the GitHub Copilot desktop app
+// or CLI installed has a real ~/.copilot/data.db, so it must be pointed at a
+// nonexistent path — not merely deleted — for the "no platform adapter
+// injected" tests to reliably fall back to generic-mcp.
+const NONEXISTENT_COPILOT_DIR = resolve(tmpdir(), `nr-ep-test-no-copilot-dir-${process.pid}`);
 
 beforeEach(() => {
   stderrSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -30,12 +48,21 @@ beforeEach(() => {
   onRecord = jest.fn((record: ToolCallRecord) => {
     records.push(record);
   });
+  for (const key of PLATFORM_ENV_KEYS) {
+    savedEnv[key] = process.env[key];
+    delete process.env[key];
+  }
+  process.env.NEW_RELIC_AI_COPILOT_DIR = NONEXISTENT_COPILOT_DIR;
 });
 
 afterEach(() => {
   stderrSpy.mockRestore();
   if (existsSync(tmpDir)) {
     rmSync(tmpDir, { recursive: true, force: true });
+  }
+  for (const [key, value] of Object.entries(savedEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
   }
 });
 
@@ -136,6 +163,51 @@ describe('HookEventProcessor', () => {
       expect(record.sessionId).toBe('sess-001');
       expect(record.id).toMatch(/^[0-9a-f-]{36}$/);
       expect(record.timestamp).toBe(1000);
+      expect(record.permissionWaitMs).toBeNull();
+    });
+
+    it('prefers the native duration_ms over the pre/post wall-clock delta, and reports the gap as permissionWaitMs', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      // Wall-clock delta is 500ms (a permission prompt sat in the middle),
+      // but the tool itself only ran for 40ms per Claude Code's own report.
+      processor.processEvents([
+        makePreEvent({ timestamp: 1000 }),
+        makePostEvent({ timestamp: 1500, nativeDurationMs: 40 }),
+      ]);
+
+      expect(records).toHaveLength(1);
+      const record = records[0]!;
+      expect(record.durationMs).toBe(40);
+      expect(record.permissionWaitMs).toBe(460);
+    });
+
+    it('falls back to the wall-clock delta when nativeDurationMs is absent', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ timestamp: 1000 }),
+        makePostEvent({ timestamp: 1500 }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.durationMs).toBe(500);
+      expect(record.permissionWaitMs).toBeNull();
+    });
+
+    it('clamps permissionWaitMs to 0 when the native duration exceeds the wall-clock delta', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      // Pathological clock skew: native duration reported larger than the
+      // wall-clock gap this collector observed between the two hooks.
+      processor.processEvents([
+        makePreEvent({ timestamp: 1000 }),
+        makePostEvent({ timestamp: 1050, nativeDurationMs: 90 }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.durationMs).toBe(90);
+      expect(record.permissionWaitMs).toBe(0);
     });
 
     it('includes inputSizeBytes, outputSizeBytes, and inputHash', () => {
@@ -162,6 +234,55 @@ describe('HookEventProcessor', () => {
 
       const record = records[0]!;
       expect(record.transcriptPath).toBe('/tmp/fake-transcript.jsonl');
+    });
+
+    it('includes agentId/agentType from the pre event', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ agentId: 'agent-abc123', agentType: 'general-purpose' }),
+        makePostEvent(),
+      ]);
+
+      const record = records[0]!;
+      expect(record.agentId).toBe('agent-abc123');
+      expect(record.agentType).toBe('general-purpose');
+    });
+
+    it('falls back to the post event agentId/agentType when the pre event has none', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent(),
+        makePostEvent({ agentId: 'agent-def456', agentType: 'Explore' }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.agentId).toBe('agent-def456');
+      expect(record.agentType).toBe('Explore');
+    });
+
+    it('prefers the pre event agentId/agentType over a conflicting post event value', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ agentId: 'agent-abc123', agentType: 'general-purpose' }),
+        makePostEvent({ agentId: 'agent-def456', agentType: 'Explore' }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.agentId).toBe('agent-abc123');
+      expect(record.agentType).toBe('general-purpose');
+    });
+
+    it('omits agentId/agentType for a parent-session tool call', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([makePreEvent(), makePostEvent()]);
+
+      const record = records[0]!;
+      expect(record.agentId).toBeUndefined();
+      expect(record.agentType).toBeUndefined();
     });
   });
 
@@ -222,6 +343,38 @@ describe('HookEventProcessor', () => {
       expect(record.durationMs).toBeNull();
       expect(record.success).toBe(true);
       expect(record.outputSizeBytes).toBe(512);
+    });
+
+    it('still reports agentId/agentType from the post event with no matching pre-event', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePostEvent({
+          toolUseId: 'toolu_orphan_agent',
+          timestamp: 2000,
+          agentId: 'agent-ghi789',
+          agentType: 'general-purpose',
+        }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.agentId).toBe('agent-ghi789');
+      expect(record.agentType).toBe('general-purpose');
+    });
+
+    it('still reports durationMs from nativeDurationMs even with no matching pre-event', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePostEvent({
+          toolUseId: 'toolu_orphan_native',
+          timestamp: 2000,
+          nativeDurationMs: 75,
+        }),
+      ]);
+
+      const record = records[0]!;
+      expect(record.durationMs).toBe(75);
     });
   });
 
@@ -1592,6 +1745,405 @@ describe('HookEventProcessor', () => {
     });
   });
 
+  describe('mode: session_start', () => {
+    it('routes mode:session_start entries through onSessionStart with all resume fields', () => {
+      const frames: import('./event-processor.js').SessionStartFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onSessionStart: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'session_start',
+          tool: 'session_start',
+          source: 'resume',
+          secondsSinceLastResponse: 5400,
+          contextTokens: 182340,
+          promptCacheLikelyExpired: true,
+          estimatedCacheWriteUsd: 1.1396,
+          timestamp: 1700000000000,
+          sessionId: 's1',
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].source).toBe('resume');
+      expect(frames[0].secondsSinceLastResponse).toBe(5400);
+      expect(frames[0].contextTokens).toBe(182340);
+      expect(frames[0].promptCacheLikelyExpired).toBe(true);
+      expect(frames[0].estimatedCacheWriteUsd).toBeCloseTo(1.1396);
+      expect(frames[0].sessionId).toBe('s1');
+    });
+
+    it('defaults sessionId to null when absent', () => {
+      const frames: import('./event-processor.js').SessionStartFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onSessionStart: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'session_start',
+          tool: 'session_start',
+          source: 'startup',
+          timestamp: 1700000000000,
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].sessionId).toBeNull();
+      expect(frames[0].secondsSinceLastResponse).toBeUndefined();
+    });
+
+    it('swallows errors from a throwing onSessionStart callback', () => {
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onSessionStart: () => {
+          throw new Error('boom');
+        },
+      });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'session_start',
+            tool: 'session_start',
+            source: 'resume',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+    });
+
+    it('is a no-op when onSessionStart is not configured', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'session_start',
+            tool: 'session_start',
+            source: 'resume',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+      expect(records).toHaveLength(0);
+    });
+  });
+
+  describe('mode: instructions_loaded', () => {
+    it('routes mode:instructions_loaded entries through onInstructionsLoaded', () => {
+      const frames: import('./event-processor.js').InstructionsLoadedFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onInstructionsLoaded: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'instructions_loaded',
+          tool: 'instructions_loaded',
+          filePath: '/Users/test/project/CLAUDE.md',
+          memoryType: 'Project',
+          loadReason: 'session_start',
+          timestamp: 1700000000000,
+          sessionId: 's1',
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].filePath).toBe('/Users/test/project/CLAUDE.md');
+      expect(frames[0].memoryType).toBe('Project');
+      expect(frames[0].loadReason).toBe('session_start');
+      expect(frames[0].sessionId).toBe('s1');
+    });
+
+    it('defaults sessionId to null when absent', () => {
+      const frames: import('./event-processor.js').InstructionsLoadedFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onInstructionsLoaded: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'instructions_loaded',
+          tool: 'instructions_loaded',
+          filePath: '/Users/test/project/CLAUDE.md',
+          timestamp: 1700000000000,
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].sessionId).toBeNull();
+    });
+
+    it('swallows errors from a throwing onInstructionsLoaded callback', () => {
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onInstructionsLoaded: () => {
+          throw new Error('boom');
+        },
+      });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'instructions_loaded',
+            tool: 'instructions_loaded',
+            filePath: '/Users/test/project/CLAUDE.md',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+    });
+
+    it('is a no-op when onInstructionsLoaded is not configured', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'instructions_loaded',
+            tool: 'instructions_loaded',
+            filePath: '/Users/test/project/CLAUDE.md',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+      expect(records).toHaveLength(0);
+    });
+  });
+
+  describe('mode: model_switch', () => {
+    it('routes mode:model_switch entries through onModelSwitch with all fields', () => {
+      const frames: import('./event-processor.js').ModelSwitchFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onModelSwitch: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'model_switch',
+          tool: 'model_switch',
+          fromModel: 'claude-sonnet-5',
+          toModel: 'claude-opus-5',
+          requestedModel: 'opus',
+          source: 'command',
+          timestamp: 1700000000000,
+          sessionId: 's1',
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].fromModel).toBe('claude-sonnet-5');
+      expect(frames[0].toModel).toBe('claude-opus-5');
+      expect(frames[0].requestedModel).toBe('opus');
+      expect(frames[0].source).toBe('command');
+      expect(frames[0].sessionId).toBe('s1');
+    });
+
+    it('defaults sessionId to null when absent', () => {
+      const frames: import('./event-processor.js').ModelSwitchFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onModelSwitch: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'model_switch',
+          tool: 'model_switch',
+          fromModel: 'claude-sonnet-5',
+          toModel: 'claude-opus-5',
+          timestamp: 1700000000000,
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].sessionId).toBeNull();
+    });
+
+    it('swallows errors from a throwing onModelSwitch callback', () => {
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onModelSwitch: () => {
+          throw new Error('boom');
+        },
+      });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'model_switch',
+            tool: 'model_switch',
+            fromModel: 'claude-sonnet-5',
+            toModel: 'claude-opus-5',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+    });
+
+    it('is a no-op when onModelSwitch is not configured', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'model_switch',
+            tool: 'model_switch',
+            fromModel: 'claude-sonnet-5',
+            toModel: 'claude-opus-5',
+            timestamp: 1700000000000,
+          } as HookEvent,
+        ]),
+      ).not.toThrow();
+      expect(records).toHaveLength(0);
+    });
+  });
+
+  describe('mode: user_prompt_submit / stop (turn/task boundary hooks)', () => {
+    it('routes mode:user_prompt_submit entries through onUserPromptSubmit', () => {
+      const frames: import('./event-processor.js').BoundaryFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onUserPromptSubmit: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'user_prompt_submit',
+          tool: 'user_prompt_submit',
+          timestamp: 1700000000000,
+          sessionId: 's1',
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].timestamp).toBe(1700000000000);
+      expect(frames[0].sessionId).toBe('s1');
+    });
+
+    it('routes mode:stop entries through onStop', () => {
+      const frames: import('./event-processor.js').BoundaryFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onStop: (f) => frames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'stop',
+          tool: 'stop',
+          timestamp: 1700000000000,
+          sessionId: 's1',
+        } as HookEvent,
+      ]);
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0].timestamp).toBe(1700000000000);
+      expect(frames[0].sessionId).toBe('s1');
+    });
+
+    it('defaults sessionId to null when absent, for both user_prompt_submit and stop', () => {
+      const promptFrames: import('./event-processor.js').BoundaryFrame[] = [];
+      const stopFrames: import('./event-processor.js').BoundaryFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onUserPromptSubmit: (f) => promptFrames.push(f),
+        onStop: (f) => stopFrames.push(f),
+      });
+
+      processor.processEvents([
+        {
+          mode: 'user_prompt_submit',
+          tool: 'user_prompt_submit',
+          timestamp: 1700000000000,
+        } as HookEvent,
+        { mode: 'stop', tool: 'stop', timestamp: 1700000000001 } as HookEvent,
+      ]);
+
+      expect(promptFrames[0].sessionId).toBeNull();
+      expect(stopFrames[0].sessionId).toBeNull();
+    });
+
+    it('falls back to Date.now() when timestamp is missing or not finite', () => {
+      const frames: import('./event-processor.js').BoundaryFrame[] = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onStop: (f) => frames.push(f),
+      });
+
+      const before = Date.now();
+      processor.processEvents([
+        { mode: 'stop', tool: 'stop', timestamp: NaN, sessionId: 's1' } as HookEvent,
+      ]);
+      const after = Date.now();
+
+      expect(frames[0].timestamp).toBeGreaterThanOrEqual(before);
+      expect(frames[0].timestamp).toBeLessThanOrEqual(after);
+    });
+
+    it('swallows errors from a throwing onUserPromptSubmit/onStop callback', () => {
+      const processor = new HookEventProcessor({
+        store,
+        onRecord: () => undefined,
+        onUserPromptSubmit: () => {
+          throw new Error('boom');
+        },
+        onStop: () => {
+          throw new Error('boom');
+        },
+      });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'user_prompt_submit',
+            tool: 'user_prompt_submit',
+            timestamp: 1700000000000,
+            sessionId: 's1',
+          } as HookEvent,
+          { mode: 'stop', tool: 'stop', timestamp: 1700000000001, sessionId: 's1' } as HookEvent,
+        ]),
+      ).not.toThrow();
+    });
+
+    it('is a no-op when onUserPromptSubmit/onStop are not configured', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      expect(() =>
+        processor.processEvents([
+          {
+            mode: 'user_prompt_submit',
+            tool: 'user_prompt_submit',
+            timestamp: 1700000000000,
+          } as HookEvent,
+          { mode: 'stop', tool: 'stop', timestamp: 1700000000001 } as HookEvent,
+        ]),
+      ).not.toThrow();
+      expect(records).toHaveLength(0);
+    });
+  });
+
   describe('platform tool-name mapping', () => {
     it('maps a non-canonical tool name using the injected platform adapter', () => {
       const fakeAdapter = {
@@ -1658,6 +2210,84 @@ describe('HookEventProcessor', () => {
       const processor = new HookEventProcessor({ store, onRecord });
 
       expect(processor.activePlatform).toBe('generic-mcp');
+    });
+
+    it('a pre/post pair stamped platform: "kiro" flips activePlatform and maps Kiro tool names', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+      expect(processor.activePlatform).toBe('generic-mcp');
+
+      processor.processEvents([
+        makePreEvent({ tool: 'fs_read', toolUseId: 'toolu_kiro', platform: 'kiro' }),
+        makePostEvent({ tool: 'fs_read', toolUseId: 'toolu_kiro', platform: 'kiro' }),
+      ]);
+
+      expect(processor.activePlatform).toBe('kiro');
+      expect(records).toHaveLength(1);
+      expect(records[0]!.toolName).toBe('Read');
+    });
+
+    it('a generic-mcp stamp never overrides the current platform', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ tool: 'fs_read', toolUseId: 'toolu_kiro', platform: 'kiro' }),
+        makePostEvent({ tool: 'fs_read', toolUseId: 'toolu_kiro', platform: 'kiro' }),
+      ]);
+      expect(processor.activePlatform).toBe('kiro');
+
+      processor.processEvents([
+        makePreEvent({ tool: 'Read', toolUseId: 'toolu_generic', platform: 'generic-mcp' }),
+        makePostEvent({ tool: 'Read', toolUseId: 'toolu_generic', platform: 'generic-mcp' }),
+      ]);
+
+      expect(processor.activePlatform).toBe('kiro');
+    });
+
+    it('an unrecognized platform stamp never overrides the current platform', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ tool: 'fs_read', toolUseId: 'toolu_kiro', platform: 'kiro' }),
+        makePostEvent({ tool: 'fs_read', toolUseId: 'toolu_kiro', platform: 'kiro' }),
+      ]);
+      expect(processor.activePlatform).toBe('kiro');
+
+      processor.processEvents([
+        makePreEvent({ tool: 'Read', toolUseId: 'toolu_unknown', platform: 'some-unknown-tool' }),
+        makePostEvent({ tool: 'Read', toolUseId: 'toolu_unknown', platform: 'some-unknown-tool' }),
+      ]);
+
+      expect(processor.activePlatform).toBe('kiro');
+    });
+
+    it('interleaved sessions each map tool names with their own stamped adapter', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([
+        makePreEvent({ tool: 'fs_read', toolUseId: 'a1', sessionId: 'sess-a', platform: 'kiro' }),
+        makePostEvent({ tool: 'fs_read', toolUseId: 'a1', sessionId: 'sess-a', platform: 'kiro' }),
+        makePreEvent({
+          tool: 'view',
+          toolUseId: 'b1',
+          sessionId: 'sess-b',
+          platform: 'copilot-sdk',
+        }),
+        makePostEvent({
+          tool: 'view',
+          toolUseId: 'b1',
+          sessionId: 'sess-b',
+          platform: 'copilot-sdk',
+        }),
+        // A later event for session A arrives WITHOUT a stamp while the last
+        // process-level stamp is copilot-sdk — it must still map via the
+        // adapter session A stamped earlier, not the other session's.
+        makePreEvent({ tool: 'fs_write', toolUseId: 'a2', sessionId: 'sess-a' }),
+        makePostEvent({ tool: 'fs_write', toolUseId: 'a2', sessionId: 'sess-a' }),
+      ]);
+
+      expect(records.map((r) => r.toolName)).toEqual(['Read', 'Read', 'Write']);
+      // The session-summary label still follows the last non-generic stamp.
+      expect(processor.activePlatform).toBe('copilot-sdk');
     });
 
     it('maps tool names correctly when pairing falls back to findOldestPendingKey (no toolUseId)', () => {
