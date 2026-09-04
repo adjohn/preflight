@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -57,6 +57,24 @@ export function DiscreteBlockChart({
   ariaLabel,
 }: DiscreteBlockChartProps): JSX.Element | null {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
+
+  // The tooltip's position is captured once, on mouseEnter, from the
+  // anchor's getBoundingClientRect(). It doesn't track the anchor on
+  // scroll, so a scroll while hovering would leave it visually detached
+  // from the block it's describing — dismiss it instead of showing a
+  // stale position. `capture: true` on scroll catches scrolling of any
+  // ancestor scroll container, not just the window itself (inner-element
+  // scroll events don't bubble in the normal phase).
+  useEffect(() => {
+    if (!tooltip) return;
+    const dismiss = (): void => setTooltip(null);
+    window.addEventListener('scroll', dismiss, { capture: true });
+    window.addEventListener('resize', dismiss);
+    return () => {
+      window.removeEventListener('scroll', dismiss, { capture: true });
+      window.removeEventListener('resize', dismiss);
+    };
+  }, [tooltip]);
 
   // Empty-state: render nothing so callers can show their own empty UI in
   // the surrounding layout rather than reserving height for a blank chart.
