@@ -37,13 +37,19 @@ export interface SecurityAlert {
   readonly description: string;
 }
 
-export interface AuditRecord {
+export interface AuditAttribution {
+  readonly sessionId: string | null;
+  /** Subagent that made the call. Absent for the parent session. Same id space as AiToolCall.agent_id. */
+  readonly agentId?: string;
+  readonly agentType?: string;
+}
+
+export interface AuditRecord extends AuditAttribution {
   /** Stable per-call id, sourced from `ToolCallRecord.id`/`ProxyToolCallRecord.id` — lets
    * consumers (e.g. the Audit page's React key) distinguish two entries that otherwise
    * share the same timestamp/tool/detail. */
   readonly id: string;
   readonly timestamp: number;
-  readonly sessionId: string | null;
   readonly action: AuditAction;
   readonly tool: string;
   readonly detail: string;
@@ -106,6 +112,26 @@ export const DEFAULT_NETWORK_COMMAND_PATTERNS: RegExp[] = [
   /\bnc\b/,
   /\bssh\b/,
 ];
+
+
+const ATTRIBUTION_WIRE_KEYS: Record<keyof AuditAttribution, string> = {
+  sessionId: 'session_id',
+  agentId: 'agent_id',
+  agentType: 'agent_type',
+};
+const ATTRIBUTION_KEYS = Object.keys(ATTRIBUTION_WIRE_KEYS) as ReadonlyArray<
+  keyof AuditAttribution
+>;
+
+export function attachAuditAttribution(
+  target: Record<string, string | number | boolean>,
+  source: AuditAttribution,
+): void {
+  for (const key of ATTRIBUTION_KEYS) {
+    const value = source[key];
+    if (typeof value === 'string') target[ATTRIBUTION_WIRE_KEYS[key]] = value;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Tool name → AuditAction mapping
@@ -236,8 +262,8 @@ export function auditRecordToNrEvent(
   };
 
   attachTeamAttribution(event, attrs ?? {});
+  attachAuditAttribution(event, record);
 
-  if (record.sessionId != null) event.session_id = record.sessionId;
   if (record.filePath != null) event.file_path = redactSensitive(record.filePath);
   if (record.command != null) event.command = redactSensitive(record.command);
 
@@ -275,8 +301,8 @@ export function securityAlertToNrEvent(
   };
 
   attachTeamAttribution(event, attrs ?? {});
+  attachAuditAttribution(event, record);
 
-  if (record.sessionId != null) event.session_id = record.sessionId;
   if (record.filePath != null) event.file_path = redactSensitive(record.filePath);
   if (record.command != null) event.command = redactSensitive(record.command);
 
@@ -355,6 +381,10 @@ function auditEntryToRecord(entry: AuditEntry): AuditRecord | null {
     typeof rawSessionId === 'string' && !isSyntheticSessionId(rawSessionId) ? rawSessionId : null;
   const filePath = typeof entry.filePath === 'string' ? entry.filePath : undefined;
   const command = typeof entry.command === 'string' ? entry.command : undefined;
+  const agentId =
+    typeof entry.agentId === 'string' && entry.agentId.length > 0 ? entry.agentId : undefined;
+  const agentType =
+    typeof entry.agentType === 'string' && entry.agentType.length > 0 ? entry.agentType : undefined;
   // Disk entries written before this field was introduced have no `id`; fall
   // back to the same content fingerprint used for cross-process dedup below.
   // That fingerprint isn't guaranteed unique across two distinct legacy
@@ -382,6 +412,8 @@ function auditEntryToRecord(entry: AuditEntry): AuditRecord | null {
     id,
     timestamp,
     sessionId,
+    agentId,
+    agentType,
     action,
     tool,
     detail,
@@ -412,7 +444,6 @@ export interface AuditTrailManagerOptions {
   sensitivePatterns?: RegExp[];
   destructivePatterns?: RegExp[];
   networkPatterns?: RegExp[];
-  /** Optional local store for persisting each audit record to disk immediately. */
   localStore?: LocalStore;
 }
 
@@ -450,7 +481,15 @@ export class AuditTrailManager {
   recordToolCall(record: ToolCallRecord): AuditRecord {
     const action = classifyTool(record.toolName);
     const detail = buildDetail(record);
+    return this.commit(record, action, detail);
+  }
 
+  recordProxyCall(record: ProxyToolCallRecord): AuditRecord {
+    const detail = `McpToolCall: ${record.serverName}/${record.toolName}`;
+    return this.commit(record, 'McpToolCall', detail);
+  }
+
+  private commit(record: ToolCallRecord, action: AuditAction, detail: string): AuditRecord {
     const alert = detectSecurityAlert(
       record,
       this.sensitivePatterns,
@@ -464,6 +503,8 @@ export class AuditTrailManager {
       id: record.id,
       timestamp: record.timestamp,
       sessionId: resolveAuditSessionId(record.sessionId, this.sessionId),
+      agentId: typeof record.agentId === 'string' ? record.agentId : undefined,
+      agentType: typeof record.agentType === 'string' ? record.agentType : undefined,
       action,
       tool: record.toolName,
       detail,
@@ -481,56 +522,14 @@ export class AuditTrailManager {
       if (this.sensitiveAccessLog.length >= AuditTrailManager.MAX_ENTRIES)
         this.sensitiveAccessLog.shift();
       this.sensitiveAccessLog.push(auditRecord);
-      logger.warn('Security alert', {
+      const alertContext: Record<string, string | number | boolean> = {
         severity: alert.severity,
         alertType: alert.alertType,
         tool: record.toolName,
         detail,
-      });
-    }
-
-    this.persistToDisk(auditRecord);
-    return auditRecord;
-  }
-
-  recordProxyCall(record: ProxyToolCallRecord): AuditRecord {
-    const detail = `McpToolCall: ${record.serverName}/${record.toolName}`;
-    const filePath = record.filePath as string | undefined;
-    const command = record.command as string | undefined;
-
-    const alert = detectSecurityAlert(
-      record,
-      this.sensitivePatterns,
-      this.destructivePatterns,
-      this.networkPatterns,
-    );
-
-    const auditRecord: AuditRecord = {
-      id: record.id,
-      timestamp: record.timestamp,
-      sessionId: resolveAuditSessionId(record.sessionId, this.sessionId),
-      action: 'McpToolCall',
-      tool: record.toolName,
-      detail,
-      developer: this.developer,
-      // Same redaction policy as recordToolCall — see comment there.
-      filePath: filePath != null ? redactSensitive(filePath) : undefined,
-      command: command != null ? redactSensitive(command) : undefined,
-      securityAlert: alert,
-    };
-
-    if (this.entries.length >= AuditTrailManager.MAX_ENTRIES) this.entries.shift();
-    this.entries.push(auditRecord);
-    if (alert) {
-      if (this.sensitiveAccessLog.length >= AuditTrailManager.MAX_ENTRIES)
-        this.sensitiveAccessLog.shift();
-      this.sensitiveAccessLog.push(auditRecord);
-      logger.warn('Security alert', {
-        severity: alert.severity,
-        alertType: alert.alertType,
-        tool: record.toolName,
-        detail,
-      });
+      };
+      attachAuditAttribution(alertContext, auditRecord);
+      logger.warn('Security alert', alertContext);
     }
 
     this.persistToDisk(auditRecord);
@@ -623,6 +622,8 @@ export class AuditTrailManager {
       developer: record.developer,
       filePath: record.filePath,
       command: record.command,
+      agentId: record.agentId,
+      agentType: record.agentType,
       securityAlert: record.securityAlert
         ? { severity: record.securityAlert.severity, alertType: record.securityAlert.alertType }
         : undefined,

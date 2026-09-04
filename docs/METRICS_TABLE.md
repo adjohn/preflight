@@ -157,6 +157,8 @@ Emitted for every tool call as a security audit record.
 | `detail`               | string  | Human-readable description of the action                                                                               |
 | `developer`            | string  | Developer identifier                                                                                                   |
 | `session_id`           | string  | Session identifier (if available)                                                                                      |
+| `agent_id`             | string  | Claude Code subagent id from the hook payload. Absent for the parent session.                                          |
+| `agent_type`           | string  | The subagent's type as reported by the Claude Code hook payload (e.g. `"Explore"`). Absent for the parent session.     |
 | `team_id`              | string  | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
 | `project_id`           | string  | Project identifier (derived from git remote or configured)                                                             |
 | `repo_url`             | string  | Full git remote URL, redacted for embedded credentials (own opt-out: repoUrlEnabled)                                   |
@@ -165,7 +167,7 @@ Emitted for every tool call as a security audit record.
 | `command`              | string  | Command executed (if applicable)                                                                                       |
 | `audit.security_alert` | boolean | Whether a security alert was triggered                                                                                 |
 | `audit.severity`       | string  | Alert severity: `critical`, `high`, or `medium` (if alert)                                                             |
-| `audit.alert_type`     | string  | Alert type: `destructive_command`, `sensitive_file`, or `external_network` (if alert)                                  |
+| `audit.alert_type`     | string  | Alert type: `destructive_command`, `sensitive_file`, `external_network`, or `file_deletion` (if alert)                 |
 
 Source: `src/security/audit-trail.ts` — `auditRecordToNrEvent()`
 
@@ -179,11 +181,13 @@ Emitted only when a security alert is triggered (subset of audit events).
 | `event_version` | number | Schema version, currently `1`. See [Schema Versioning](#schema-versioning).                                            |
 | `timestamp`     | number | Unix epoch seconds                                                                                                     |
 | `severity`      | string | `critical`, `high`, or `medium`                                                                                        |
-| `alert_type`    | string | `destructive_command`, `sensitive_file`, or `external_network`                                                         |
+| `alert_type`    | string | `destructive_command`, `sensitive_file`, `external_network`, or `file_deletion`                                        |
 | `description`   | string | Human-readable alert description                                                                                       |
 | `tool`          | string | Tool that triggered the alert                                                                                          |
 | `developer`     | string | Developer identifier                                                                                                   |
 | `session_id`    | string | Session identifier (if available)                                                                                      |
+| `agent_id`      | string | Claude Code subagent id from the hook payload. Absent for the parent session.                                          |
+| `agent_type`    | string | The subagent's type as reported by the Claude Code hook payload (e.g. `"Explore"`). Absent for the parent session.     |
 | `team_id`       | string | User-defined team label from config (e.g. `"platform-eng"`). Not your NR account ID. Omitted when `teamId` is not set. |
 | `project_id`    | string | Project identifier (derived from git remote or configured)                                                             |
 | `repo_url`      | string | Full git remote URL, redacted for embedded credentials (own opt-out: repoUrlEnabled)                                   |
@@ -196,6 +200,7 @@ Security alert triggers:
 - **`destructive_command`** (critical): `rm -rf` (any recursive flag combo), `git push --force` (but NOT `--force-with-lease` / `--force-if-includes`), `DROP TABLE`, pipe-to-shell, etc. Detection is the OR of the bash classifier (`record.bashDestructive`) and the regex pattern list — defense in depth, neither layer alone is authoritative.
 - **`sensitive_file`** (high): `.env`, `.pem`, `.key`, `credentials`, `secret`, `.ssh`, `.npmrc`, `.pypirc`, `password`, `token` (path-boundary anchored)
 - **`external_network`** (medium): `curl`, `wget`, `nc`, `ssh` commands. Detection is the OR of the bash classifier (`record.bashNetwork`) and the regex pattern list.
+- **`file_deletion`** (medium): `rm` or `unlink` in command position (start of line, after `;`, `&`, `|`, or `(`, optionally with `sudo`). Anchoring keeps `git rm`, `npm rm`, `docker rm`, and quoted text like `echo "rm foo"` out of scope.
 
 Source: `src/security/audit-trail.ts` — `securityAlertToNrEvent()`
 

@@ -126,13 +126,14 @@ export function Audit(): JSX.Element {
                 <th className="text-left p-2">Tool</th>
                 <th className="text-left p-2">Target</th>
                 <th className="text-left p-2">Classification</th>
+                <th className="text-left p-2">Agent</th>
                 <th className="text-left p-2">Session</th>
               </tr>
             </thead>
             <tbody>
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-3 text-ink-muted text-center">
+                  <td colSpan={6} className="p-3 text-ink-muted text-center">
                     No matching entries.
                   </td>
                 </tr>
@@ -158,6 +159,9 @@ export function Audit(): JSX.Element {
                     >
                       {CLASSIFICATION_LABELS[r.classification] ?? r.classification}
                     </Pill>
+                  </td>
+                  <td className="p-2 text-ink-subtle" title={r.agentId}>
+                    {r.agentType ?? r.agentId ?? '—'}
                   </td>
                   <td className="p-2 text-ink-subtle">
                     {r.sessionId ? (

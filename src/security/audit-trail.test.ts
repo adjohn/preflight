@@ -1,6 +1,7 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import {
   AuditTrailManager,
+  attachAuditAttribution,
   auditRecordToNrEvent,
   securityAlertToNrEvent,
   DEFAULT_SENSITIVE_FILE_PATTERNS,
@@ -822,6 +823,145 @@ describe('AuditTrailManager.getAuditLog() disk read-back', () => {
 
     const log = mgr.getAuditLog(5);
     expect(log).toHaveLength(5);
+  });
+});
+
+describe('attachAuditAttribution()', () => {
+  it('writes session_id, agent_id, and agent_type and skips absent values', () => {
+    const full: Record<string, string | number | boolean> = {};
+    attachAuditAttribution(full, { sessionId: 'sess-1', agentId: 'a9f8', agentType: 'workflow' });
+    expect(full).toEqual({ session_id: 'sess-1', agent_id: 'a9f8', agent_type: 'workflow' });
+
+    const bare: Record<string, string | number | boolean> = {};
+    attachAuditAttribution(bare, { sessionId: null });
+    expect(bare).toEqual({});
+  });
+});
+
+describe('AuditTrailManager subagent attribution', () => {
+  it('carries agentId and agentType from the ToolCallRecord onto the AuditRecord', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(
+      makeRecord({
+        toolName: 'Bash',
+        command: 'rm -rf /tmp/x',
+        agentId: 'a9f8',
+        agentType: 'workflow',
+      }),
+    );
+
+    expect(audit.agentId).toBe('a9f8');
+    expect(audit.agentType).toBe('workflow');
+  });
+
+  it('leaves agentId and agentType undefined when the record has neither', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(makeRecord({ toolName: 'Read', filePath: 'src/app.ts' }));
+
+    expect(audit.agentId).toBeUndefined();
+    expect(audit.agentType).toBeUndefined();
+  });
+
+  it('includes agentId and agentType in the entry persisted to disk', () => {
+    const { store, appendSpy } = makeLocalStore();
+    const mgr = makeManager({ localStore: store });
+
+    mgr.recordToolCall(
+      makeRecord({
+        toolName: 'Bash',
+        command: 'rm -rf /tmp/x',
+        agentId: 'a9f8',
+        agentType: 'workflow',
+      }),
+    );
+
+    expect(appendSpy.mock.calls[0][0]).toMatchObject({ agentId: 'a9f8', agentType: 'workflow' });
+  });
+
+  it('carries agentId and agentType through recordProxyCall', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordProxyCall(makeProxyRecord({ agentId: 'a9f8', agentType: 'workflow' }));
+
+    expect(audit.agentId).toBe('a9f8');
+    expect(audit.agentType).toBe('workflow');
+  });
+
+  it('reads agentId and agentType back from a disk entry via getAuditLog()', () => {
+    const appendSpy = jest.fn();
+    const store = {
+      appendAuditLog: appendSpy,
+      peekAllAuditLogs: jest.fn(() => [
+        {
+          timestamp: 555,
+          sessionId: 'sess-other',
+          action: 'BashCommand',
+          tool: 'Bash',
+          detail: 'Bash: rm -rf /tmp/x',
+          developer: 'alice',
+          agentId: 'a9f8',
+          agentType: 'workflow',
+        },
+      ]),
+    } as unknown as LocalStore;
+    const mgr = makeManager({ localStore: store });
+
+    const [entry] = mgr.getAuditLog();
+    expect(entry?.agentId).toBe('a9f8');
+    expect(entry?.agentType).toBe('workflow');
+  });
+
+  it('leaves agentId and agentType undefined for a disk entry with neither field', () => {
+    const appendSpy = jest.fn();
+    const store = {
+      appendAuditLog: appendSpy,
+      peekAllAuditLogs: jest.fn(() => [
+        {
+          timestamp: 555,
+          sessionId: 'sess-other',
+          action: 'FileRead',
+          tool: 'Read',
+          detail: 'Read src/old.ts',
+          developer: 'alice',
+        },
+      ]),
+    } as unknown as LocalStore;
+    const mgr = makeManager({ localStore: store });
+
+    const [entry] = mgr.getAuditLog();
+    expect(entry?.agentId).toBeUndefined();
+    expect(entry?.agentType).toBeUndefined();
+  });
+
+  it('emits agent_id and agent_type on auditRecordToNrEvent when present', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(
+      makeRecord({
+        toolName: 'Read',
+        filePath: 'src/app.ts',
+        agentId: 'a9f8',
+        agentType: 'workflow',
+      }),
+    );
+    const event = auditRecordToNrEvent(audit);
+
+    expect(event.agent_id).toBe('a9f8');
+    expect(event.agent_type).toBe('workflow');
+  });
+
+  it('emits agent_id and agent_type on securityAlertToNrEvent when present', () => {
+    const mgr = makeManager();
+    const audit = mgr.recordToolCall(
+      makeRecord({
+        toolName: 'Bash',
+        command: 'rm -rf /tmp/x',
+        agentId: 'a9f8',
+        agentType: 'workflow',
+      }),
+    );
+    const event = securityAlertToNrEvent(audit);
+
+    expect(event.agent_id).toBe('a9f8');
+    expect(event.agent_type).toBe('workflow');
   });
 });
 
