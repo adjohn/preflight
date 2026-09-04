@@ -561,6 +561,24 @@ describe('NrIngestManager', () => {
       const attrs = callCountMetric.attributes as Record<string, unknown>;
       expect(attrs.session_id).toBe('hook-session-001');
     });
+
+    it('tags tool call metrics with repo_url when configured (regression: teamDims previously omitted it)', async () => {
+      const manager = new NrIngestManager(
+        makeIngestOptions({ repoUrl: 'https://github.com/org/repo' }),
+      );
+
+      manager.ingestToolCall(makeRecord());
+
+      manager.start();
+      await manager.stop();
+
+      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
+      const callCountMetric = sentMetrics.find((m) => m.name === 'ai.tool.call_count')!;
+      const attrs = callCountMetric.attributes as Record<string, unknown>;
+      expect(attrs.repo_url).toBe('https://github.com/org/repo');
+    });
   });
 
   describe('proxyRequestToNrEvent()', () => {
@@ -1051,6 +1069,25 @@ describe('NrIngestManager', () => {
       const metricNames = sentMetrics.map((m) => m.name);
       expect(metricNames).toContain('ai.session.duration_ms');
       expect(metricNames).toContain('ai.session.unique_files_read');
+    });
+
+    it('tags session gauge metrics with repo_url when configured (regression: teamAttrs previously omitted it)', async () => {
+      const sessionTracker = new SessionTracker('repo-url-gauge-session');
+      sessionTracker.recordToolCall(makeRecord({ toolName: 'Read', filePath: '/x.ts' }));
+
+      const manager = new NrIngestManager(
+        makeIngestOptions({ sessionTracker, repoUrl: 'https://github.com/org/repo' }),
+      );
+
+      manager.start();
+      await manager.stop();
+
+      const sentMetrics = (mockSendMetrics.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
+      const durationMetric = sentMetrics.find((m) => m.name === 'ai.session.duration_ms')!;
+      const attrs = durationMetric.attributes as Record<string, unknown>;
+      expect(attrs.repo_url).toBe('https://github.com/org/repo');
     });
 
     it('emits aggregated proxy metrics (server_call_count, tool_popularity) sourced from proxyMetrics on stop', async () => {
@@ -1737,18 +1774,20 @@ describe('retryAlertToNrEvent()', () => {
     expect(event.platform).toBe('claude-code');
   });
 
-  it('includes team/project/org attribution when provided', () => {
+  it('includes team/project/org/repo attribution when provided', () => {
     const event = retryAlertToNrEvent(makeThrashingAlert(), {
       developer: 'd',
       appName: 'a',
       teamId: 'team-1',
       projectId: 'proj-1',
       orgId: 'org-1',
+      repoUrl: 'https://github.com/org/repo',
     });
 
     expect(event.team_id).toBe('team-1');
     expect(event.project_id).toBe('proj-1');
     expect(event.org_id).toBe('org-1');
+    expect(event.repo_url).toBe('https://github.com/org/repo');
   });
 });
 
@@ -1787,6 +1826,22 @@ describe('NrIngestManager.ingestRetryAlert()', () => {
     >;
     const retryEvent = sentEvents.find((e) => e.eventType === 'AiRetryAlert');
     expect(retryEvent?.session_id).toBe('the-trace-id');
+  });
+
+  it('includes repo_url on the queued event when configured', async () => {
+    const manager = new NrIngestManager(
+      makeIngestOptions({ repoUrl: 'https://github.com/org/repo' }),
+    );
+
+    manager.ingestRetryAlert(makeThrashingAlert());
+    manager.start();
+    await manager.stop();
+
+    const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+      Record<string, unknown>
+    >;
+    const retryEvent = sentEvents.find((e) => e.eventType === 'AiRetryAlert');
+    expect(retryEvent?.repo_url).toBe('https://github.com/org/repo');
   });
 });
 
