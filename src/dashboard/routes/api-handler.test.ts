@@ -5834,6 +5834,65 @@ describe('api-handler GET /api/git-efficiency', () => {
     expect(status()).toBe(200);
     expect(reportArgs[0].scope).toEqual({ kind: 'all' });
   });
+
+  it('replays sessionStore sessions into historical records and passes them to report()', async () => {
+    // Exercises the actual composition point of a real bug this route once
+    // had (double-counting a session replayed both at startup and here) —
+    // no other test drove this route with a real sessionStore, so the fix
+    // living in GitWorkspaceReporter.report() was covered, but this route's
+    // own construction of the `historical` array it hands to report() was not.
+    const fakeReport: GitWorkspaceReport = {
+      scope: { kind: 'all' },
+      metrics: {} as GitWorkspaceReport['metrics'],
+      rows: [],
+      worstBehind: null,
+    };
+    const reportArgs: Parameters<
+      NonNullable<Parameters<typeof createApiHandler>[0]['gitWorkspaceReporter']>['report']
+    >[0][] = [];
+    const handler = createApiHandler({
+      gitWorkspaceReporter: {
+        report: (input) => {
+          reportArgs.push(input);
+          return fakeReport;
+        },
+        knownWorkspaces: () => new Map(),
+      },
+      sessionStore: {
+        loadAllSessions: () => [
+          {
+            sessionId: 'hist-1',
+            timeline: [
+              {
+                timestamp: Date.now() - 3_600_000,
+                toolName: 'Bash',
+                durationMs: 50,
+                success: true,
+                command: 'git commit -m "historical commit"',
+                // Not a real repo — this test proves the replay wiring runs
+                // and reaches report(), not identity resolution (covered
+                // elsewhere); an unresolvable cwd still yields a record.
+                cwd: '/tmp/not-a-real-repo-xyz',
+              },
+            ],
+          },
+        ],
+        loadTodaySessions: () => [],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+    });
+    const req = { method: 'GET', url: '/api/git-efficiency?window=week' } as IncomingMessage;
+    const { res, status } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    expect(reportArgs).toHaveLength(1);
+    expect(reportArgs[0].historical).toBeDefined();
+    expect(reportArgs[0].historical!.length).toBeGreaterThan(0);
+    const gitRecord = reportArgs[0].historical!.find((r) => r.kind === 'git');
+    expect(gitRecord).toBeDefined();
+    expect(gitRecord!.recordId.startsWith('replay:hist-1:0')).toBe(true);
+  });
 });
 
 describe('api-handler GET /api/context', () => {
