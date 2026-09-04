@@ -48,6 +48,26 @@ const REJECT_INDICATORS = [
   /Updates were rejected/i,
 ];
 
+// Conflict file path extraction: "CONFLICT (content): Merge conflict in <path>"
+const CONFLICT_FILE_RE = /Merge conflict in (.+)/g;
+
+/**
+ * Extract conflicted file paths from a merge/rebase conflict's error output.
+ * Callers that only ever see the classified `GitEvent` (not the raw
+ * `ToolCallRecord.error` text it came from) — e.g. per-workspace report
+ * building — still need this to populate hot-file tracking, so it's exposed
+ * on the event itself instead of staying private to `GitEfficiencyTracker`.
+ */
+function extractConflictFiles(errorOutput: string): string[] {
+  const files: string[] = [];
+  let match: RegExpExecArray | null;
+  CONFLICT_FILE_RE.lastIndex = 0;
+  while ((match = CONFLICT_FILE_RE.exec(errorOutput)) !== null) {
+    files.push(match[1].trim());
+  }
+  return files;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -64,6 +84,14 @@ export interface GitEvent {
   readonly subject?: string | null;
   /** Browsable URL for the commit, when the remote could be mapped. */
   readonly url?: string | null;
+  /**
+   * Conflicted file paths, populated only for `merge_conflict`/
+   * `rebase_conflict` events. `GitEfficiencyTracker` re-derives this itself
+   * from `record.error` and doesn't read this field; it exists for
+   * downstream consumers (e.g. per-workspace report building) that only
+   * ever see the classified event, not the raw error text.
+   */
+  readonly files?: readonly string[];
 }
 
 export type GitEventType =
@@ -128,8 +156,11 @@ export function classifyGitCommand(
   const hasRebaseConflict = REBASE_CONFLICT_RE.test(output);
   const hasRejection = REJECT_INDICATORS.some((re) => re.test(output));
 
-  if (hasConflict && !hasRebaseConflict) return { ...base, type: 'merge_conflict' };
-  if (hasRebaseConflict) return { ...base, type: 'rebase_conflict' };
+  if (hasConflict && !hasRebaseConflict) {
+    return { ...base, type: 'merge_conflict', files: extractConflictFiles(output) };
+  }
+  if (hasRebaseConflict)
+    return { ...base, type: 'rebase_conflict', files: extractConflictFiles(output) };
   if (MERGE_ABORT_RE.test(command)) return { ...base, type: 'merge_abort' };
   if (REBASE_ABORT_RE.test(command)) return { ...base, type: 'rebase_abort' };
   if (CHERRY_PICK_ABORT_RE.test(command)) return { ...base, type: 'cherry_pick_abort' };
