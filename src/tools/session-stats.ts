@@ -56,7 +56,8 @@ import type { TurnTracker } from '../metrics/turn-tracker.js';
 import type { GitActivityRecord } from '../metrics/git-activity-recorder.js';
 import type { GitEfficiencyTracker } from '../metrics/git-efficiency-tracker.js';
 import { resolveScopeParam, resolveWindowParam } from '../metrics/git-window-params.js';
-import type { GitWorkspaceReport, ScopeRef } from '../metrics/git-workspace-report.js';
+import type { ScopeRef } from '../metrics/git-workspace-report.js';
+import type { GitWorkspaceReportWithWindow } from '../metrics/git-workspace-reporter.js';
 import { registerAnalyticsTools } from './analytics-tools.js';
 import { registerExtendedAnalyticsTools } from './extended-analytics-tools.js';
 import { registerGenericMcpTools } from './generic-mcp-tools.js';
@@ -389,7 +390,7 @@ export function handleGetGitWorkspaceReport(
       since: number;
       until: number;
       historical?: readonly GitActivityRecord[];
-    }): GitWorkspaceReport;
+    }): GitWorkspaceReportWithWindow;
   },
   args: { window?: unknown; scope?: unknown } | undefined,
 ): { content: [{ type: 'text'; text: string }] } {
@@ -450,7 +451,7 @@ export interface ToolRegistrationOptions {
       since: number;
       until: number;
       historical?: readonly GitActivityRecord[];
-    }): GitWorkspaceReport;
+    }): GitWorkspaceReportWithWindow;
   };
   genericMcpAdapter?: GenericMcpAdapter;
   nrIngestManager?: {

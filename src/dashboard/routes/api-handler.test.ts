@@ -20,6 +20,7 @@ import { localStartOfDay, localDateKey } from '../../lib/date.js';
 
 import type { ToolCallRecord } from '../../storage/types.js';
 import type { GitWorkspaceReport } from '../../metrics/git-workspace-report.js';
+import type { GitWorkspaceReportWithWindow } from '../../metrics/git-workspace-reporter.js';
 
 jest.mock('../../install/diagnostics.js', () => ({
   runDiagnostics: jest.fn(async () => [
@@ -5777,11 +5778,13 @@ describe('api-handler GET /api/git-efficiency', () => {
   });
 
   it('parses window/scope query params and returns gitWorkspaceReporter.report() as JSON', async () => {
-    const fakeReport: GitWorkspaceReport = {
+    const fakeReport: GitWorkspaceReportWithWindow = {
       scope: { kind: 'repo', id: '/repo/.git' },
       metrics: { totalGitCommands: 3, commitCount: 3 } as GitWorkspaceReport['metrics'],
       rows: [],
       worstBehind: null,
+      since: Date.now() - 7 * 86_400_000,
+      until: Date.now(),
     };
     const reportArgs: Parameters<
       NonNullable<Parameters<typeof createApiHandler>[0]['gitWorkspaceReporter']>['report']
@@ -5810,11 +5813,13 @@ describe('api-handler GET /api/git-efficiency', () => {
   });
 
   it('defaults to window=today and scope=all when no query params are given', async () => {
-    const fakeReport: GitWorkspaceReport = {
+    const fakeReport: GitWorkspaceReportWithWindow = {
       scope: { kind: 'all' },
       metrics: {} as GitWorkspaceReport['metrics'],
       rows: [],
       worstBehind: null,
+      since: Date.now() - 7 * 86_400_000,
+      until: Date.now(),
     };
     const reportArgs: Parameters<
       NonNullable<Parameters<typeof createApiHandler>[0]['gitWorkspaceReporter']>['report']
@@ -5841,11 +5846,13 @@ describe('api-handler GET /api/git-efficiency', () => {
     // no other test drove this route with a real sessionStore, so the fix
     // living in GitWorkspaceReporter.report() was covered, but this route's
     // own construction of the `historical` array it hands to report() was not.
-    const fakeReport: GitWorkspaceReport = {
+    const fakeReport: GitWorkspaceReportWithWindow = {
       scope: { kind: 'all' },
       metrics: {} as GitWorkspaceReport['metrics'],
       rows: [],
       worstBehind: null,
+      since: Date.now() - 7 * 86_400_000,
+      until: Date.now(),
     };
     const reportArgs: Parameters<
       NonNullable<Parameters<typeof createApiHandler>[0]['gitWorkspaceReporter']>['report']

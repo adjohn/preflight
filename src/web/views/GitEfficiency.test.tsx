@@ -105,12 +105,19 @@ const IDENTITY_B: WorktreeIdentity = {
   branch: 'feature/foo',
 };
 
+// Fixed, deterministic bounds — 7 days ending "now" at module-eval time —
+// so date-range assertions elsewhere don't depend on when the test runs.
+const REPORT_UNTIL = Date.now();
+const REPORT_SINCE = REPORT_UNTIL - 6 * 86_400_000;
+
 function makeReport(overrides: Partial<GitWorkspaceReport> = {}): GitWorkspaceReport {
   return {
     scope: { kind: 'all' },
     metrics: BASE_METRICS,
     rows: [{ identity: IDENTITY_A, metrics: BASE_METRICS }],
     worstBehind: null,
+    since: REPORT_SINCE,
+    until: REPORT_UNTIL,
     ...overrides,
   };
 }
@@ -126,13 +133,15 @@ function renderGitEfficiency(report: unknown) {
 }
 
 /** Like renderGitEfficiency, but resolves a different response per `window=`
- *  query param — needed to test the today-vs-yesterday delta and the
- *  opt-in weekly summary, since the real component now fires all three. */
+ *  query param — needed to test the week-over-week delta and the 30-day
+ *  tree independently, since the real component fires three separate
+ *  queries (`week`, `previous_week`, `30`). Callers should supply all three
+ *  keys unless a test specifically wants one left unresolved. */
 function renderGitEfficiencyByWindow(reportsByWindow: Readonly<Record<string, unknown>>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
   globalThis.fetch = (async (input: string | URL) => {
     const url = new URL(String(input), 'http://localhost');
-    const window = url.searchParams.get('window') ?? 'today';
+    const window = url.searchParams.get('window') ?? 'week';
     return jsonResponse(reportsByWindow[window]);
   }) as typeof fetch;
   return render(
@@ -329,7 +338,7 @@ describe('GitEfficiency view — hero KPIs and gated sections', () => {
     );
     await screen.findByText('Git Efficiency');
     expect(screen.queryByText('3 aborted')).toBeNull();
-    // The KPI's sub text now also carries a "vs yesterday" delta alongside
+    // The KPI's sub text now also carries a "vs last week" delta alongside
     // the resolved count, so match the substring rather than the exact node.
     expect(screen.getByText(/2 resolved/)).toBeInTheDocument();
   });
@@ -359,83 +368,155 @@ describe('GitEfficiency view — hero KPIs and gated sections', () => {
   });
 });
 
-describe('GitEfficiency view — no timeframe picker, today-only by default', () => {
-  it('renders no timeframe tab control and always shows the "today" subtitle', async () => {
+describe('GitEfficiency view — section ordering', () => {
+  it('places Best Practices and Suggestions after the data sections, not sandwiched between hero KPIs and Velocity & Workflow', async () => {
+    const { container } = renderGitEfficiency(
+      makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          commitCount: 5,
+          bestPractices: [
+            { id: 'sync', label: 'Synced before editing', status: 'pass', detail: 'ok' },
+          ],
+          suggestions: [
+            { severity: 'info', category: 'sync', message: 'pull more often', evidence: '0 pulls' },
+          ],
+          forcePushes: 1,
+        },
+      }),
+    );
+    await screen.findByText('Git Efficiency');
+    await screen.findByText('Suggestions');
+    const html = container.innerHTML;
+    const heroKpiPos = html.indexOf('>commits<');
+    const velocityPos = html.indexOf('Velocity &amp; Workflow');
+    const destructivePos = html.indexOf('Destructive Operations');
+    const bestPracticesPos = html.indexOf('Best Practices');
+    const suggestionsPos = html.indexOf('Suggestions');
+    expect([
+      heroKpiPos,
+      velocityPos,
+      destructivePos,
+      bestPracticesPos,
+      suggestionsPos,
+    ]).not.toContain(-1);
+    // Data sections (Velocity & Workflow, Destructive Operations) both come
+    // directly after the hero KPIs and before the coaching sections (Best
+    // Practices, Suggestions) — never sandwiched in between.
+    expect(heroKpiPos).toBeLessThan(velocityPos);
+    expect(velocityPos).toBeLessThan(destructivePos);
+    expect(destructivePos).toBeLessThan(bestPracticesPos);
+    expect(bestPracticesPos).toBeLessThan(suggestionsPos);
+  });
+});
+
+describe('GitEfficiency view — Velocity & Workflow and Pull Requests copy', () => {
+  it('explains what Velocity & Workflow is showing, and what commit bursts / worktree ops mean', async () => {
+    renderGitEfficiency(
+      makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          commitCount: 3,
+          velocityMetrics: {
+            avgTimeBetweenCommitsMs: 60_000,
+            commitBurstCount: 2,
+            longestGapMs: 120_000,
+            worktreeCount: 3,
+            buildBeforePush: null,
+            testBeforePush: null,
+          },
+        },
+      }),
+    );
+    expect(await screen.findByText('Velocity & Workflow')).toBeInTheDocument();
+    expect(screen.getByText(/How your commits were paced/)).toBeInTheDocument();
+    expect(screen.getByText(/often splitting one change up after the fact/)).toBeInTheDocument();
+    expect(screen.getByText(/git worktree add\/remove commands run/)).toBeInTheDocument();
+  });
+
+  it('clarifies Pull Requests are gh-CLI/MCP-observed, not live GitHub state, and explains CI checks viewed', async () => {
+    renderGitEfficiency(
+      makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          prMetrics: {
+            created: 2,
+            merged: 0,
+            checksViewed: 1,
+            prsUpdated: 0,
+            prActivity: [],
+            avgTimeToCreateMs: null,
+          },
+        },
+      }),
+    );
+    expect(await screen.findByText('Pull Requests')).toBeInTheDocument();
+    expect(screen.getByText(/not live GitHub state/)).toBeInTheDocument();
+    expect(screen.getByText(/times you ran `gh pr checks`/)).toBeInTheDocument();
+  });
+
+  it('explains why Time to PR is blank instead of leaving an unexplained dash', async () => {
+    renderGitEfficiency(
+      makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          prMetrics: {
+            created: 1,
+            merged: 0,
+            checksViewed: 0,
+            prsUpdated: 0,
+            prActivity: [],
+            avgTimeToCreateMs: null,
+          },
+        },
+      }),
+    );
+    expect(await screen.findByText('Time to PR')).toBeInTheDocument();
+    expect(
+      screen.getByText('no commit found in this window before the PR was created'),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('GitEfficiency view — no timeframe picker, always last 7 days', () => {
+  it('renders no timeframe tab control and shows the exact 7-day date range', async () => {
     renderGitEfficiency(makeReport());
     await screen.findByText('Git Efficiency');
-    expect(screen.getByText("Today's activity across all sessions")).toBeInTheDocument();
+    expect(
+      screen.getByText(/^Last 7 days \(.+\) · compared to the previous 7 days$/),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Yesterday')).toBeNull();
     expect(screen.queryByRole('button', { name: 'This week' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'View this week' })).toBeNull();
   });
 
-  it('shows a "+N vs yesterday" delta on the commits KPI once yesterday loads', async () => {
+  it('shows a "+N vs last week" delta on the commits KPI once the comparison window loads', async () => {
     renderGitEfficiencyByWindow({
-      today: makeReport({ metrics: { ...BASE_METRICS, commitCount: 7 } }),
-      yesterday: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
+      week: makeReport({ metrics: { ...BASE_METRICS, commitCount: 7 } }),
+      previous_week: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
+      '30': makeReport(),
     });
     await screen.findByText('Git Efficiency');
-    expect(await screen.findByText('+3 vs yesterday')).toBeInTheDocument();
+    expect(await screen.findByText('+3 vs last week')).toBeInTheDocument();
   });
 
-  it('shows "same as yesterday" when today and yesterday match', async () => {
+  it('shows "same as last week" when this week and last week match', async () => {
     renderGitEfficiencyByWindow({
-      today: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
-      yesterday: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
+      week: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
+      previous_week: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
+      '30': makeReport(),
     });
     await screen.findByText('Git Efficiency');
     // Commits AND PRs-created both compare equal here (both KPIs default to
     // matching values in BASE_METRICS), so more than one KPI legitimately
     // renders this text — assert it appears at least once, not exactly once.
-    const matches = await screen.findAllByText('same as yesterday');
+    const matches = await screen.findAllByText('same as last week');
     expect(matches.length).toBeGreaterThan(0);
   });
 
-  it('does not fetch or render a week summary until "View this week" is clicked', async () => {
-    let weekFetched = false;
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
-    globalThis.fetch = (async (input: string | URL) => {
-      const url = new URL(String(input), 'http://localhost');
-      if (url.searchParams.get('window') === 'week') weekFetched = true;
-      return jsonResponse(makeReport({ metrics: { ...BASE_METRICS, commitCount: 9 } }));
-    }) as typeof fetch;
-    render(
-      <QueryClientProvider client={qc}>
-        <GitEfficiency />
-      </QueryClientProvider>,
-    );
-    await screen.findByText('Git Efficiency');
-    expect(weekFetched).toBe(false);
-
-    fireEvent.click(screen.getByRole('button', { name: 'View this week' }));
-    await screen.findByText(/This week:/);
-    expect(weekFetched).toBe(true);
-  });
-
-  it('shows the week rollup summary line and can hide it again', async () => {
+  it('never lets the comparison-week fetch affect coaching/best-practices, which always reflect this week', async () => {
     renderGitEfficiencyByWindow({
-      today: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
-      yesterday: makeReport({ metrics: { ...BASE_METRICS, commitCount: 4 } }),
       week: makeReport({
-        metrics: {
-          ...BASE_METRICS,
-          commitCount: 20,
-          mergeConflicts: 1,
-          prMetrics: { ...BASE_METRICS.prMetrics, created: 3 },
-        },
-      }),
-    });
-    await screen.findByText('Git Efficiency');
-    fireEvent.click(screen.getByRole('button', { name: 'View this week' }));
-    expect(await screen.findByText(/This week:/)).toBeInTheDocument();
-    expect(screen.getByText('20')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Hide this week' }));
-    expect(screen.queryByText(/This week:/)).toBeNull();
-  });
-
-  it('never lets the week summary affect coaching/best-practices, which always reflect today', async () => {
-    renderGitEfficiencyByWindow({
-      today: makeReport({
         metrics: {
           ...BASE_METRICS,
           bestPractices: [
@@ -443,22 +524,73 @@ describe('GitEfficiency view — no timeframe picker, today-only by default', ()
           ],
         },
       }),
-      yesterday: makeReport(),
-      week: makeReport({
+      previous_week: makeReport({
         metrics: {
           ...BASE_METRICS,
           bestPractices: [
-            { id: 'sync', label: 'Synced before editing', status: 'fail', detail: 'not today' },
+            { id: 'sync', label: 'Synced before editing', status: 'fail', detail: 'not this week' },
           ],
         },
       }),
+      '30': makeReport(),
     });
     await screen.findByText('Git Efficiency');
-    fireEvent.click(screen.getByRole('button', { name: 'View this week' }));
-    await screen.findByText(/This week:/);
-    // Coaching is still today's — the passing chip, not the week's failing one.
-    expect(screen.getByText(/Synced before editing/)).toBeInTheDocument();
-    expect(screen.queryByText('not today')).toBeNull();
+    // Coaching is always this week's — the passing chip, never the
+    // comparison window's failing one, and there is no control that could
+    // switch it.
+    expect(await screen.findByText(/Synced before editing/)).toBeInTheDocument();
+    expect(screen.queryByText('not this week')).toBeNull();
+  });
+
+  it('explains what "Conflicts" and "Behind" measure, right under the hero KPIs', async () => {
+    renderGitEfficiency(makeReport());
+    await screen.findByText('Git Efficiency');
+    expect(screen.getByText(/merge\/rebase\/pull attempts/)).toBeInTheDocument();
+    expect(screen.getByText(/commits your branch is/)).toBeInTheDocument();
+  });
+});
+
+describe('GitEfficiency view — repo/worktree tree always spans the last 30 days', () => {
+  it('shows the exact 30-day date range under "Repos & Worktrees", independent of the 7-day hero window', async () => {
+    renderGitEfficiencyByWindow({
+      week: makeReport({ since: Date.now() - 6 * 86_400_000, until: Date.now() }),
+      previous_week: makeReport(),
+      '30': makeReport({ since: Date.now() - 29 * 86_400_000, until: Date.now() }),
+    });
+    await screen.findByText('Git Efficiency');
+    expect(await screen.findByText(/^Last 30 days \(.+\)$/)).toBeInTheDocument();
+  });
+
+  it('always requests scope=all for the tree window, even when a repo/worktree is selected for the hero KPIs', async () => {
+    const requestedScopes: string[] = [];
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } });
+    globalThis.fetch = (async (input: string | URL) => {
+      const url = new URL(String(input), 'http://localhost');
+      if (url.searchParams.get('window') === '30') {
+        requestedScopes.push(url.searchParams.get('scope') ?? '');
+      }
+      return jsonResponse(makeReport({ rows: [{ identity: IDENTITY_A, metrics: BASE_METRICS }] }));
+    }) as typeof fetch;
+    render(
+      <QueryClientProvider client={qc}>
+        <GitEfficiency />
+      </QueryClientProvider>,
+    );
+    await screen.findByText('Repos & Worktrees');
+    fireEvent.click(screen.getAllByRole('button', { name: 'org/repo-a' })[0]!);
+    await screen.findByRole('button', { name: 'All repos' });
+    expect(requestedScopes.length).toBeGreaterThan(0);
+    expect(requestedScopes.every((s) => s === 'all')).toBe(true);
+  });
+
+  it('shows a tree row set from the 30-day window even when the 7-day hero window has no rows', async () => {
+    renderGitEfficiencyByWindow({
+      week: makeReport({ rows: [] }),
+      previous_week: makeReport({ rows: [] }),
+      '30': makeReport({ rows: [{ identity: IDENTITY_A, metrics: BASE_METRICS }] }),
+    });
+    await screen.findByText('Git Efficiency');
+    expect(await screen.findByText('primary')).toBeInTheDocument();
   });
 });
 
