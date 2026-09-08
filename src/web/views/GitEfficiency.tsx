@@ -503,11 +503,6 @@ export function GitEfficiency(): JSX.Element {
               </>
             )}
           </div>
-
-          <div className="mt-1 text-[11px] text-ink-muted">
-            Last 7 days ({formatDateRange(report.since, report.until)}) · compared to the previous 7
-            days
-          </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="text-center">
@@ -569,9 +564,16 @@ export function GitEfficiency(): JSX.Element {
         />
       ) : (
         <>
-          {/* Hero KPIs — what shipped, what's risky, current state */}
+          {/* Hero KPIs — what shipped, what's risky, current state. The
+              window label lives here, right against the numbers it actually
+              describes — not in the page header above, where it read as if
+              it also governed the (30-day) Repos & Worktrees tree. */}
           <AnimatedCard index={1} className="mb-3">
             <Card padding="lg" tone="elevated" glow="green">
+              <div className="mb-3 text-[11px] text-ink-muted">
+                Last 7 days ({formatDateRange(report.since, report.until)}) · compared to the
+                previous 7 days
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <Kpi
                   label="commits"

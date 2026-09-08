@@ -490,6 +490,22 @@ describe('GitEfficiency view — no timeframe picker, always last 7 days', () =>
     expect(screen.queryByRole('button', { name: 'View this week' })).toBeNull();
   });
 
+  it('places the 7-day window label with the hero KPIs, not the page header above the (30-day) tree', async () => {
+    const { container } = renderGitEfficiency(makeReport());
+    await screen.findByText('Git Efficiency');
+    await screen.findByText('commits');
+    const html = container.innerHTML;
+    const treeSectionPos = html.indexOf('Repos &amp; Worktrees');
+    const sevenDayLabelPos = html.indexOf('compared to the previous 7 days');
+    const heroCommitsPos = html.indexOf('>commits<');
+    expect([treeSectionPos, sevenDayLabelPos, heroCommitsPos]).not.toContain(-1);
+    // The 7-day label must come after the tree section (so it can't read as
+    // if it also governs the tree's own, differently-windowed 30-day data)
+    // and right before the hero KPIs it actually describes.
+    expect(treeSectionPos).toBeLessThan(sevenDayLabelPos);
+    expect(sevenDayLabelPos).toBeLessThan(heroCommitsPos);
+  });
+
   it('shows a "+N vs last week" delta on the commits KPI once the comparison window loads', async () => {
     renderGitEfficiencyByWindow({
       week: makeReport({ metrics: { ...BASE_METRICS, commitCount: 7 } }),
