@@ -114,6 +114,13 @@ export interface WorkspaceMetrics extends Omit<GitEfficiencyMetrics, 'repoContex
    *  had no records at all. Drives "most recently active" sort ordering; a
    *  max, so it merges safely at rollup the same way `commitTimestamps` does. */
   readonly lastActivityMs: number | null;
+  /** Distinct Claude Code session ids that produced any record in this
+   *  workspace within the requested window — 'unknown' for a record whose
+   *  source ToolCallRecord had no sessionId. Lets the UI deep-link "view
+   *  the exact sessions behind this repo/worktree" precisely, rather than
+   *  approximating by repo name. Merges safely at rollup via a Set union
+   *  (a session is a session), unlike the sequential counters above. */
+  readonly sessionIds: readonly string[];
 }
 
 export interface ScopeRef {
@@ -290,7 +297,7 @@ function evaluateBestPractices(inputs: CoachingInputs): BestPractice[] {
       label: 'Use --force-with-lease',
       status: 'warn',
       detail:
-        'Mixed usage this session — some force pushes used --force-with-lease, but at least one bare --force (unsafe) push also occurred. Always use --force-with-lease; it refuses to push if someone else has pushed to the branch since your last fetch.',
+        'Mixed usage in this window — some force pushes used --force-with-lease, but at least one bare --force (unsafe) push also occurred. Always use --force-with-lease; it refuses to push if someone else has pushed to the branch since your last fetch.',
     });
   } else if (inputs.hasUsedBareForcePush) {
     practices.push({
@@ -406,8 +413,8 @@ function generateSuggestions(inputs: CoachingInputs): GitSuggestion[] {
       severity: 'critical',
       category: 'merge_conflicts',
       message:
-        "Frequent merge conflicts this session. Root causes for AI assistants: (1) not pulling at session start, (2) working on stale branches too long, (3) editing files with active upstream changes. Fix: sync every 3–5 commits, use worktrees for parallel tasks, and check `git log origin/main..HEAD` to see how far you've drifted.",
-      evidence: `${inputs.mergeConflicts + inputs.rebaseConflicts} conflicts this session`,
+        "Frequent merge conflicts in this window. Root causes for AI assistants: (1) not pulling at session start, (2) working on stale branches too long, (3) editing files with active upstream changes. Fix: sync every 3–5 commits, use worktrees for parallel tasks, and check `git log origin/main..HEAD` to see how far you've drifted.",
+      evidence: `${inputs.mergeConflicts + inputs.rebaseConflicts} conflicts in this window`,
     });
   } else if (inputs.mergeConflicts + inputs.rebaseConflicts >= 1) {
     suggestions.push({
@@ -415,7 +422,7 @@ function generateSuggestions(inputs: CoachingInputs): GitSuggestion[] {
       category: 'merge_conflicts',
       message:
         'Merge conflict encountered. For future prevention: `git fetch && git rebase origin/main` before starting work and after every ~5 commits. If this is a busy repo, consider shorter-lived branches and smaller PRs.',
-      evidence: `${inputs.mergeConflicts + inputs.rebaseConflicts} conflict(s) this session`,
+      evidence: `${inputs.mergeConflicts + inputs.rebaseConflicts} conflict(s) in this window`,
     });
   }
 
@@ -446,16 +453,16 @@ function generateSuggestions(inputs: CoachingInputs): GitSuggestion[] {
         ? `Bare --force push used on the shared default branch (${inputs.defaultBranchName ?? 'default branch'}) — this can overwrite history other collaborators are building on. Always use --force-with-lease, and avoid force-pushing the default branch entirely if possible.`
         : 'Bare --force push used. Always use --force-with-lease instead — it refuses to push if someone else has pushed to the branch since your last fetch. If you need to rewrite history, coordinate with collaborators first and ensure your local refs are up to date with `git fetch` before force pushing.',
       evidence: inputs.hasForcePushedToDefaultBranch
-        ? `${inputs.bareForcePushCount} bare --force push(es) this session, including at least one on the default branch`
-        : `${inputs.bareForcePushCount} bare --force push(es) this session`,
+        ? `${inputs.bareForcePushCount} bare --force push(es) in this window, including at least one on the default branch`
+        : `${inputs.bareForcePushCount} bare --force push(es) in this window`,
     });
   } else if (risk.usesForceWithLease && inputs.forcePushes >= 2) {
     suggestions.push({
       severity: 'info',
       category: 'force_push',
       message:
-        'Multiple force pushes this session, all using --force-with-lease — the safe pattern. Repeated history rewrites can still be worth a second look if they indicate a workflow issue upstream.',
-      evidence: `${inputs.forcePushes} lease-protected force pushes this session`,
+        'Multiple force pushes in this window, all using --force-with-lease — the safe pattern. Repeated history rewrites can still be worth a second look if they indicate a workflow issue upstream.',
+      evidence: `${inputs.forcePushes} lease-protected force pushes in this window`,
     });
   }
 
@@ -494,7 +501,7 @@ function generateSuggestions(inputs: CoachingInputs): GitSuggestion[] {
       severity: 'info',
       category: 'sync_frequency',
       message:
-        'No pulls detected this session despite significant git activity. On shared branches, pull at least every 15 minutes or every 5 commits — whichever comes first.',
+        'No pulls detected in this window despite significant git activity. On shared branches, pull at least every 15 minutes or every 5 commits — whichever comes first.',
       evidence: `${inputs.totalGitCommands} git commands, 0 pulls`,
     });
   }
@@ -542,8 +549,8 @@ function generateSuggestions(inputs: CoachingInputs): GitSuggestion[] {
       severity: 'info',
       category: 'session_length',
       message:
-        'Long session with many commits. The single biggest predictor of merge pain is how long a branch lives. Consider breaking this into smaller PRs that merge incrementally — a 200-line PR that ships in 30 minutes almost never conflicts.',
-      evidence: `Session running ${Math.round(risk.sessionDurationMs / 3600_000)}h with ${inputs.commitCount} commits`,
+        'Long-running activity with many commits. The single biggest predictor of merge pain is how long a branch lives. Consider breaking this into smaller PRs that merge incrementally — a 200-line PR that ships in 30 minutes almost never conflicts.',
+      evidence: `Active ${Math.round(risk.sessionDurationMs / 3600_000)}h with ${inputs.commitCount} commits`,
     });
   }
 
@@ -567,7 +574,7 @@ function generateSuggestions(inputs: CoachingInputs): GitSuggestion[] {
       category: 'session_hook',
       message:
         'Tip: Add a SessionStart hook to ~/.claude/settings.json that auto-runs `git fetch --all --prune` at the start of every session. Claude Code does not auto-fetch — it operates on whatever git state is on disk. The hook ensures you always start fresh without having to remember.',
-      evidence: 'No sync before first edit this session',
+      evidence: 'No sync before first edit in this window',
     });
   }
 
@@ -652,6 +659,18 @@ function computeVelocityCore(
         consecutive = 1;
       }
     }
+  }
+
+  // The gaps above only ever measure BETWEEN two existing commits — a quiet
+  // stretch that started with your most recent commit and is still ongoing
+  // right now (e.g. a weekend with no commits at all) has no "next" commit
+  // to pair it with, so it silently never became a candidate. Folding in
+  // "now minus the last commit" as one more candidate is what makes a
+  // multi-day break since your last commit actually show up here.
+  if (sorted.length >= 1) {
+    const sinceLastCommitMs = Date.now() - sorted[sorted.length - 1];
+    longestGapMs =
+      longestGapMs === null ? sinceLastCommitMs : Math.max(longestGapMs, sinceLastCommitMs);
   }
 
   return {
@@ -812,12 +831,14 @@ export function computeWorkspaceMetrics(
   let quickConflictResolutions = 0;
   const prEvents: PrEvent[] = [];
   let lastActivityMs: number | null = null;
+  const sessionIds = new Set<string>();
 
   for (const record of records) {
     if (sessionStartTimestamp === null) sessionStartTimestamp = record.timestamp;
     if (lastActivityMs === null || record.timestamp > lastActivityMs) {
       lastActivityMs = record.timestamp;
     }
+    sessionIds.add(record.sessionId);
 
     if (record.kind === 'edit') {
       editedFiles.add(record.filePath);
@@ -1123,6 +1144,7 @@ export function computeWorkspaceMetrics(
     mergeEventCount,
     rebaseEventCount,
     lastActivityMs,
+    sessionIds: [...sessionIds],
   };
 }
 
@@ -1307,6 +1329,7 @@ export function rollupWorkspaceMetrics(
       if (ts === null) return max;
       return max === null || ts > max ? ts : max;
     }, null),
+    sessionIds: [...new Set(nodes.flatMap((n) => n.metrics.sessionIds))],
   };
 }
 

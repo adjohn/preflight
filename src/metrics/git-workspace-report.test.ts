@@ -51,6 +51,7 @@ function gitActivity(
     timestamp: record.timestamp,
     recordId: `r-${recordCounter}`,
     workspaceKey,
+    sessionId: record.sessionId ?? 'unknown',
   };
 }
 
@@ -58,9 +59,17 @@ function editActivity(
   filePath: string,
   workspaceKey: string,
   timestamp: number,
+  sessionId = 'sess-1',
 ): GitActivityRecord {
   recordCounter++;
-  return { kind: 'edit', filePath, timestamp, recordId: `r-${recordCounter}`, workspaceKey };
+  return {
+    kind: 'edit',
+    filePath,
+    timestamp,
+    recordId: `r-${recordCounter}`,
+    workspaceKey,
+    sessionId,
+  };
 }
 
 function makeIdentity(overrides: Partial<WorktreeIdentity> = {}): WorktreeIdentity {
@@ -446,6 +455,132 @@ describe('lastActivityMs', () => {
     const metricsA = computeWorkspaceMetrics([], identityA, null);
     const rolled = rollupWorkspaceMetrics([{ identity: identityA, metrics: metricsA }]);
     expect(rolled.lastActivityMs).toBeNull();
+  });
+});
+
+describe('velocityMetrics.longestGapMs — includes the open-ended gap since the last commit', () => {
+  const FIXED_NOW = new Date(2026, 8, 8, 12, 0, 0).getTime(); // 2026-09-08 noon local
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(FIXED_NOW);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('counts the gap from the last commit to now, not just gaps between existing commits', () => {
+    const identity = makeIdentity();
+    const oneDayMs = 86_400_000;
+    // Two commits a mere hour apart, but the last one was 4 days before
+    // FIXED_NOW — the real "longest gap" is the 4-day silence since, not the
+    // 1-hour gap between the two commits, which is all the old math saw.
+    const metrics = computeWorkspaceMetrics(
+      [
+        gitActivity('git commit -m "1"', 'ws-a', {
+          timestamp: FIXED_NOW - 4 * oneDayMs - 3_600_000,
+        }),
+        gitActivity('git commit -m "2"', 'ws-a', { timestamp: FIXED_NOW - 4 * oneDayMs }),
+      ],
+      identity,
+      null,
+    );
+    expect(metrics.velocityMetrics.longestGapMs).toBe(4 * oneDayMs);
+  });
+
+  it('still reports the gap since the only commit when there is just one', () => {
+    const identity = makeIdentity();
+    const twoDaysMs = 2 * 86_400_000;
+    const metrics = computeWorkspaceMetrics(
+      [gitActivity('git commit -m "1"', 'ws-a', { timestamp: FIXED_NOW - twoDaysMs })],
+      identity,
+      null,
+    );
+    expect(metrics.velocityMetrics.longestGapMs).toBe(twoDaysMs);
+  });
+
+  it('stays null with zero commits — there is no "last commit" to measure from', () => {
+    const identity = makeIdentity();
+    const metrics = computeWorkspaceMetrics([], identity, null);
+    expect(metrics.velocityMetrics.longestGapMs).toBeNull();
+  });
+
+  it('prefers a between-commits gap that is larger than the since-last-commit gap', () => {
+    const identity = makeIdentity();
+    const oneDayMs = 86_400_000;
+    // The gap between commit 1 and commit 2 (3 days) is bigger than the gap
+    // from commit 2 to FIXED_NOW (1 hour) — the between-commits max must
+    // still win here, not get silently replaced by the smaller tail gap.
+    const metrics = computeWorkspaceMetrics(
+      [
+        gitActivity('git commit -m "1"', 'ws-a', {
+          timestamp: FIXED_NOW - 3 * oneDayMs - 3_600_000,
+        }),
+        gitActivity('git commit -m "2"', 'ws-a', { timestamp: FIXED_NOW - 3_600_000 }),
+      ],
+      identity,
+      null,
+    );
+    expect(metrics.velocityMetrics.longestGapMs).toBe(3 * oneDayMs);
+  });
+});
+
+describe('sessionIds', () => {
+  it('is empty when a workspace has no records', () => {
+    const identity = makeIdentity();
+    const metrics = computeWorkspaceMetrics([], identity, null);
+    expect(metrics.sessionIds).toEqual([]);
+  });
+
+  it('collects distinct session ids across every record kind, deduped', () => {
+    const identity = makeIdentity();
+    const metrics = computeWorkspaceMetrics(
+      [
+        gitActivity('git commit -m "1"', 'ws-a', { sessionId: 'sess-x', timestamp: 100 }),
+        gitActivity('git push', 'ws-a', { sessionId: 'sess-x', timestamp: 200 }),
+        editActivity('a.ts', 'ws-a', 300, 'sess-y'),
+      ],
+      identity,
+      null,
+    );
+    expect([...metrics.sessionIds].sort()).toEqual(['sess-x', 'sess-y']);
+  });
+
+  it("falls back to 'unknown' for a record whose source ToolCallRecord had no sessionId", () => {
+    const identity = makeIdentity();
+    const metrics = computeWorkspaceMetrics(
+      [gitActivity('git commit -m "1"', 'ws-a', { sessionId: undefined, timestamp: 100 })],
+      identity,
+      null,
+    );
+    expect(metrics.sessionIds).toEqual(['unknown']);
+  });
+
+  it('rolls up as a deduped union across workspaces, not a concatenation with duplicates', () => {
+    const identityA = makeIdentity({ worktreeKey: '/repo/a', worktreeLabel: 'a' });
+    const identityB = makeIdentity({ worktreeKey: '/repo/b', worktreeLabel: 'b' });
+
+    // sess-shared touched both worktrees (e.g. a session that cd'd between
+    // them) — the rollup must count it once, not twice.
+    const metricsA = computeWorkspaceMetrics(
+      [
+        gitActivity('git commit -m "1"', 'ws-a', { sessionId: 'sess-shared', timestamp: 100 }),
+        gitActivity('git commit -m "2"', 'ws-a', { sessionId: 'sess-a-only', timestamp: 200 }),
+      ],
+      identityA,
+      null,
+    );
+    const metricsB = computeWorkspaceMetrics(
+      [gitActivity('git commit -m "1"', 'ws-b', { sessionId: 'sess-shared', timestamp: 300 })],
+      identityB,
+      null,
+    );
+
+    const rolled = rollupWorkspaceMetrics([
+      { identity: identityA, metrics: metricsA },
+      { identity: identityB, metrics: metricsB },
+    ]);
+    expect([...rolled.sessionIds].sort()).toEqual(['sess-a-only', 'sess-shared']);
   });
 });
 

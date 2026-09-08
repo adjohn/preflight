@@ -85,6 +85,7 @@ const BASE_METRICS: WorkspaceMetrics = {
   mergeEventCount: 0,
   rebaseEventCount: 0,
   lastActivityMs: null,
+  sessionIds: [],
 };
 
 const IDENTITY_A: WorktreeIdentity = {
@@ -814,6 +815,57 @@ describe('GitEfficiency view — scope breadcrumb', () => {
     fireEvent.click(screen.getAllByRole('button', { name: unresolvedIdentity.repoKey })[0]!);
     await screen.findByRole('button', { name: 'All repos' });
     expect(screen.queryByText(/View sessions/)).toBeNull();
+  });
+
+  it('shows a per-worktree session count in the tree, clickable straight to /sessions?sessionIds=...', async () => {
+    const metricsWithSessions = { ...BASE_METRICS, sessionIds: ['sess-1', 'sess-2'] };
+    renderGitEfficiency(
+      makeReport({
+        rows: [{ identity: IDENTITY_A, metrics: metricsWithSessions }],
+      }),
+    );
+    await screen.findByText('Repos & Worktrees');
+    // Two links matching '2': the repo group header's own union count (also
+    // 2, since it has only this one worktree) and the worktree row's count.
+    const links = await screen.findAllByRole('button', { name: '2' });
+    expect(links.length).toBeGreaterThan(0);
+    fireEvent.click(links[links.length - 1]!);
+    try {
+      expect(window.location.pathname).toBe('/sessions');
+      expect(window.location.search).toBe('?sessionIds=sess-1,sess-2');
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  it("unions session ids across a repo's worktrees for the repo header count, deduped", async () => {
+    const metricsA = { ...BASE_METRICS, sessionIds: ['sess-shared', 'sess-a-only'] };
+    const metricsB = { ...BASE_METRICS, sessionIds: ['sess-shared'] };
+    renderGitEfficiency(
+      makeReport({
+        rows: [
+          { identity: IDENTITY_A, metrics: metricsA },
+          { identity: IDENTITY_B, metrics: metricsB },
+        ],
+      }),
+    );
+    await screen.findByText('Repos & Worktrees');
+    // Repo header shows the deduped union (2) — as does worktree A's own row
+    // (its own 2 sessionIds happen to equal the union here), so there are
+    // two '2' buttons; the naive (undeduped) sum of 3 must never appear.
+    expect(await screen.findAllByRole('button', { name: '2' })).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: '3' })).toBeNull();
+  });
+
+  it('shows a dash instead of a session-count link when a row has no sessions', async () => {
+    renderGitEfficiency(
+      makeReport({
+        rows: [{ identity: IDENTITY_A, metrics: BASE_METRICS }],
+      }),
+    );
+    await screen.findByText('Repos & Worktrees');
+    expect(screen.queryByRole('button', { name: '0' })).toBeNull();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 });
 
