@@ -1163,3 +1163,55 @@ describe('Sessions view — Tools panel Context tab', () => {
     expect(screen.queryByText(/no context data/i)).toBeNull();
   });
 });
+
+describe('Sessions view — ?repo= deep-link filter', () => {
+  const MULTI_REPO_LIST = [
+    {
+      sessionId: 's1',
+      startTime: '2026-05-28T09:00:00Z',
+      toolCallCount: 42,
+      estimatedCostUsd: 1.23,
+      repoName: 'org/repo-a',
+    },
+    {
+      sessionId: 's2',
+      startTime: '2026-05-27T15:30:00Z',
+      toolCallCount: 18,
+      estimatedCostUsd: 0.45,
+      repoName: 'org/repo-b',
+    },
+  ];
+
+  it('narrows the list to sessions from the repo named in ?repo= on mount', async () => {
+    const original = window.location;
+    // @ts-expect-error -- test-only reassignment of a read-only global
+    delete window.location;
+    window.location = {
+      ...original,
+      search: '?repo=org%2Frepo-a',
+    } as unknown as string & Location;
+    renderSessions(MULTI_REPO_LIST);
+    await waitFor(() => expect(screen.getByText(/s1/)).toBeInTheDocument());
+    expect(screen.queryByText(/s2/)).toBeNull();
+    expect(screen.getByText(/Repo: org\/repo-a/)).toBeInTheDocument();
+    window.location = original as unknown as string & Location;
+  });
+
+  it("clears the repo filter and shows every session again when the chip's × is clicked", async () => {
+    const original = window.location;
+    // @ts-expect-error -- test-only reassignment of a read-only global
+    delete window.location;
+    window.location = {
+      ...original,
+      search: '?repo=org%2Frepo-a',
+    } as unknown as string & Location;
+    renderSessions(MULTI_REPO_LIST);
+    await waitFor(() => expect(screen.getByText(/s1/)).toBeInTheDocument());
+    expect(screen.queryByText(/s2/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear repo filter' }));
+    await waitFor(() => expect(screen.getByText(/s2/)).toBeInTheDocument());
+    expect(screen.queryByText(/Repo: org\/repo-a/)).toBeNull();
+    window.location = original as unknown as string & Location;
+  });
+});

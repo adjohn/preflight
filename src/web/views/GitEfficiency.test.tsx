@@ -434,6 +434,31 @@ describe('GitEfficiency view — Velocity & Workflow and Pull Requests copy', ()
     expect(screen.getByText(/git worktree add\/remove commands run/)).toBeInTheDocument();
   });
 
+  it('scales duration KPIs to hours/days instead of showing huge minute counts', async () => {
+    renderGitEfficiency(
+      makeReport({
+        metrics: {
+          ...BASE_METRICS,
+          commitCount: 3,
+          velocityMetrics: {
+            // 262.1 minutes and 1441.0 minutes — the exact values from a
+            // real report that read as "262.1m"/"1441.0m" before this fix.
+            avgTimeBetweenCommitsMs: 262.1 * 60_000,
+            commitBurstCount: 0,
+            longestGapMs: 1441 * 60_000,
+            worktreeCount: 0,
+            buildBeforePush: null,
+            testBeforePush: null,
+          },
+        },
+      }),
+    );
+    await screen.findByText('Velocity & Workflow');
+    expect(screen.getByText('4.4h')).toBeInTheDocument();
+    expect(screen.getByText('1.0d')).toBeInTheDocument();
+    expect(screen.queryByText(/^\d+\.\d+m$/)).toBeNull();
+  });
+
   it('clarifies Pull Requests are gh-CLI/MCP-observed, not live GitHub state, and explains CI checks viewed', async () => {
     renderGitEfficiency(
       makeReport({
@@ -749,6 +774,46 @@ describe('GitEfficiency view — scope breadcrumb', () => {
     expect(featureButton.textContent).toContain('●');
     const primaryButton = screen.getByRole('button', { name: 'primary' });
     expect(primaryButton.textContent).not.toContain('●');
+  });
+
+  it('shows a "View sessions" link once a repo is selected, and navigates to /sessions?repo=<name> on click', async () => {
+    renderGitEfficiency(
+      makeReport({
+        rows: [{ identity: IDENTITY_A, metrics: BASE_METRICS }],
+      }),
+    );
+    await screen.findByText('Repos & Worktrees');
+    expect(screen.queryByText(/View sessions/)).toBeNull();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'org/repo-a' })[0]!);
+    const link = await screen.findByText(/View sessions/);
+    fireEvent.click(link);
+    try {
+      expect(window.location.pathname).toBe('/sessions');
+      expect(window.location.search).toBe(`?repo=${encodeURIComponent(IDENTITY_A.repoName!)}`);
+    } finally {
+      // Reset so this navigation doesn't leak into later tests in this file.
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  it('does not show a "View sessions" link for a repo/worktree with no resolved repoName', async () => {
+    const unresolvedIdentity: WorktreeIdentity = {
+      ...IDENTITY_A,
+      repoKey: 'unresolved-repo:mystery',
+      worktreeKey: 'unresolved-repo:mystery',
+      repoName: null,
+      worktreeLabel: 'worktree unknown',
+    };
+    renderGitEfficiency(
+      makeReport({
+        rows: [{ identity: unresolvedIdentity, metrics: BASE_METRICS }],
+      }),
+    );
+    await screen.findByText('Repos & Worktrees');
+    fireEvent.click(screen.getAllByRole('button', { name: unresolvedIdentity.repoKey })[0]!);
+    await screen.findByRole('button', { name: 'All repos' });
+    expect(screen.queryByText(/View sessions/)).toBeNull();
   });
 });
 

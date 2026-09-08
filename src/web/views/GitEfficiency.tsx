@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import { Fragment, useState } from 'react';
+import { useLocation } from 'wouter';
 
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -64,7 +65,9 @@ function formatMs(ms: number | null): string {
   if (ms === null) return '—';
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60_000).toFixed(1)}m`;
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;
+  if (ms < 86_400_000) return `${(ms / 3_600_000).toFixed(1)}h`;
+  return `${(ms / 86_400_000).toFixed(1)}d`;
 }
 
 function formatEventType(type: string): string {
@@ -375,6 +378,7 @@ function WorkspaceTree({
 }
 
 export function GitEfficiency(): JSX.Element {
+  const [, navigate] = useLocation();
   const [scope, setScope] = useState<ScopeRefInput>('all');
   // The identity of whichever row was last clicked into — carried alongside
   // `scope` purely so the breadcrumb always has a display name/label, even if
@@ -458,7 +462,12 @@ export function GitEfficiency(): JSX.Element {
   return (
     <section>
       <GeoBanner theme="git" />
-      <header className="flex items-baseline justify-between mb-4">
+      {/* items-end (not items-baseline): the score rings on the right are
+          much taller than the title/breadcrumb on the left, and baseline
+          alignment left a large dead gap below the shorter left column
+          before the Repos & Worktrees card — bottom-aligning both columns
+          keeps "All repos" flush with the card below it. */}
+      <header className="flex items-end justify-between mb-3">
         <div>
           <h1 className="text-xl font-semibold gradient-text">Git Efficiency</h1>
 
@@ -501,6 +510,20 @@ export function GitEfficiency(): JSX.Element {
                   </span>
                 )}
               </>
+            )}
+            {/* Repo-only, never worktree-specific — which worktree a session
+                ran in only lives in its timeline, not on the list summary,
+                so there's no reliable way to filter finer than the repo. */}
+            {scope !== 'all' && scopeIdentity?.repoName && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(`/sessions?repo=${encodeURIComponent(scopeIdentity.repoName!)}`)
+                }
+                className="text-accent-blue hover:underline ml-1"
+              >
+                View sessions &rarr;
+              </button>
             )}
           </div>
         </div>
