@@ -861,6 +861,7 @@ export interface WorkspaceMetrics {
   readonly mergeEventCount: number;
   readonly rebaseEventCount: number;
   readonly lastActivityMs: number | null;
+  readonly sessionIds: readonly string[];
 }
 
 // Mirrors ScopeRef in src/metrics/git-workspace-report.ts (not importable).

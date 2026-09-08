@@ -185,6 +185,15 @@ interface WorkspaceGroup {
   readonly repoName: string | null;
   readonly rows: readonly WorkspaceRow[];
   readonly lastActivityMs: number | null;
+  /** Union (deduped) of every row's own sessionIds — a session that touched
+   *  more than one worktree in this repo is still counted once here. */
+  readonly sessionIds: readonly string[];
+}
+
+/** `/sessions?sessionIds=...` — precise, not an approximation by repo name:
+ *  exactly the sessions that produced activity in this row/group. */
+function sessionsPath(ids: readonly string[]): string {
+  return `/sessions?sessionIds=${ids.map(encodeURIComponent).join(',')}`;
 }
 
 /** Nulls sort last — an unknown last-activity time is worse information than
@@ -222,6 +231,7 @@ function groupWorkspaceRows(rows: readonly WorkspaceRow[]): readonly WorkspaceGr
       repoName: sortedRows[0]?.identity.repoName ?? null,
       rows: sortedRows,
       lastActivityMs,
+      sessionIds: [...new Set(sortedRows.flatMap((r) => r.metrics.sessionIds))],
     });
   }
 
@@ -246,6 +256,7 @@ function WorkspaceTree({
   onSelectRepo,
   onSelectWorktree,
 }: WorkspaceTreeProps): JSX.Element {
+  const [, navigate] = useLocation();
   const [collapsedRepos, setCollapsedRepos] = useState<ReadonlySet<string>>(new Set());
 
   if (rows.length === 0) {
@@ -276,6 +287,7 @@ function WorkspaceTree({
             <th className="text-left p-2">Commits</th>
             <th className="text-left p-2">Conflicts</th>
             <th className="text-left p-2">Best practices</th>
+            <th className="text-left p-2">Sessions</th>
           </tr>
         </thead>
         <tbody>
@@ -321,6 +333,20 @@ function WorkspaceTree({
                       </span>
                     </div>
                   </td>
+                  <td className="p-2 tabular-nums">
+                    {group.sessionIds.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(sessionsPath(group.sessionIds))}
+                        className="text-accent-blue hover:underline"
+                        title="View these sessions"
+                      >
+                        {group.sessionIds.length}
+                      </button>
+                    ) : (
+                      <span className="text-ink-muted">—</span>
+                    )}
+                  </td>
                 </tr>
                 {!isCollapsed &&
                   group.rows.map((row) => {
@@ -364,6 +390,20 @@ function WorkspaceTree({
                         <td className="p-2 tabular-nums">{conflicts}</td>
                         <td className="p-2 tabular-nums text-ink-subtle">
                           {known.length > 0 ? `${passing}/${known.length}` : '—'}
+                        </td>
+                        <td className="p-2 tabular-nums">
+                          {row.metrics.sessionIds.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => navigate(sessionsPath(row.metrics.sessionIds))}
+                              className="text-accent-blue hover:underline"
+                              title="View these sessions"
+                            >
+                              {row.metrics.sessionIds.length}
+                            </button>
+                          ) : (
+                            <span className="text-ink-muted">—</span>
+                          )}
                         </td>
                       </tr>
                     );

@@ -11,8 +11,14 @@ import type { PrEvent } from './git-efficiency-tracker.js';
  *  fields — a future coaching check (e.g. "did you build before pushing")
  *  needs `edit`/`verify` activity retained, which the old tracker discarded
  *  at ingest for anything that wasn't a recognized git command. */
-export type GitActivityRecord = KeyedRecord &
-  (
+export type GitActivityRecord = KeyedRecord & {
+  /** The Claude Code session that produced this activity — 'unknown' when
+   *  the source ToolCallRecord had none (matches makeRecordId's own
+   *  fallback below). Powers "how many sessions touched this workspace"
+   *  in the Repos & Worktrees tree, so a click there can deep-link straight
+   *  to those exact sessions instead of only approximating by repo name. */
+  readonly sessionId: string;
+} & (
     | { readonly kind: 'git'; readonly gitEvent: GitEvent }
     | { readonly kind: 'edit'; readonly filePath: string }
     | { readonly kind: 'verify'; readonly verify: 'build' | 'test' }
@@ -79,6 +85,7 @@ export class GitActivityRecorder {
       const filePath = record.filePath as string | undefined;
       if (filePath) {
         this.ingestActivity({
+          sessionId: record.sessionId ?? 'unknown',
           kind: 'edit',
           filePath,
           timestamp: record.timestamp,
@@ -91,6 +98,7 @@ export class GitActivityRecorder {
     // Track build/test commands for "verify before push" metric
     if (record.isTestCommand) {
       this.ingestActivity({
+        sessionId: record.sessionId ?? 'unknown',
         kind: 'verify',
         verify: 'test',
         timestamp: record.timestamp,
@@ -100,6 +108,7 @@ export class GitActivityRecorder {
     }
     if (record.isBuildCommand) {
       this.ingestActivity({
+        sessionId: record.sessionId ?? 'unknown',
         kind: 'verify',
         verify: 'build',
         timestamp: record.timestamp,
@@ -113,6 +122,7 @@ export class GitActivityRecorder {
     const mcpPrAction = MCP_PR_TOOL_ACTION[record.toolName];
     if (mcpPrAction) {
       this.ingestActivity({
+        sessionId: record.sessionId ?? 'unknown',
         kind: 'pr',
         prEvent: { timestamp: record.timestamp, action: mcpPrAction, prNumber: null },
         timestamp: record.timestamp,
@@ -136,6 +146,7 @@ export class GitActivityRecorder {
         const prEvent = processGhCommand(trimmedSegment, record.timestamp);
         if (prEvent) {
           this.ingestActivity({
+            sessionId: record.sessionId ?? 'unknown',
             kind: 'pr',
             prEvent,
             timestamp: record.timestamp,
@@ -162,6 +173,7 @@ export class GitActivityRecorder {
     );
 
     this.ingestActivity({
+      sessionId: record.sessionId ?? 'unknown',
       kind: 'git',
       gitEvent,
       timestamp: record.timestamp,
