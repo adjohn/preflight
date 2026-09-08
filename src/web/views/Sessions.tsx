@@ -53,6 +53,7 @@ interface SessionRow {
   readonly toolCallCount?: number;
   readonly estimatedCostUsd?: number | null;
   readonly outcome?: string | null;
+  readonly repoName?: string | null;
 }
 
 interface CurrentSession {
@@ -153,6 +154,24 @@ function readSessionParam(search: string): string | null {
   return trimmed;
 }
 
+// `?repo=<repoName>` deep-link — narrows the master list to sessions from one
+// repo, used by the Git Efficiency tab's "View sessions" link. Deliberately
+// repo-only, not worktree-specific: which worktree a session ran in only
+// exists inside its (unfetched-at-list-time) timeline, not on the list
+// summary itself, so there's no reliable way to filter finer than this today.
+function readRepoParam(search: string): string | null {
+  let raw: string | null;
+  try {
+    raw = new URLSearchParams(search).get('repo');
+  } catch {
+    return null;
+  }
+  if (raw == null) return null;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0 || trimmed.length > 256) return null;
+  return trimmed;
+}
+
 function startTimeMs(row: SessionRow): number {
   return typeof row.startTime === 'number' ? row.startTime : new Date(row.startTime ?? 0).getTime();
 }
@@ -225,6 +244,18 @@ export function Sessions(): JSX.Element {
   useEffect(() => {
     if (sessionParam) setSelectedId(sessionParam);
   }, [sessionParam]);
+
+  // Mount-only initial repo filter, same pattern as selectedId above. A user
+  // can clear it (the "×" on the filter chip below), unlike selectedId which
+  // is only ever replaced, never cleared — so this is separate state rather
+  // than reusing sessionParam's effect.
+  const [repoFilter, setRepoFilter] = useState<string | null>(() =>
+    readRepoParam(window.location.search),
+  );
+  const repoParam = useMemo(() => readRepoParam(search), [search]);
+  useEffect(() => {
+    if (repoParam) setRepoFilter(repoParam);
+  }, [repoParam]);
 
   const list = useQuery<SessionRow[]>({
     queryKey: qk.sessionsList(SESSIONS_PAGE_SIZE),
@@ -312,7 +343,10 @@ export function Sessions(): JSX.Element {
     return m;
   }, [filteredRuns]);
   const filtersActive =
-    activeWindow !== 'all' || runSourceFilter !== 'all' || statusFilter !== 'all';
+    activeWindow !== 'all' ||
+    runSourceFilter !== 'all' ||
+    statusFilter !== 'all' ||
+    repoFilter !== null;
   // Run-specific filters (source/status) still narrow to sessions owning a
   // matching run — that's the whole point of those two filters. The time
   // window, however, must filter sessions by their OWN startTime: most
@@ -335,8 +369,11 @@ export function Sessions(): JSX.Element {
     if (runFiltersActive) {
       result = result.filter((r) => runsBySession.has(r.sessionId));
     }
+    if (repoFilter !== null) {
+      result = result.filter((r) => r.repoName === repoFilter);
+    }
     return result;
-  }, [rows, activeWindow, runFiltersActive, runsBySession]);
+  }, [rows, activeWindow, runFiltersActive, runsBySession, repoFilter]);
   // The KPI strip above is built from filteredRuns, which come from
   // WorkflowStore.listRuns() — a machine-wide, 30-day-window, 500-run scan
   // with no relationship to `rows` (the session list's own most-recent-50
@@ -496,6 +533,22 @@ export function Sessions(): JSX.Element {
             );
           })}
         </div>
+        {repoFilter !== null && (
+          <>
+            <div className="h-4 w-px bg-border-subtle" aria-hidden="true" />
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] bg-accent-cyan/20 text-accent-cyan font-medium">
+              Repo: {repoFilter}
+              <button
+                type="button"
+                onClick={() => setRepoFilter(null)}
+                aria-label="Clear repo filter"
+                className="hover:text-ink-base focus-visible:outline-none"
+              >
+                &#10005;
+              </button>
+            </span>
+          </>
+        )}
         {filtersActive && (
           <button
             type="button"
@@ -503,6 +556,7 @@ export function Sessions(): JSX.Element {
               setActiveWindow('all');
               setRunSourceFilter('all');
               setStatusFilter('all');
+              setRepoFilter(null);
             }}
             className="text-[10px] text-ink-muted hover:text-ink-subtle underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-cyan/40 rounded-sm"
           >

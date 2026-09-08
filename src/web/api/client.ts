@@ -186,6 +186,10 @@ export interface SessionListEntry {
   readonly tokensCacheRead?: number;
   readonly tokensCacheCreation?: number;
   readonly tokensThinking?: number;
+  /** Absent on live-session stub entries (see this interface's docstring) —
+   *  only persisted full summaries carry it. Powers the Git Efficiency tab's
+   *  "view sessions for this repo" deep link. */
+  readonly repoName?: string | null;
 }
 
 export interface LiveSessionEntry {
