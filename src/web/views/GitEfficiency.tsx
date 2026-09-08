@@ -191,8 +191,12 @@ interface WorkspaceGroup {
 }
 
 /** `/sessions?sessionIds=...` — precise, not an approximation by repo name:
- *  exactly the sessions that produced activity in this row/group. */
+ *  exactly the sessions that produced activity in this row/group. With
+ *  exactly one session, skips the filtered-list detour entirely and links
+ *  straight to that session's own detail view (`?session=`) — a list of one
+ *  row the user would just have to click again is a wasted step. */
 function sessionsPath(ids: readonly string[]): string {
+  if (ids.length === 1) return `/sessions?session=${encodeURIComponent(ids[0]!)}`;
   return `/sessions?sessionIds=${ids.map(encodeURIComponent).join(',')}`;
 }
 
@@ -339,7 +343,19 @@ function WorkspaceTree({
                         type="button"
                         onClick={() => navigate(sessionsPath(group.sessionIds))}
                         className="text-accent-blue hover:underline"
-                        title="View these sessions"
+                        title={(() => {
+                          const rawSum = group.rows.reduce(
+                            (sum, r) => sum + r.metrics.sessionIds.length,
+                            0,
+                          );
+                          // The per-row counts below can sum to more than
+                          // this — a session that touched more than one
+                          // worktree in this repo is still counted once
+                          // here, not once per worktree it touched.
+                          return rawSum > group.sessionIds.length
+                            ? `${group.sessionIds.length} distinct sessions — some touched more than one worktree`
+                            : 'View these sessions';
+                        })()}
                       >
                         {group.sessionIds.length}
                       </button>
