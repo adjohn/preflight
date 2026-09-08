@@ -284,7 +284,7 @@ function WorkspaceTree({
   return (
     <div className="max-h-64 overflow-auto">
       <table className="w-full text-xs">
-        <thead className="text-ink-muted bg-surface-3 sticky top-0">
+        <thead className="text-ink-muted bg-bg-panel sticky top-0">
           <tr>
             <th className="text-left p-2">Repo / worktree</th>
             <th className="text-left p-2">Branch</th>
@@ -1044,7 +1044,7 @@ export function GitEfficiency(): JSX.Element {
               <SectionHeader title="Recent Git Activity" />
               <div className="max-h-64 overflow-auto">
                 <table className="w-full text-xs">
-                  <thead className="text-ink-muted bg-surface-3 sticky top-0">
+                  <thead className="text-ink-muted bg-bg-panel sticky top-0">
                     <tr>
                       <th className="text-left p-2">Time</th>
                       <th className="text-left p-2">Type</th>
