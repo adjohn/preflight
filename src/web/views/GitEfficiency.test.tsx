@@ -857,6 +857,43 @@ describe('GitEfficiency view — scope breadcrumb', () => {
     expect(screen.queryByRole('button', { name: '3' })).toBeNull();
   });
 
+  it('links a single-session worktree row straight to that session, not a one-row filtered list', async () => {
+    const metricsWithOneSession = { ...BASE_METRICS, sessionIds: ['sess-solo'] };
+    renderGitEfficiency(
+      makeReport({
+        rows: [{ identity: IDENTITY_A, metrics: metricsWithOneSession }],
+      }),
+    );
+    await screen.findByText('Repos & Worktrees');
+    const links = await screen.findAllByRole('button', { name: '1' });
+    fireEvent.click(links[links.length - 1]!);
+    try {
+      expect(window.location.pathname).toBe('/sessions');
+      expect(window.location.search).toBe('?session=sess-solo');
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  it('explains a repo header count via tooltip only when it differs from the naive per-row sum', async () => {
+    const metricsA = { ...BASE_METRICS, sessionIds: ['sess-shared', 'sess-a-only'] };
+    const metricsB = { ...BASE_METRICS, sessionIds: ['sess-shared'] };
+    renderGitEfficiency(
+      makeReport({
+        rows: [
+          { identity: IDENTITY_A, metrics: metricsA },
+          { identity: IDENTITY_B, metrics: metricsB },
+        ],
+      }),
+    );
+    await screen.findByText('Repos & Worktrees');
+    const repoHeaderButton = screen.getAllByRole('button', { name: '2' })[0]!;
+    expect(repoHeaderButton).toHaveAttribute(
+      'title',
+      '2 distinct sessions — some touched more than one worktree',
+    );
+  });
+
   it('shows a dash instead of a session-count link when a row has no sessions', async () => {
     renderGitEfficiency(
       makeReport({
