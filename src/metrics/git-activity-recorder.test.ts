@@ -1,12 +1,36 @@
 import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import {
+  spawnSync as nodeSpawnSync,
+  type SpawnSyncOptions,
+  type SpawnSyncReturns,
+} from 'node:child_process';
 import { jest } from '@jest/globals';
 import { GitActivityRecorder, processGhCommand } from './git-activity-recorder.js';
 import { ActivityStore } from './git-activity-store.js';
 import type { GitActivityRecord } from './git-activity-recorder.js';
 import { WorktreeIdentityResolver } from './git-workspace-identity.js';
 import type { ToolCallRecord } from '../storage/types.js';
+
+// git sets GIT_DIR/GIT_WORK_TREE for hook subprocesses (e.g. a pre-push
+// hook), which override `-C <dir>` and silently redirect every fixture call
+// below to the real repo instead of the isolated temp dir under test.
+// `delete process.env.GIT_DIR` does not reliably reach whatever these
+// child processes actually inherit, so every call goes through this
+// wrapper instead, which strips both via an explicit `env` option.
+const CLEAN_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  GIT_DIR: undefined,
+  GIT_WORK_TREE: undefined,
+};
+
+function spawnSync(
+  command: string,
+  args?: readonly string[],
+  options?: SpawnSyncOptions,
+): SpawnSyncReturns<string | Buffer> {
+  return nodeSpawnSync(command, args, { ...options, env: CLEAN_ENV });
+}
 
 const makeRecord = (overrides?: Partial<ToolCallRecord>): ToolCallRecord => ({
   id: 'test-id',
