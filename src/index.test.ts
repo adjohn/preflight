@@ -8,6 +8,7 @@ import {
   readdirSync,
   utimesSync,
   realpathSync,
+  readFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
@@ -569,6 +570,7 @@ describe('startMaintenanceGc()', () => {
     getActiveSessionIdsFromHeartbeats.mockReturnValue(new Set(['heartbeat-only']));
     const liveSessionRegistry = {
       getLiveSessions: jest.fn(() => new Set(['registry-only'])),
+      getTodaySessionIds: jest.fn(() => []),
     } as unknown as Parameters<typeof startMaintenanceGc>[0]['liveSessionRegistry'];
     const handle = startMaintenanceGc({ localStore: store, liveSessionRegistry });
     const liveArg = gcOrphanBuffers.mock.calls[0]?.[0] as Set<string>;
@@ -588,11 +590,29 @@ describe('startMaintenanceGc()', () => {
     );
     const liveSessionRegistry = {
       getLiveSessions,
+      getTodaySessionIds: jest.fn(() => []),
     } as unknown as Parameters<typeof startMaintenanceGc>[0]['liveSessionRegistry'];
     const handle = startMaintenanceGc({ localStore: store, liveSessionRegistry });
     expect(getLiveSessions).toHaveBeenCalledWith({ includeSynthetic: true });
     const liveArg = gcOrphanBuffers.mock.calls[0]?.[0] as Set<string>;
     expect(liveArg.has('proxy-1234567890')).toBe(true);
+    clearInterval(handle);
+  });
+
+  it("merges today-seen session ids from the registry into the GC live-set, so an idle-but-open window is not GC'd as orphaned", () => {
+    const { store, gcOrphanBuffers } = makeLocalStore();
+    const liveSessionRegistry = {
+      getLiveSessions: jest.fn(() => []),
+      getTodaySessionIds: jest.fn((_options?: { includeSynthetic?: boolean }) => [
+        'idle-but-open-today',
+      ]),
+    } as unknown as Parameters<typeof startMaintenanceGc>[0]['liveSessionRegistry'];
+    const handle = startMaintenanceGc({ localStore: store, liveSessionRegistry });
+    expect(liveSessionRegistry?.getTodaySessionIds).toHaveBeenCalledWith({
+      includeSynthetic: true,
+    });
+    const liveArg = gcOrphanBuffers.mock.calls[0]?.[0] as Set<string>;
+    expect(liveArg.has('idle-but-open-today')).toBe(true);
     clearInterval(handle);
   });
 
@@ -1616,4 +1636,20 @@ describe('preflight server subcommand', () => {
   // smoke test in docs/homelab.md. it.todo (rather than a placeholder
   // assertion) so this doesn't silently report as a passing test.
   it.todo('responds to GET /api/health with 200');
+});
+
+describe('NrIngestManager tier wiring', () => {
+  // NrIngestOptions.tiers is optional for backward compatibility, so a missing
+  // `tiers:` at a construction site compiles clean and silently degrades
+  // multi-tier routing to single-tier. src/index.privacy.test.ts documents why
+  // main()'s branches can't be driven in-process, so this asserts on source.
+  it('passes config.tiers at every NrIngestManager construction site', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/index.ts'), 'utf-8');
+
+    const constructionSites = source.match(/new NrIngestManager\(\{/g) ?? [];
+    const tierWirings = source.match(/^\s*tiers: config!?\.tiers,$/gm) ?? [];
+
+    expect(constructionSites).toHaveLength(3);
+    expect(tierWirings).toHaveLength(constructionSites.length);
+  });
 });
