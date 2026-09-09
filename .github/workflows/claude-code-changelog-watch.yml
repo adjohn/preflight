@@ -44,9 +44,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Trust only the workflow's own bot-authored issue — a same-titled
+          # issue opened by anyone else (no write access required) must not
+          # be able to hijack where reports get posted or what cursor is read.
           NUMBER=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 100 \
-            --search "in:title \"$ISSUE_TITLE\"" --json number,title \
-            --jq "[.[] | select(.title == \"$ISSUE_TITLE\")] | sort_by(.number) | last | .number // empty")
+            --search "in:title \"$ISSUE_TITLE\"" --json number,title,author \
+            --jq "[.[] | select(.title == \"$ISSUE_TITLE\" and .author.is_bot == true)] | sort_by(.number) | last | .number // empty")
           CURSOR=""
           if [ -n "$NUMBER" ]; then
             CURSOR=$(gh issue view "$NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
