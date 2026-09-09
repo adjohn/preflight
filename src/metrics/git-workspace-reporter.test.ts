@@ -1,4 +1,8 @@
-import { execSync } from 'node:child_process';
+import {
+  execSync as nodeExecSync,
+  type ExecSyncOptions,
+  type ExecSyncOptionsWithStringEncoding,
+} from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,6 +10,30 @@ import { join } from 'node:path';
 import type { ReplayTimelineEntry, ToolCallRecord } from '../storage/types.js';
 import { GitWorkspaceReporter, replaySessionToActivityRecords } from './git-workspace-reporter.js';
 import { WorktreeIdentityResolver } from './git-workspace-identity.js';
+
+// git sets GIT_DIR/GIT_WORK_TREE for hook subprocesses (e.g. a pre-push
+// hook), which override `-C <dir>` and silently redirect every fixture call
+// below to the real repo instead of the isolated temp dir under test.
+// `delete process.env.GIT_DIR` does not reliably reach whatever these
+// child processes actually inherit, so every call goes through this
+// wrapper instead, which strips both via an explicit `env` option.
+const CLEAN_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  GIT_DIR: undefined,
+  GIT_WORK_TREE: undefined,
+};
+
+function execSync(command: string, options: ExecSyncOptionsWithStringEncoding): string;
+function execSync(command: string, options?: ExecSyncOptions): Buffer;
+function execSync(
+  command: string,
+  options?: ExecSyncOptions | ExecSyncOptionsWithStringEncoding,
+): Buffer | string {
+  return nodeExecSync(command, {
+    ...options,
+    env: CLEAN_ENV,
+  } as ExecSyncOptionsWithStringEncoding);
+}
 
 const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
 afterAll(() => stderrSpy.mockRestore());
