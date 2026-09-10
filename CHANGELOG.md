@@ -5,11 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.50.2] - 2026-09-10
+## [1.50.3] - 2026-09-10
 
 ### Fixed
 
 - **On Windows, `alerts.rulesPath` validation rejected every path — including the default one — because the containment check hardcoded `/` as the path separator, and `path.resolve()` returns backslash-separated paths on Windows.** This logged a spurious warning on every server start (`preflight doctor` included) and silently discarded any custom `alerts.rulesPath` set via config file or `NR_AI_ALERTS_RULES_PATH`, reverting it to the default. The check now uses `path.relative()` + `path.isAbsolute()`, which is separator-agnostic — the same fix applied to `static-handler.ts` for the identical bug class in #24.
+
+## [1.50.2] - 2026-09-10
+
+### Fixed
+
+- **The tool selection score's penalty for redundant reads/failures/unused outputs is now actually normalized by session size**, matching what its own code comment already claimed: a session with more than 15 tool calls is no longer punished as harshly as a shorter one for the same absolute number of violations. Previously the penalty was purely absolute, so a busy day (or a session with lots of parallel/forked subagent activity) could score noticeably worse than a quiet one with an identical defect rate. Sessions of 15 calls or fewer score exactly as they did before this change.
 
 ## [1.50.1] - 2026-09-10
 
