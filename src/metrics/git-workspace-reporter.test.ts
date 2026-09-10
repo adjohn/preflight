@@ -429,5 +429,52 @@ describe('GitWorkspaceReporter', () => {
       expect(report.rows).toHaveLength(1);
       expect(report.rows[0].metrics.commitCount).toBe(1);
     });
+
+    it('report() excludes historical activity that falls outside [since, until), even from a session that started inside the window', () => {
+      // A bounded past window (e.g. "yesterday") must not count activity that
+      // happened after `until` just because it came from the same session's
+      // timeline — replaySessionToActivityRecords hands back the WHOLE
+      // timeline regardless of the window being queried, so report() itself
+      // has to do the bounding for `historical` the same way ActivityStore
+      // already does for live records.
+      const repoDir = join(tmpDir, 'historical-window-bound-repo');
+      execSync(`mkdir -p "${repoDir}"`);
+      initGitRepo(repoDir);
+
+      const timeline: ReplayTimelineEntry[] = [
+        {
+          timestamp: 1000,
+          toolName: 'Bash',
+          durationMs: 50,
+          success: true,
+          command: 'git commit -m "inside window"',
+          cwd: repoDir,
+        },
+        {
+          timestamp: 5000,
+          toolName: 'Bash',
+          durationMs: 50,
+          success: true,
+          command: 'git commit -m "after window closed"',
+          cwd: repoDir,
+        },
+      ];
+
+      const identityResolver = new WorktreeIdentityResolver();
+      const session = { sessionId: 'sess-window-bound', timeline };
+      const replayed = replaySessionToActivityRecords(session, identityResolver);
+
+      const reporter = new GitWorkspaceReporter();
+      const report = reporter.report({
+        scope: { kind: 'all' },
+        since: 0,
+        until: 3000,
+        historical: replayed.records,
+        historicalIdentities: replayed.identities,
+      });
+
+      expect(report.rows).toHaveLength(1);
+      expect(report.rows[0].metrics.commitCount).toBe(1);
+    });
   });
 });

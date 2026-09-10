@@ -179,7 +179,15 @@ export class GitWorkspaceReporter {
     // number for any such overlap.
     const keyOf = (r: GitActivityRecord): string => r.workspaceKey + '|' + r.recordId;
     const liveKeys = new Set(liveRecords.map(keyOf));
-    const dedupedHistorical = (historical ?? []).filter((r) => !liveKeys.has(keyOf(r)));
+    // `historical` is the caller's own replay of whole session timelines, not
+    // a store query — nothing upstream of this bounds it to `[since, until)`.
+    // A session that started inside the window but ran past `until` would
+    // otherwise contribute its post-window activity too, which is exactly the
+    // "explicit time window" correctness this reporter exists to guarantee.
+    const inWindow = (r: GitActivityRecord): boolean => r.timestamp >= since && r.timestamp < until;
+    const dedupedHistorical = (historical ?? []).filter(
+      (r) => inWindow(r) && !liveKeys.has(keyOf(r)),
+    );
     const records = [...liveRecords, ...dedupedHistorical];
 
     const identities = new Map([...(historicalIdentities ?? []), ...this.knownWorkspacesRegistry]);
