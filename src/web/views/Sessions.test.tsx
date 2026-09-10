@@ -1268,6 +1268,38 @@ describe('Sessions view — ?sessionIds= deep-link filter', () => {
     window.location = original as unknown as string & Location;
   });
 
+  it('flags a selected session id that is not in the loaded page, instead of silently dropping it', async () => {
+    const original = window.location;
+    // @ts-expect-error -- test-only reassignment of a read-only global
+    delete window.location;
+    window.location = {
+      ...original,
+      // 'old-session' isn't in THREE_SESSION_LIST at all — the kind of id a
+      // deep-link can carry when it points at a session older than the
+      // most-recent page this view loads.
+      search: '?sessionIds=s1,old-session',
+    } as unknown as string & Location;
+    renderSessions(THREE_SESSION_LIST);
+    await waitFor(() => expect(screen.getByText(/s1/)).toBeInTheDocument());
+    expect(screen.getByText('2 sessions selected')).toBeInTheDocument();
+    expect(screen.getByText(/1 of 2 not shown/)).toBeInTheDocument();
+    window.location = original as unknown as string & Location;
+  });
+
+  it('shows no missing-session note when every selected id is in the loaded page', async () => {
+    const original = window.location;
+    // @ts-expect-error -- test-only reassignment of a read-only global
+    delete window.location;
+    window.location = {
+      ...original,
+      search: '?sessionIds=s1,s3',
+    } as unknown as string & Location;
+    renderSessions(THREE_SESSION_LIST);
+    await waitFor(() => expect(screen.getByText(/s1/)).toBeInTheDocument());
+    expect(screen.queryByText(/not shown/)).toBeNull();
+    window.location = original as unknown as string & Location;
+  });
+
   it("clears the session filter and shows every session again when the chip's × is clicked", async () => {
     const original = window.location;
     // @ts-expect-error -- test-only reassignment of a read-only global

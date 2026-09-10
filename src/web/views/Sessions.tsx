@@ -410,6 +410,20 @@ export function Sessions(): JSX.Element {
     }
     return result;
   }, [rows, activeWindow, runFiltersActive, runsBySession, repoFilter, sessionIdsFilter]);
+  // A deep-link's sessionIds are matched against `rows` — the most-recent-
+  // SESSIONS_PAGE_SIZE page, not the full session history — so a session
+  // older than that page silently has nothing to match and just vanishes
+  // from the list with no indication why. Surfaced below instead of left
+  // silent.
+  const missingSelectedSessionCount = useMemo(() => {
+    if (sessionIdsFilter === null) return 0;
+    const loadedIds = new Set(rows.map((r) => r.sessionId));
+    let missing = 0;
+    for (const id of sessionIdsFilter) {
+      if (!loadedIds.has(id)) missing++;
+    }
+    return missing;
+  }, [sessionIdsFilter, rows]);
   // The KPI strip above is built from filteredRuns, which come from
   // WorkflowStore.listRuns() — a machine-wide, 30-day-window, 500-run scan
   // with no relationship to `rows` (the session list's own most-recent-50
@@ -599,6 +613,12 @@ export function Sessions(): JSX.Element {
                 &#10005;
               </button>
             </span>
+            {missingSelectedSessionCount > 0 && (
+              <span className="text-[11px] text-accent-amber">
+                {missingSelectedSessionCount} of {sessionIdsFilter.size} not shown — older than the{' '}
+                {SESSIONS_PAGE_SIZE} most recent sessions
+              </span>
+            )}
           </>
         )}
         {filtersActive && (
