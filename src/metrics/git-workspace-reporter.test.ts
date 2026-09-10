@@ -93,6 +93,33 @@ describe('GitWorkspaceReporter', () => {
     expect(report.rows[0].metrics.commitCount).toBe(1);
   });
 
+  it("report() caps velocityMetrics.longestGapMs at the window's own `until`, not real now", () => {
+    const repoDir = join(tmpDir, 'repo-past-window');
+    execSync(`mkdir -p "${repoDir}"`);
+    initGitRepo(repoDir);
+
+    const oneDayMs = 86_400_000;
+    const commitTimestamp = 1_000;
+    const windowUntil = commitTimestamp + 3 * oneDayMs;
+
+    const reporter = new GitWorkspaceReporter();
+    reporter.recordToolCall(
+      makeRecord({ command: 'git commit -m "test"', cwd: repoDir, timestamp: commitTimestamp }),
+    );
+
+    // A bounded past window ending 3 days after the commit — the gap since
+    // that commit must be capped at 3 days, not stretched out to whatever
+    // Date.now() happens to be when the test runs.
+    const report = reporter.report({
+      scope: { kind: 'all' },
+      since: 0,
+      until: windowUntil,
+    });
+
+    expect(report.rows).toHaveLength(1);
+    expect(report.rows[0].metrics.velocityMetrics.longestGapMs).toBe(3 * oneDayMs);
+  });
+
   it('report() echoes back the exact since/until it was called with', () => {
     const reporter = new GitWorkspaceReporter();
     const until = Date.now() + 1000;

@@ -201,7 +201,18 @@ export class GitWorkspaceReporter {
       }
     }
 
-    return { ...buildGitWorkspaceReport({ scope, records, identities, liveStates }), since, until };
+    // `nowMs: until` caps computeVelocityCore's open-ended "since last
+    // commit" gap at the window's own boundary instead of real wall-clock
+    // time — resolveWindowParam guarantees `until <= Date.now()` for every
+    // window it produces, so this is always at least as tight as the old
+    // always-Date.now() behavior, and strictly correct for a bounded past
+    // window (e.g. "yesterday") where real "now" would reach outside the
+    // range being reported.
+    return {
+      ...buildGitWorkspaceReport({ scope, records, identities, liveStates, nowMs: until }),
+      since,
+      until,
+    };
   }
 
   /**

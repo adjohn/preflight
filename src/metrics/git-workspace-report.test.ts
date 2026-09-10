@@ -523,6 +523,33 @@ describe('velocityMetrics.longestGapMs — includes the open-ended gap since the
     );
     expect(metrics.velocityMetrics.longestGapMs).toBe(3 * oneDayMs);
   });
+
+  it('caps the since-last-commit gap at an explicit nowMs instead of real wall-clock time', () => {
+    // A bounded PAST window (e.g. "yesterday") must not extend this gap all
+    // the way to FIXED_NOW just because that's what real "now" happens to
+    // be — it should stop at the window's own boundary.
+    const identity = makeIdentity();
+    const oneDayMs = 86_400_000;
+    const windowUntil = FIXED_NOW - 2 * oneDayMs;
+    const metrics = computeWorkspaceMetrics(
+      [gitActivity('git commit -m "1"', 'ws-a', { timestamp: FIXED_NOW - 5 * oneDayMs })],
+      identity,
+      null,
+      windowUntil,
+    );
+    expect(metrics.velocityMetrics.longestGapMs).toBe(3 * oneDayMs);
+  });
+
+  it('defaults to real wall-clock time when no nowMs is passed', () => {
+    const identity = makeIdentity();
+    const twoDaysMs = 2 * 86_400_000;
+    const metrics = computeWorkspaceMetrics(
+      [gitActivity('git commit -m "1"', 'ws-a', { timestamp: FIXED_NOW - twoDaysMs })],
+      identity,
+      null,
+    );
+    expect(metrics.velocityMetrics.longestGapMs).toBe(twoDaysMs);
+  });
 });
 
 describe('sessionIds', () => {

@@ -635,6 +635,13 @@ function runCoaching(inputs: CoachingInputs): {
 function computeVelocityCore(
   commitTimestamps: readonly number[],
   buildBeforePush: boolean | null,
+  // The open-ended "since last commit" gap below is capped at this instead
+  // of always reaching for real wall-clock time — for a bounded PAST window
+  // (e.g. "yesterday"), the caller passes that window's own `until` so the
+  // gap doesn't extend into activity outside the range being reported.
+  // Defaults to `Date.now()` so a caller reporting a live/current window
+  // (where `until` already IS roughly now) gets the exact prior behavior.
+  nowMs: number = Date.now(),
 ): Omit<VelocityMetrics, 'worktreeCount'> {
   const sorted = [...commitTimestamps].sort((a, b) => a - b);
 
@@ -668,7 +675,7 @@ function computeVelocityCore(
   // "now minus the last commit" as one more candidate is what makes a
   // multi-day break since your last commit actually show up here.
   if (sorted.length >= 1) {
-    const sinceLastCommitMs = Date.now() - sorted[sorted.length - 1];
+    const sinceLastCommitMs = nowMs - sorted[sorted.length - 1];
     longestGapMs =
       longestGapMs === null ? sinceLastCommitMs : Math.max(longestGapMs, sinceLastCommitMs);
   }
@@ -800,6 +807,12 @@ export function computeWorkspaceMetrics(
   // specific push's live divergence sample.
   _identity: WorktreeIdentity,
   liveState: WorktreeLiveState | null,
+  // Forwarded to computeVelocityCore's longestGapMs cap — see its own doc
+  // comment. Not used for anything else here (riskIndicators' own
+  // Date.now()-based fields, e.g. timeSinceLastSyncMs, stay tied to real
+  // wall-clock time regardless of window — those describe present-moment
+  // staleness, not a fact about the reported window's contents).
+  nowMs: number = Date.now(),
 ): WorkspaceMetrics {
   const events: GitEvent[] = [];
   const conflictRecords: MergeConflictRecord[] = [];
@@ -1098,7 +1111,7 @@ export function computeWorkspaceMetrics(
     runCoaching(coachingInputs);
 
   const velocityMetrics: VelocityMetrics = {
-    ...computeVelocityCore(commitTimestamps, buildBeforePush),
+    ...computeVelocityCore(commitTimestamps, buildBeforePush, nowMs),
     worktreeCount: worktreeCommands,
   };
   const conflictResolutionStrategy = computeConflictStrategy(
@@ -1155,6 +1168,8 @@ export function computeWorkspaceMetrics(
 
 export function rollupWorkspaceMetrics(
   nodes: readonly { readonly identity: WorktreeIdentity; readonly metrics: WorkspaceMetrics }[],
+  // See computeWorkspaceMetrics's matching parameter.
+  nowMs: number = Date.now(),
 ): WorkspaceMetrics {
   const sum = (get: (m: WorkspaceMetrics) => number): number =>
     nodes.reduce((acc, n) => acc + get(n.metrics), 0);
@@ -1259,7 +1274,7 @@ export function rollupWorkspaceMetrics(
     }
   }
   const velocityMetrics: VelocityMetrics = {
-    ...computeVelocityCore(allCommitTimestamps, mostRecentPush?.buildBeforePush ?? null),
+    ...computeVelocityCore(allCommitTimestamps, mostRecentPush?.buildBeforePush ?? null, nowMs),
     worktreeCount: nodes.length,
   };
 
@@ -1429,20 +1444,22 @@ function resolveScopeMetrics(
   rows: readonly WorkspaceRow[],
   identities: ReadonlyMap<string, WorktreeIdentity>,
   liveStates: ReadonlyMap<string, WorktreeLiveState>,
+  // See computeWorkspaceMetrics's matching parameter.
+  nowMs: number = Date.now(),
 ): WorkspaceMetrics {
   if (scope.kind === 'worktree') {
-    if (scope.id === undefined) return rollupWorkspaceMetrics([]);
+    if (scope.id === undefined) return rollupWorkspaceMetrics([], nowMs);
     const existing = rows.find((r) => r.identity.worktreeKey === scope.id);
     if (existing) return existing.metrics;
     const identity = identities.get(scope.id) ?? null;
-    if (!identity) return rollupWorkspaceMetrics([]);
-    return computeWorkspaceMetrics([], identity, liveStates.get(scope.id) ?? null);
+    if (!identity) return rollupWorkspaceMetrics([], nowMs);
+    return computeWorkspaceMetrics([], identity, liveStates.get(scope.id) ?? null, nowMs);
   }
 
   if (scope.kind === 'repo') {
     const activeWorktrees =
       scope.id === undefined ? [] : rows.filter((r) => r.identity.repoKey === scope.id);
-    const rolled = rollupWorkspaceMetrics(activeWorktrees);
+    const rolled = rollupWorkspaceMetrics(activeWorktrees, nowMs);
     // Repo-scope-only coaching check — see buildParallelIsolationCheck's
     // doc comment for why this doesn't run at 'all' scope (no single repo
     // to ask "did these worktrees isolate you" about).
@@ -1455,7 +1472,7 @@ function resolveScopeMetrics(
   // rollup spanning different repos doesn't have one coherent "isolation"
   // story the way one repo's own worktrees do, so this deliberately doesn't
   // attempt one rather than guess at what it would mean.
-  return rollupWorkspaceMetrics(rows);
+  return rollupWorkspaceMetrics(rows, nowMs);
 }
 
 export function buildGitWorkspaceReport(input: {
@@ -1463,8 +1480,17 @@ export function buildGitWorkspaceReport(input: {
   readonly records: readonly GitActivityRecord[];
   readonly identities: ReadonlyMap<string, WorktreeIdentity>;
   readonly liveStates: ReadonlyMap<string, WorktreeLiveState>;
+  // Optional cap for computeVelocityCore's open-ended "since last commit"
+  // gap (see its doc comment) — the caller passes its report window's own
+  // `until` for a bounded window. This is the one place `buildGitWorkspaceReport`
+  // is allowed to know about "now" vs. "the window": it doesn't filter
+  // `records` by any window itself (that stays the caller's job, as before),
+  // it only bounds this one derived, otherwise-unbounded quantity. Defaults
+  // to `Date.now()`, matching the exact prior behavior for any caller that
+  // doesn't pass one.
+  readonly nowMs?: number;
 }): GitWorkspaceReport {
-  const { scope, records, identities, liveStates } = input;
+  const { scope, records, identities, liveStates, nowMs = Date.now() } = input;
 
   const byWorkspace = new Map<string, GitActivityRecord[]>();
   for (const record of records) {
@@ -1489,13 +1515,13 @@ export function buildGitWorkspaceReport(input: {
     // this whole design exists for: never interleave two workspaces'
     // records into one sequential reducer.
     const sorted = [...groupRecords].sort((a, b) => a.timestamp - b.timestamp);
-    const metrics = computeWorkspaceMetrics(sorted, identity, liveStates.get(key) ?? null);
+    const metrics = computeWorkspaceMetrics(sorted, identity, liveStates.get(key) ?? null, nowMs);
     rows.push({ identity, metrics });
   }
 
   return {
     scope,
-    metrics: resolveScopeMetrics(scope, rows, identities, liveStates),
+    metrics: resolveScopeMetrics(scope, rows, identities, liveStates, nowMs),
     rows,
     worstBehind: computeWorstBehind(rows),
   };
