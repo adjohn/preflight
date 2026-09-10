@@ -11,6 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`AiCodingTask` events now carry `outcome_type` and `model`**, joining the existing per-task outcome classification (`bug_fix`, `feature`, `refactor`, `investigation`, `configuration`, `documentation`, `failed_attempt`) with the model that was active when the task completed. This makes "which model works best for which kind of task" answerable in NRQL: `FROM AiCodingTask SELECT average(estimated_cost_usd) FACET model, outcome_type`. `model` is omitted when no token usage was ever reported for the session.
 
+## [1.48.5] - 2026-09-09
+
+### Fixed
+
+- Correction detection now uses a small set of targeted phrase patterns instead of a single blunt first-word regex, and the unmeasured "15-25% session duration" impact estimate on the high correction rate recommendation has been removed. Previously, ordinary task instructions and refinements — "Revert the last commit", "Stop the dev server and restart it", "Actually, let's also add tests", "no rush" — were miscounted as corrections, while genuine corrections that didn't start with a trigger word — "That approach won't work because...", "You missed the null case", "This is the third time" — were missed entirely.
+
+## [1.48.4] - 2026-09-09
+
+### Fixed
+
+- The tool selection score's "unused output" penalty no longer fires on `Grep`, `Glob`, `WebFetch`, `WebSearch`, or any MCP tool result, and the byte threshold for everything else rose from 4,000 to 20,000. Previously, any investigation-only tool call above 4,000 bytes — a single `Read` of a ~150-line file, one `Grep` result, one MCP query — was flagged as wasted output unless it was immediately followed by an edit, so a thorough investigation session scored close to the metric's floor while a shallow one that never looked anything up scored perfectly.
+
+## [1.48.3] - 2026-09-09
+
+### Fixed
+
+- The efficiency score's speed component no longer scores zero-linesChanged tasks (investigations, reviews, delegated work) as a hard 0 — it's now excluded from the composite entirely for those tasks, renormalizing the remaining components. The speed component's own weight in the composite also dropped from 0.25 to 0.10, since a raw lines-changed-per-second ratio rewarded bulk regeneration as much as a careful, well-reasoned fix.
+
+## [1.48.2] - 2026-09-09
+
+### Fixed
+
+- The over-delegation anti-pattern now fires only when sub-agent spawns fail or are interrupted, rather than on raw spawn count. Previously, any session with three or more successful parallel sub-agent spawns — an idiomatic pattern — was flagged and could trigger coaching recommendations and alerts discouraging it.
+
 ## [1.48.1] - 2026-09-09
 
 ### Fixed

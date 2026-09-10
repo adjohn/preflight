@@ -258,6 +258,105 @@ describe('Speed normalization', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Zero-lines-changed tasks: speed must not penalize investigation/review/
+// delegated tasks that made zero edits by design.
+// ---------------------------------------------------------------------------
+
+describe('Zero linesChanged tasks', () => {
+  it('excludes speed from the composite score entirely, renormalizing the rest', () => {
+    const scorer = new EfficiencyScorer();
+
+    const task = makeTask({
+      linesChanged: 0,
+      testsRun: 4,
+      testsPassed: 4,
+      askedUserQuestions: 0,
+      toolCallCount: 10,
+    });
+    const result = scorer.computeScore(task);
+
+    // The speed component still reports the raw (zero) rate for diagnostics...
+    expect(result.components.speed).toBe(0);
+    // ...but correctness=1, autonomy=1, firstAttemptQuality=1 average to a
+    // perfect score once speed is excluded rather than dragging it down.
+    expect(result.score).toBe(1);
+  });
+
+  it('renormalizes correctly when custom weights do not sum to 1', () => {
+    // correctness=0.9, autonomy=0.3, firstAttemptQuality=0.3 → sum 1.5, not 1.
+    const scorer = new EfficiencyScorer({
+      correctnessWeight: 0.9,
+      autonomyWeight: 0.3,
+      firstAttemptQualityWeight: 0.3,
+    });
+
+    const task = makeTask({
+      linesChanged: 0,
+      testsRun: 4,
+      testsPassed: 4, // correctness = 1
+      askedUserQuestions: 5,
+      toolCallCount: 10, // autonomy = 0.5
+    });
+    const antiPatterns: AntiPattern[] = [
+      { type: 'thrashing', file: '/a.ts', iterations: 3, tokensWasted: 0, suggestion: '' },
+    ];
+    // firstAttemptQuality = 1 - 3/3 = 0
+
+    const result = scorer.computeScore(task, antiPatterns);
+
+    // (1*0.9 + 0.5*0.3 + 0*0.3) / 1.5 = (0.9 + 0.15 + 0) / 1.5 = 0.7
+    expect(result.score).toBeCloseTo(0.7, 3);
+  });
+
+  it('scores 0 rather than NaN when the non-speed weights are all 0', () => {
+    const scorer = new EfficiencyScorer({
+      speedWeight: 1,
+      correctnessWeight: 0,
+      autonomyWeight: 0,
+      firstAttemptQualityWeight: 0,
+    });
+
+    const task = makeTask({
+      linesChanged: 0,
+      testsRun: 4,
+      testsPassed: 4,
+      askedUserQuestions: 0,
+      toolCallCount: 10,
+    });
+    const result = scorer.computeScore(task);
+
+    expect(result.score).toBe(0);
+    expect(Number.isNaN(result.score)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Speed weight: speed's influence on the composite score is reduced from
+// 0.25 to 0.10 so raw line-churn can no longer buy most of the score on
+// its own.
+// ---------------------------------------------------------------------------
+
+describe('Speed weight reduced', () => {
+  it('a fast bulk edit no longer dominates the composite score via speed alone', () => {
+    const scorer = new EfficiencyScorer();
+
+    const task = makeTask({
+      linesChanged: 400,
+      durationMs: 1_000, // 400 lines/sec, far above baseline → speed clamps to 1.0
+      testsRun: 0,
+      testsPassed: 0, // correctness defaults to 0.5
+      askedUserQuestions: 5,
+      toolCallCount: 10, // autonomy = 0.5
+    });
+    const result = scorer.computeScore(task);
+
+    expect(result.components.speed).toBe(1);
+    // 1*0.10 + 0.5*0.30 + 0.5*0.30 + 1*0.30 = 0.70
+    expect(result.score).toBeCloseTo(0.7, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Score clamping
 // ---------------------------------------------------------------------------
 
