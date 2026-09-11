@@ -1706,6 +1706,17 @@ describe('UsageContributionPanel', () => {
     expect(screen.getByText(/40% of spend with/)).toBeInTheDocument();
   });
 
+  it('renders "<1%" instead of "0%" for a row with spend that rounds to a zero share', async () => {
+    renderHistory({
+      usageInsights: {
+        ...SAMPLE_USAGE_INSIGHTS,
+        plugins: [{ key: 'tiny-plugin', costUsd: 0.01, tokens: 50, count: 1, sharePct: 0 }],
+      },
+    });
+    await waitFor(() => expect(screen.getByText('tiny-plugin')).toBeInTheDocument());
+    expect(screen.getByText('<1%')).toBeInTheDocument();
+  });
+
   it('shows "No sessions in this window." when sessionCount is 0', async () => {
     renderHistory({
       usageInsights: {

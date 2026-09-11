@@ -2355,6 +2355,34 @@ describe('Today view — Cost by Tool panel', () => {
     expect(screen.getByText('Cost by Tool')).toBeInTheDocument();
   });
 
+  it('caps the chart to the top 12 tools by cost and notes how many were dropped', async () => {
+    const costByToolType = Object.fromEntries(
+      Array.from({ length: 14 }, (_, i) => [
+        `Tool${i}`,
+        { totalCost: 14 - i, callCount: 1, avgCost: 14 - i },
+      ]),
+    );
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (typeof url === 'string' && url.includes('/api/cost-per-tool')) {
+        return new Response(
+          JSON.stringify({ costByToolType, totalAttributedCost: 105, attributionRate: 0.9 }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify(null), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    renderToday();
+    await waitFor(() => expect(screen.queryByText('No cost data yet')).toBeNull());
+    expect(screen.getByText('+2 more tools not shown')).toBeInTheDocument();
+    const panel = screen.getByText('Cost by Tool').closest('.glass-card') as HTMLElement;
+    await waitFor(() => expect(panel.querySelectorAll('path.recharts-rectangle').length).toBe(12), {
+      timeout: 3000,
+    });
+  });
+
   it('renders Cost attribution unavailable when /api/cost-per-tool returns 503', async () => {
     globalThis.fetch = vi.fn(async (url: string) => {
       if (typeof url === 'string' && url.includes('/api/cost-per-tool')) {

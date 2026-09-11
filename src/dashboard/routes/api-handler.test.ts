@@ -2272,6 +2272,7 @@ describe('api-handler GET /api/cost-per-tool', () => {
     };
     const otherSession = {
       sessionId: 'other-session',
+      estimatedCostUsd: 0.4,
       attribution: {
         buckets: {
           tool: { Read: { costUsd: 0.05, tokens: 0, count: 2, durationMs: 0 } },
@@ -2293,6 +2294,9 @@ describe('api-handler GET /api/cost-per-tool', () => {
         listSessions: () => [],
         loadSession: () => null,
       } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+      costTracker: {
+        getMetrics: () => ({ sessionTotalCostUsd: 0.5 }),
+      } as unknown as Parameters<typeof createApiHandler>[0]['costTracker'],
     });
     const req = { method: 'GET', url: '/api/cost-per-tool' } as IncomingMessage;
     const { res, status, body } = fakeRes();
@@ -2315,6 +2319,12 @@ describe('api-handler GET /api/cost-per-tool', () => {
       totalDurationMs: 300,
       tokens: 190,
     });
+    // Recomputed cost-based rate, not the live tracker's tool-call-based one
+    // (liveMetrics.attributionRate: 1): attributed = live 0.03 + other
+    // session's tool bucket 0.05 = 0.08; total = costTracker's session total
+    // 0.5 + other session's estimatedCostUsd 0.4 = 0.9.
+    expect(result.totalAttributedCost).toBeCloseTo(0.08, 10);
+    expect(result.attributionRate).toBeCloseTo(0.08 / 0.9, 10);
   });
 });
 

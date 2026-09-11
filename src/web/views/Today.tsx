@@ -654,12 +654,17 @@ function CostByToolPanel(): JSX.Element {
     retry: false,
   });
 
-  const tools = data?.costByToolType
+  const allTools = data?.costByToolType
     ? Object.entries(data.costByToolType)
         .filter(([, e]) => e.totalCost > 0)
         .sort((a, b) => b[1].totalCost - a[1].totalCost)
         .map(([tool, e]) => ({ tool, totalCost: e.totalCost, callCount: e.callCount }))
     : [];
+  // The unscoped /api/cost-per-tool response merges every session's tools,
+  // which can exceed 20 rows and squash the chart — cap to the top 12 by
+  // cost, matching the pattern History's Top Tools panel uses.
+  const tools = allTools.slice(0, 12);
+  const hiddenToolCount = Math.max(0, allTools.length - tools.length);
   const toolsTotalCost = tools.reduce((sum, t) => sum + t.totalCost, 0);
 
   const lowAttribution = data != null && (data.attributionRate ?? 1) < 0.5;
@@ -739,6 +744,11 @@ function CostByToolPanel(): JSX.Element {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          {hiddenToolCount > 0 && (
+            <div className="text-[10px] text-ink-muted italic mt-1">
+              +{hiddenToolCount} more tool{hiddenToolCount === 1 ? '' : 's'} not shown
+            </div>
+          )}
           {lowAttribution && (
             <div className="text-[10px] text-ink-muted italic mt-1">
               Based on {Math.round((data.attributionRate ?? 0) * 100)}% of session cost

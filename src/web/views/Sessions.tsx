@@ -1100,7 +1100,7 @@ function SessionTimeline({
       {modelTableRows.length > 0 ? (
         <div className="mb-4">
           <Eyebrow className="mb-2">Usage by model</Eyebrow>
-          <div className="h-48 overflow-y-auto text-xs">
+          <div className="max-h-48 overflow-y-auto text-xs">
             <table className="w-full">
               <thead className="text-ink-muted sticky top-0 bg-bg-panel">
                 <tr>

@@ -2169,17 +2169,38 @@ export function createApiHandler(
     const costByToolType: Record<string, ToolTypeCostEntry> = { ...live.costByToolType };
     const costBySkill: Record<string, SkillCostEntry> = { ...live.costBySkill };
 
+    // live.attributionRate is tool-call-based (attributedToolCalls /
+    // totalToolCalls — see turn-cost-attributor.ts), which reads as "0% of
+    // session cost" once persisted sessions dominate this merged response.
+    // Recompute a cost-based rate instead: attributed cost (live +
+    // every merged session's tool buckets) over total cost (live session
+    // total + every merged session's estimated cost).
+    let mergedAttributedCost = 0;
+    let mergedEstimatedCost = 0;
     for (const session of deps.sessionStore?.loadTodaySessions() ?? []) {
       if (session.sessionId === ownSessionId || !session.attribution) continue;
+      mergedEstimatedCost += session.estimatedCostUsd ?? 0;
       for (const [tool, bucket] of Object.entries(session.attribution.buckets.tool ?? {})) {
         costByToolType[tool] = mergeToolTypeCostEntry(costByToolType[tool], bucket);
+        mergedAttributedCost += bucket.costUsd;
       }
       for (const [skill, bucket] of Object.entries(session.attribution.buckets.skill ?? {})) {
         costBySkill[skill] = mergeSkillCostEntry(costBySkill[skill], bucket);
       }
     }
 
-    jsonOk(res, { ...live, costByToolType, costBySkill });
+    const totalAttributedCost = live.totalAttributedCost + mergedAttributedCost;
+    const totalCost =
+      (deps.costTracker?.getMetrics().sessionTotalCostUsd ?? 0) + mergedEstimatedCost;
+    const attributionRate = totalCost > 0 ? totalAttributedCost / totalCost : 0;
+
+    jsonOk(res, {
+      ...live,
+      costByToolType,
+      costBySkill,
+      totalAttributedCost,
+      attributionRate,
+    });
   });
 
   routes.set('GET /api/usage-insights', (req, res) => {
