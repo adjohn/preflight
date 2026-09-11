@@ -2754,38 +2754,56 @@ async function main(): Promise<void> {
         });
       }
       if (watcherShouldRun && subagentWatcherEnabled) {
-        activeSubagentWatcher = new SubagentWatcher({
+        // Base options are mode-independent. The scoped extras are a single
+        // ternary branch, not two independent fields, because the options
+        // type makes `costSelfCheck` without `parentSessionId` a compile
+        // error: the self-check compares this process's whole-tracker
+        // subagent total against a re-parse of ONE session, and those are
+        // the same population only while the watcher is filtered to that
+        // session.
+        const subagentWatcherBase = {
           storagePath: config!.storagePath,
-          parentSessionId: isStdioWatcher ? watcherSessionId : undefined,
           // Only meaningful when unfiltered (--local) — lets discoverFiles()
           // skip sessions that already have a live --stdio owner tailing them.
           localStore,
-          // Runtime cost-self-check: a drift > 5% surfaces as an
-          // `AiObservabilityHealth { event: 'cost_self_check' }` event. We
-          // compare like-with-like from two INDEPENDENT code paths so a
-          // regression in either is caught:
-          //   - trackedUsd: subagent cost the live CostTracker accumulated from
-          //     the onSubagentTurn feed (the headline/persisted path), and
-          //   - groundTruthUsd: an independent re-parse of the same session's
-          //     subagent transcripts via SubagentTimelineStore (the trace path).
-          // Both dedup streaming-duplicate lines by message.id, so a healthy
-          // system reads ~0%; any divergence (e.g. one path regressing on dedup
-          // or pricing) shows up as a real, non-zero delta. Only meaningful in
-          // --stdio mode, where the watcher is scoped to this one session.
-          costSelfCheck: () => {
-            const trackedUsd = costTracker.getSubagentMetrics().subagentUsd;
-            let groundTruthUsd = trackedUsd;
-            try {
-              const tl = subagentTimelineInstance.getSubagentsForSession(watcherSessionId);
-              groundTruthUsd = tl.agents.reduce((sum, a) => sum + (a.usd ?? 0), 0);
-            } catch {
-              // On any re-parse error fall back to trackedUsd → 0% delta (no
-              // false alarm); the error is already surfaced via watcher health.
-              groundTruthUsd = trackedUsd;
-            }
-            return { trackedUsd, groundTruthUsd };
-          },
-        });
+        };
+        activeSubagentWatcher = new SubagentWatcher(
+          isStdioWatcher
+            ? {
+                ...subagentWatcherBase,
+                parentSessionId: watcherSessionId,
+                // Runtime cost-self-check: a drift > 5% surfaces as an
+                // `AiObservabilityHealth { event: 'cost_self_check' }` event.
+                // We compare like-with-like from two INDEPENDENT code paths
+                // so a regression in either is caught:
+                //   - trackedUsd: subagent cost the live CostTracker
+                //     accumulated from the onSubagentTurn feed (the
+                //     headline/persisted path), and
+                //   - groundTruthUsd: an independent re-parse of the same
+                //     session's subagent transcripts via SubagentTimelineStore
+                //     (the trace path).
+                // Both dedup streaming-duplicate lines by message.id, so a
+                // healthy system reads ~0%; any divergence (e.g. one path
+                // regressing on dedup or pricing) shows up as a real, non-zero
+                // delta. Only meaningful in --stdio mode, where the watcher is
+                // scoped to this one session.
+                costSelfCheck: () => {
+                  const trackedUsd = costTracker.getSubagentMetrics().subagentUsd;
+                  let groundTruthUsd = trackedUsd;
+                  try {
+                    const tl = subagentTimelineInstance.getSubagentsForSession(watcherSessionId);
+                    groundTruthUsd = tl.agents.reduce((sum, a) => sum + (a.usd ?? 0), 0);
+                  } catch {
+                    // On any re-parse error fall back to trackedUsd → 0% delta
+                    // (no false alarm); the error is already surfaced via
+                    // watcher health.
+                    groundTruthUsd = trackedUsd;
+                  }
+                  return { trackedUsd, groundTruthUsd };
+                },
+              }
+            : subagentWatcherBase,
+        );
         activeSubagentWatcher.start();
         logger.info('SubagentWatcher started', {
           mode: watcherMode,
