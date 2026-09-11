@@ -43,6 +43,7 @@ import { createHash } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 
 import { createLogger } from '../shared/index.js';
+import { AGENT_ID_RE } from '../lib/agent-id.js';
 import type { LocalStore } from '../storage/local-store.js';
 import type { RawTranscriptEntry, RawAssistantMessage, RawUsage } from './transcript-types.js';
 
@@ -76,7 +77,8 @@ const HEALTH_INTERVAL_MS = 60_000;
 const SCHEMA_FINGERPRINT_REEMIT_MS = 60 * 60 * 1000; // 1h
 const COST_SELF_CHECK_MS = 60 * 60 * 1000; // 1h
 const SESSION_ID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
-const AGENT_ID_RE = /^a[a-f0-9]{16}$/;
+// AGENT_ID_RE imported from ../lib/agent-id.js — see its doc comment for the
+// two valid agentId shapes.
 const PROJECTS_DIR_NAME = '.claude/projects';
 
 // ---------------------------------------------------------------------------
@@ -267,8 +269,9 @@ export class SubagentWatcher {
   // Files that already emitted `discovery_skipped` so we don't re-emit on
   // every poll for the same too-old file.
   private readonly discoverySkippedAnnounced = new Set<string>();
-  // Files shaped like `agent-*.jsonl` whose id doesn't match AGENT_ID_RE that
-  // already emitted `discovery_skipped`, so we don't re-emit on every poll.
+  // Files shaped like `agent-*.jsonl` whose id doesn't match AGENT_ID_RE (see
+  // AGENT_ID_RE's doc comment for the two valid shapes) that already emitted
+  // `discovery_skipped`, so we don't re-emit on every poll.
   private readonly agentIdMismatchAnnounced = new Set<string>();
   private lastCostSelfCheckMs = 0;
 

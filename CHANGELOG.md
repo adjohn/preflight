@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.50.5] - 2026-09-11
+
+### Fixed
+
+- **Cost and model-usage tracking for subagents spawned with an explicit name (the `Agent` tool's `name` parameter) was silently dropped — their tokens never counted toward session spend or appeared in the model breakdown.** Subagent transcript discovery, the dashboard's subagent timeline, and stale-cursor cleanup now recognize both the anonymous and named transcript filename shapes.
+
 ## [1.50.4] - 2026-09-10
 
 ### Fixed
