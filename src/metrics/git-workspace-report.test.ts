@@ -653,6 +653,28 @@ describe('buildGitWorkspaceReport — parallel_isolation (repo scope)', () => {
     const check = report.metrics.bestPractices.find((p) => p.id === 'parallel_isolation');
     expect(check?.status).toBe('pass');
   });
+
+  it('does not count a placeholder row as an active worktree', () => {
+    const identityA = makeIdentity({ repoKey, worktreeKey: '/repo/a', worktreeLabel: 'a' });
+    const unknown = makeIdentity({ repoKey, worktreeKey: 'unresolved-repo:acme/widgets' });
+    const records = [
+      editActivity('src/a.ts', '/repo/a', 100),
+      editActivity('src/a.ts', 'unresolved-repo:acme/widgets', 150),
+    ];
+    const identities = new Map([
+      ['/repo/a', identityA],
+      ['unresolved-repo:acme/widgets', unknown],
+    ]);
+    const report = buildGitWorkspaceReport({
+      scope: { kind: 'repo', id: repoKey },
+      records,
+      identities,
+      liveStates: new Map(),
+    });
+    expect(report.rows).toHaveLength(2);
+    const check = report.metrics.bestPractices.find((p) => p.id === 'parallel_isolation');
+    expect(check?.status).toBe('n/a');
+  });
 });
 
 describe('buildGitWorkspaceReport — hasForcePushedToDefaultBranch uses per-workspace liveState', () => {
