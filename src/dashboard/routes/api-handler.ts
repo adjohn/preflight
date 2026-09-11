@@ -664,7 +664,8 @@ function mergeSkillCostEntry(
 ): SkillCostEntry {
   const totalCost = (existing?.totalCost ?? 0) + bucket.costUsd;
   const callCount = (existing?.callCount ?? 0) + bucket.count;
-  const attributedCallCount = existing?.attributedCallCount ?? 0;
+  // A persisted bucket only ever holds attributed cost, so every call it counts is attributed.
+  const attributedCallCount = (existing?.attributedCallCount ?? 0) + bucket.count;
   return {
     callCount,
     attributedCallCount,

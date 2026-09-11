@@ -759,27 +759,13 @@ export interface BuildSessionSummarySources {
 }
 
 /**
- * Fields `CostMetrics` gains once `CostTracker` starts computing per-agent-type,
- * high-context, and API-duration attribution (a later unit). Declared locally,
- * as an all-optional extension, so `buildSessionSummary` already reads them —
- * any `CostMetrics` value is structurally assignable here whether or not the
- * tracker populates them yet, so no further change is needed at this call
- * site once it does.
- */
-interface AttributionCostMetricsFields {
-  readonly subagentByAgentType?: Readonly<Record<string, AttributionBucket>>;
-  readonly highContextCostUsd?: number;
-  readonly apiDurationMs?: number | null;
-}
-
-/**
  * Assemble `SessionAttribution` from the turn attributor's tool/skill
  * buckets and the cost tracker's subagent/high-context/API-duration fields.
  * Facets with no entries are omitted entirely rather than persisted as `{}`.
  */
 function buildAttribution(
   turnMetrics: CostAttributionMetrics | null,
-  costMetrics: (CostMetrics & AttributionCostMetricsFields) | null,
+  costMetrics: CostMetrics | null,
 ): SessionAttribution {
   const buckets: Partial<Record<AttributionFacet, Record<string, AttributionBucket>>> = {};
 
@@ -830,8 +816,7 @@ export function buildSessionSummary(sources: BuildSessionSummarySources): FullSe
   } = sources;
 
   const sessionMetrics = sessionTracker.getMetrics();
-  const costMetrics: (CostMetrics & AttributionCostMetricsFields) | null =
-    costTracker?.getMetrics() ?? null;
+  const costMetrics = costTracker?.getMetrics() ?? null;
   const turnAttributionMetrics = sources.turnCostAttributor?.getMetrics() ?? null;
   const attribution =
     sources.costTracker || sources.turnCostAttributor

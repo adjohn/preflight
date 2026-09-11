@@ -2306,9 +2306,9 @@ describe('api-handler GET /api/cost-per-tool', () => {
     expect(result.costByToolType.Read.avgCost).toBeCloseTo(0.02, 10);
     expect(result.costBySkill.unslop).toEqual({
       callCount: 2,
-      attributedCallCount: 1,
+      attributedCallCount: 2,
       totalCost: 0.03,
-      avgCost: 0.03,
+      avgCost: 0.015,
       inputTokens: 100,
       outputTokens: 50,
       cacheReadTokens: 0,
