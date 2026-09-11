@@ -308,7 +308,7 @@ describe('History view', () => {
   it('renders the section headings', async () => {
     renderHistory();
     await waitFor(() => expect(screen.getByText(/efficiency/i)).toBeInTheDocument());
-    expect(screen.getByText(/spend/i)).toBeInTheDocument();
+    expect(screen.getByText(/daily spend/i)).toBeInTheDocument();
   });
 
   it('renders a chart for weekly efficiency', async () => {
@@ -1625,5 +1625,13 @@ describe('CoachMetricsTable', () => {
     // The component should handle null efficiency and zero-valued baseline metrics gracefully
     expect(screen.getByText(/personal coach/i)).toBeInTheDocument();
     expect(screen.getByText(/Efficiency/i)).toBeInTheDocument();
+  });
+});
+
+describe('UsageContributionPanel', () => {
+  it('renders the contribution panel title', async () => {
+    renderHistory();
+    await waitFor(() => expect(screen.getByText(/daily spend/i)).toBeInTheDocument());
+    expect(screen.getByText("What's contributing to your spend")).toBeInTheDocument();
   });
 });

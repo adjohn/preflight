@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { JSX } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
@@ -30,6 +31,7 @@ import {
   fetchActivityHeatmap,
   fetchConcurrencyHistory,
   fetchInstructionDrift,
+  fetchUsageInsights,
   qk,
   type WeeklyRow,
   type CostPerOutcomeResponse,
@@ -43,8 +45,9 @@ import {
   type ClaudeMdImpactApiResponse,
   type CollaborationProfileApiResponse,
   type MetricDelta,
+  type UsageInsightsReport,
 } from '../api/client';
-import { formatUsdOrDash, shortToolName } from '../lib/format';
+import { formatUsdOrDash, formatTokensCompact, shortToolName } from '../lib/format';
 
 interface SessionRow {
   readonly sessionId: string;
@@ -227,6 +230,12 @@ export function History(): JSX.Element {
   const drift = useQuery<InstructionDriftResponse>({
     queryKey: qk.instructionDrift,
     queryFn: fetchInstructionDrift,
+  });
+
+  const [usageInsightsDays, setUsageInsightsDays] = useState<7 | 30>(7);
+  const usageInsights = useQuery<UsageInsightsReport>({
+    queryKey: qk.usageInsights(usageInsightsDays),
+    queryFn: () => fetchUsageInsights(usageInsightsDays),
   });
 
   const hasLoadError =
@@ -420,6 +429,12 @@ export function History(): JSX.Element {
           )}
         </Panel>
 
+        <UsageContributionPanel
+          data={usageInsights.data}
+          windowDays={usageInsightsDays}
+          onWindowChange={setUsageInsightsDays}
+        />
+
         <Panel title="Model Performance · Most Recent 200 Sessions">
           {modelPerf.length === 0 ? (
             <EmptyState
@@ -577,6 +592,211 @@ export function History(): JSX.Element {
         <RecommendationsPanel data={recommendations.data} isError={recommendations.isError} />
       </div>
     </section>
+  );
+}
+
+function UsageContributionPanel({
+  data,
+  windowDays,
+  onWindowChange,
+}: {
+  data: UsageInsightsReport | undefined;
+  windowDays: 7 | 30;
+  onWindowChange: (days: 7 | 30) => void;
+}): JSX.Element {
+  if (!data) {
+    return (
+      <Panel title="What's contributing to your spend">
+        <EmptyState icon="chart" title="Loading..." />
+      </Panel>
+    );
+  }
+
+  const handleWindowToggle = () => {
+    onWindowChange(windowDays === 7 ? 30 : 7);
+  };
+
+  return (
+    <Panel title="What's contributing to your spend">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs text-ink-muted">
+          Approximate, based on sessions recorded on this machine. These are independent
+          characteristics of your spend, not a breakdown.
+        </p>
+        <button
+          onClick={handleWindowToggle}
+          className="text-xs px-2 py-1 rounded bg-surface-2 hover:bg-surface-3 text-ink-base transition"
+        >
+          {windowDays}d
+        </button>
+      </div>
+
+      {data.sessionCount === 0 ? (
+        <EmptyState icon="clock" title="No sessions in this window." />
+      ) : data.insights.length === 0 ? (
+        <p className="text-xs text-ink-muted">Nothing stands out in this window.</p>
+      ) : (
+        <div className="mb-4 space-y-2">
+          {data.insights.map((insight) => (
+            <div key={insight.id} className="text-xs">
+              <p className="text-ink-base font-medium">{insight.headline}</p>
+              <p className="text-ink-muted">{insight.advice}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {data.sessionCount > 0 && (
+        <div className="grid grid-cols-1 gap-4 text-xs mt-4">
+          {data.skills.length > 0 && (
+            <div>
+              <h4 className="text-ink-muted font-medium mb-2">Skills</h4>
+              <div className="h-40 overflow-y-auto">
+                <table className="w-full">
+                  <thead className="text-ink-muted sticky top-0 bg-bg-panel">
+                    <tr>
+                      <th className="text-left pb-1">Skill</th>
+                      <th className="text-right pb-1">Calls</th>
+                      <th className="text-right pb-1">Tokens</th>
+                      <th className="text-right pb-1">% of spend</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.skills.map((row) => (
+                      <tr key={row.key} className="border-t border-bg-line">
+                        <td className="py-1 text-ink-base">{row.key}</td>
+                        <td className="py-1 text-right tabular-nums">{row.count}</td>
+                        <td className="py-1 text-right tabular-nums">
+                          {row.tokens !== null ? formatTokensCompact(row.tokens) : '—'}
+                        </td>
+                        <td className="py-1 text-right tabular-nums">
+                          {Math.round(row.sharePct)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {data.subagents.length > 0 && (
+            <div>
+              <h4 className="text-ink-muted font-medium mb-2">Subagents</h4>
+              <div className="h-40 overflow-y-auto">
+                <table className="w-full">
+                  <thead className="text-ink-muted sticky top-0 bg-bg-panel">
+                    <tr>
+                      <th className="text-left pb-1">Type</th>
+                      <th className="text-right pb-1">Requests</th>
+                      <th className="text-right pb-1">Tokens</th>
+                      <th className="text-right pb-1">% of spend</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.subagents.map((row) => (
+                      <tr key={row.key} className="border-t border-bg-line">
+                        <td className="py-1 text-ink-base">{row.key}</td>
+                        <td className="py-1 text-right tabular-nums">{row.count}</td>
+                        <td className="py-1 text-right tabular-nums">
+                          {row.tokens !== null ? formatTokensCompact(row.tokens) : '—'}
+                        </td>
+                        <td className="py-1 text-right tabular-nums">
+                          {Math.round(row.sharePct)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {data.plugins.length > 0 && (
+            <div>
+              <h4 className="text-ink-muted font-medium mb-2">Plugins</h4>
+              <div className="h-40 overflow-y-auto">
+                <table className="w-full">
+                  <thead className="text-ink-muted sticky top-0 bg-bg-panel">
+                    <tr>
+                      <th className="text-left pb-1">Plugin</th>
+                      <th className="text-right pb-1">% of spend</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.plugins.map((row) => (
+                      <tr key={row.key} className="border-t border-bg-line">
+                        <td className="py-1 text-ink-base">{row.key}</td>
+                        <td className="py-1 text-right tabular-nums">
+                          {Math.round(row.sharePct)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {data.loops.length > 0 && (
+            <div>
+              <h4 className="text-ink-muted font-medium mb-2">Loops</h4>
+              <div className="h-40 overflow-y-auto">
+                <table className="w-full">
+                  <thead className="text-ink-muted sticky top-0 bg-bg-panel">
+                    <tr>
+                      <th className="text-left pb-1">Session</th>
+                      <th className="text-right pb-1">Runs</th>
+                      <th className="text-right pb-1">Tokens</th>
+                      <th className="text-right pb-1">Per run</th>
+                      <th className="text-right pb-1">Last run</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.loops.map((row) => {
+                      const lastRunAgo = Date.now() - row.lastRunMs;
+                      const lastRunLabel =
+                        lastRunAgo < 60000
+                          ? 'now'
+                          : lastRunAgo < 3600000
+                            ? `${Math.round(lastRunAgo / 60000)}m ago`
+                            : `${Math.round(lastRunAgo / 3600000)}h ago`;
+                      return (
+                        <tr key={row.sessionId} className="border-t border-bg-line">
+                          <td
+                            className="py-1 text-ink-base truncate"
+                            title={row.sessionName || row.sessionId}
+                          >
+                            {row.sessionName || row.sessionId.slice(0, 8)}
+                          </td>
+                          <td className="py-1 text-right tabular-nums">{row.runs}</td>
+                          <td className="py-1 text-right tabular-nums">
+                            {formatTokensCompact(row.tokens)}
+                          </td>
+                          <td className="py-1 text-right tabular-nums">
+                            {formatTokensCompact(row.tokensPerRun)}
+                          </td>
+                          <td className="py-1 text-right tabular-nums text-ink-muted">
+                            {lastRunLabel}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {data.attributionRatePct !== null && data.attributionRatePct < 50 && (
+        <p className="text-[10px] text-ink-muted italic mt-3">
+          Skill and tool shares are based on {Math.round(data.attributionRatePct)}% of spend with
+          attribution.
+        </p>
+      )}
+    </Panel>
   );
 }
 
