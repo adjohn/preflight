@@ -659,6 +659,7 @@ function CostByToolPanel(): JSX.Element {
         .sort((a, b) => b[1].totalCost - a[1].totalCost)
         .map(([tool, e]) => ({ tool, totalCost: e.totalCost, callCount: e.callCount }))
     : [];
+  const toolsTotalCost = tools.reduce((sum, t) => sum + t.totalCost, 0);
 
   const lowAttribution = data != null && (data.attributionRate ?? 1) < 0.5;
 
@@ -711,7 +712,10 @@ function CostByToolPanel(): JSX.Element {
                   tickFormatter={(value: string) => {
                     const match = tools.find((t) => t.tool === value);
                     const label = shortToolName(value);
-                    return match ? `${label} (${match.callCount})` : label;
+                    if (!match) return label;
+                    const pct =
+                      toolsTotalCost > 0 ? Math.round((match.totalCost / toolsTotalCost) * 100) : 0;
+                    return `${label} (${pct}%)`;
                   }}
                   stroke={CHART_GRID_STROKE}
                   width={90}
@@ -797,7 +801,7 @@ function CostBySkillPanel(): JSX.Element | null {
               </td>
               <td className="text-right py-1.5 px-1 text-ink-subtle">
                 {formatTokensCompact(
-                  entry.inputTokens + entry.outputTokens + entry.cacheReadTokens,
+                  entry.tokens ?? entry.inputTokens + entry.outputTokens + entry.cacheReadTokens,
                 )}
               </td>
               <td className="text-right py-1.5 px-1 text-ink-subtle">

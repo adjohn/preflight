@@ -413,6 +413,7 @@ export interface TurnCostsResponse {
       outputTokens: number;
       cacheReadTokens: number;
       totalDurationMs: number;
+      readonly tokens?: number;
     }
   >;
   readonly totalAttributedCost: number;
