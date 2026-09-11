@@ -263,6 +263,8 @@ export function History(): JSX.Element {
   const antiPatternSeries = buildAntiPatternSeries(weeklyChronological);
   const modelPerf = aggregateModelPerformance(sessions.data ?? []);
   const topTools = aggregateToolUsage(sessions.data ?? []);
+  const topToolsTotal = topTools.reduce((sum, t) => sum + t.count, 0);
+  const modelPerfTotalCost = modelPerf.reduce((sum, m) => sum + (m.avgCost ?? 0) * m.sessions, 0);
   // aggregateToolUsage caps at the top 8 tools; surface how many were
   // dropped so "Top Tools" doesn't read as an exhaustive list.
   const totalToolCount = new Set(
@@ -452,6 +454,7 @@ export function History(): JSX.Element {
                     <th className="text-right pb-1">Eff.</th>
                     <th className="text-right pb-1">Success</th>
                     <th className="text-right pb-1">Avg $</th>
+                    <th className="text-right pb-1">Share</th>
                     <th className="text-right pb-1">$/1M tok</th>
                   </tr>
                 </thead>
@@ -473,6 +476,11 @@ export function History(): JSX.Element {
                           : '—'}
                       </td>
                       <td className="py-1 text-right tabular-nums">{formatUsdOrDash(m.avgCost)}</td>
+                      <td className="py-1 text-right tabular-nums">
+                        {modelPerfTotalCost > 0 && m.avgCost != null
+                          ? `${Math.round(((m.avgCost * m.sessions) / modelPerfTotalCost) * 100)}%`
+                          : '—'}
+                      </td>
                       <td className="py-1 text-right tabular-nums text-ink-subtle">
                         {formatUsdOrDash(m.costPerMillionTokens)}
                       </td>
@@ -517,6 +525,11 @@ export function History(): JSX.Element {
                     contentStyle={TOOLTIP_STYLE}
                     itemStyle={TOOLTIP_ITEM_STYLE}
                     labelFormatter={(label) => shortToolName(String(label))}
+                    formatter={(value) => {
+                      const share =
+                        topToolsTotal > 0 ? Math.round((Number(value) / topToolsTotal) * 100) : 0;
+                      return `${value} (${share}%)`;
+                    }}
                   />
                   <Bar dataKey="count" radius={[0, 3, 3, 0]}>
                     {topTools.map((entry) => (
