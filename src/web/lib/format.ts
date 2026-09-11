@@ -87,6 +87,23 @@ export function formatDuration(ms: number): string {
 }
 
 /**
+ * Compact "time ago" label for a past epoch-ms timestamp: "just now", "5m
+ * ago", "3h ago", "2d ago". Floors to the current bucket so a value never
+ * reads as one tick newer than it is.
+ */
+export function formatRelativeTime(ts: number): string {
+  const now = Date.now();
+  const diff = Math.max(0, now - ts);
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+/**
  * Pretty-print a number for KPI/alert display.
  *
  * - Non-finite values render as the em-dash placeholder used elsewhere in

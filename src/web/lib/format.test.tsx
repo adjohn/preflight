@@ -10,6 +10,7 @@ import {
   formatUsd,
   formatUsdOrDash,
   formatTokensCompact,
+  formatRelativeTime,
   shortToolName,
 } from './format';
 
@@ -197,5 +198,23 @@ describe('formatTokensCompact()', () => {
 
   it('renders the M tier at the 1,000,000 boundary', () => {
     expect(formatTokensCompact(1_000_000)).toBe('1.0M');
+  });
+});
+
+describe('formatRelativeTime()', () => {
+  it('returns "just now" for a timestamp within the last minute', () => {
+    expect(formatRelativeTime(Date.now())).toBe('just now');
+  });
+
+  it('formats minutes ago', () => {
+    expect(formatRelativeTime(Date.now() - 5 * 60_000)).toBe('5m ago');
+  });
+
+  it('formats hours ago', () => {
+    expect(formatRelativeTime(Date.now() - 3 * 3_600_000)).toBe('3h ago');
+  });
+
+  it('formats days ago', () => {
+    expect(formatRelativeTime(Date.now() - 2 * 86_400_000)).toBe('2d ago');
   });
 });
