@@ -152,6 +152,67 @@ describe('GitWorkspaceReporter', () => {
     expect(known.get(identity!.worktreeKey)).toBeDefined();
   });
 
+  describe('hydrateGitLog', () => {
+    it('keys a hydrated commit to the target root worktreeKey and registers the identity', () => {
+      const repoDir = join(tmpDir, 'repo');
+      execSync(`mkdir -p "${repoDir}"`);
+      initGitRepo(repoDir);
+
+      const reporter = new GitWorkspaceReporter();
+      const identity = new WorktreeIdentityResolver().resolve(repoDir);
+
+      reporter.hydrateGitLog([
+        { hash: 'abc123', timestamp: 5000, root: repoDir, repo: null, subject: 'a commit', url: null },
+      ]);
+
+      const report = reporter.report({ scope: { kind: 'all' }, since: 0, until: 10_000 });
+      expect(report.rows).toHaveLength(1);
+      expect(report.rows[0].identity.worktreeKey).toBe(identity!.worktreeKey);
+      expect(report.rows[0].metrics.commitCount).toBe(1);
+      expect(reporter.knownWorkspaces().get(identity!.worktreeKey)).toBeDefined();
+    });
+
+    it('is idempotent — re-hydrating the same commit does not double-count it', () => {
+      const repoDir = join(tmpDir, 'repo');
+      execSync(`mkdir -p "${repoDir}"`);
+      initGitRepo(repoDir);
+
+      const reporter = new GitWorkspaceReporter();
+      const commit = {
+        hash: 'abc123',
+        timestamp: 5000,
+        root: repoDir,
+        repo: null,
+        subject: 'a commit',
+        url: null,
+      };
+
+      reporter.hydrateGitLog([commit]);
+      reporter.hydrateGitLog([commit]);
+
+      const report = reporter.report({ scope: { kind: 'all' }, since: 0, until: 10_000 });
+      expect(report.rows[0].metrics.commitCount).toBe(1);
+    });
+
+    it('skips a commit whose root cannot be resolved to a workspace identity', () => {
+      const reporter = new GitWorkspaceReporter();
+
+      reporter.hydrateGitLog([
+        {
+          hash: 'abc123',
+          timestamp: 5000,
+          root: join(tmpDir, 'not-a-repo'),
+          repo: null,
+          subject: 'a commit',
+          url: null,
+        },
+      ]);
+
+      const report = reporter.report({ scope: { kind: 'all' }, since: 0, until: 10_000 });
+      expect(report.rows).toHaveLength(0);
+    });
+  });
+
   describe('sampleLiveState compare-ref ladder', () => {
     it('resolves ahead/behind and defaultBranch from a real configured upstream', () => {
       const remoteDir = join(tmpDir, 'remote.git');
