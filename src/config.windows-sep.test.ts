@@ -2,7 +2,7 @@ import { win32 } from 'node:path';
 
 // validateRulesPath's containment check (src/config.ts) delegates entirely to
 // path.relative()/isAbsolute() rather than hand-rolled separator matching —
-// see static-handler.windows-sep.test.ts for the identical rationale (#24).
+// see static-handler.windows-sep.test.ts for the identical rationale.
 // This pins Node's own path.win32 behavior for the exact shapes that check
 // relies on, so a future Node behavior change here would be caught rather
 // than silently relied upon.

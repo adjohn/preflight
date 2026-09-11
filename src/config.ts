@@ -518,7 +518,7 @@ function validateRulesPath(rawPath: string, storagePath: string): string {
   const resolved = resolve(rawPath);
   const storageResolved = resolve(storagePath);
   // path.relative() + isAbsolute() is separator-agnostic (see static-handler.ts,
-  // fixed for the same bug class in #24) — a hand-rolled prefix check hardcodes
+  // fixed for the same bug class) — a hand-rolled prefix check hardcodes
   // '/' and silently fails every containment check on Windows, where resolve()
   // returns backslash-separated paths.
   const rel = relative(storageResolved, resolved);

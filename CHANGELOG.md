@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **On Windows, `alerts.rulesPath` validation rejected every path — including the default one — because the containment check hardcoded `/` as the path separator, and `path.resolve()` returns backslash-separated paths on Windows.** This logged a spurious warning on every server start (`preflight doctor` included) and silently discarded any custom `alerts.rulesPath` set via config file or `NR_AI_ALERTS_RULES_PATH`, reverting it to the default. The check now uses `path.relative()` + `path.isAbsolute()`, which is separator-agnostic — the same fix applied to `static-handler.ts` for the identical bug class in #24.
+- **On Windows, `alerts.rulesPath` validation rejected every path — including the default one — because the containment check hardcoded `/` as the path separator, and `path.resolve()` returns backslash-separated paths on Windows.** This logged a spurious warning on every server start (`preflight doctor` included) and silently discarded any custom `alerts.rulesPath` set via config file or `NR_AI_ALERTS_RULES_PATH`, reverting it to the default. The check now uses `path.relative()` + `path.isAbsolute()`, which is separator-agnostic — the same fix already applied to `static-handler.ts` for the identical bug class.
 
 ## [1.50.3] - 2026-09-10
 
