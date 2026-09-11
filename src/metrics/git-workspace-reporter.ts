@@ -3,7 +3,13 @@ import { spawnSync } from 'node:child_process';
 import type { ReplayTimelineEntry, ToolCallRecord } from '../storage/types.js';
 import { ActivityStore } from './git-activity-store.js';
 import { GitActivityRecorder, type GitActivityRecord } from './git-activity-recorder.js';
-import { WorktreeIdentityResolver, type WorktreeIdentity } from './git-workspace-identity.js';
+import {
+  UNATTRIBUTED_WORKSPACE_KEY,
+  UNRESOLVED_REPO_KEY_PREFIX,
+  WorktreeIdentityResolver,
+  isPlaceholderIdentity,
+  type WorktreeIdentity,
+} from './git-workspace-identity.js';
 import {
   buildGitWorkspaceReport,
   type GitWorkspaceReport,
@@ -191,6 +197,7 @@ export class GitWorkspaceReporter {
     const records = [...liveRecords, ...dedupedHistorical];
 
     const identities = new Map([...(historicalIdentities ?? []), ...this.knownWorkspacesRegistry]);
+    adoptResolvedRepoKeys(identities);
 
     const liveStates = new Map<string, WorktreeLiveState>();
     const workspaceKeys = new Set(records.map((r) => r.workspaceKey));
@@ -296,7 +303,36 @@ export interface ReplayedActivity {
 // Prefix for a synthetic identity representing "this repo, but we don't know
 // which worktree" — the fallback used when a session predates the `cwd`
 // field on ReplayTimelineEntry but still carries a resolved `repoName`.
-const UNKNOWN_WORKTREE_PREFIX = 'unresolved-repo:';
+/**
+ * Rewrites, in place, every "this repo, worktree unknown" placeholder's
+ * `repoKey` to that of a resolved worktree sharing its `repoName`, so the
+ * report groups and scopes it with that repo instead of as a look-alike
+ * second repo. Its `worktreeKey` stays the placeholder key — the activity
+ * still can't be pinned to one worktree. With two resolved clones of the
+ * same remote the lexically smallest `repoKey` wins, purely so the choice is
+ * stable across requests. A placeholder with no resolved sibling is left
+ * alone.
+ */
+function adoptResolvedRepoKeys(identities: Map<string, WorktreeIdentity>): void {
+  const resolvedRepoKeyByName = new Map<string, string>();
+  for (const identity of identities.values()) {
+    if (identity.repoName === null || isPlaceholderIdentity(identity)) continue;
+    const existing = resolvedRepoKeyByName.get(identity.repoName);
+    if (existing === undefined || identity.repoKey < existing) {
+      resolvedRepoKeyByName.set(identity.repoName, identity.repoKey);
+    }
+  }
+  for (const [key, identity] of identities) {
+    if (
+      identity.repoName === null ||
+      !identity.worktreeKey.startsWith(UNRESOLVED_REPO_KEY_PREFIX)
+    ) {
+      continue;
+    }
+    const repoKey = resolvedRepoKeyByName.get(identity.repoName);
+    if (repoKey !== undefined) identities.set(key, { ...identity, repoKey });
+  }
+}
 
 /**
  * Re-classifies a persisted session's timeline into `GitActivityRecord`s,
@@ -313,9 +349,10 @@ const UNKNOWN_WORKTREE_PREFIX = 'unresolved-repo:';
  * identity instead. `repoName` is coarser than a real worktree identity (one
  * remote can't distinguish which of its worktrees a session ran in), so this
  * can't merge into a real worktree's own rollup — it surfaces as its own
- * row, grouped with the real ones by display name rather than by identity
- * key. Still strictly more honest than folding every pre-`cwd` session into
- * one anonymous bucket regardless of which repo it touched.
+ * row, and `GitWorkspaceReporter.report()` later files it under the real
+ * repo (see `adoptResolvedRepoKeys`). Still strictly more honest than
+ * folding every pre-`cwd` session into one anonymous bucket regardless of
+ * which repo it touched.
  *
  * Implementation: build one synthetic `ToolCallRecord` per timeline entry
  * (mirroring `GitEfficiencyTracker.replayTimeline()`'s own pattern) with a
@@ -378,10 +415,10 @@ export function replaySessionToActivityRecords(
     return { records: drained, identities };
   }
 
-  const fallbackKey = UNKNOWN_WORKTREE_PREFIX + session.repoName;
+  const fallbackKey = UNRESOLVED_REPO_KEY_PREFIX + session.repoName;
   let usedFallback = false;
   const records = drained.map((record) => {
-    if (record.workspaceKey !== 'unattributed') return record;
+    if (record.workspaceKey !== UNATTRIBUTED_WORKSPACE_KEY) return record;
     usedFallback = true;
     return { ...record, workspaceKey: fallbackKey };
   });
