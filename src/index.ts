@@ -2587,6 +2587,7 @@ async function main(): Promise<void> {
         const summary = buildSessionSummary({
           sessionTracker,
           costTracker,
+          turnCostAttributor,
           taskDetector,
           antiPatternDetector,
           efficiencyScorer,
