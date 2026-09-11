@@ -438,12 +438,14 @@ export function History(): JSX.Element {
           )}
         </Panel>
 
-        <UsageContributionPanel
-          data={usageInsights.data}
-          isError={usageInsights.isError}
-          windowDays={usageInsightsDays}
-          onWindowChange={setUsageInsightsDays}
-        />
+        <div className="col-span-full">
+          <UsageContributionPanel
+            data={usageInsights.data}
+            isError={usageInsights.isError}
+            windowDays={usageInsightsDays}
+            onWindowChange={setUsageInsightsDays}
+          />
+        </div>
 
         <Panel title="Model Performance · Most Recent 200 Sessions">
           {modelPerf.length === 0 ? (
@@ -623,6 +625,16 @@ export function History(): JSX.Element {
   );
 }
 
+// A row with real spend can carry a sharePct that's already floored to 0 by
+// the backend — render that as "<1%" rather than "0%", which reads as no
+// spend at all.
+function formatSharePct(row: UsageShareRow): string {
+  if (row.costUsd > 0 && row.sharePct === 0) {
+    return '<1%';
+  }
+  return `${Math.round(row.sharePct)}%`;
+}
+
 function UsageContributionPanel({
   data,
   isError,
@@ -683,7 +695,7 @@ function UsageContributionPanel({
       )}
 
       {data.sessionCount > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs mt-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 text-xs mt-4">
           {data.skills.length > 0 && (
             <ShareTable<UsageShareRow>
               title="Skills"
@@ -700,7 +712,7 @@ function UsageContributionPanel({
                 {
                   header: '% of spend',
                   align: 'right',
-                  cell: (row) => `${Math.round(row.sharePct)}%`,
+                  cell: (row) => formatSharePct(row),
                 },
               ]}
             />
@@ -722,7 +734,7 @@ function UsageContributionPanel({
                 {
                   header: '% of spend',
                   align: 'right',
-                  cell: (row) => `${Math.round(row.sharePct)}%`,
+                  cell: (row) => formatSharePct(row),
                 },
               ]}
             />
@@ -738,7 +750,7 @@ function UsageContributionPanel({
                 {
                   header: '% of spend',
                   align: 'right',
-                  cell: (row) => `${Math.round(row.sharePct)}%`,
+                  cell: (row) => formatSharePct(row),
                 },
               ]}
             />
