@@ -725,26 +725,6 @@ describe('Today view', () => {
     expect(await screen.findByText(/subagent cost tracking is disabled/i)).toBeInTheDocument();
   });
 
-  it('shows no watcher banner at all when watcherDisabledReason is mode_mismatch', async () => {
-    // A --local dashboard daemon never runs its own subagent watcher, so this
-    // is its steady state on every default install. The Today spend figures
-    // already aggregate every session's persisted subagent cost, and the
-    // env var the old banner told users to set does not reach a launchd
-    // daemon. Nothing here is actionable, so nothing renders.
-    stubObservabilityHealth({
-      watcherActive: false,
-      watcherDisabledByLock: false,
-      watcherDisabledReason: 'mode_mismatch',
-    });
-
-    renderToday();
-    await expect(
-      screen.findByText(/subagent activity from other sessions/i, {}, { timeout: 300 }),
-    ).rejects.toThrow();
-    expect(screen.queryByText(/subagent cost tracking is disabled/i)).toBeNull();
-    expect(screen.queryByText(/NR_AI_ENABLE_SUBAGENT_WATCHER=0/)).toBeNull();
-  });
-
   it('does not show the watcher-disabled banner when the cross-session aggregate reports nonzero subagent spend, even though its turn count is 0', async () => {
     // aggregate.subagentTurnCount only counts Workflow-tool script runs, so it
     // reads 0 on any day where the subagents were ordinary Task/Agent-tool

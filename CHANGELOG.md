@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.50.8] - 2026-09-11
+
+### Fixed
+
+- **Standalone and daemon `--local` dashboards now track subagent cost with no configuration.** The subagent transcript watcher previously only ran under `--stdio`, so a `--local` deployment with no `--stdio` sibling — a container, systemd unit, launchd daemon, or any platform with no MCP client to auto-launch `--stdio` — never observed any subagent spend. `NR_AI_WATCHER_MODE` is removed entirely; a `--local` watcher now runs unfiltered by default, skipping any session a live `--stdio` process already owns, and an orphan session's subagent spend persists to its own `sessions/*.json` file and survives a daemon restart.
+
 ## [1.50.6] - 2026-09-11
 
 ### Fixed

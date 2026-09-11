@@ -340,16 +340,12 @@ export interface ObservabilityHealthSnapshot {
   readonly costSelfCheckDeltaPct: number | null;
   /**
    * Why `watcherActive` is false; null when it's true. `activeSubagentWatcher`
-   * (src/index.ts) is only non-null when BOTH `subagentWatcherEnabled` (the
-   * `NR_AI_ENABLE_SUBAGENT_WATCHER` flag) AND `watcherShouldRun` (this
-   * process's mode matches `NR_AI_WATCHER_MODE`, default 'stdio') hold — two
-   * unrelated conditions collapsed into one boolean. `'mode_mismatch'` is the
-   * common, by-design case for a `--local` dashboard daemon; `'env_var'` is
-   * the explicit opt-out. Distinguishing them matters because the UI's
-   * `'env_var'` messaging tells the user to unset a variable — which is
-   * actively wrong advice when the real cause is `'mode_mismatch'`.
+   * (src/index.ts) is only non-null when `subagentWatcherEnabled` (the
+   * `NR_AI_ENABLE_SUBAGENT_WATCHER` flag) holds — the only way to disable it,
+   * in either `--stdio` or `--local` mode, since the watcher runs in both by
+   * default (see subagent-watcher.ts's unfiltered discovery).
    */
-  readonly watcherDisabledReason: 'env_var' | 'mode_mismatch' | null;
+  readonly watcherDisabledReason: 'env_var' | null;
   /**
    * True when the Copilot usage watcher is running but found a VS Code
    * workspaceStorage root with no `debug-logs` directory — i.e. the

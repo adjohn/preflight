@@ -438,16 +438,14 @@ export function Today(): JSX.Element {
         </>
       ) : (
         <>
-          {healthApi?.watcherActive === false &&
-            subagentUsd === 0 &&
-            healthApi?.watcherDisabledReason !== 'mode_mismatch' && (
-              <div className="rounded-lg border border-border-subtle bg-surface-5 px-4 py-3 text-sm text-ink-muted mb-4">
-                Subagent cost tracking is disabled (
-                <code className="font-mono text-xs">NR_AI_ENABLE_SUBAGENT_WATCHER=0</code>), so
-                spend shown here excludes subagents. Unset that variable (it is on by default) and
-                restart to see full spend.
-              </div>
-            )}
+          {healthApi?.watcherActive === false && subagentUsd === 0 && (
+            <div className="rounded-lg border border-border-subtle bg-surface-5 px-4 py-3 text-sm text-ink-muted mb-4">
+              Subagent cost tracking is disabled (
+              <code className="font-mono text-xs">NR_AI_ENABLE_SUBAGENT_WATCHER=0</code>), so spend
+              shown here excludes subagents. Unset that variable (it is on by default) and restart
+              to see full spend.
+            </div>
+          )}
           <AnimatedCard index={0} className="mb-4">
             <Card padding="lg" tone="elevated" glow="green">
               <div className="grid grid-cols-5 gap-4">

@@ -1836,23 +1836,13 @@ async function main(): Promise<void> {
           observabilityHealth: {
             getSnapshot: (): ObservabilityHealthSnapshot => {
               // Read live counters off the SubagentWatcher when it's running.
-              // A null binding => watcher disabled (env flag off / wrong mode)
-              // => a zeroed "disabled" snapshot. costSelfCheckDeltaPct stays
-              // null until the 1h self-check is wired.
+              // A null binding => watcher disabled (env flag off) => a zeroed
+              // "disabled" snapshot. costSelfCheckDeltaPct stays null until
+              // the 1h self-check is wired.
               const stats = activeSubagentWatcher?.getHealthStats();
               const watcherActive = activeSubagentWatcher !== null;
-              // Re-derive which of the two independent conditions caused a
-              // null binding, rather than reading the `subagentWatcherEnabled`/
-              // `watcherShouldRun` consts from the outer closure — this way
-              // the reason is always self-consistent with the actual env var
-              // at snapshot time, with no scope-ordering dependency on where
-              // those consts are declared in this large startup function.
               const watcherDisabledReason: ObservabilityHealthSnapshot['watcherDisabledReason'] =
-                watcherActive
-                  ? null
-                  : process.env['NR_AI_ENABLE_SUBAGENT_WATCHER'] === '0'
-                    ? 'env_var'
-                    : 'mode_mismatch';
+                watcherActive ? null : 'env_var';
               return {
                 watcherActive,
                 filesWatched: stats?.filesWatched ?? 0,
@@ -2657,14 +2647,7 @@ async function main(): Promise<void> {
     }, SESSION_PERSIST_INTERVAL_MS);
     sessionPersistInterval.unref?.();
 
-    // Single-mode rule: the watcher runs in `--stdio` mode by default.
-    // Opt-in to watcher-in-dashboard via `NR_AI_WATCHER_MODE=local`.
-    const watcherMode = (process.env['NR_AI_WATCHER_MODE'] ?? 'stdio').toLowerCase();
     const isStdioWatcher = options.stdio === true;
-    const isLocalWatcher = !isStdioWatcher;
-    const watcherShouldRun =
-      (isStdioWatcher && (watcherMode === 'stdio' || watcherMode === '')) ||
-      (isLocalWatcher && watcherMode === 'local');
     // The SubagentWatcher is the ONLY thing that feeds per-agent (subagent)
     // token cost into the CostTracker (via onSubagentTurn → subagentCostUsd).
     // With it off, a session's persisted/headline cost silently excludes ALL
@@ -2675,13 +2658,18 @@ async function main(): Promise<void> {
     // (parentSessionId filter), so it only ever attributes that session's own
     // subagents — parent tokens (onTokenEvent, parent transcript) and subagent
     // tokens (onSubagentTurn, subagent transcripts) are disjoint, so there is no
-    // double count. The WorkflowWatcher stays opt-in (NR_AI_ENABLE_WORKFLOW_WATCHER=1).
+    // double count. Unfiltered (`--local`), the #306 heartbeat exclusion
+    // (subagent-watcher.ts's discoverFiles) is what keeps it from racing a live
+    // `--stdio` session's own scoped watcher over the same cursor files — see
+    // that module's doc comment. The WorkflowWatcher stays engine-only: it has
+    // no heartbeat exclusion, so running it unfiltered would reintroduce that
+    // exact race for workflow transcripts.
     const subagentWatcherEnabled = process.env['NR_AI_ENABLE_SUBAGENT_WATCHER'] !== '0';
     const workflowWatcherEnabled = process.env['NR_AI_ENABLE_WORKFLOW_WATCHER'] === '1';
-    // Unlike subagent/workflow watchers, ParentTranscriptWatcher is NOT gated
-    // by watcherShouldRun/NR_AI_WATCHER_MODE — see startWatchers() below for
-    // why. Do not "fix" this to match the other two; that would reintroduce
-    // the exact regression this divergence avoids.
+    // Unlike WorkflowWatcher, ParentTranscriptWatcher is not gated
+    // by --stdio-vs-`--local` at all — see startWatchers() below for why. Do
+    // not "fix" this to match WorkflowWatcher; that would reintroduce the exact
+    // regression this divergence avoids.
     const parentTranscriptWatcherEnabled =
       process.env['NR_AI_ENABLE_PARENT_TRANSCRIPT_WATCHER'] !== '0';
     // CopilotUsageWatcher is the Copilot analog of ParentTranscriptWatcher
@@ -2710,15 +2698,14 @@ async function main(): Promise<void> {
       // ParentTranscriptWatcher feeds parent-session token/cost tracking —
       // the primary cost signal, not a secondary one like subagent/workflow
       // cost. The old per-hook transcript scanner it replaces ran
-      // unconditionally in every mode with zero coupling to
-      // NR_AI_WATCHER_MODE; gating this behind watcherShouldRun the same way
-      // SubagentWatcher/WorkflowWatcher are gated would mean a standalone
-      // `--local` deployment (no --stdio sibling, NR_AI_WATCHER_MODE unset)
-      // goes from "buggy but nonzero" parent-cost tracking to "exactly zero"
-      // by default — a real regression. So it always runs, gated only by its
-      // own opt-out flag. Race-safety for "--stdio and --local both alive for
-      // the same session" comes for free from the same
-      // getActiveSessionIdsFromHeartbeats() exclusion SubagentWatcher's
+      // unconditionally in every mode with zero coupling to --stdio-vs-`--local`;
+      // gating this behind isStdioWatcher the same way WorkflowWatcher is
+      // gated would mean a standalone `--local` deployment (no --stdio
+      // sibling) goes from "buggy but nonzero" parent-cost tracking to
+      // "exactly zero" by default — a real regression. So it always runs,
+      // gated only by its own opt-out flag. Race-safety for "--stdio and
+      // --local both alive for the same session" comes for free from the
+      // same getActiveSessionIdsFromHeartbeats() exclusion SubagentWatcher's
       // unscoped discovery already uses.
       if (parentTranscriptWatcherEnabled) {
         activeParentTranscriptWatcher = new ParentTranscriptWatcher({
@@ -2753,7 +2740,7 @@ async function main(): Promise<void> {
           parentSessionId: isStdioWatcher ? watcherSessionId : null,
         });
       }
-      if (watcherShouldRun && subagentWatcherEnabled) {
+      if (subagentWatcherEnabled) {
         // Base options are mode-independent. The scoped extras are a single
         // ternary branch, not two independent fields, because the options
         // type makes `costSelfCheck` without `parentSessionId` a compile
@@ -2806,14 +2793,16 @@ async function main(): Promise<void> {
         );
         activeSubagentWatcher.start();
         logger.info('SubagentWatcher started', {
-          mode: watcherMode,
           parentSessionId: isStdioWatcher ? watcherSessionId : null,
         });
       }
-      if (watcherShouldRun && workflowWatcherEnabled) {
+      // Engine-only: unlike SubagentWatcher, WorkflowWatcher has no heartbeat
+      // exclusion, so running it unfiltered in --local would reintroduce the
+      // #306 race for workflow transcripts.
+      if (isStdioWatcher && workflowWatcherEnabled) {
         activeWorkflowWatcher = new WorkflowWatcher({
           storagePath: config!.storagePath,
-          parentSessionId: isStdioWatcher ? watcherSessionId : undefined,
+          parentSessionId: watcherSessionId,
           getCostForRun: (runId) => costTracker.getCostForWorkflowRun(runId),
         });
         activeWorkflowWatcher.setOnRun((run) => {
@@ -2823,10 +2812,7 @@ async function main(): Promise<void> {
           capturedNrIngest?.ingestObservabilityHealth(health);
         });
         activeWorkflowWatcher.start();
-        logger.info('WorkflowWatcher started', {
-          mode: watcherMode,
-          parentSessionId: isStdioWatcher ? watcherSessionId : null,
-        });
+        logger.info('WorkflowWatcher started', { parentSessionId: watcherSessionId });
       }
     };
 
