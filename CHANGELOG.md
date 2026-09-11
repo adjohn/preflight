@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.50.6] - 2026-09-11
+
+### Fixed
+
+- **The Today view no longer shows the "this dashboard process isn't running its own subagent watcher" banner on `--local` dashboards.** Every default install runs the dashboard as a `--local` daemon that by design never runs that watcher, so the banner appeared on every visit, and the `NR_AI_WATCHER_MODE=local` instruction it gave cannot reach a launchd daemon (the plist carries only `PATH`). Watcher state remains visible on the Settings page.
+- **The remaining `NR_AI_ENABLE_SUBAGENT_WATCHER=0` banner now hides when today's aggregate shows any subagent spend, instead of when it shows any subagent turns.** The turn count only counts Workflow-tool script runs, so it read 0 on any day whose subagents were ordinary Task/Agent-tool spawns, and the banner could claim subagents were excluded directly above a KPI showing their spend.
+
 ## [1.50.5] - 2026-09-11
 
 ### Fixed
