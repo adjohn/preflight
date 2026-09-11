@@ -541,13 +541,21 @@ describe('HookEventProcessor', () => {
   });
 
   describe('stop() flushes pending pre events as timeouts', () => {
-    it('emits timeout records for all pending pre events, keeping each pre event cwd', () => {
+    it('emits timeout records for all pending pre events, keeping every pre event attribution field', () => {
       const processor = new HookEventProcessor({ store, onRecord });
+      const attribution = {
+        cwd: '/projects/a',
+        transcriptPath: '/tmp/a.jsonl',
+        permissionMode: 'default',
+        agentId: 'agent-timeout',
+        agentType: 'Explore',
+        platform: 'claude-code',
+      };
 
       // Add pre events without any corresponding post
       processor.processEvents([
-        makePreEvent({ toolUseId: 'toolu_a', tool: 'Read', timestamp: 1000, cwd: '/projects/a' }),
-        makePreEvent({ toolUseId: 'toolu_b', tool: 'Write', timestamp: 1010, cwd: '/projects/a' }),
+        makePreEvent({ toolUseId: 'toolu_a', tool: 'Read', timestamp: 1000, ...attribution }),
+        makePreEvent({ toolUseId: 'toolu_b', tool: 'Write', timestamp: 1010, ...attribution }),
       ]);
 
       expect(records).toHaveLength(0);
@@ -560,7 +568,7 @@ describe('HookEventProcessor', () => {
         expect(record.success).toBe(false);
         expect(record.errorType).toBe('timeout');
         expect(record.durationMs).toBeNull();
-        expect(record.cwd).toBe('/projects/a');
+        expect(record).toMatchObject(attribution);
       }
 
       const tools = records.map((r) => r.toolName).sort();
@@ -611,27 +619,24 @@ describe('HookEventProcessor', () => {
       expect(processor.pendingCount).toBe(0);
     });
 
-    it('carries cwd, transcriptPath, permissionMode, and platform from the pre-event onto the denied record', () => {
+    it('carries every pre-event attribution field onto the denied record', () => {
       const processor = new HookEventProcessor({ store, onRecord });
+      const attribution = {
+        cwd: '/projects/test',
+        transcriptPath: '/tmp/fake-transcript.jsonl',
+        permissionMode: 'default',
+        platform: 'claude-code',
+        agentId: 'agent-denied',
+        agentType: 'general-purpose',
+      };
 
       processor.processEvents([
-        makePreEvent({
-          toolUseId: 'toolu_d3',
-          timestamp: 1000,
-          cwd: '/projects/test',
-          transcriptPath: '/tmp/fake-transcript.jsonl',
-          permissionMode: 'default',
-          platform: 'claude-code',
-        }),
+        makePreEvent({ toolUseId: 'toolu_d3', timestamp: 1000, ...attribution }),
         makePermissionDeniedEvent({ toolUseId: 'toolu_d3', timestamp: 1005 }),
       ]);
 
       expect(records).toHaveLength(1);
-      const record = records[0]!;
-      expect(record.cwd).toBe('/projects/test');
-      expect(record.transcriptPath).toBe('/tmp/fake-transcript.jsonl');
-      expect(record.permissionMode).toBe('default');
-      expect(record.platform).toBe('claude-code');
+      expect(records[0]!).toMatchObject(attribution);
     });
   });
 
