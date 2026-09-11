@@ -1739,10 +1739,10 @@ describe('UsageContributionPanel', () => {
     expect(screen.getByText('code-review')).toBeInTheDocument();
   });
 
-  it('calls fetchUsageInsights with 30 when the window toggle is clicked', async () => {
+  it('calls fetchUsageInsights with 30 when the "30 days" tab is clicked', async () => {
     const { fetchedUrls } = renderHistory({ usageInsights: SAMPLE_USAGE_INSIGHTS });
-    await waitFor(() => expect(screen.getByText('7d')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('7d'));
+    await waitFor(() => expect(screen.getByText('30 days')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('30 days'));
     await waitFor(() =>
       expect(fetchedUrls.some((u) => u.startsWith('/api/usage-insights?days=30'))).toBe(true),
     );
@@ -1766,7 +1766,7 @@ describe('History share labels', () => {
     // total=53 -> Read's tooltip share = round(36/53*100) = 68%.
     renderHistory();
     await waitFor(() => expect(screen.getByText(/top tools/i)).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByText('Read')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Read (68%)')).toBeInTheDocument());
     const panel = screen.getByText(/top tools/i).closest('.glass-card') as HTMLElement;
     // Wait for the bars' entrance animation to finish mounting their shapes
     // before hovering — Recharts renders the Bar's `<path>` asynchronously.
@@ -1803,5 +1803,6 @@ describe('History share labels', () => {
       rectSpy.mockRestore();
     }
     expect(await screen.findByText(/36 \(68%\)/)).toBeInTheDocument();
+    expect(screen.getByText('Read (68%)')).toBeInTheDocument();
   });
 });

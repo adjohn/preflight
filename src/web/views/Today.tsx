@@ -71,6 +71,7 @@ import {
   fmtTimeOfDay,
   formatDuration,
   formatNumber,
+  formatRelativeTime,
   formatTokensCompact,
   formatUsd,
   formatUsdOrDash,
@@ -715,7 +716,7 @@ function CostByToolPanel(): JSX.Element {
                     if (!match) return label;
                     const pct =
                       toolsTotalCost > 0 ? Math.round((match.totalCost / toolsTotalCost) * 100) : 0;
-                    return `${label} (${pct}%)`;
+                    return `${label} (${match.callCount} · ${pct}%)`;
                   }}
                   stroke={CHART_GRID_STROKE}
                   width={90}
@@ -1837,18 +1838,6 @@ function RecentAlertsPanel(): JSX.Element | null {
       )}
     </Card>
   );
-}
-
-function formatRelativeTime(ts: number): string {
-  const now = Date.now();
-  const diff = Math.max(0, now - ts);
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 // `isToday` is now `isSameLocalDay` from `src/lib/date.ts` — shared with the

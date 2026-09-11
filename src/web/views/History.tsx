@@ -19,7 +19,7 @@ import { EmptyState } from '../components/EmptyState';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { GeoBanner } from '../components/GeoBanner';
 import { DiscreteBlockChart, type DiscreteBlockChartItem } from '../components/DiscreteBlockChart';
-import { Card, Eyebrow, InfoTooltip, Pill, type PillTone } from '../components/ui';
+import { Card, Eyebrow, InfoTooltip, Pill, Tabs, type PillTone } from '../components/ui';
 import {
   fetchWeekly,
   fetchSessionsList,
@@ -46,8 +46,15 @@ import {
   type CollaborationProfileApiResponse,
   type MetricDelta,
   type UsageInsightsReport,
+  type UsageShareRow,
+  type LoopRow,
 } from '../api/client';
-import { formatUsdOrDash, formatTokensCompact, shortToolName } from '../lib/format';
+import {
+  formatRelativeTime,
+  formatTokensCompact,
+  formatUsdOrDash,
+  shortToolName,
+} from '../lib/format';
 
 interface SessionRow {
   readonly sessionId: string;
@@ -433,6 +440,7 @@ export function History(): JSX.Element {
 
         <UsageContributionPanel
           data={usageInsights.data}
+          isError={usageInsights.isError}
           windowDays={usageInsightsDays}
           onWindowChange={setUsageInsightsDays}
         />
@@ -517,7 +525,14 @@ export function History(): JSX.Element {
                     type="category"
                     dataKey="tool"
                     tick={TICK_STYLE}
-                    tickFormatter={shortToolName}
+                    tickFormatter={(value: string) => {
+                      const match = topTools.find((t) => t.tool === value);
+                      const pct =
+                        topToolsTotal > 0 && match
+                          ? Math.round((match.count / topToolsTotal) * 100)
+                          : 0;
+                      return `${shortToolName(value)} (${pct}%)`;
+                    }}
                     stroke={GRID_STROKE}
                     width={120}
                   />
@@ -610,24 +625,29 @@ export function History(): JSX.Element {
 
 function UsageContributionPanel({
   data,
+  isError,
   windowDays,
   onWindowChange,
 }: {
   data: UsageInsightsReport | undefined;
+  isError: boolean;
   windowDays: 7 | 30;
   onWindowChange: (days: 7 | 30) => void;
 }): JSX.Element {
-  if (!data) {
+  if (isError) {
     return (
       <Panel title="What's contributing to your spend">
-        <EmptyState icon="chart" title="Loading..." />
+        <EmptyState icon="radar" title="Usage insights unavailable" />
       </Panel>
     );
   }
-
-  const handleWindowToggle = () => {
-    onWindowChange(windowDays === 7 ? 30 : 7);
-  };
+  if (!data) {
+    return (
+      <Panel title="What's contributing to your spend">
+        <EmptyState variant="loading" title="Loading usage insights…" />
+      </Panel>
+    );
+  }
 
   return (
     <Panel title="What's contributing to your spend">
@@ -636,12 +656,15 @@ function UsageContributionPanel({
           Approximate, based on sessions recorded on this machine. These are independent
           characteristics of your spend, not a breakdown.
         </p>
-        <button
-          onClick={handleWindowToggle}
-          className="text-xs px-2 py-1 rounded bg-surface-2 hover:bg-surface-3 text-ink-base transition"
-        >
-          {windowDays}d
-        </button>
+        <Tabs<'7' | '30'>
+          value={String(windowDays) as '7' | '30'}
+          onChange={(value) => onWindowChange(Number(value) as 7 | 30)}
+          options={[
+            { value: '7', label: '7 days' },
+            { value: '30', label: '30 days' },
+          ]}
+          ariaLabel="Usage window"
+        />
       </div>
 
       {data.sessionCount === 0 ? (
@@ -660,145 +683,100 @@ function UsageContributionPanel({
       )}
 
       {data.sessionCount > 0 && (
-        <div className="grid grid-cols-1 gap-4 text-xs mt-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs mt-4">
           {data.skills.length > 0 && (
-            <div>
-              <h4 className="text-ink-muted font-medium mb-2">Skills</h4>
-              <div className="h-40 overflow-y-auto">
-                <table className="w-full">
-                  <thead className="text-ink-muted sticky top-0 bg-bg-panel">
-                    <tr>
-                      <th className="text-left pb-1">Skill</th>
-                      <th className="text-right pb-1">Calls</th>
-                      <th className="text-right pb-1">Tokens</th>
-                      <th className="text-right pb-1">% of spend</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.skills.map((row) => (
-                      <tr key={row.key} className="border-t border-bg-line">
-                        <td className="py-1 text-ink-base">{row.key}</td>
-                        <td className="py-1 text-right tabular-nums">{row.count}</td>
-                        <td className="py-1 text-right tabular-nums">
-                          {row.tokens !== null ? formatTokensCompact(row.tokens) : '—'}
-                        </td>
-                        <td className="py-1 text-right tabular-nums">
-                          {Math.round(row.sharePct)}%
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <ShareTable<UsageShareRow>
+              title="Skills"
+              rows={data.skills}
+              rowKey={(row) => row.key}
+              columns={[
+                { header: 'Skill', align: 'left', cell: (row) => row.key },
+                { header: 'Calls', align: 'right', cell: (row) => row.count },
+                {
+                  header: 'Tokens',
+                  align: 'right',
+                  cell: (row) => formatTokensCompact(row.tokens),
+                },
+                {
+                  header: '% of spend',
+                  align: 'right',
+                  cell: (row) => `${Math.round(row.sharePct)}%`,
+                },
+              ]}
+            />
           )}
 
           {data.subagents.length > 0 && (
-            <div>
-              <h4 className="text-ink-muted font-medium mb-2">Subagents</h4>
-              <div className="h-40 overflow-y-auto">
-                <table className="w-full">
-                  <thead className="text-ink-muted sticky top-0 bg-bg-panel">
-                    <tr>
-                      <th className="text-left pb-1">Type</th>
-                      <th className="text-right pb-1">Requests</th>
-                      <th className="text-right pb-1">Tokens</th>
-                      <th className="text-right pb-1">% of spend</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.subagents.map((row) => (
-                      <tr key={row.key} className="border-t border-bg-line">
-                        <td className="py-1 text-ink-base">{row.key}</td>
-                        <td className="py-1 text-right tabular-nums">{row.count}</td>
-                        <td className="py-1 text-right tabular-nums">
-                          {row.tokens !== null ? formatTokensCompact(row.tokens) : '—'}
-                        </td>
-                        <td className="py-1 text-right tabular-nums">
-                          {Math.round(row.sharePct)}%
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <ShareTable<UsageShareRow>
+              title="Subagents"
+              rows={data.subagents}
+              rowKey={(row) => row.key}
+              columns={[
+                { header: 'Type', align: 'left', cell: (row) => row.key },
+                { header: 'Requests', align: 'right', cell: (row) => row.count },
+                {
+                  header: 'Tokens',
+                  align: 'right',
+                  cell: (row) => formatTokensCompact(row.tokens),
+                },
+                {
+                  header: '% of spend',
+                  align: 'right',
+                  cell: (row) => `${Math.round(row.sharePct)}%`,
+                },
+              ]}
+            />
           )}
 
           {data.plugins.length > 0 && (
-            <div>
-              <h4 className="text-ink-muted font-medium mb-2">Plugins</h4>
-              <div className="h-40 overflow-y-auto">
-                <table className="w-full">
-                  <thead className="text-ink-muted sticky top-0 bg-bg-panel">
-                    <tr>
-                      <th className="text-left pb-1">Plugin</th>
-                      <th className="text-right pb-1">% of spend</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.plugins.map((row) => (
-                      <tr key={row.key} className="border-t border-bg-line">
-                        <td className="py-1 text-ink-base">{row.key}</td>
-                        <td className="py-1 text-right tabular-nums">
-                          {Math.round(row.sharePct)}%
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <ShareTable<UsageShareRow>
+              title="Plugins"
+              rows={data.plugins}
+              rowKey={(row) => row.key}
+              columns={[
+                { header: 'Plugin', align: 'left', cell: (row) => row.key },
+                {
+                  header: '% of spend',
+                  align: 'right',
+                  cell: (row) => `${Math.round(row.sharePct)}%`,
+                },
+              ]}
+            />
           )}
 
           {data.loops.length > 0 && (
-            <div>
-              <h4 className="text-ink-muted font-medium mb-2">Loops</h4>
-              <div className="h-40 overflow-y-auto">
-                <table className="w-full">
-                  <thead className="text-ink-muted sticky top-0 bg-bg-panel">
-                    <tr>
-                      <th className="text-left pb-1">Session</th>
-                      <th className="text-right pb-1">Runs</th>
-                      <th className="text-right pb-1">Tokens</th>
-                      <th className="text-right pb-1">Per run</th>
-                      <th className="text-right pb-1">Last run</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.loops.map((row) => {
-                      const lastRunAgo = Date.now() - row.lastRunMs;
-                      const lastRunLabel =
-                        lastRunAgo < 60000
-                          ? 'now'
-                          : lastRunAgo < 3600000
-                            ? `${Math.round(lastRunAgo / 60000)}m ago`
-                            : `${Math.round(lastRunAgo / 3600000)}h ago`;
-                      return (
-                        <tr key={row.sessionId} className="border-t border-bg-line">
-                          <td
-                            className="py-1 text-ink-base truncate"
-                            title={row.sessionName || row.sessionId}
-                          >
-                            {row.sessionName || row.sessionId.slice(0, 8)}
-                          </td>
-                          <td className="py-1 text-right tabular-nums">{row.runs}</td>
-                          <td className="py-1 text-right tabular-nums">
-                            {formatTokensCompact(row.tokens)}
-                          </td>
-                          <td className="py-1 text-right tabular-nums">
-                            {formatTokensCompact(row.tokensPerRun)}
-                          </td>
-                          <td className="py-1 text-right tabular-nums text-ink-muted">
-                            {lastRunLabel}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <ShareTable<LoopRow>
+              title="Loops"
+              rows={data.loops}
+              rowKey={(row) => row.sessionId}
+              columns={[
+                {
+                  header: 'Session',
+                  align: 'left',
+                  className: 'truncate',
+                  title: (row) => row.sessionName || row.sessionId,
+                  cell: (row) => row.sessionName || row.sessionId.slice(0, 8),
+                },
+                { header: 'Runs', align: 'right', cell: (row) => row.runs },
+                {
+                  header: 'Tokens',
+                  align: 'right',
+                  cell: (row) => formatTokensCompact(row.tokens),
+                },
+                {
+                  header: 'Per run',
+                  align: 'right',
+                  cell: (row) => formatTokensCompact(row.tokensPerRun),
+                },
+                { header: 'Cost', align: 'right', cell: (row) => formatUsdOrDash(row.costUsd) },
+                {
+                  header: 'Last run',
+                  align: 'right',
+                  className: 'text-ink-muted',
+                  cell: (row) => formatRelativeTime(row.lastRunMs),
+                },
+              ]}
+            />
           )}
         </div>
       )}
@@ -810,6 +788,67 @@ function UsageContributionPanel({
         </p>
       )}
     </Panel>
+  );
+}
+
+interface ShareTableColumn<Row> {
+  readonly header: string;
+  readonly align: 'left' | 'right';
+  readonly cell: (row: Row) => React.ReactNode;
+  readonly className?: string;
+  readonly title?: (row: Row) => string;
+}
+
+function ShareTable<Row>({
+  title,
+  columns,
+  rows,
+  rowKey,
+}: {
+  title: string;
+  columns: ReadonlyArray<ShareTableColumn<Row>>;
+  rows: readonly Row[];
+  rowKey: (row: Row) => string;
+}): JSX.Element {
+  return (
+    <div>
+      <h4 className="text-ink-muted font-medium mb-2">{title}</h4>
+      <div className="h-40 overflow-y-auto">
+        <table className="w-full">
+          <thead className="text-ink-muted sticky top-0 bg-bg-panel">
+            <tr>
+              {columns.map((col) => (
+                <th
+                  key={col.header}
+                  className={col.align === 'right' ? 'text-right pb-1' : 'text-left pb-1'}
+                >
+                  {col.header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={rowKey(row)} className="border-t border-bg-line">
+                {columns.map((col) => {
+                  const base =
+                    col.align === 'right' ? 'py-1 text-right tabular-nums' : 'py-1 text-ink-base';
+                  return (
+                    <td
+                      key={col.header}
+                      className={col.className ? `${base} ${col.className}` : base}
+                      title={col.title?.(row)}
+                    >
+                      {col.cell(row)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

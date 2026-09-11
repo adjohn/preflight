@@ -2748,6 +2748,6 @@ describe('Today view — Cost by Skill / Cost by Tool share labels', () => {
 
     renderToday();
     // Bash: totalCost 6 of 10 total -> round(6/10*100) = 60%
-    expect(await screen.findByText('Bash (60%)')).toBeInTheDocument();
+    expect(await screen.findByText('Bash (2 · 60%)')).toBeInTheDocument();
   });
 });
