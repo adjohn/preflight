@@ -695,7 +695,7 @@ function UsageContributionPanel({
       )}
 
       {data.sessionCount > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 text-xs mt-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 text-xs mt-4">
           {data.skills.length > 0 && (
             <ShareTable<UsageShareRow>
               title="Skills"
@@ -759,6 +759,7 @@ function UsageContributionPanel({
           {data.loops.length > 0 && (
             <ShareTable<LoopRow>
               title="Loops"
+              className="md:col-span-2"
               rows={data.loops}
               rowKey={(row) => row.sessionId}
               columns={[
@@ -816,16 +817,18 @@ function ShareTable<Row>({
   columns,
   rows,
   rowKey,
+  className,
 }: {
   title: string;
   columns: ReadonlyArray<ShareTableColumn<Row>>;
   rows: readonly Row[];
   rowKey: (row: Row) => string;
+  className?: string;
 }): JSX.Element {
   return (
-    <div>
+    <div className={className}>
       <h4 className="text-ink-muted font-medium mb-2">{title}</h4>
-      <div className="h-40 overflow-y-auto">
+      <div className="max-h-40 overflow-auto">
         <table className="w-full">
           <thead className="text-ink-muted sticky top-0 bg-bg-panel">
             <tr>
