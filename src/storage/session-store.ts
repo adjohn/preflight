@@ -25,7 +25,7 @@ import { createLogger } from '../shared/index.js';
 import { redactSensitive } from '../config.js';
 import { isSyntheticSessionId, type SessionNameSource } from '../hooks/session-resolver.js';
 import { GENERIC_MCP_PLATFORM_NAME } from '../platforms/generic-mcp-adapter.js';
-import type { SessionSummary, ReplayTimelineEntry } from './types.js';
+import type { SessionSummary, ReplayTimelineEntry, SessionAttribution } from './types.js';
 import type { SessionTracker } from '../metrics/session-tracker.js';
 import type { CostTracker } from '../metrics/cost-tracker.js';
 import type { TaskDetector } from '../metrics/task-detector.js';
@@ -193,6 +193,8 @@ export interface FullSessionSummary extends SessionSummary {
    * and for sessions with no token events.
    */
   readonly modelBreakdown: Readonly<Record<string, ModelBreakdownEntry>>;
+  /** Spend sliced by tool, skill, and subagent type, plus high-context spend and API wait time. Absent on legacy files. */
+  readonly attribution?: SessionAttribution;
   /**
    * Per-workflow-run cost, split by local-day, keyed by workflow_run_id then
    * day key — the exact shape `CostMetrics.costByWorkflowRunId` already

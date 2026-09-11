@@ -335,7 +335,45 @@ export interface ReplayTimelineEntry {
   readonly isBuildCommand?: boolean;
   readonly isLintCommand?: boolean;
   readonly errorType?: string;
+  /** Only on `toolName === 'Skill'` entries; lets History count loops and per-skill calls without the live attributor. */
+  readonly skillName?: string;
+  /** Only on `toolName === 'Agent'` entries, from the hook payload's `subagent_type`. */
+  readonly agentType?: string;
 }
+
+/**
+ * Where a session's spend went, sliced by one of these facets. Every facet
+ * value is a {@link AttributionBucket}; History aggregates buckets across
+ * sessions and expresses each as a share of total spend. `plugin` is not a
+ * persisted facet: it is derived at read time from the `<plugin>:` prefix
+ * Claude Code puts on plugin skills and agents.
+ */
+export type AttributionFacet = 'tool' | 'skill' | 'subagent';
+
+export interface AttributionBucket {
+  readonly costUsd: number;
+  /** input + output + cache-read + cache-creation tokens; 0 when the facet has no token signal. */
+  readonly tokens: number;
+  /** Tool calls for `tool`/`skill`, API requests for `subagent`. */
+  readonly count: number;
+  /** Summed tool-call wall time; 0 when not measured. */
+  readonly durationMs: number;
+}
+
+export interface SessionAttribution {
+  readonly buckets: Partial<Record<AttributionFacet, Record<string, AttributionBucket>>>;
+  /** USD spent on API requests whose prompt (input + cache read + cache creation) exceeded {@link HIGH_CONTEXT_TOKENS}. */
+  readonly highContextCostUsd: number;
+  /**
+   * Sum over assistant turns of the gap between the assistant transcript line
+   * and the line before it: an estimate of time spent waiting on the model
+   * API. null when no transcript was observed.
+   */
+  readonly apiDurationMs: number | null;
+}
+
+/** Prompt size above which a request counts toward `highContextCostUsd`. */
+export const HIGH_CONTEXT_TOKENS = 150_000;
 
 export interface AuditEntry {
   readonly timestamp: number;
