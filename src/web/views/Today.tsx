@@ -442,6 +442,7 @@ export function Today(): JSX.Element {
               antiPatterns={antiPatterns}
               apiAntiPatterns={apiAntiPatterns}
               persistedAntiPatterns={persistedAntiPatterns}
+              flagsCount={flagsCount}
             />
           </AnimatedCard>
         </>
@@ -503,6 +504,7 @@ export function Today(): JSX.Element {
                 antiPatterns={antiPatterns}
                 apiAntiPatterns={apiAntiPatterns}
                 persistedAntiPatterns={persistedAntiPatterns}
+                flagsCount={flagsCount}
               />
             </div>
             <ForecastEodCard
@@ -582,10 +584,12 @@ function NeedsAttentionPanel({
   antiPatterns,
   apiAntiPatterns,
   persistedAntiPatterns,
+  flagsCount,
 }: {
   antiPatterns: readonly AntiPatternEvent[];
   apiAntiPatterns: SessionAntiPattern[] | undefined;
   persistedAntiPatterns: SessionAntiPattern[];
+  flagsCount: number;
 }): JSX.Element {
   // The query returns `null` when the endpoint is 404 (cloud mode — no
   // alert engine), so the panel can fall back to flags-only instead of a
@@ -626,7 +630,13 @@ function NeedsAttentionPanel({
             count: resolveAntiPatternCount(a),
             target: a.file ?? a.command ?? 'unknown',
           }));
-  const flags = aggregateAttentionFlags(rawFlags);
+  const aggregated = aggregateAttentionFlags(rawFlags);
+  // The Flags KPI counts flags this process never saw in detail (other
+  // sessions' aggregate totals), so never contradict it with "nothing".
+  const flags =
+    aggregated.length === 0 && flagsCount > 0
+      ? [{ type: 'anti_pattern_flags', count: flagsCount }]
+      : aggregated;
 
   return (
     <Panel title="Needs attention">
