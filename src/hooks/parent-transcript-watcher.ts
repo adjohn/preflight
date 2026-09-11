@@ -91,7 +91,18 @@ interface ParsedParentTurn {
   readonly outputTokens: number;
   readonly cacheReadTokens: number;
   readonly cacheCreationTokens: number;
+  /**
+   * Gap (ms) between this line's timestamp and the previous raw transcript
+   * line's timestamp — an estimate of time spent waiting on the model API.
+   * Set only on the first line seen for `messageId`, and only when a
+   * previous line exists with a positive gap of at most 30 minutes; absent
+   * otherwise, including on every later line of the same message.
+   */
+  readonly responseMs?: number;
 }
+
+/** See `ParsedParentTurn.responseMs`'s doc comment. */
+const MAX_RESPONSE_GAP_MS = 30 * 60 * 1000;
 
 interface CursorState {
   readonly bytePos: number;
@@ -138,6 +149,10 @@ export class ParentTranscriptWatcher {
 
   private readonly partialByPath = new Map<string, string>();
   private readonly decoderByPath = new Map<string, StringDecoder>();
+  /** Timestamp (ms) of the last parseable raw line seen for each file, any role — see `ParsedParentTurn.responseMs`. */
+  private readonly previousLineTimestampByPath = new Map<string, number>();
+  /** Message ids already seen for each file, so only the first line of a message computes `responseMs`. */
+  private readonly seenMessageIdsByPath = new Map<string, Set<string>>();
 
   private filesWatched = 0;
   private linesRead = 0;
@@ -374,7 +389,11 @@ export class ParentTranscriptWatcher {
     const startCursor: CursorState = switchedFile
       ? { bytePos: 0, partialLine: '', path }
       : persisted;
-    if (switchedFile) this.partialByPath.delete(path);
+    if (switchedFile) {
+      this.partialByPath.delete(path);
+      this.previousLineTimestampByPath.delete(path);
+      this.seenMessageIdsByPath.delete(path);
+    }
     if (startCursor.bytePos >= size) return;
 
     const remaining = size - startCursor.bytePos;
@@ -440,7 +459,7 @@ export class ParentTranscriptWatcher {
     for (const line of lines) {
       if (!line) continue;
       this.linesRead += 1;
-      const parsed = this.tryParseLine(line);
+      const parsed = this.tryParseLine(line, path);
       if (parsed === null) continue;
 
       const event: Record<string, unknown> = {
@@ -454,6 +473,7 @@ export class ParentTranscriptWatcher {
         outputTokens: parsed.outputTokens,
         cacheReadTokens: parsed.cacheReadTokens,
         cacheCreationTokens: parsed.cacheCreationTokens,
+        ...(parsed.responseMs !== undefined && { responseMs: parsed.responseMs }),
       };
       this.appendToParentBuffer(sessionId, event);
     }
@@ -472,7 +492,14 @@ export class ParentTranscriptWatcher {
    * live file set. The persisted cursor is left untouched.
    */
   private evictStalePartials(files: Array<{ path: string; sessionId: string }>): void {
-    if (this.partialByPath.size === 0 && this.decoderByPath.size === 0) return;
+    if (
+      this.partialByPath.size === 0 &&
+      this.decoderByPath.size === 0 &&
+      this.previousLineTimestampByPath.size === 0 &&
+      this.seenMessageIdsByPath.size === 0
+    ) {
+      return;
+    }
     const live = new Set<string>();
     for (const f of files) live.add(f.path);
     for (const path of this.partialByPath.keys()) {
@@ -481,13 +508,19 @@ export class ParentTranscriptWatcher {
     for (const path of this.decoderByPath.keys()) {
       if (!live.has(path)) this.decoderByPath.delete(path);
     }
+    for (const path of this.previousLineTimestampByPath.keys()) {
+      if (!live.has(path)) this.previousLineTimestampByPath.delete(path);
+    }
+    for (const path of this.seenMessageIdsByPath.keys()) {
+      if (!live.has(path)) this.seenMessageIdsByPath.delete(path);
+    }
   }
 
   /**
    * Parse a JSONL line, returning non-null only for a real, non-sidechain
    * assistant turn with a usable model, message id, and usage object.
    */
-  private tryParseLine(line: string): ParsedParentTurn | null {
+  private tryParseLine(line: string, path: string): ParsedParentTurn | null {
     let parsed: unknown;
     try {
       parsed = JSON.parse(line);
@@ -497,6 +530,20 @@ export class ParentTranscriptWatcher {
     }
     if (!parsed || typeof parsed !== 'object') return null;
     const obj = parsed as RawTranscriptEntry;
+
+    // Track the previous RAW line's timestamp regardless of role/type —
+    // needed below to estimate how long the API call behind a qualifying
+    // assistant line took relative to whatever came immediately before it
+    // (a user message, a tool result, or another assistant chunk). Every
+    // parseable line with a timestamp updates this, even one this method
+    // otherwise discards below.
+    const rawTsRaw = typeof obj.timestamp === 'string' ? obj.timestamp : null;
+    const rawTimestampMs = rawTsRaw !== null ? Date.parse(rawTsRaw) : NaN;
+    const previousLineTimestampMs = this.previousLineTimestampByPath.get(path);
+    if (Number.isFinite(rawTimestampMs)) {
+      this.previousLineTimestampByPath.set(path, rawTimestampMs);
+    }
+
     if (obj.type !== 'assistant') return null;
     // Subagent turns are inlined into the main transcript too — skip them so
     // they're never double-attributed as parent-session cost. Mirrors
@@ -513,9 +560,23 @@ export class ParentTranscriptWatcher {
     if (!usage || typeof usage !== 'object') return null;
     const u = usage as RawUsage;
 
-    const tsRaw = typeof obj.timestamp === 'string' ? obj.timestamp : null;
-    const timestampMs = tsRaw ? Date.parse(tsRaw) : Date.now();
-    if (!Number.isFinite(timestampMs)) return null;
+    const timestampMs = Number.isFinite(rawTimestampMs) ? rawTimestampMs : Date.now();
+
+    let seen = this.seenMessageIdsByPath.get(path);
+    if (seen === undefined) {
+      seen = new Set<string>();
+      this.seenMessageIdsByPath.set(path, seen);
+    }
+    let responseMs: number | undefined;
+    if (!seen.has(messageId)) {
+      seen.add(messageId);
+      if (previousLineTimestampMs !== undefined) {
+        const gap = timestampMs - previousLineTimestampMs;
+        if (gap > 0 && gap <= MAX_RESPONSE_GAP_MS) {
+          responseMs = gap;
+        }
+      }
+    }
 
     return {
       timestampMs,
@@ -525,6 +586,7 @@ export class ParentTranscriptWatcher {
       outputTokens: num(u.output_tokens),
       cacheReadTokens: num(u.cache_read_input_tokens),
       cacheCreationTokens: num(u.cache_creation_input_tokens),
+      responseMs,
     };
   }
 

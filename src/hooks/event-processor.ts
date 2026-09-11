@@ -749,6 +749,7 @@ export class HookEventProcessor {
           : 0,
       model: event.model ?? 'unknown',
       sessionId: event.sessionId,
+      ...(event.responseMs !== undefined && { responseMs: event.responseMs }),
     };
     try {
       this.onTokenEvent(tokenEvent);

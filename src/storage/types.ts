@@ -92,6 +92,14 @@ export interface TokenHookEvent extends HookEventBase {
   readonly sessionId?: string;
   /** Anthropic message id (msg_...) — used to dedupe replayed turns after a cursor-based re-read. */
   readonly messageId?: string;
+  /**
+   * Time (ms) spent waiting on the model API for this turn, from
+   * `ParentTranscriptWatcher`'s gap between this transcript line and the
+   * line before it. Absent when no previous line was observed, the gap was
+   * non-positive or exceeded 30 minutes, or this is not the first line seen
+   * for `messageId`.
+   */
+  readonly responseMs?: number;
 }
 
 /** Emitted by the SubagentWatcher for each subagent assistant turn. */
@@ -263,6 +271,8 @@ export interface TokenEvent {
   readonly cacheCreationTokens: number;
   readonly model: string;
   readonly sessionId?: string;
+  /** See `TokenHookEvent.responseMs`'s doc comment. */
+  readonly responseMs?: number;
 }
 
 export interface SessionSummary {
