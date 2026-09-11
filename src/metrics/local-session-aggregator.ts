@@ -552,12 +552,10 @@ export function collectCommitsAcrossRepos(
   const collect = (root: string, extraArgs: readonly string[]): void => {
     // %x1f (unit separator) can't appear in a hash, epoch, or subject, so it is
     // a safe delimiter where a space would break on multi-word subjects.
-    const args = [
-      'log',
-      `--since=${since}T00:00:00`,
-      '--format=%H%x1f%ct%x1f%s',
-      ...extraArgs,
-    ];
+    // Author date (%at), not committer date: a rebase restamps every commit
+    // with one committer time, which would move commits across days and
+    // defeat pairing with the hook records that saw them being made.
+    const args = ['log', `--since=${since}T00:00:00`, '--format=%H%x1f%at%x1f%s', ...extraArgs];
     if (authorEmail) args.push(`--author=${authorEmail}`);
 
     const stdout = gitOut(root, args);

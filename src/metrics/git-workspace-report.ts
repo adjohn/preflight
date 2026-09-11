@@ -800,6 +800,23 @@ function isHydratedCommit(r: GitCommitRecord): boolean {
   return r.gitEvent.type === 'commit' && !!r.gitEvent.hash;
 }
 
+function nearestUnmatched(
+  hook: GitCommitRecord,
+  candidates: readonly GitCommitRecord[],
+  matched: ReadonlySet<GitCommitRecord>,
+): GitCommitRecord | null {
+  let best: GitCommitRecord | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    if (matched.has(candidate)) continue;
+    const distance = Math.abs(hook.timestamp - candidate.timestamp);
+    if (distance > COMMIT_RECONCILE_WINDOW_MS || distance >= bestDistance) continue;
+    best = candidate;
+    bestDistance = distance;
+  }
+  return best;
+}
+
 /**
  * Reconciles hook-observed commits against commits hydrated from `git log`
  * for the same underlying repo, so a commit both sources saw is counted
@@ -812,8 +829,10 @@ function isHydratedCommit(r: GitCommitRecord): boolean {
  * unmatched hydrated commit within `COMMIT_RECONCILE_WINDOW_MS`. The hook
  * record is kept, since it knows the real worktree and session, enriched
  * with the hydrated `hash`/`subject`/`url`; the hydrated record is dropped.
- * An unpaired hook commit survives only in a repo with no hydrated commits;
- * failed and amend commits, and every non-commit record, pass through.
+ * An unpaired hook commit survives only in a repo with no hydrated commits.
+ * A hook commit with no resolvable workspace pairs by time against any
+ * repo's leftover hydrated commit, and the hydrated copy is kept. Failed
+ * and amend commits, and every non-commit record, pass through.
  */
 export function reconcileHydratedCommits(
   records: readonly GitActivityRecord[],
@@ -833,13 +852,17 @@ export function reconcileHydratedCommits(
     else map.set(key, [r]);
   };
 
+  const unattributedHooks: GitCommitRecord[] = [];
   for (const record of records) {
-    if (record.kind === 'git' && isHookCommit(record)) addTo(hooksByRepo, record);
-    else if (record.kind === 'git' && isHydratedCommit(record)) addTo(hydratedByRepo, record);
+    if (record.kind === 'git' && isHookCommit(record)) {
+      if (identities.has(record.workspaceKey)) addTo(hooksByRepo, record);
+      else unattributedHooks.push(record);
+    } else if (record.kind === 'git' && isHydratedCommit(record)) addTo(hydratedByRepo, record);
     else passthrough.push(record);
   }
 
   const result: GitActivityRecord[] = [...passthrough];
+  const leftoverHydrated: GitCommitRecord[] = [];
   const repoKeys = new Set([...hooksByRepo.keys(), ...hydratedByRepo.keys()]);
 
   for (const repoKey of repoKeys) {
@@ -848,16 +871,7 @@ export function reconcileHydratedCommits(
     const matched = new Set<GitCommitRecord>();
 
     for (const hook of hooks) {
-      let best: GitCommitRecord | null = null;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      for (const candidate of hydrated) {
-        if (matched.has(candidate)) continue;
-        const distance = Math.abs(hook.timestamp - candidate.timestamp);
-        if (distance > COMMIT_RECONCILE_WINDOW_MS || distance >= bestDistance) continue;
-        best = candidate;
-        bestDistance = distance;
-      }
-
+      const best = nearestUnmatched(hook, hydrated, matched);
       if (best) {
         matched.add(best);
         result.push({
@@ -879,9 +893,21 @@ export function reconcileHydratedCommits(
     }
 
     for (const h of hydrated) {
-      if (!matched.has(h)) result.push(h);
+      if (!matched.has(h)) leftoverHydrated.push(h);
     }
   }
+
+  // A hook commit whose worktree has since been deleted resolves to no repo,
+  // while git log still finds the commit on its branch. Pair it by time
+  // against any repo's leftover and keep the hydrated copy, which knows the
+  // repo. A commit made in a clone git can no longer see stays as it is.
+  const taken = new Set<GitCommitRecord>();
+  for (const hook of unattributedHooks.sort((a, b) => a.timestamp - b.timestamp)) {
+    const best = nearestUnmatched(hook, leftoverHydrated, taken);
+    if (best) taken.add(best);
+    else result.push(hook);
+  }
+  result.push(...leftoverHydrated);
 
   return result;
 }

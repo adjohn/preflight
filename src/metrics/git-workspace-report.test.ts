@@ -844,6 +844,25 @@ describe('reconcileHydratedCommits', () => {
     expect(merged?.sessionId).toBe(hook.sessionId);
   });
 
+  it('pairs a hook commit from a deleted worktree with the hydrated copy from any repo', () => {
+    const orphan = gitActivity('git commit -m x', 'gone-worktree', { timestamp: 10_000 });
+    const hydrated = hydratedCommitActivity('ws-a', 12_000, 'abc123');
+
+    const result = reconcileHydratedCommits([orphan, hydrated], identities);
+
+    expect(result).toEqual([hydrated]);
+  });
+
+  it('keeps a hook commit from a deleted worktree when no hydrated commit is near', () => {
+    const orphan = gitActivity('git commit -m x', 'gone-worktree', { timestamp: 10_000 });
+    const hydrated = hydratedCommitActivity('ws-a', 500_000, 'abc123');
+
+    const result = reconcileHydratedCommits([orphan, hydrated], identities);
+
+    expect(result).toHaveLength(2);
+    expect(result).toContain(orphan);
+  });
+
   it('treats an amend as a rewrite, not a new commit', () => {
     const amend = gitActivity('git commit --amend --no-edit', 'ws-a', { timestamp: 10_000 });
     const hydrated = hydratedCommitActivity('ws-a', 10_500, 'abc123');
