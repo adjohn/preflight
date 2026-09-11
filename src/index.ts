@@ -1308,6 +1308,10 @@ async function main(): Promise<void> {
     };
 
     sessionStore = new SessionStore({ storagePath: config.storagePath });
+    // Non-null capture so the aggregator's callback (invoked lazily, long
+    // after this point) doesn't have to re-narrow `sessionStore: SessionStore
+    // | undefined` — same pattern as sessionStoreForCostBaseline below.
+    const sessionStoreForAggregator = sessionStore;
     const currentSessionId = sessionTracker.getMetrics().sessionId;
     let currentRepoName: string | null = null;
 
@@ -1316,7 +1320,13 @@ async function main(): Promise<void> {
     // synthetic id, which persistSession() skips — so without this rollup the
     // sessions it observes are never written to disk at all. See
     // local-session-aggregator.ts for why that hits Copilot but not Claude Code.
-    const localSessionAggregator = new LocalSessionAggregator();
+    const localSessionAggregator = new LocalSessionAggregator({
+      // Restart survival: the first subagent turn this process sees for a
+      // session folds in whatever that session's file already says (a
+      // --stdio engine's final write, or this daemon's own last checkpoint)
+      // before adding the tail — see applyPersistedBaseline's doc comment.
+      persistedCostBaseline: (id) => sessionStoreForAggregator.loadSession(id),
+    });
     const repoNameResolver = new RepoNameResolver();
 
     const budgetTracker = new BudgetTracker({
@@ -2415,6 +2425,22 @@ async function main(): Promise<void> {
         // belong in the model breakdown too — recording them only in the cost
         // tracker left Model Usage blind to every subagent-only session.
         modelUsageTracker.recordUsage(turn.model, usage, breakdown.totalUsd);
+        // The only line that makes an orphan session's subagent spend durable:
+        // without it, an unscoped process's aggregator never learns about this
+        // session's subagent cost and persistSession() has nothing to write.
+        // `agentId` is the same discriminator costTracker.recordTokenUsage
+        // splits parent-vs-subagent on above, so the two trackers can't drift.
+        localSessionAggregator.recordTokenUsage(turn.parentSessionId, {
+          timestamp: turn.timestampMs,
+          costUsd: breakdown.totalUsd,
+          model: turn.model,
+          inputTokens: turn.inputTokens,
+          outputTokens: turn.outputTokens,
+          cacheReadTokens: turn.cacheReadTokens,
+          cacheCreationTokens: turn.cacheCreationTokens,
+          thinkingTokens: turn.reasoningTokens,
+          agentId: turn.agentId,
+        });
         // Pricing miss → usd:null on the wire; we recompute here so
         // the breakdown view distinguishes "0 because pricing absent" from
         // "0 because the turn truly had zero cost".
