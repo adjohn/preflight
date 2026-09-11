@@ -496,9 +496,9 @@ describe('Sessions view — real API shapes', () => {
     await waitFor(() => expect(screen.getByText(/abc-123/)).toBeInTheDocument());
     expect(screen.getByText(/def-456/)).toBeInTheDocument();
     expect(screen.getByText('28 calls')).toBeInTheDocument();
-    // Sub-dollar costs render with 4 decimals via the shared formatUsd helper
-    // (0 < value < $1 keeps meaningful digits): 0.42 → "$0.4200".
-    expect(screen.getByText('$0.4200')).toBeInTheDocument();
+    // Sub-dollar costs at or above $0.10 render with 2 decimals via the shared
+    // formatUsd helper: 0.42 → "$0.42".
+    expect(screen.getByText('$0.42')).toBeInTheDocument();
   });
 
   it('renders without crashing when estimatedCostUsd is undefined', async () => {

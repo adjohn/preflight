@@ -2475,8 +2475,8 @@ describe('Today view — Cost by Skill panel', () => {
     expect(screen.getByText('Cost by Skill')).toBeInTheDocument();
     expect(screen.getByText('skill-1')).toBeInTheDocument();
     expect(screen.getByText('skill-2')).toBeInTheDocument();
-    expect(screen.getByText('$0.1500')).toBeInTheDocument();
-    expect(screen.getByText('$0.0800')).toBeInTheDocument();
+    expect(screen.getByText('$0.15')).toBeInTheDocument();
+    expect(screen.getByText('$0.080')).toBeInTheDocument();
   });
 
   it('sorts by cost descending', async () => {
@@ -2559,7 +2559,7 @@ describe('Today view — Cost by Skill panel', () => {
       attributionRate: 0.8,
     });
     renderToday(qc);
-    const costCell = screen.getByText('$0.1000');
+    const costCell = screen.getByText('$0.10');
     expect(costCell).toHaveAttribute('title', 'Cost covers 2 of 5 calls');
   });
 });
