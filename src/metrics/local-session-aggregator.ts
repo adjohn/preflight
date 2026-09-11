@@ -474,6 +474,10 @@ export interface CollectedCommit {
   repo: string | null;
   subject: string | null;
   url: string | null;
+  /** The worktree root this commit is attributed to — see
+   *  `collectCommitsAcrossRepos`'s two-pass ordering for how that's chosen
+   *  among several roots that can all see the same commit. */
+  root: string;
 }
 
 /**
@@ -505,6 +509,30 @@ function gitOut(root: string, args: readonly string[]): string | null {
   }
 }
 
+/**
+ * A root is its own primary checkout when its `--git-dir` and
+ * `--git-common-dir` are the same path — true for a normal clone, false for
+ * a linked worktree (whose `--git-dir` is `<repoKey>/worktrees/<name>`).
+ * Both are read from one `rev-parse` call to keep this to a single extra
+ * `gitOut` per root.
+ */
+const primaryCheckoutCache = new Map<string, boolean>();
+
+function isPrimaryCheckout(root: string): boolean {
+  const cached = primaryCheckoutCache.get(root);
+  if (cached !== undefined) return cached;
+  const out = gitOut(root, [
+    'rev-parse',
+    '--path-format=absolute',
+    '--git-dir',
+    '--git-common-dir',
+  ]);
+  const [gitDir, commonDir] = (out ?? '').split('\n');
+  const primary = out === null || gitDir === commonDir;
+  primaryCheckoutCache.set(root, primary);
+  return primary;
+}
+
 export function collectCommitsAcrossRepos(
   repoRoots: readonly string[],
   since: string,
@@ -513,16 +541,30 @@ export function collectCommitsAcrossRepos(
   const seen = new Set<string>();
   const commits: CollectedCommit[] = [];
 
-  for (const root of repoRoots) {
+  // Primary checkouts first: a commit on `main` is reachable from both the
+  // primary and a feature worktree, and the first root to see it wins.
+  const primary = new Map(repoRoots.map((root) => [root, isPrimaryCheckout(root)]));
+  const orderedRoots = [...repoRoots].sort(
+    (a, b) => Number(!primary.get(a)) - Number(!primary.get(b)),
+  );
+
+  const remotes = new Map<string, string | null>();
+  const collect = (root: string, extraArgs: readonly string[]): void => {
     // %x1f (unit separator) can't appear in a hash, epoch, or subject, so it is
     // a safe delimiter where a space would break on multi-word subjects.
-    const args = ['log', `--since=${since}T00:00:00`, '--format=%H%x1f%ct%x1f%s'];
+    const args = [
+      'log',
+      `--since=${since}T00:00:00`,
+      '--format=%H%x1f%ct%x1f%s',
+      ...extraArgs,
+    ];
     if (authorEmail) args.push(`--author=${authorEmail}`);
 
     const stdout = gitOut(root, args);
-    if (stdout === null) continue;
+    if (stdout === null) return;
 
-    const remote = gitOut(root, ['remote', 'get-url', 'origin']);
+    if (!remotes.has(root)) remotes.set(root, gitOut(root, ['remote', 'get-url', 'origin']));
+    const remote = remotes.get(root) ?? null;
     const repo = repoNameFromRemote(remote);
 
     for (const line of stdout.split('\n')) {
@@ -536,9 +578,18 @@ export function collectCommitsAcrossRepos(
         repo,
         subject: subject ?? null,
         url: commitUrlFromRemote(remote, hash),
+        root,
       });
     }
-  }
+  };
+
+  // Pass 1: HEAD-only, same as before — covers the overwhelmingly common
+  // case (commits on the branch actually checked out) cheaply.
+  for (const root of orderedRoots) collect(root, []);
+  // Pass 2: every branch, so a commit whose worktree was since removed (the
+  // branch itself still exists) still gets counted, attributed to whichever
+  // remaining root can still see it.
+  for (const root of orderedRoots) collect(root, ['--branches']);
 
   return commits;
 }

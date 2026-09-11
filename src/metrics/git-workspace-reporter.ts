@@ -2,10 +2,16 @@ import { spawnSync } from 'node:child_process';
 
 import type { ReplayTimelineEntry, ToolCallRecord } from '../storage/types.js';
 import { ActivityStore } from './git-activity-store.js';
-import { GitActivityRecorder, type GitActivityRecord } from './git-activity-recorder.js';
+import {
+  GIT_LOG_SESSION_ID,
+  GitActivityRecorder,
+  type GitActivityRecord,
+} from './git-activity-recorder.js';
 import { WorktreeIdentityResolver, type WorktreeIdentity } from './git-workspace-identity.js';
+import type { CollectedCommit } from './local-session-aggregator.js';
 import {
   buildGitWorkspaceReport,
+  reconcileHydratedCommits,
   type GitWorkspaceReport,
   type ScopeRef,
   type WorktreeLiveState,
@@ -124,6 +130,42 @@ export class GitWorkspaceReporter {
   }
 
   /**
+   * Ingest commits collected from `git log` (`collectCommitsAcrossRepos`) —
+   * the only way a commit made outside a hook-observed `git commit` (a
+   * terminal, a heredoc script, a session the watcher never saw) ever
+   * reaches the weekly report. `commit.root` resolves to a workspace
+   * identity exactly like a live tool call's `cwd` does; a root that isn't a
+   * known git worktree (resolves to null) is skipped. The store's own
+   * recordId dedup (keyed on `gitlog:<hash>`) makes calling this repeatedly
+   * with overlapping commit sets a no-op for anything already ingested.
+   */
+  hydrateGitLog(commits: readonly CollectedCommit[]): void {
+    for (const commit of commits) {
+      const identity = this.identityResolver.resolve(commit.root);
+      if (identity === null) continue;
+      this.knownWorkspacesRegistry.set(identity.worktreeKey, identity);
+      this.store.ingest({
+        kind: 'git',
+        sessionId: GIT_LOG_SESSION_ID,
+        timestamp: commit.timestamp,
+        recordId: `gitlog:${commit.hash}`,
+        workspaceKey: identity.worktreeKey,
+        gitEvent: {
+          timestamp: commit.timestamp,
+          type: 'commit',
+          command: `git commit (${commit.hash})`,
+          success: true,
+          durationMs: null,
+          repo: commit.repo,
+          subject: commit.subject,
+          url: commit.url,
+          hash: commit.hash,
+        },
+      });
+    }
+  }
+
+  /**
    * Samples live branch state for a workspace (branch, default branch,
    * ahead/behind), cached with a short TTL per worktreeKey so repeated calls
    * in a short window don't re-shell out. Never runs `git fetch` — this only
@@ -188,9 +230,16 @@ export class GitWorkspaceReporter {
     const dedupedHistorical = (historical ?? []).filter(
       (r) => inWindow(r) && !liveKeys.has(keyOf(r)),
     );
-    const records = [...liveRecords, ...dedupedHistorical];
-
     const identities = new Map([...(historicalIdentities ?? []), ...this.knownWorkspacesRegistry]);
+
+    // Merge a hook-observed commit with its `git log`-hydrated counterpart
+    // (same underlying commit, two sources) before anything downstream
+    // counts commits — otherwise a hydrated commit that also has a matching
+    // hook record would be counted twice.
+    const records = reconcileHydratedCommits(
+      [...liveRecords, ...dedupedHistorical],
+      identities,
+    );
 
     const liveStates = new Map<string, WorktreeLiveState>();
     const workspaceKeys = new Set(records.map((r) => r.workspaceKey));

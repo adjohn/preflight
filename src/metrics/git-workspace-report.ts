@@ -1,5 +1,5 @@
 import { createLogger } from '../shared/index.js';
-import type { GitActivityRecord } from './git-activity-recorder.js';
+import { GIT_LOG_SESSION_ID, type GitActivityRecord } from './git-activity-recorder.js';
 import type { GitEvent } from './git-event-classifier.js';
 import type {
   BestPractice,
@@ -769,6 +769,124 @@ function countStaleBranchPulls(events: readonly GitEvent[]): number {
 }
 
 // ---------------------------------------------------------------------------
+// Step 0: reconcileHydratedCommits — merges each hook-observed commit with
+// its `git log`-hydrated counterpart (same commit, two sources) into one
+// record, before anything downstream counts commits.
+// ---------------------------------------------------------------------------
+
+// A hook record carries the PreToolUse time, so the commit's own `%ct` lands
+// after it by however long the tool call ran, and anything chained before
+// the commit (`npm test && git commit`) widens that gap to tens of seconds.
+// The window is symmetric because replayed timeline entries and hydrated
+// commits have independent clocks. One-to-one nearest matching keeps two
+// distinct rapid commits from collapsing into one despite the wide window.
+export const COMMIT_RECONCILE_WINDOW_MS = 60_000;
+
+type GitCommitRecord = Extract<GitActivityRecord, { kind: 'git' }>;
+
+const AMEND_RE = /\s--amend\b/;
+
+/** A commit that added history: it succeeded and was not an amend, which
+ *  rewrites a commit instead of adding one. Hydrated commits always qualify. */
+export function isCountedCommit(event: GitEvent): boolean {
+  return event.type === 'commit' && event.success && !AMEND_RE.test(event.command ?? '');
+}
+
+function isHookCommit(r: GitCommitRecord): boolean {
+  return isCountedCommit(r.gitEvent) && !r.gitEvent.hash;
+}
+
+function isHydratedCommit(r: GitCommitRecord): boolean {
+  return r.gitEvent.type === 'commit' && !!r.gitEvent.hash;
+}
+
+/**
+ * Reconciles hook-observed commits against commits hydrated from `git log`
+ * for the same underlying repo, so a commit both sources saw is counted
+ * once, not twice. Called from `GitWorkspaceReporter.report()` on the
+ * combined records array, before `buildGitWorkspaceReport`.
+ *
+ * Matching is per repo (`identities.get(workspaceKey)?.repoKey`, so a commit
+ * made in one worktree pairs with its `git log` copy seen from another) and
+ * one-to-one: each hook commit, ascending by timestamp, consumes the nearest
+ * unmatched hydrated commit within `COMMIT_RECONCILE_WINDOW_MS`. The hook
+ * record is kept, since it knows the real worktree and session, enriched
+ * with the hydrated `hash`/`subject`/`url`; the hydrated record is dropped.
+ * An unpaired hook commit survives only in a repo with no hydrated commits;
+ * failed and amend commits, and every non-commit record, pass through.
+ */
+export function reconcileHydratedCommits(
+  records: readonly GitActivityRecord[],
+  identities: ReadonlyMap<string, WorktreeIdentity>,
+): GitActivityRecord[] {
+  const repoKeyOf = (r: GitActivityRecord): string =>
+    identities.get(r.workspaceKey)?.repoKey ?? r.workspaceKey;
+
+  const hooksByRepo = new Map<string, GitCommitRecord[]>();
+  const hydratedByRepo = new Map<string, GitCommitRecord[]>();
+  const passthrough: GitActivityRecord[] = [];
+
+  const addTo = (map: Map<string, GitCommitRecord[]>, r: GitCommitRecord): void => {
+    const key = repoKeyOf(r);
+    const bucket = map.get(key);
+    if (bucket) bucket.push(r);
+    else map.set(key, [r]);
+  };
+
+  for (const record of records) {
+    if (record.kind === 'git' && isHookCommit(record)) addTo(hooksByRepo, record);
+    else if (record.kind === 'git' && isHydratedCommit(record)) addTo(hydratedByRepo, record);
+    else passthrough.push(record);
+  }
+
+  const result: GitActivityRecord[] = [...passthrough];
+  const repoKeys = new Set([...hooksByRepo.keys(), ...hydratedByRepo.keys()]);
+
+  for (const repoKey of repoKeys) {
+    const hooks = [...(hooksByRepo.get(repoKey) ?? [])].sort((a, b) => a.timestamp - b.timestamp);
+    const hydrated = hydratedByRepo.get(repoKey) ?? [];
+    const matched = new Set<GitCommitRecord>();
+
+    for (const hook of hooks) {
+      let best: GitCommitRecord | null = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const candidate of hydrated) {
+        if (matched.has(candidate)) continue;
+        const distance = Math.abs(hook.timestamp - candidate.timestamp);
+        if (distance > COMMIT_RECONCILE_WINDOW_MS || distance >= bestDistance) continue;
+        best = candidate;
+        bestDistance = distance;
+      }
+
+      if (best) {
+        matched.add(best);
+        result.push({
+          ...hook,
+          gitEvent: {
+            ...hook.gitEvent,
+            hash: best.gitEvent.hash,
+            subject: best.gitEvent.subject,
+            url: best.gitEvent.url,
+          },
+        });
+      } else if (hydrated.length === 0) {
+        // git log is authoritative wherever it reaches: an unpaired hook
+        // commit there was rewritten away (rebase, squash) or was never a
+        // commit (text that mentioned one), and its successor is already
+        // in `hydrated`. Hook commits stand alone only where git log can't see.
+        result.push(hook);
+      }
+    }
+
+    for (const h of hydrated) {
+      if (!matched.has(h)) result.push(h);
+    }
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Step 1: computeWorkspaceMetrics — the per-workspace sequential reducer,
 // adapted from GitEfficiencyTracker.recordToolCall/processEvent/getMetrics
 // to run once, forward, over one workspace's own sorted records.
@@ -851,7 +969,10 @@ export function computeWorkspaceMetrics(
     if (lastActivityMs === null || record.timestamp > lastActivityMs) {
       lastActivityMs = record.timestamp;
     }
-    sessionIds.add(record.sessionId);
+    // A git-log-hydrated commit didn't come from any Claude Code session —
+    // counting its synthetic sessionId here would make a workspace with zero
+    // real sessions this window still report one.
+    if (record.sessionId !== GIT_LOG_SESSION_ID) sessionIds.add(record.sessionId);
 
     if (record.kind === 'edit') {
       editedFiles.add(record.filePath);
@@ -871,9 +992,6 @@ export function computeWorkspaceMetrics(
 
     // record.kind === 'git'
     const event = record.gitEvent;
-    // Commit dedup against `git log`-hydrated history (hydratedThroughMs in
-    // the old tracker) isn't wired in yet — only hook-observed commits exist
-    // as an input today, so there's nothing to dedup against.
     events.push(event);
 
     const command = event.command ?? '';
@@ -945,8 +1063,10 @@ export function computeWorkspaceMetrics(
             }
           }
         }
-        commitTimestamps.push(event.timestamp);
-        commitsSinceLastSync++;
+        if (isCountedCommit(event)) {
+          commitTimestamps.push(event.timestamp);
+          commitsSinceLastSync++;
+        }
         break;
       }
 
@@ -1028,10 +1148,7 @@ export function computeWorkspaceMetrics(
   const pushCount = events.filter(
     (e) => e.type === 'push' || e.type === 'force_push' || e.type === 'force_push_lease',
   ).length;
-  // Only hook-observed commit events count today — `git log` hydration
-  // (hydrateGitLog's hash-based dedup in the old tracker) isn't wired in
-  // yet, so there's no second source to reconcile against.
-  const commitCount = events.filter((e) => e.type === 'commit').length;
+  const commitCount = events.filter(isCountedCommit).length;
   const branchOperations = events.filter((e) => e.type === 'branch').length;
   const mergeEventCount = events.filter((e) => e.type === 'merge').length;
   const rebaseEventCount = events.filter((e) => e.type === 'rebase').length;

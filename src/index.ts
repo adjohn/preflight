@@ -1499,9 +1499,17 @@ async function main(): Promise<void> {
     const hydrateGitCommits = (): void => {
       // Recomputed per call so a long-lived dashboard rolls over at midnight
       // instead of reporting "today" relative to the day it was started.
-      const since = new Date().toISOString().slice(0, 10);
-      const commits = collectCommitsAcrossRepos(collectRepoRoots(), since, gitAuthorEmail);
-      if (commits.length > 0) gitEfficiencyTracker.hydrateGitLog(commits);
+      const todayStartMs = new Date().setHours(0, 0, 0, 0);
+      // The Git tab's tree shows 30 days of history — the shared git-log
+      // collection needs to reach that far even though the per-session
+      // GitEfficiencyTracker below only ever wants today's commits.
+      const hydrationSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10);
+      const commits = collectCommitsAcrossRepos(collectRepoRoots(), hydrationSince, gitAuthorEmail);
+      gitWorkspaceReporter.hydrateGitLog(commits);
+      const todaysCommits = commits.filter((c) => c.timestamp >= todayStartMs);
+      if (todaysCommits.length > 0) gitEfficiencyTracker.hydrateGitLog(todaysCommits);
     };
 
     hydrateGitCommits();
