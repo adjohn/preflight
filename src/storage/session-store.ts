@@ -55,10 +55,6 @@ import {
   type QualityProxyRawCounts,
   ZERO_QUALITY_PROXY_COUNTS,
 } from '../metrics/quality-proxy-tracker.js';
-import type {
-  CostAttributionMetrics,
-  TurnCostAttributor,
-} from '../metrics/turn-cost-attributor.js';
 
 const logger = createLogger('session-store');
 
@@ -810,7 +806,6 @@ export interface BuildSessionSummarySources {
   toolSelectionScorer?: ToolSelectionScorer;
   modelUsageTracker?: ModelUsageTracker;
   qualityProxyTracker?: QualityProxyTracker;
-  turnCostAttributor?: TurnCostAttributor;
   developer: string;
   repoName?: string | null;
   /**

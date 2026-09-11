@@ -1642,7 +1642,9 @@ describe('buildSessionSummary', () => {
       costByWorkflowRunId: {},
       costByDayUsd: {},
       subagentCostByDayUsd: {},
-      subagentCostByAgentType: {},
+      subagentByAgentType: {},
+      highContextCostUsd: 0,
+      apiDurationMs: null,
       costRateMultiplierApplied: 1,
     } satisfies CostMetrics);
     const summary = buildSessionSummary({
@@ -1682,7 +1684,9 @@ describe('buildSessionSummary', () => {
       costByWorkflowRunId: { wf_test_run: { '2026-08-14': 0.05 } },
       costByDayUsd: { '2026-08-14': 0.05 },
       subagentCostByDayUsd: {},
-      subagentCostByAgentType: {},
+      subagentByAgentType: {},
+      highContextCostUsd: 0,
+      apiDurationMs: null,
       costRateMultiplierApplied: 1,
     } satisfies CostMetrics);
     const summary = buildSessionSummary({
