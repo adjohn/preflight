@@ -47,6 +47,15 @@ export interface SkillCostEntry {
   readonly outputTokens: number;
   readonly cacheReadTokens: number;
   readonly totalDurationMs: number;
+  /**
+   * Authoritative token total: `inputTokens + outputTokens + cacheReadTokens`
+   * for a live (this-process) entry. `GET /api/cost-per-tool` folds in other
+   * today sessions' persisted attribution buckets, which carry only a token
+   * total and no input/output/cache-read split — those merged sessions'
+   * tokens land here too, so this field (not the three split fields, which
+   * stay live-only) is the one to read for a skill's total token usage.
+   */
+  readonly tokens: number;
 }
 
 export interface TurnToolCall {
@@ -455,16 +464,20 @@ export class TurnCostAttributor {
       }
 
       if (bucket.skillName !== null) {
+        const inputTokens = Math.round(bucket.inputTokens);
+        const outputTokens = Math.round(bucket.outputTokens);
+        const cacheReadTokens = Math.round(bucket.cacheReadTokens);
         costBySkill[bucket.skillName] = {
           callCount: bucket.callCount,
           attributedCallCount: bucket.attributedCallCount,
           totalCost: bucket.totalCost,
           avgCost:
             bucket.attributedCallCount > 0 ? bucket.totalCost / bucket.attributedCallCount : 0,
-          inputTokens: Math.round(bucket.inputTokens),
-          outputTokens: Math.round(bucket.outputTokens),
-          cacheReadTokens: Math.round(bucket.cacheReadTokens),
+          inputTokens,
+          outputTokens,
+          cacheReadTokens,
           totalDurationMs: bucket.totalDurationMs,
+          tokens: inputTokens + outputTokens + cacheReadTokens,
         };
       }
     }
