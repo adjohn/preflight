@@ -441,6 +441,20 @@ describe('handleGetBudgetStatus()', () => {
 
 describe('handleGetCostForecast()', () => {
   it('anchors the end-of-day forecast to getCostForDay()/getFirstActivityMsForDay(), not the full session spend', () => {
+    // Freeze the clock. The handler and the `expected` computation below each
+    // read Date.now() independently, and today's day-bucket anchor is only
+    // milliseconds old here, so the projected rate is dailySpend / (a few ms):
+    // even single-digit ms of drift between the two reads moves a five-figure
+    // end-of-day forecast past toBeCloseTo(…, 2). Seen failing on CI runners.
+    jest.useFakeTimers({ now: Date.now() });
+    try {
+      runAnchoredForecastCase();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  function runAnchoredForecastCase(): void {
     const tracker = new CostTracker();
 
     // Backdated (but within the 48h late-arrival window) so it inflates the
@@ -491,7 +505,7 @@ describe('handleGetCostForecast()', () => {
     // `body` given the huge backdated "yesterday" spend above.
     expect(body.forecastEndOfDayUsd).toBeCloseTo(expected.forecastEndOfDayUsd ?? 0, 2);
     expect(sessionTotalCostUsd).toBeGreaterThan(tracker.getCostForDay(todayKey));
-  });
+  }
 
   it('omits resumeContext when no sessionResumeTracker is passed', () => {
     const tracker = new CostTracker();
