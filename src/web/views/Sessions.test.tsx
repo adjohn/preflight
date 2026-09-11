@@ -262,11 +262,9 @@ describe('Sessions view', () => {
     };
     const { container } = renderSessions(SAMPLE_LIST, { s1: detail });
     await waitFor(() => expect(screen.getAllByText('Read').length).toBeGreaterThanOrEqual(1));
-    expect(screen.getByText('Models (2)')).toBeInTheDocument();
+    expect(screen.getByText('Usage by model')).toBeInTheDocument();
     expect(screen.getByText('claude-sonnet-5')).toBeInTheDocument();
     expect(screen.getByText('claude-opus-5')).toBeInTheDocument();
-    // Most-called model (claude-sonnet-5, 8 requests) renders before the
-    // last-seen one (claude-opus-5, `model` above, only 2 requests).
     const text = container.textContent ?? '';
     expect(text.indexOf('claude-sonnet-5')).toBeLessThan(text.indexOf('claude-opus-5'));
   });
@@ -290,12 +288,11 @@ describe('Sessions view', () => {
     };
     renderSessions(SAMPLE_LIST, { s1: detail });
     await waitFor(() => expect(screen.getAllByText('Read').length).toBeGreaterThanOrEqual(1));
-    expect(screen.getByText('Model')).toBeInTheDocument();
-    expect(screen.queryByText(/Models \(/)).toBeNull();
+    expect(screen.getByText('Usage by model')).toBeInTheDocument();
     expect(screen.getByText('claude-sonnet-5')).toBeInTheDocument();
   });
 
-  it('falls back to data.model when modelBreakdown is absent or empty', async () => {
+  it('falls back to data.model card when modelBreakdown is absent or empty', async () => {
     const detail = {
       sessionId: 's1',
       model: 'claude-sonnet-5',
@@ -306,6 +303,68 @@ describe('Sessions view', () => {
     await waitFor(() => expect(screen.getAllByText('Read').length).toBeGreaterThanOrEqual(1));
     expect(screen.getByText('Model')).toBeInTheDocument();
     expect(screen.getByText('claude-sonnet-5')).toBeInTheDocument();
+    expect(screen.queryByText('Usage by model')).toBeNull();
+  });
+
+  it('renders per-model rows with token and cost data', async () => {
+    const detail = {
+      sessionId: 's1',
+      modelBreakdown: {
+        'claude-sonnet-5': {
+          requestCount: 5,
+          totalInputTokens: 1000,
+          totalOutputTokens: 500,
+          totalCostUsd: 1.5,
+          totalCacheReadTokens: 200,
+          totalCacheCreationTokens: 100,
+          totalThinkingTokens: 0,
+        },
+      },
+      timeline: [{ timestamp: 1_000, toolName: 'Read', durationMs: 120, success: true }],
+    };
+    const { container } = renderSessions(SAMPLE_LIST, { s1: detail });
+    await waitFor(() => expect(screen.getByText('Usage by model')).toBeInTheDocument());
+    expect(screen.getByText('Input')).toBeInTheDocument();
+    const text = container.textContent ?? '';
+    expect(text).toContain('1.0k');
+    expect(text).toContain('500');
+    expect(text).toContain('$1.50');
+  });
+
+  it('renders lines and cache % metadata when present', async () => {
+    const detail = {
+      sessionId: 's1',
+      durationMs: 5000,
+      linesAdded: 42,
+      linesRemoved: 8,
+      tokensInput: 1000,
+      tokensCacheRead: 200,
+      tokensCacheCreation: 100,
+      timeline: [{ timestamp: 1_000, toolName: 'Read', durationMs: 120, success: true }],
+    };
+    const { container } = renderSessions(SAMPLE_LIST, { s1: detail });
+    await waitFor(() => expect(screen.getAllByText('Read').length).toBeGreaterThanOrEqual(1));
+    const text = container.textContent ?? '';
+    expect(text).toContain('+42');
+    expect(text).toContain('−8');
+    expect(text).toContain('lines');
+    expect(text).toContain('cache 15%');
+  });
+
+  it('does not render API duration line when apiDurationMs is null', async () => {
+    const detail = {
+      sessionId: 's1',
+      durationMs: 5000,
+      attribution: {
+        buckets: {},
+        highContextCostUsd: 0,
+        apiDurationMs: null,
+      },
+      timeline: [{ timestamp: 1_000, toolName: 'Read', durationMs: 120, success: true }],
+    };
+    renderSessions(SAMPLE_LIST, { s1: detail });
+    await waitFor(() => expect(screen.getAllByText('Read').length).toBeGreaterThanOrEqual(1));
+    expect(screen.queryByText(/API.*wall/)).toBeNull();
   });
 
   it('renders a Files Read list from data.filesRead, truncated to the last two path segments', async () => {
