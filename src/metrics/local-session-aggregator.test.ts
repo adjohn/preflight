@@ -1,12 +1,43 @@
 import { describe, expect, it } from '@jest/globals';
+import {
+  spawnSync as nodeSpawnSync,
+  type SpawnSyncOptions,
+  type SpawnSyncReturns,
+} from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { localDateKey } from '../lib/date.js';
 import {
+  collectCommitsAcrossRepos,
   commitUrlFromRemote,
   LocalSessionAggregator,
   repoNameFromRemote,
   RepoNameResolver,
 } from './local-session-aggregator.js';
 import { ToolSelectionScorer } from './tool-selection-scorer.js';
+
+// git sets GIT_DIR/GIT_WORK_TREE for hook subprocesses, which override `-C
+// <dir>` and would silently redirect these calls to the real repo instead of
+// the isolated temp dir under test. See git-activity-recorder.test.ts.
+const CLEAN_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  GIT_DIR: undefined,
+  GIT_WORK_TREE: undefined,
+};
+
+function spawnSync(
+  command: string,
+  args?: readonly string[],
+  options?: SpawnSyncOptions,
+): SpawnSyncReturns<string | Buffer> {
+  return nodeSpawnSync(command, args, { ...options, env: CLEAN_ENV });
+}
+
+/** A `since` far enough back that every commit a test creates is in range. */
+function farBackSince(): string {
+  return new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);
+}
 
 const REAL_ID = 'a143754c-f742-40b7-bf1a-7dc01ad1932f';
 
@@ -269,6 +300,79 @@ describe('commitUrlFromRemote', () => {
     expect(commitUrlFromRemote(null, hash)).toBeNull();
     expect(commitUrlFromRemote('/srv/local/repo.git', hash)).toBeNull();
     expect(commitUrlFromRemote('git@github.com:acme/widgets.git', '')).toBeNull();
+  });
+});
+
+describe('collectCommitsAcrossRepos', () => {
+  let repoDir: string;
+  let initialBranch: string;
+
+  beforeEach(() => {
+    repoDir = mkdtempSync(join('/tmp', 'collect-commits-'));
+    spawnSync('git', ['init'], { cwd: repoDir, stdio: 'ignore' });
+    spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: repoDir, stdio: 'ignore' });
+    spawnSync('git', ['config', 'user.email', 'test@example.com'], {
+      cwd: repoDir,
+      stdio: 'ignore',
+    });
+    spawnSync('git', ['commit', '--allow-empty', '-m', 'init'], { cwd: repoDir, stdio: 'ignore' });
+    initialBranch = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      cwd: repoDir,
+      encoding: 'utf-8',
+    })
+      .stdout.toString()
+      .trim();
+  });
+
+  afterEach(() => {
+    rmSync(repoDir, { recursive: true, force: true });
+  });
+
+  it('attributes a commit on a branch that is not checked out to the root (the --branches pass)', () => {
+    spawnSync('git', ['checkout', '-b', 'feature'], { cwd: repoDir, stdio: 'ignore' });
+    spawnSync('git', ['commit', '--allow-empty', '-m', 'feature work'], {
+      cwd: repoDir,
+      stdio: 'ignore',
+    });
+    const featureHash = spawnSync('git', ['rev-parse', 'feature'], {
+      cwd: repoDir,
+      encoding: 'utf-8',
+    })
+      .stdout.toString()
+      .trim();
+    // Back on the original branch — 'feature' still exists but isn't checked
+    // out, and isn't HEAD, so the HEAD-only pass 1 can't see its commit.
+    spawnSync('git', ['checkout', initialBranch], { cwd: repoDir, stdio: 'ignore' });
+
+    const commits = collectCommitsAcrossRepos([repoDir], farBackSince(), null);
+    const featureCommit = commits.find((c) => c.hash === featureHash);
+
+    expect(featureCommit).toBeDefined();
+    expect(featureCommit?.root).toBe(repoDir);
+  });
+
+  it('attributes a commit seen from both a linked worktree and the primary checkout to the primary', () => {
+    const initHash = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf-8' })
+      .stdout.toString()
+      .trim();
+    const worktreeParent = mkdtempSync(join('/tmp', 'collect-commits-wt-'));
+    const worktreeDir = join(worktreeParent, 'wt');
+    try {
+      spawnSync('git', ['worktree', 'add', '-b', 'feature-wt', worktreeDir], {
+        cwd: repoDir,
+        stdio: 'ignore',
+      });
+
+      // Worktree passed FIRST — collectCommitsAcrossRepos must still reorder
+      // primaries first internally, not trust caller order.
+      const commits = collectCommitsAcrossRepos([worktreeDir, repoDir], farBackSince(), null);
+      const initCommits = commits.filter((c) => c.hash === initHash);
+
+      expect(initCommits).toHaveLength(1);
+      expect(initCommits[0].root).toBe(repoDir);
+    } finally {
+      rmSync(worktreeParent, { recursive: true, force: true });
+    }
   });
 });
 

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.50.10] - 2026-09-12
+
+### Fixed
+
+- **The Git tab's 7-day "commits" and "PRs created" counters could not be trusted: a chained `git commit -m … && git push` was recorded as a push only, so the commit vanished, while every shell segment that merely contained the text `gh pr create` counted as a new PR, including failed retries, a `gh pr comment` body, and test fixtures that quoted the phrase.** A week that GitHub and `git log` put at 24 PRs and 43 commits showed 35 PRs and 23 commits. Git commands are now classified per shell segment, so every verb in a chain is recorded; a `gh pr <verb>` counts only when the segment starts with it, and a create counts only when it succeeded. Commits from `git log` (30 days, every branch, primary checkouts first) now feed the weekly report too, paired one-to-one with the hook-observed commit that made them so worktree and session attribution survive. Where git log covers a repo it is authoritative, so failed commits, amends, and commits later rewritten away no longer inflate the count.
+
 ## [1.50.9] - 2026-09-12
 
 ### Fixed
