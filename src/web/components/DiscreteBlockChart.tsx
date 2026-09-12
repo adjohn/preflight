@@ -47,6 +47,17 @@ export interface DiscreteBlockChartProps {
    */
   readonly maxCount?: number;
   readonly ariaLabel: string;
+  /**
+   * Quantizes every column into at most this many blocks: the tallest
+   * column renders exactly `levels` blocks, the rest scale proportionally
+   * (`Math.ceil(count / effectiveMax * levels)`, 0 stays 0). Lets columns
+   * built from very different raw units (dollars, call counts, concurrency)
+   * share one visual scale. Tooltips still show the caller's raw value via
+   * `item.tooltip` — this only changes how many blocks are drawn.
+   * Default undefined preserves the original one-block-per-count behavior
+   * (History's per-day peak grid and other existing callers are unaffected).
+   */
+  readonly levels?: number;
 }
 
 // Sourced from `--color-chart-block` / `--color-chart-block-peak` in
@@ -64,6 +75,7 @@ export function DiscreteBlockChart({
   data,
   maxCount,
   ariaLabel,
+  levels,
 }: DiscreteBlockChartProps): JSX.Element | null {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
 
@@ -92,8 +104,14 @@ export function DiscreteBlockChart({
   }
 
   const effectiveMax = Math.max(maxCount ?? 0, ...data.map((d) => d.count), 1);
-  const chartHeight = effectiveMax * (BLOCK_SIZE + BLOCK_GAP);
+  const chartLevels = levels ?? effectiveMax;
+  const chartHeight = chartLevels * (BLOCK_SIZE + BLOCK_GAP);
   const chartWidth = data.length * COL_WIDTH;
+
+  // Raw count when `levels` is unset; otherwise scale so the tallest
+  // column renders exactly `levels` blocks.
+  const blockCount = (count: number): number =>
+    levels === undefined ? count : count <= 0 ? 0 : Math.ceil((count / effectiveMax) * levels);
 
   return (
     <>
@@ -108,7 +126,7 @@ export function DiscreteBlockChart({
       >
         {data.map((item, colIdx) => {
           const blocks: JSX.Element[] = [];
-          for (let b = 0; b < item.count; b++) {
+          for (let b = 0; b < blockCount(item.count); b++) {
             const isPeak = item.isPeak ?? item.count === effectiveMax;
             blocks.push(
               <rect
