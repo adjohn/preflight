@@ -330,11 +330,16 @@ describe('HookEventProcessor', () => {
   });
 
   describe('processEvents() — orphaned post (no matching pre)', () => {
-    it('creates a record with durationMs: null', () => {
+    it('creates a record with durationMs: null that keeps the post event cwd', () => {
       const processor = new HookEventProcessor({ store, onRecord });
 
       processor.processEvents([
-        makePostEvent({ toolUseId: 'toolu_orphan', timestamp: 2000, outputSize: 512 }),
+        makePostEvent({
+          toolUseId: 'toolu_orphan',
+          timestamp: 2000,
+          outputSize: 512,
+          cwd: '/projects/test',
+        }),
       ]);
 
       expect(records).toHaveLength(1);
@@ -343,6 +348,7 @@ describe('HookEventProcessor', () => {
       expect(record.durationMs).toBeNull();
       expect(record.success).toBe(true);
       expect(record.outputSizeBytes).toBe(512);
+      expect(record.cwd).toBe('/projects/test');
     });
 
     it('still reports agentId/agentType from the post event with no matching pre-event', () => {
@@ -535,13 +541,13 @@ describe('HookEventProcessor', () => {
   });
 
   describe('stop() flushes pending pre events as timeouts', () => {
-    it('emits timeout records for all pending pre events', () => {
+    it('emits timeout records for all pending pre events, keeping each pre event cwd', () => {
       const processor = new HookEventProcessor({ store, onRecord });
 
       // Add pre events without any corresponding post
       processor.processEvents([
-        makePreEvent({ toolUseId: 'toolu_a', tool: 'Read', timestamp: 1000 }),
-        makePreEvent({ toolUseId: 'toolu_b', tool: 'Write', timestamp: 1010 }),
+        makePreEvent({ toolUseId: 'toolu_a', tool: 'Read', timestamp: 1000, cwd: '/projects/a' }),
+        makePreEvent({ toolUseId: 'toolu_b', tool: 'Write', timestamp: 1010, cwd: '/projects/a' }),
       ]);
 
       expect(records).toHaveLength(0);
@@ -554,6 +560,7 @@ describe('HookEventProcessor', () => {
         expect(record.success).toBe(false);
         expect(record.errorType).toBe('timeout');
         expect(record.durationMs).toBeNull();
+        expect(record.cwd).toBe('/projects/a');
       }
 
       const tools = records.map((r) => r.toolName).sort();

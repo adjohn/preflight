@@ -12,7 +12,11 @@ import type {
   RiskIndicators,
   VelocityMetrics,
 } from './git-efficiency-tracker.js';
-import type { WorktreeIdentity } from './git-workspace-identity.js';
+import {
+  UNATTRIBUTED_WORKSPACE_KEY,
+  isPlaceholderIdentity,
+  type WorktreeIdentity,
+} from './git-workspace-identity.js';
 
 const logger = createLogger('git-workspace-report');
 
@@ -1352,15 +1356,13 @@ export function rollupWorkspaceMetrics(
 // Step 3: buildGitWorkspaceReport — public entry point
 // ---------------------------------------------------------------------------
 
-const UNATTRIBUTED_KEY = 'unattributed';
-
 function resolveIdentityForGroup(
   key: string,
   identities: ReadonlyMap<string, WorktreeIdentity>,
 ): WorktreeIdentity | null {
   const known = identities.get(key);
   if (known) return known;
-  if (key === UNATTRIBUTED_KEY) {
+  if (key === UNATTRIBUTED_WORKSPACE_KEY) {
     return {
       repoKey: key,
       worktreeKey: key,
@@ -1391,10 +1393,14 @@ function computeWorstBehind(rows: readonly WorkspaceRow[]): GitWorkspaceReport['
  * (see buildGitWorkspaceReport). Never claims conflicts "cannot happen" —
  * worktrees isolate working directories, not branches, so two worktrees on
  * a shared branch can still collide at merge time even with zero file
- * overlap here.
+ * overlap here. Placeholder rows (activity with no resolvable working
+ * directory) are not worktrees that could have isolated anything, so they
+ * neither count toward the active total nor contribute file overlaps.
  */
-function buildParallelIsolationCheck(activeWorktrees: readonly WorkspaceRow[]): BestPractice {
+function buildParallelIsolationCheck(repoRows: readonly WorkspaceRow[]): BestPractice {
   const label = 'Isolate parallel work across worktrees';
+
+  const activeWorktrees = repoRows.filter((r) => !isPlaceholderIdentity(r.identity));
 
   if (activeWorktrees.length < 2) {
     return {
