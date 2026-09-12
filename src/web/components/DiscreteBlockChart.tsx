@@ -126,6 +126,21 @@ export function DiscreteBlockChart({
       >
         {data.map((item, colIdx) => {
           const blocks: JSX.Element[] = [];
+          if (item.count === 0) {
+            // A faint track cell keeps the time axis readable when most
+            // columns are empty; without it a quiet day reads as a narrow chart.
+            blocks.push(
+              <rect
+                key={`${colIdx}-track`}
+                x={colIdx * COL_WIDTH}
+                y={chartHeight - (BLOCK_SIZE + BLOCK_GAP)}
+                width={BLOCK_SIZE}
+                height={BLOCK_SIZE}
+                rx={1}
+                fill="var(--color-surface-5)"
+              />,
+            );
+          }
           for (let b = 0; b < blockCount(item.count); b++) {
             const isPeak = item.isPeak ?? item.count === effectiveMax;
             blocks.push(
