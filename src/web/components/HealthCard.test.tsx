@@ -10,9 +10,7 @@ describe('HealthCard', () => {
   });
 
   it('renders the status pill and tones the hero value', () => {
-    render(
-      <HealthCard title="Compute waste" value="12%" status={{ tone: 'warn', label: 'Watch' }} />,
-    );
+    render(<HealthCard title="Compute waste" value="12%" tone="warn" />);
     expect(screen.getByText('Watch')).toBeInTheDocument();
     expect(screen.getByText('12%').className).toMatch(/text-accent-amber/);
   });

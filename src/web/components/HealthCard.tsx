@@ -4,10 +4,13 @@ import { Panel, Pill, type PillTone } from './ui';
 
 export type HealthTone = 'good' | 'warn' | 'bad' | 'neutral';
 
-export interface HealthCardStatus {
-  readonly tone: HealthTone;
-  readonly label: string;
-}
+/** One vocabulary for every card, so two cards never grade the same state with different words. */
+export const HEALTH_TONE_LABEL: Record<HealthTone, string> = {
+  good: 'Healthy',
+  warn: 'Watch',
+  bad: 'Needs attention',
+  neutral: 'No data',
+};
 
 export interface HealthCardRow {
   readonly label: string;
@@ -18,7 +21,7 @@ export interface HealthCardProps {
   readonly title: string;
   readonly tooltip?: string;
   readonly value: string;
-  readonly status?: HealthCardStatus;
+  readonly tone?: HealthTone;
   readonly detail?: string;
   readonly rows?: ReadonlyArray<HealthCardRow>;
 }
@@ -42,17 +45,17 @@ export function HealthCard({
   title,
   tooltip,
   value,
-  status,
+  tone,
   detail,
   rows,
 }: HealthCardProps): JSX.Element {
   return (
     <Panel title={title} tooltip={tooltip}>
       <div className="flex items-center gap-2">
-        <span className={`text-2xl font-semibold ${VALUE_TONE_CLASS[status?.tone ?? 'neutral']}`}>
+        <span className={`text-2xl font-semibold ${VALUE_TONE_CLASS[tone ?? 'neutral']}`}>
           {value}
         </span>
-        {status && <Pill tone={STATUS_PILL_TONE[status.tone]}>{status.label}</Pill>}
+        {tone && <Pill tone={STATUS_PILL_TONE[tone]}>{HEALTH_TONE_LABEL[tone]}</Pill>}
       </div>
       {detail && <div className="mt-1 text-[10px] text-ink-muted">{detail}</div>}
       {rows && rows.length > 0 && (
