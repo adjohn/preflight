@@ -7,7 +7,7 @@ import {
   splitShellSegments,
   type GitEvent,
 } from './git-event-classifier.js';
-import { WorktreeIdentityResolver } from './git-workspace-identity.js';
+import { UNATTRIBUTED_WORKSPACE_KEY, WorktreeIdentityResolver } from './git-workspace-identity.js';
 import { stripHeredocBodies } from './local-session-aggregator.js';
 import type { PrEvent } from './git-efficiency-tracker.js';
 
@@ -159,7 +159,7 @@ export class GitActivityRecorder {
   private resolveWorkspaceKey(cwd: string | undefined): string {
     const identity = this.identityResolver.resolve(cwd);
     if (identity === null) {
-      return 'unattributed';
+      return UNATTRIBUTED_WORKSPACE_KEY;
     }
     // Use repoKey for repo-level identity and worktreeKey for worktree-level
     // tracking. For now, use worktreeKey so each worktree is tracked separately.

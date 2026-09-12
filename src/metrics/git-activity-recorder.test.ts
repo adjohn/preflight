@@ -465,7 +465,9 @@ describe('GitActivityRecorder', () => {
         }),
       );
 
-      expect(store.query({ since: 0, until: 10000 }).filter((r) => r.kind === 'git')).toHaveLength(0);
+      expect(store.query({ since: 0, until: 10000 }).filter((r) => r.kind === 'git')).toHaveLength(
+        0,
+      );
     });
 
     it('still classifies git behind env assignments or a path prefix', () => {

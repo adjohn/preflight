@@ -2864,11 +2864,11 @@ describe('api-handler GET /api/sessions/today/aggregate', () => {
 
   it('does not add its own live today-portion when the live session id is an unscoped aggregator (--local/proxy)', async () => {
     // A `--local` process's SubagentWatcher runs unscoped (parentSessionId:
-    // undefined) — if NR_AI_WATCHER_MODE=local is set, its own live
-    // CostTracker may hold cost that belongs to OTHER, already-separately-
-    // persisted sessions. Adding it on top of the (empty, here) persisted-
-    // sessions sum would double-count. Session id prefix 'local-' signals
-    // this process is such an unscoped aggregator, not a single real session.
+    // undefined) by default, so its own live CostTracker may hold cost that
+    // belongs to OTHER, already-separately-persisted sessions. Adding it on
+    // top of the (empty, here) persisted-sessions sum would double-count.
+    // Session id prefix 'local-' signals this process is such an unscoped
+    // aggregator, not a single real session.
     const handler = createApiHandler({
       localStore: { peekAllBuffers: () => [] },
       sessionStore: {

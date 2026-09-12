@@ -1,11 +1,13 @@
 import { describe, expect, it } from '@jest/globals';
-import { join } from 'node:path';
-import { mkdtempSync, rmSync } from 'node:fs';
 import {
   spawnSync as nodeSpawnSync,
   type SpawnSyncOptions,
   type SpawnSyncReturns,
 } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { localDateKey } from '../lib/date.js';
 import {
   collectCommitsAcrossRepos,
   commitUrlFromRemote,
@@ -18,7 +20,11 @@ import { ToolSelectionScorer } from './tool-selection-scorer.js';
 // git sets GIT_DIR/GIT_WORK_TREE for hook subprocesses, which override `-C
 // <dir>` and would silently redirect these calls to the real repo instead of
 // the isolated temp dir under test. See git-activity-recorder.test.ts.
-const CLEAN_ENV: NodeJS.ProcessEnv = { ...process.env, GIT_DIR: undefined, GIT_WORK_TREE: undefined };
+const CLEAN_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  GIT_DIR: undefined,
+  GIT_WORK_TREE: undefined,
+};
 
 function spawnSync(
   command: string,
@@ -313,7 +319,9 @@ describe('collectCommitsAcrossRepos', () => {
     initialBranch = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
       cwd: repoDir,
       encoding: 'utf-8',
-    }).stdout.toString().trim();
+    })
+      .stdout.toString()
+      .trim();
   });
 
   afterEach(() => {
@@ -357,11 +365,7 @@ describe('collectCommitsAcrossRepos', () => {
 
       // Worktree passed FIRST — collectCommitsAcrossRepos must still reorder
       // primaries first internally, not trust caller order.
-      const commits = collectCommitsAcrossRepos(
-        [worktreeDir, repoDir],
-        farBackSince(),
-        null,
-      );
+      const commits = collectCommitsAcrossRepos([worktreeDir, repoDir], farBackSince(), null);
       const initCommits = commits.filter((c) => c.hash === initHash);
 
       expect(initCommits).toHaveLength(1);
@@ -498,5 +502,151 @@ describe('LocalSessionAggregator cross-repo git discovery', () => {
       command: 'npm run build',
     } as never);
     expect(agg.cwds()).toEqual(['/home/u/aic']);
+  });
+});
+
+describe('LocalSessionAggregator subagent cost', () => {
+  it('routes agentId-tagged usage into subagentCostUsd and subagentCostByDayUsd, while also counting it in costByDayUsd', () => {
+    const agg = new LocalSessionAggregator();
+    const ts = Date.parse('2026-09-11T12:00:00Z');
+    agg.recordTokenUsage(REAL_ID, { costUsd: 2, timestamp: ts, agentId: 'agent-1' });
+
+    const [summary] = summariesOf(agg);
+    expect(summary?.subagentCostUsd).toBe(2);
+    const dayKey = localDateKey(ts);
+    expect(summary?.costByDayUsd).toEqual({ [dayKey]: 2 });
+    expect(summary?.subagentCostByDayUsd).toEqual({ [dayKey]: 2 });
+  });
+
+  it('does not touch subagent fields for agentId-less (parent) usage', () => {
+    const agg = new LocalSessionAggregator();
+    agg.recordTokenUsage(REAL_ID, { costUsd: 3, timestamp: 1000 });
+    // Parent-token-only usage has no tool calls, so it still doesn't emit —
+    // add a tool call so the summary is inspectable.
+    agg.recordToolCall({ sessionId: REAL_ID, toolName: 'read_file', timestamp: 1 });
+
+    const [summary] = summariesOf(agg);
+    expect(summary?.subagentCostUsd).toBe(0);
+    expect(summary?.subagentCostByDayUsd).toBeUndefined();
+    expect(summary?.costByDayUsd).toEqual({ [localDateKey(1000)]: 3 });
+  });
+
+  it('emits a summary for a subagent-only rollup with zero tool calls', () => {
+    const agg = new LocalSessionAggregator();
+    agg.recordTokenUsage(REAL_ID, { costUsd: 5, timestamp: 1000, agentId: 'agent-1' });
+
+    const summaries = summariesOf(agg);
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]?.toolCallCount).toBe(0);
+    expect(summaries[0]?.subagentCostUsd).toBe(5);
+    expect(summaries[0]?.estimatedCostUsd).toBe(5);
+  });
+
+  it('buckets subagent cost by the turn timestamp, splitting a run across two day keys', () => {
+    const agg = new LocalSessionAggregator();
+    const day1 = Date.parse('2026-09-10T12:00:00Z');
+    // 48h later guarantees a different local calendar date regardless of the
+    // test runner's timezone offset (unlike a 2h gap, which can land on the
+    // same local day depending on the offset).
+    const day2 = day1 + 48 * 60 * 60 * 1000;
+    agg.recordTokenUsage(REAL_ID, { costUsd: 1, timestamp: day1, agentId: 'agent-1' });
+    agg.recordTokenUsage(REAL_ID, { costUsd: 4, timestamp: day2, agentId: 'agent-1' });
+
+    const [summary] = summariesOf(agg);
+    expect(summary?.subagentCostByDayUsd).toEqual({
+      [localDateKey(day1)]: 1,
+      [localDateKey(day2)]: 4,
+    });
+    expect(summary?.subagentCostUsd).toBe(5);
+  });
+
+  it('omits costByDayUsd (undefined, not {}) for a rollup with only tool calls and no token usage', () => {
+    const agg = new LocalSessionAggregator();
+    agg.recordToolCall({ sessionId: REAL_ID, toolName: 'read_file', timestamp: 1 });
+
+    const [summary] = summariesOf(agg);
+    expect(summary?.costByDayUsd).toBeUndefined();
+    expect(summary?.subagentCostByDayUsd).toBeUndefined();
+  });
+});
+
+describe('LocalSessionAggregator restart seeding (persistedCostBaseline)', () => {
+  it('folds the persisted baseline in additively on the session’s first agentId usage', () => {
+    const agg = new LocalSessionAggregator({
+      persistedCostBaseline: () => ({
+        estimatedCostUsd: 10,
+        subagentCostUsd: 4,
+        costByDayUsd: { '2026-09-10': 10 },
+        subagentCostByDayUsd: { '2026-09-10': 4 },
+      }),
+    });
+    agg.recordTokenUsage(REAL_ID, {
+      costUsd: 1,
+      timestamp: Date.parse('2026-09-10T12:00:00Z'),
+      agentId: 'agent-1',
+    });
+
+    const [summary] = summariesOf(agg);
+    // Additive: the persisted baseline (10 all-in / 4 subagent) plus this
+    // turn's own $1 (also subagent-tagged), not a replacement of either.
+    expect(summary?.estimatedCostUsd).toBe(11);
+    expect(summary?.subagentCostUsd).toBe(5);
+    expect(summary?.costByDayUsd).toEqual({ '2026-09-10': 11 });
+    expect(summary?.subagentCostByDayUsd).toEqual({ '2026-09-10': 5 });
+  });
+
+  it('applies the baseline only once, not on every subsequent agentId usage', () => {
+    let calls = 0;
+    const agg = new LocalSessionAggregator({
+      persistedCostBaseline: () => {
+        calls += 1;
+        return {
+          estimatedCostUsd: 10,
+          subagentCostUsd: 10,
+          costByDayUsd: {},
+          subagentCostByDayUsd: {},
+        };
+      },
+    });
+    agg.recordTokenUsage(REAL_ID, { costUsd: 1, timestamp: 1000, agentId: 'agent-1' });
+    agg.recordTokenUsage(REAL_ID, { costUsd: 1, timestamp: 2000, agentId: 'agent-1' });
+    agg.recordTokenUsage(REAL_ID, { costUsd: 1, timestamp: 3000, agentId: 'agent-2' });
+
+    expect(calls).toBe(1);
+    const [summary] = summariesOf(agg);
+    expect(summary?.subagentCostUsd).toBe(13);
+  });
+
+  it('does not seed on rollup creation — an earlier agentId-less (parent) turn must not trigger it', () => {
+    let calls = 0;
+    const agg = new LocalSessionAggregator({
+      persistedCostBaseline: () => {
+        calls += 1;
+        return null;
+      },
+    });
+    agg.recordTokenUsage(REAL_ID, { costUsd: 1, timestamp: 1000 });
+    expect(calls).toBe(0);
+
+    agg.recordTokenUsage(REAL_ID, { costUsd: 1, timestamp: 2000, agentId: 'agent-1' });
+    expect(calls).toBe(1);
+  });
+
+  it('leaves the rollup at its own accumulated total when persistedCostBaseline returns null', () => {
+    const agg = new LocalSessionAggregator({ persistedCostBaseline: () => null });
+    agg.recordTokenUsage(REAL_ID, { costUsd: 2, timestamp: 1000, agentId: 'agent-1' });
+
+    const [summary] = summariesOf(agg);
+    expect(summary?.estimatedCostUsd).toBe(2);
+    expect(summary?.subagentCostUsd).toBe(2);
+  });
+
+  it('never seeds when no persistedCostBaseline option was given', () => {
+    const agg = new LocalSessionAggregator();
+    agg.recordTokenUsage(REAL_ID, { costUsd: 2, timestamp: 1000, agentId: 'agent-1' });
+
+    const [summary] = summariesOf(agg);
+    expect(summary?.estimatedCostUsd).toBe(2);
+    expect(summary?.subagentCostUsd).toBe(2);
   });
 });

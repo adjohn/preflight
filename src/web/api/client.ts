@@ -1212,7 +1212,7 @@ export interface ObservabilityHealthResponse {
   readonly parseErrors?: number;
   // Absent on older server builds — treat as equivalent to 'env_var' (the
   // banner's original behavior) rather than hiding the message.
-  readonly watcherDisabledReason?: 'env_var' | 'mode_mismatch' | null;
+  readonly watcherDisabledReason?: 'env_var' | null;
 }
 
 export const fetchObservabilityHealth = (): Promise<ObservabilityHealthResponse> =>

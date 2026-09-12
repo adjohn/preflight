@@ -216,6 +216,46 @@ export interface FullSessionSummary extends SessionSummary {
   readonly qualityProxy: QualityProxyRawCounts;
 }
 
+/**
+ * The subset of a session summary that decides whether it represents real,
+ * attributable work. Deliberately structural and all-optional so the three
+ * callers can pass what they have: a full `FullSessionSummary`, a live
+ * `LocalSessionRollup`, or the narrowed row shape the today-aggregate route
+ * reads off disk.
+ */
+export interface AttributableActivity {
+  readonly toolCallCount?: number;
+  readonly subagentCostUsd?: number;
+  readonly timeline?: ReadonlyArray<unknown>;
+}
+
+/**
+ * Does this summary represent work we can attribute to a real session?
+ *
+ * THE single definition of "not empty" for session persistence. Three call
+ * sites derive from it and must never re-implement it:
+ *   1. `LocalSessionAggregator.toSummaries()` — which rollups get written.
+ *   2. `SessionStore.saveSession()` — which incoming writes may overwrite.
+ *   3. the `/api/sessions/today/aggregate` route — which persisted rows may
+ *      contribute a pro-rated cost when they carry no per-day buckets.
+ *
+ * Subagent spend counts as activity on purpose. A session whose parent process
+ * died while its subagent transcripts were still being tailed has an empty
+ * PARENT timeline and zero parent tool calls (subagent tool calls never appear
+ * there) yet real dollars. Keying only on `toolCallCount` discards exactly the
+ * sessions a `--local` watcher exists to rescue.
+ *
+ * A genuinely empty summary — no tool calls, no subagent dollars, no timeline
+ * — is still false, which is what keeps the empty-clobber guard intact.
+ */
+export function hasAttributableActivity(s: AttributableActivity): boolean {
+  return (
+    (s.toolCallCount ?? 0) > 0 ||
+    (s.subagentCostUsd ?? 0) > 0 ||
+    (Array.isArray(s.timeline) && s.timeline.length > 0)
+  );
+}
+
 export interface SessionFileInfo {
   readonly filename: string;
   readonly sessionId: string;
@@ -287,6 +327,24 @@ export function mergeSummaries(
       efficiencyScoreComponents: winner.efficiencyScoreComponents ?? null,
     };
   };
+  /**
+   * Per-key max, preserving absence. `mergeCounts` already takes the per-key
+   * max; the wrapper exists because `{}` and `undefined` are DIFFERENT values
+   * to the today-aggregate route (an absent map falls back to the timeline
+   * pro-rate; a present-but-empty one reads as an authoritative $0), so two
+   * bucket-less legacy summaries must merge to `undefined`, not to `{}`.
+   */
+  const mergeDayMap = (
+    a: Record<string, number> | undefined,
+    b: Record<string, number> | undefined,
+  ): Record<string, number> | undefined =>
+    a === undefined && b === undefined ? undefined : mergeCounts(a, b);
+  const costByDayUsd = mergeDayMap(existing.costByDayUsd, incoming.costByDayUsd);
+  const subagentCostByDayUsd = mergeDayMap(
+    existing.subagentCostByDayUsd,
+    incoming.subagentCostByDayUsd,
+  );
+
   const mergeCostByWorkflowRunId = (
     a: Record<string, Record<string, number>> = {},
     b: Record<string, Record<string, number>> = {},
@@ -388,6 +446,8 @@ export function mergeSummaries(
     buildPassCount: maxNum(existing.buildPassCount, incoming.buildPassCount),
     estimatedCostUsd: maxNullable(existing.estimatedCostUsd, incoming.estimatedCostUsd),
     subagentCostUsd: maxNum(existing.subagentCostUsd, incoming.subagentCostUsd),
+    ...(costByDayUsd !== undefined ? { costByDayUsd } : {}),
+    ...(subagentCostByDayUsd !== undefined ? { subagentCostByDayUsd } : {}),
     tokensInput: maxNum(existing.tokensInput, incoming.tokensInput),
     tokensOutput: maxNum(existing.tokensOutput, incoming.tokensOutput),
     tokensThinking: maxNum(existing.tokensThinking, incoming.tokensThinking),
@@ -470,8 +530,7 @@ export class SessionStore {
     let toWrite: FullSessionSummary = summary;
     if (existingWithPath) {
       const { summary: existing } = existingWithPath;
-      const existingCalls = existing.toolCallCount ?? 0;
-      if (existingCalls > 0 && (summary.toolCallCount ?? 0) === 0) {
+      if (hasAttributableActivity(existing) && !hasAttributableActivity(summary)) {
         logger.warn('Refusing to overwrite recorded session with an empty summary', {
           sessionId: summary.sessionId,
         });
