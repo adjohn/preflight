@@ -20,8 +20,12 @@
  *
  * Startup-discovery budget: only files with mtime in the last 24h are eligible
  * for cold scan (configurable via `NR_AI_WATCHER_DISCOVERY_HOURS`); older
- * files emit `discovery_skipped` once each. Backfill of older files is
- * a separate, future concern.
+ * files emit `discovery_skipped` once each when the watcher is scoped to one
+ * session (`--stdio`). Unfiltered (`--local`, no `parentSessionId`), a stale
+ * file is the steady state across most of the tree rather than an anomaly, so
+ * whole stale session directories are pruned before their files are even
+ * statted, the poll interval is 5x slower, and `discovery_skipped` is
+ * suppressed. Backfill of older files is a separate, future concern.
  */
 
 import {
@@ -53,6 +57,14 @@ const logger = createLogger('subagent-watcher');
 // ---------------------------------------------------------------------------
 
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
+/**
+ * Unfiltered discovery walks every session on disk, so it trades latency for
+ * fan-out. 5x the scoped interval, and still 3 polls inside the 30s
+ * DEFAULT_SESSION_PERSIST_INTERVAL_MS window that turns observed turns into a
+ * session file — the only deadline an unscoped process actually has, since
+ * nothing live-tails subagent turns in `--local`.
+ */
+const UNFILTERED_POLL_INTERVAL_MS = 10_000;
 const DEFAULT_DISCOVERY_HOURS = 24;
 const MAX_BYTES_PER_POLL = 64 * 1024;
 /**
@@ -140,31 +152,50 @@ export interface ObservabilityHealthEvent {
   readonly costSelfCheckDeltaPct?: number;
 }
 
-export interface SubagentWatcherOptions {
+interface SubagentWatcherBaseOptions {
   /** Storage path for cursor + fingerprint state (defaults to ~/.newrelic-preflight). */
   readonly storagePath?: string;
   /** ~/.claude/projects directory; defaults to homedir-relative. */
   readonly projectsDir?: string;
-  /** Poll interval in ms. Default 2000. */
+  /** Poll interval in ms. Default 2000 scoped, UNFILTERED_POLL_INTERVAL_MS unfiltered. */
   readonly pollIntervalMs?: number;
   /** Cold-scan eligibility window. Default 24h. */
   readonly discoveryHours?: number;
   /** LocalStore (used to peek the parent buffer path naming convention). */
   readonly localStore?: LocalStore;
-  /**
-   * If provided, watcher only processes files belonging to this session id.
-   * Default: process every session id under projectsDir (matches `--local`
-   * drainAll semantics).
-   */
-  readonly parentSessionId?: string;
-  /**
-   * Optional ground-truth cost computation hook. Called once per
-   * COST_SELF_CHECK_MS to compute current `costTracker.totalUsd` for the
-   * runtime self-check. Returns delta in percent (0-100); when this
-   * hook is omitted, the self-check is skipped.
-   */
-  readonly costSelfCheck?: () => { trackedUsd: number; groundTruthUsd: number };
 }
+
+type CostSelfCheck = () => { trackedUsd: number; groundTruthUsd: number };
+
+/**
+ * Scoped and unfiltered are different modes, not one mode with an optional
+ * field. `costSelfCheck` compares this process's CostTracker subagent total
+ * against a re-parse of ONE session's transcripts; unfiltered, the tracker
+ * holds every session's subagents and the re-parse holds one session's (or
+ * none — a synthetic `local-<ts>` id fails SESSION_ID_RE and returns empty,
+ * and `denom = max(groundTruthUsd, 1e-9)` then reports a delta of order
+ * -1e12 %). The `never` below is what makes that unconstructable rather
+ * than merely documented.
+ */
+export type SubagentWatcherOptions = SubagentWatcherBaseOptions &
+  (
+    | {
+        /**
+         * If provided, watcher only processes files belonging to this session
+         * id. Default: process every session id under projectsDir (matches
+         * `--local` drainAll semantics).
+         */
+        readonly parentSessionId: string;
+        /**
+         * Optional ground-truth cost computation hook. Called once per
+         * COST_SELF_CHECK_MS to compute current `costTracker.totalUsd` for the
+         * runtime self-check. Returns delta in percent (0-100); when this
+         * hook is omitted, the self-check is skipped.
+         */
+        readonly costSelfCheck?: CostSelfCheck;
+      }
+    | { readonly parentSessionId?: undefined; readonly costSelfCheck?: never }
+  );
 
 /** Result row from the JSONL parse (private to the module). */
 interface ParsedAssistantTurn {
@@ -270,19 +301,24 @@ export class SubagentWatcher {
   private readonly discoverySkippedAnnounced = new Set<string>();
   // Files shaped like `agent-*.jsonl` whose id doesn't match AGENT_ID_RE (see
   // AGENT_ID_RE's doc comment for the two valid shapes) that already emitted
-  // `discovery_skipped`, so we don't re-emit on every poll.
+  // `discovery_skipped`, so we don't re-emit on every poll. Scoped only —
+  // unfiltered uses agentIdMismatchAnnouncedUnfiltered instead (see
+  // announceAgentIdMismatch).
   private readonly agentIdMismatchAnnounced = new Set<string>();
+  private agentIdMismatchAnnouncedUnfiltered = false;
   private lastCostSelfCheckMs = 0;
 
   constructor(options: SubagentWatcherOptions = {}) {
     this.storagePath = options.storagePath ?? join(homedir(), '.newrelic-preflight');
     this.projectsDir = options.projectsDir ?? join(homedir(), PROJECTS_DIR_NAME);
-    this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    this.parentSessionFilter = options.parentSessionId ?? null;
+    this.pollIntervalMs =
+      options.pollIntervalMs ??
+      (this.parentSessionFilter === null ? UNFILTERED_POLL_INTERVAL_MS : DEFAULT_POLL_INTERVAL_MS);
     const envHours = parseInt(process.env.NR_AI_WATCHER_DISCOVERY_HOURS ?? '', 10);
     this.discoveryHours =
       options.discoveryHours ??
       (Number.isFinite(envHours) && envHours > 0 ? envHours : DEFAULT_DISCOVERY_HOURS);
-    this.parentSessionFilter = options.parentSessionId ?? null;
     this.costSelfCheck = options.costSelfCheck;
     this.localStore = options.localStore;
     this.loadFingerprints();
@@ -418,7 +454,32 @@ export class SubagentWatcher {
         if (liveOwnedSessionIds?.has(sessionId)) continue;
         const sessionDir = join(projectPath, sessionId);
         const subDir = join(sessionDir, 'subagents');
-        if (!existsSync(subDir)) continue;
+        let subStat: Stats;
+        try {
+          subStat = statSync(subDir);
+        } catch {
+          continue; // absent or unreadable — same as the old existsSync guard
+        }
+        if (!subStat.isDirectory()) continue;
+        // Unfiltered only: prune the whole session before paying for
+        // readdir(subDir) plus one statSync per agent file. `cutoffMs` is the
+        // same discovery cutoff filterByMtime applies per file, so the prune
+        // can only remove sessions whose files that filter would have
+        // rejected anyway — with one exception: a new workflow run creates
+        // subagents/workflows/wf_<id>/, which bumps `workflows/` but not
+        // `subagents/` itself, so a stale `subagents/` mtime is checked
+        // against `subagents/workflows/`'s mtime too before pruning. Scoped
+        // mode never prunes: one session dir, nothing to save, and --stdio
+        // behaviour must stay byte-identical.
+        if (this.parentSessionFilter === null && subStat.mtimeMs < cutoffMs) {
+          let wfDirStat: Stats | null;
+          try {
+            wfDirStat = statSync(join(subDir, 'workflows'));
+          } catch {
+            wfDirStat = null;
+          }
+          if (wfDirStat === null || wfDirStat.mtimeMs < cutoffMs) continue;
+        }
 
         // Ad-hoc: subagents/agent-*.jsonl
         try {
@@ -454,6 +515,7 @@ export class SubagentWatcher {
               continue;
             }
             if (!stat2.isDirectory()) continue;
+            if (this.parentSessionFilter === null && stat2.mtimeMs < cutoffMs) continue;
             try {
               for (const name of readdirSync(wfRunDir)) {
                 if (!name.startsWith('agent-') || !name.endsWith('.jsonl')) continue;
@@ -524,7 +586,12 @@ export class SubagentWatcher {
     try {
       const st = statSync(path);
       if (st.mtimeMs < cutoffMs) {
-        if (!this.discoverySkippedAnnounced.has(path)) {
+        // Scoped only. Unfiltered, a stale file is the normal case for most
+        // of the tree rather than "this session had data we chose not to
+        // backfill", and announcing per path would also grow
+        // discoverySkippedAnnounced without bound in a long-lived --local
+        // daemon.
+        if (this.parentSessionFilter !== null && !this.discoverySkippedAnnounced.has(path)) {
           this.discoverySkippedAnnounced.add(path);
           this.appendHealth({
             mode: 'observability_health',
@@ -548,12 +615,21 @@ export class SubagentWatcher {
     }
   }
 
-  /** Emits a discovery_skipped health event, once per path, when a file
-   * shaped like `agent-*.jsonl` doesn't match AGENT_ID_RE — makes an id-format
-   * drift observable instead of a silent stop in subagent token capture. */
+  /** Emits a discovery_skipped health event when a file shaped like
+   * `agent-*.jsonl` doesn't match AGENT_ID_RE — makes an id-format drift
+   * observable instead of a silent stop in subagent token capture. Scoped:
+   * once per path. Unfiltered: degraded to once per process, since a
+   * per-path Set would otherwise grow without bound across every session on
+   * disk in a long-lived --local daemon — the drift signal is preserved,
+   * just not per-file. */
   private announceAgentIdMismatch(path: string): void {
-    if (this.agentIdMismatchAnnounced.has(path)) return;
-    this.agentIdMismatchAnnounced.add(path);
+    if (this.parentSessionFilter === null) {
+      if (this.agentIdMismatchAnnouncedUnfiltered) return;
+      this.agentIdMismatchAnnouncedUnfiltered = true;
+    } else {
+      if (this.agentIdMismatchAnnounced.has(path)) return;
+      this.agentIdMismatchAnnounced.add(path);
+    }
     this.appendHealth({
       mode: 'observability_health',
       tool: 'observability_health',

@@ -65,7 +65,7 @@ import type {
   PersistedAntiPattern,
   SessionFileInfo,
 } from '../../storage/session-store.js';
-import { toPersistedAntiPatterns } from '../../storage/session-store.js';
+import { hasAttributableActivity, toPersistedAntiPatterns } from '../../storage/session-store.js';
 import type { HookEvent, ReplayTimelineEntry, ToolCallRecord } from '../../storage/types.js';
 import type { WeeklySummaryGenerator } from '../../storage/weekly-summary.js';
 import { getIsoWeekId } from '../../storage/weekly-summary.js';
@@ -340,16 +340,12 @@ export interface ObservabilityHealthSnapshot {
   readonly costSelfCheckDeltaPct: number | null;
   /**
    * Why `watcherActive` is false; null when it's true. `activeSubagentWatcher`
-   * (src/index.ts) is only non-null when BOTH `subagentWatcherEnabled` (the
-   * `NR_AI_ENABLE_SUBAGENT_WATCHER` flag) AND `watcherShouldRun` (this
-   * process's mode matches `NR_AI_WATCHER_MODE`, default 'stdio') hold — two
-   * unrelated conditions collapsed into one boolean. `'mode_mismatch'` is the
-   * common, by-design case for a `--local` dashboard daemon; `'env_var'` is
-   * the explicit opt-out. Distinguishing them matters because the UI's
-   * `'env_var'` messaging tells the user to unset a variable — which is
-   * actively wrong advice when the real cause is `'mode_mismatch'`.
+   * (src/index.ts) is only non-null when `subagentWatcherEnabled` (the
+   * `NR_AI_ENABLE_SUBAGENT_WATCHER` flag) holds — the only way to disable it,
+   * in either `--stdio` or `--local` mode, since the watcher runs in both by
+   * default (see subagent-watcher.ts's unfiltered discovery).
    */
-  readonly watcherDisabledReason: 'env_var' | 'mode_mismatch' | null;
+  readonly watcherDisabledReason: 'env_var' | null;
   /**
    * True when the Copilot usage watcher is running but found a VS Code
    * workspaceStorage root with no `debug-logs` directory — i.e. the
@@ -1582,24 +1578,17 @@ export function createApiHandler(
       }
       // Cost attributed to TODAY. Prefer the session's persisted per-day
       // bucket — authoritative, since each token event was bucketed by its real
-      // transcript timestamp. For older session files without buckets, fall back to
-      // pro-rating the lifetime estimatedCostUsd by the timeline — EXCEPT a
-      // session with cost but ZERO attributable activity (no tool calls AND no
-      // subagent spend) is an unverifiable re-read artifact: its
-      // estimatedCostUsd is a cumulative lifetime total that may include a
-      // resumed transcript's month of cache-read tokens re-read in one pass, and
-      // todayPortionRatio returns 1.0 for its entirely-today window, dumping the
-      // whole total onto today (the observed $248/$863 phantoms, which had
-      // toolCallCount 0 and subagentCostUsd 0). Bias toward trust and contribute
-      // 0; the real per-day figure is recovered once the session re-persists
-      // WITH day buckets. Note: an EMPTY timeline alone is NOT the signal — a
-      // legitimate subagent-only session has an empty PARENT timeline (subagent
-      // tool calls are not in it) yet real subagentCostUsd, so the guard keys on
-      // subagent spend too, never zeroing genuine cross-session subagent work.
-      const hasNoAttributableActivity =
-        (s.toolCallCount ?? 0) === 0 &&
-        (s.subagentCostUsd ?? 0) === 0 &&
-        !(Array.isArray(s.timeline) && s.timeline.length > 0);
+      // transcript timestamp. For older session files without buckets, fall back
+      // to pro-rating the lifetime estimatedCostUsd by the timeline — EXCEPT a
+      // session with no attributable activity (see hasAttributableActivity's doc
+      // comment) is an unverifiable re-read artifact: its estimatedCostUsd is a
+      // cumulative lifetime total that may include a resumed transcript's month
+      // of cache-read tokens re-read in one pass, and todayPortionRatio returns
+      // 1.0 for its entirely-today window, dumping the whole total onto today
+      // (the observed $248/$863 phantoms). Bias toward trust and contribute 0;
+      // the real per-day figure is recovered once the session re-persists WITH
+      // day buckets.
+      const hasNoAttributableActivity = !hasAttributableActivity(s);
       const ratio = todayPortionRatio(s, now);
       totalCostUsd +=
         s.costByDayUsd !== undefined
