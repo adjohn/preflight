@@ -63,7 +63,7 @@ export function ShareTable<Row>({
       : rows;
 
   return (
-    <div className={className}>
+    <div className={className ? `text-xs ${className}` : 'text-xs'}>
       {!hideTitle && <h4 className="text-ink-muted font-medium mb-2">{title}</h4>}
       <div className="max-h-40 overflow-auto">
         <table className="w-full">
