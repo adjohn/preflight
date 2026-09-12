@@ -5,7 +5,7 @@ export interface ShareTableColumn<Row> {
   readonly header: string;
   readonly align: 'left' | 'right';
   readonly cell: (row: Row) => ReactNode;
-  readonly className?: string;
+  readonly className?: string | ((row: Row) => string | undefined);
   readonly title?: (row: Row) => string;
   /** Present on a column makes its header a sort toggle; absent renders a plain header. */
   readonly sortValue?: (row: Row) => number | string;
@@ -23,6 +23,7 @@ export interface ShareTableProps<Row> {
   readonly rowKey: (row: Row) => string;
   readonly className?: string;
   readonly defaultSort?: ShareTableSort;
+  readonly hideTitle?: boolean;
 }
 
 function compareSortValues(a: number | string, b: number | string): number {
@@ -39,6 +40,7 @@ export function ShareTable<Row>({
   rowKey,
   className,
   defaultSort,
+  hideTitle,
 }: ShareTableProps<Row>): JSX.Element {
   const [sort, setSort] = useState<ShareTableSort | null>(defaultSort ?? null);
 
@@ -62,7 +64,7 @@ export function ShareTable<Row>({
 
   return (
     <div className={className}>
-      <h4 className="text-ink-muted font-medium mb-2">{title}</h4>
+      {!hideTitle && <h4 className="text-ink-muted font-medium mb-2">{title}</h4>}
       <div className="max-h-40 overflow-auto">
         <table className="w-full">
           <thead className="text-ink-muted sticky top-0 bg-bg-panel">
@@ -103,10 +105,12 @@ export function ShareTable<Row>({
                 {columns.map((col) => {
                   const base =
                     col.align === 'right' ? 'py-1 text-right tabular-nums' : 'py-1 text-ink-base';
+                  const extra =
+                    typeof col.className === 'function' ? col.className(row) : col.className;
                   return (
                     <td
                       key={col.header}
-                      className={col.className ? `${base} ${col.className}` : base}
+                      className={extra ? `${base} ${extra}` : base}
                       title={col.title?.(row)}
                     >
                       {col.cell(row)}
