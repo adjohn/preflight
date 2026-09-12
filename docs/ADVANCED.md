@@ -250,7 +250,7 @@ If `NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_ACCOUNT_ID`, or `NEW_RELIC_API_KEY` are s
 
 ## Running `--local` Standalone (No `--stdio` Session)
 
-The subagent/workflow transcript watchers only auto-start under `--stdio` by default (`NR_AI_WATCHER_MODE=stdio`) — a `--local` dashboard process doesn't run its own copy, since a `--stdio` session normally already covers the same data, scoped to itself, and the Today view's spend figures already aggregate every session's _persisted_ totals regardless of which process is currently serving the dashboard. If `watcherActive` is `false` for this reason, the dashboard shows a banner explaining it (distinct from the `NR_AI_ENABLE_SUBAGENT_WATCHER=0` banner, which is an explicit opt-out rather than this mode default).
+The subagent/workflow transcript watchers only auto-start under `--stdio` by default (`NR_AI_WATCHER_MODE=stdio`) — a `--local` dashboard process doesn't run its own copy, since a `--stdio` session normally already covers the same data, scoped to itself, and the Today view's spend figures already aggregate every session's _persisted_ totals regardless of which process is currently serving the dashboard. When `watcherActive` is `false` for this reason, the Settings page's watcher health shows it as inactive and the Today view shows no banner; the Today view only warns when `NR_AI_ENABLE_SUBAGENT_WATCHER=0` is set explicitly and there is no subagent spend recorded for the day.
 
 | Setting                         | What it does                                                                                             | Default  |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------- | -------- |
