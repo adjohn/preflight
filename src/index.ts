@@ -2658,7 +2658,7 @@ async function main(): Promise<void> {
     // (parentSessionId filter), so it only ever attributes that session's own
     // subagents — parent tokens (onTokenEvent, parent transcript) and subagent
     // tokens (onSubagentTurn, subagent transcripts) are disjoint, so there is no
-    // double count. Unfiltered (`--local`), the #306 heartbeat exclusion
+    // double count. Unfiltered (`--local`), the heartbeat exclusion
     // (subagent-watcher.ts's discoverFiles) is what keeps it from racing a live
     // `--stdio` session's own scoped watcher over the same cursor files — see
     // that module's doc comment. The WorkflowWatcher stays engine-only: it has
@@ -2798,7 +2798,7 @@ async function main(): Promise<void> {
       }
       // Engine-only: unlike SubagentWatcher, WorkflowWatcher has no heartbeat
       // exclusion, so running it unfiltered in --local would reintroduce the
-      // #306 race for workflow transcripts.
+      // same race for workflow transcripts.
       if (isStdioWatcher && workflowWatcherEnabled) {
         activeWorkflowWatcher = new WorkflowWatcher({
           storagePath: config!.storagePath,

@@ -1077,7 +1077,7 @@ describe('SubagentWatcher', () => {
   });
 });
 
-describe('SubagentWatcher unfiltered discovery bounding (issue 659)', () => {
+describe('SubagentWatcher unfiltered discovery bounding', () => {
   let storagePath: string;
   let projectsDir: string;
   let sessionDir: string;
