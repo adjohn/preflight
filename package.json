@@ -1,6 +1,6 @@
 {
   "name": "@newrelic/preflight",
-  "version": "1.50.7",
+  "version": "1.50.8",
   "mcpName": "io.github.newrelic-experimental/preflight",
   "type": "module",
   "license": "Apache-2.0",

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.50.8] - 2026-09-12
+
+### Fixed
+
+- **The Git Efficiency tree listed the same repo twice when any of its sessions had been recorded without a working directory.** The "worktree unknown" row those sessions produce carried a synthetic repo key, so the tree filed it as a second, look-alike repo next to the real one. It is now filed under the real repo whenever a resolved worktree of the same repo is known, counts toward that repo's rollup, and is left out of the parallel-isolation check, which only makes sense for rows with a real working directory.
+- **Tool calls that timed out waiting for their post-hook, or whose post-hook arrived with no matching pre-hook, lost their working directory.** Those records could never be attributed to a git worktree and surfaced as "worktree unknown" or "unattributed" even on current versions. Both record shapes now carry the directory the hook reported.
+
 ## [1.50.7] - 2026-09-12
 
 ### Fixed
