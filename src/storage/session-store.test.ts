@@ -6,6 +6,7 @@ import {
   SessionStore,
   buildSessionSummary,
   deserializeFullSessionSummary,
+  hasAttributableActivity,
   mergeSummaries,
   sessionSummaryToDriftRecord,
 } from './session-store.js';
@@ -94,6 +95,32 @@ function makeSummary(overrides?: Partial<FullSessionSummary>): FullSessionSummar
     ...overrides,
   };
 }
+
+describe('hasAttributableActivity', () => {
+  it('is false for a genuinely empty summary (no tool calls, no subagent cost, no timeline)', () => {
+    expect(hasAttributableActivity({ toolCallCount: 0, subagentCostUsd: 0, timeline: [] })).toBe(
+      false,
+    );
+  });
+
+  it('is true when toolCallCount is positive', () => {
+    expect(hasAttributableActivity({ toolCallCount: 1 })).toBe(true);
+  });
+
+  it('is true when subagentCostUsd is positive even with zero tool calls', () => {
+    expect(hasAttributableActivity({ toolCallCount: 0, subagentCostUsd: 0.01 })).toBe(true);
+  });
+
+  it('is true when the timeline has entries even with zero tool calls and zero subagent cost', () => {
+    expect(hasAttributableActivity({ toolCallCount: 0, subagentCostUsd: 0, timeline: [{}] })).toBe(
+      true,
+    );
+  });
+
+  it('treats every field as optional, defaulting each to its empty value', () => {
+    expect(hasAttributableActivity({})).toBe(false);
+  });
+});
 
 describe('instructionPromptHash field', () => {
   it('buildSessionSummary sets instructionPromptHash from sources', () => {
@@ -554,6 +581,54 @@ describe('SessionStore', () => {
     store.saveSession(makeSummary({ sessionId: 'grow', startTime, toolCallCount: 9 }));
 
     expect(store.loadSession('grow')!.toolCallCount).toBe(9);
+  });
+
+  it('accepts a subagent-only incoming summary (zero tool calls, real subagent cost) over a recorded existing session', () => {
+    const store = new SessionStore({ storagePath: tmpDir });
+    const startTime = new Date('2026-04-15T10:00:00Z').getTime();
+    store.saveSession(makeSummary({ sessionId: 'orphan', startTime, toolCallCount: 12 }));
+
+    // A dead-parent session whose only new activity is its subagent tail —
+    // zero tool calls, but real dollars — is exactly the write hasAttributableActivity
+    // is meant to admit.
+    store.saveSession(
+      makeSummary({
+        sessionId: 'orphan',
+        startTime,
+        toolCallCount: 0,
+        toolBreakdown: {},
+        subagentCostUsd: 3.5,
+      }),
+    );
+
+    const loaded = store.loadSession('orphan');
+    expect(loaded?.toolCallCount).toBe(12);
+    expect(loaded?.subagentCostUsd).toBe(3.5);
+  });
+
+  it('still refuses a genuinely empty incoming summary against a subagent-only existing session', () => {
+    const store = new SessionStore({ storagePath: tmpDir });
+    const startTime = new Date('2026-04-15T10:00:00Z').getTime();
+    store.saveSession(
+      makeSummary({
+        sessionId: 'subagent-only',
+        startTime,
+        toolCallCount: 0,
+        toolBreakdown: {},
+        subagentCostUsd: 3.5,
+      }),
+    );
+    store.saveSession(
+      makeSummary({
+        sessionId: 'subagent-only',
+        startTime,
+        toolCallCount: 0,
+        toolBreakdown: {},
+        subagentCostUsd: 0,
+      }),
+    );
+
+    expect(store.loadSession('subagent-only')?.subagentCostUsd).toBe(3.5);
   });
 
   it('loadSession reads and parses a saved session', () => {
@@ -1436,6 +1511,32 @@ describe('buildSessionSummary', () => {
     const incoming = makeSummary({ platform: 'claude-code' });
     const merged = mergeSummaries(existing, incoming);
     expect(merged.platform).toBe('claude-code');
+  });
+
+  it('mergeSummaries merges costByDayUsd / subagentCostByDayUsd per day key, taking the max on overlap', () => {
+    const existing = makeSummary({
+      costByDayUsd: { '2026-09-10': 3.1, '2026-09-11': 1.5 },
+      subagentCostByDayUsd: { '2026-09-10': 0.2 },
+    });
+    const incoming = makeSummary({
+      costByDayUsd: { '2026-09-11': 0.2 },
+      subagentCostByDayUsd: { '2026-09-11': 0.9 },
+    });
+    const merged = mergeSummaries(existing, incoming);
+    // The existing day (2026-09-10) survives an incoming write that only
+    // carries 2026-09-11 — a whole-object spread would have erased it.
+    expect(merged.costByDayUsd).toEqual({ '2026-09-10': 3.1, '2026-09-11': 1.5 });
+    expect(merged.subagentCostByDayUsd).toEqual({ '2026-09-10': 0.2, '2026-09-11': 0.9 });
+  });
+
+  it('mergeSummaries leaves costByDayUsd / subagentCostByDayUsd undefined when neither side has buckets', () => {
+    const existing = makeSummary({ costByDayUsd: undefined, subagentCostByDayUsd: undefined });
+    const incoming = makeSummary({ costByDayUsd: undefined, subagentCostByDayUsd: undefined });
+    const merged = mergeSummaries(existing, incoming);
+    // Present-but-empty ({}) would read as "authoritatively $0 today" to the
+    // aggregate route instead of falling back to the timeline pro-rate.
+    expect(merged.costByDayUsd).toBeUndefined();
+    expect(merged.subagentCostByDayUsd).toBeUndefined();
   });
 
   it('includes active task data in the summary', () => {

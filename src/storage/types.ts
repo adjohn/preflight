@@ -7,6 +7,9 @@ interface HookEventBase {
    * written by older collectors and by watchers.
    */
   readonly platform?: string;
+  /** Working directory the hook reported; the collector stamps it on every
+   *  mode it emits. Absent on lines written by watchers. */
+  readonly cwd?: string;
 }
 
 /**
@@ -20,7 +23,6 @@ export interface PreHookEvent extends HookEventBase {
   readonly toolInput?: unknown;
   readonly inputSize?: number;
   readonly inputHash?: string;
-  readonly cwd?: string;
   readonly transcriptPath?: string;
   readonly permissionMode?: string;
   /** Set when this tool call was made by a subagent (code.claude.com/docs/en/hooks.md). */
