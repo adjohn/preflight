@@ -262,6 +262,15 @@ describe('HookEventProcessor', () => {
       expect(record.agentType).toBe('Explore');
     });
 
+    it('falls back to the post event cwd when the pre event has none', () => {
+      const processor = new HookEventProcessor({ store, onRecord });
+
+      processor.processEvents([makePreEvent(), makePostEvent({ cwd: '/projects/post-only' })]);
+
+      const record = records[0]!;
+      expect(record.cwd).toBe('/projects/post-only');
+    });
+
     it('prefers the pre event agentId/agentType over a conflicting post event value', () => {
       const processor = new HookEventProcessor({ store, onRecord });
 
