@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.51.0] - 2026-09-13
+
+### Added
+
+- **A skill run as a slash command (`/simplify`, `/code-review`, …) never showed up in per-skill cost tracking — only skills invoked through the `Skill` tool were counted, and most skill usage in Claude Code is typed as a slash command.** Slash-command invocations are now attributed the same way, and session records persist how many times each skill ran so it can be queried across sessions.
+
 ## [1.50.11] - 2026-09-12
 
 ### Fixed
