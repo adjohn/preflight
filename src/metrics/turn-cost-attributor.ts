@@ -480,8 +480,12 @@ export class TurnCostAttributor {
 
     for (const bucket of state.buckets.values()) {
       // costByToolType predates the buckets table and only ever listed tools
-      // that received a token event, so the fold keeps that contract.
-      if (bucket.attributedCallCount > 0) {
+      // that received a token event, so the fold keeps that contract. The
+      // SlashCommand channel isn't a real tool call — it charges a turn's
+      // full, unsplit cost to track skill usage (see recordSlashCommand()),
+      // and folding it in here would double-count against whichever real
+      // tool(s) that same turn already split its cost across.
+      if (bucket.toolName !== 'SlashCommand' && bucket.attributedCallCount > 0) {
         let entry = toolTypeAccum.get(bucket.toolName);
         if (entry === undefined) {
           entry = { totalCost: 0, callCount: 0 };

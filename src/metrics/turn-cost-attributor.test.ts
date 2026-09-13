@@ -716,6 +716,23 @@ describe('TurnCostAttributor', () => {
       expect(entry).toBeDefined();
       expect(entry!.attributedCallCount).toBe(2);
     });
+
+    it('does not double-count an active slash command into costByToolType', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordSlashCommand('sess-001', 'pstack:poteto-mode');
+      attributor.recordToolCall(makeRecord({ toolUseId: 'toolu_001', timestamp: 1000 }));
+      attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1100 }));
+
+      const metrics = attributor.getMetrics();
+      expect(metrics.costByToolType.SlashCommand).toBeUndefined();
+      expect(metrics.costByToolType.Read!.totalCost).toBeCloseTo(metrics.totalAttributedCost, 10);
+      const sumByToolType = Object.values(metrics.costByToolType).reduce(
+        (sum, entry) => sum + entry.totalCost,
+        0,
+      );
+      expect(sumByToolType).toBeCloseTo(metrics.totalAttributedCost, 10);
+    });
   });
 
   describe('recordTokenEvent() return value (ClosedTurn)', () => {
