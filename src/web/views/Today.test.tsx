@@ -725,28 +725,12 @@ describe('Today view', () => {
     expect(await screen.findByText(/subagent cost tracking is disabled/i)).toBeInTheDocument();
   });
 
-  it('shows a mode-mismatch banner (not the env-var message) when watcherDisabledReason is mode_mismatch', async () => {
-    // This is the --local dashboard daemon's default state: the watcher only
-    // auto-starts in --stdio mode, so watcherActive is false here by design,
-    // NOT because NR_AI_ENABLE_SUBAGENT_WATCHER is set to 0. Telling the user
-    // to unset a variable that was never set would be actively misleading.
-    stubObservabilityHealth({
-      watcherActive: false,
-      watcherDisabledByLock: false,
-      watcherDisabledReason: 'mode_mismatch',
-    });
-
-    renderToday();
-    expect(await screen.findByText(/subagent activity from other sessions/i)).toBeInTheDocument();
-    expect(screen.queryByText(/subagent cost tracking is disabled/i)).toBeNull();
-    expect(screen.queryByText(/NR_AI_ENABLE_SUBAGENT_WATCHER=0/)).toBeNull();
-  });
-
-  it('does not show the watcher-disabled banner when the cross-session aggregate reports nonzero subagent turns, even though the live SSE turn count is 0', async () => {
-    // The live-only subagentStats.turns stays 0 in this test (no SSE frames
-    // are ever pushed for it) while the polled aggregate endpoint — the same
-    // one the "subagent spend" KPI above these banners already falls back
-    // to — reports turns for today. The gate must agree with that KPI.
+  it('does not show the watcher-disabled banner when the cross-session aggregate reports nonzero subagent spend, even though its turn count is 0', async () => {
+    // aggregate.subagentTurnCount only counts Workflow-tool script runs, so it
+    // reads 0 on any day where the subagents were ordinary Task/Agent-tool
+    // spawns, while aggregate.subagentUsd is summed from every persisted
+    // session's subagentCostUsd and is correct for both kinds. The banner
+    // must gate on the figure the KPI beside it trusts.
     globalThis.fetch = vi.fn(async (input) => {
       const url = String(input);
       if (url.includes('/api/observability-health')) {
@@ -760,7 +744,7 @@ describe('Today view', () => {
         );
       }
       if (url.includes('/api/sessions/today/aggregate')) {
-        return new Response(JSON.stringify({ subagentTurnCount: 5 }), {
+        return new Response(JSON.stringify({ subagentUsd: 5.5, subagentTurnCount: 0 }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
@@ -772,7 +756,7 @@ describe('Today view', () => {
     }) as typeof fetch;
 
     renderToday();
-    await screen.findByText('5 turns');
+    await screen.findAllByText('$5.50');
     expect(screen.queryByText(/subagent cost tracking is disabled/i)).toBeNull();
     expect(screen.queryByText(/subagent activity from other sessions/i)).toBeNull();
   });

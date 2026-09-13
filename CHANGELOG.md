@@ -5,18 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.50.10] - 2026-09-11
+## [1.50.11] - 2026-09-12
 
 ### Fixed
 
 - **A subagent's tool call that timed out or was denied was attributed to the main agent.** The timeout and denied record shapes never carried the subagent id, and the timeout shape also dropped the transcript path and permission mode. Every record shape now copies the same attribution fields from the hook events through one helper, so a field added to the pre event reaches all of them at once.
 
-## [1.50.7] - 2026-09-11
+## [1.50.10] - 2026-09-12
+
+### Fixed
+
+- **The Git tab's 7-day "commits" and "PRs created" counters could not be trusted: a chained `git commit -m … && git push` was recorded as a push only, so the commit vanished, while every shell segment that merely contained the text `gh pr create` counted as a new PR, including failed retries, a `gh pr comment` body, and test fixtures that quoted the phrase.** A week that GitHub and `git log` put at 24 PRs and 43 commits showed 35 PRs and 23 commits. Git commands are now classified per shell segment, so every verb in a chain is recorded; a `gh pr <verb>` counts only when the segment starts with it, and a create counts only when it succeeded. Commits from `git log` (30 days, every branch, primary checkouts first) now feed the weekly report too, paired one-to-one with the hook-observed commit that made them so worktree and session attribution survive. Where git log covers a repo it is authoritative, so failed commits, amends, and commits later rewritten away no longer inflate the count.
+
+## [1.50.9] - 2026-09-12
+
+### Fixed
+
+- **Standalone and daemon `--local` dashboards now track subagent cost with no configuration.** The subagent transcript watcher previously only ran under `--stdio`, so a `--local` deployment with no `--stdio` sibling — a container, systemd unit, launchd daemon, or any platform with no MCP client to auto-launch `--stdio` — never observed any subagent spend. `NR_AI_WATCHER_MODE` is removed entirely; a `--local` watcher now runs unfiltered by default, skipping any session a live `--stdio` process already owns, and an orphan session's subagent spend persists to its own `sessions/*.json` file and survives a daemon restart.
+
+## [1.50.8] - 2026-09-12
 
 ### Fixed
 
 - **The Git Efficiency tree listed the same repo twice when any of its sessions had been recorded without a working directory.** The "worktree unknown" row those sessions produce carried a synthetic repo key, so the tree filed it as a second, look-alike repo next to the real one. It is now filed under the real repo whenever a resolved worktree of the same repo is known, counts toward that repo's rollup, and is left out of the parallel-isolation check, which only makes sense for rows with a real working directory.
 - **Tool calls that timed out waiting for their post-hook, or whose post-hook arrived with no matching pre-hook, lost their working directory.** Those records could never be attributed to a git worktree and surfaced as "worktree unknown" or "unattributed" even on current versions. Both record shapes now carry the directory the hook reported.
+
+## [1.50.7] - 2026-09-12
+
+### Fixed
+
+- **The Today view no longer shows the "this dashboard process isn't running its own subagent watcher" banner on `--local` dashboards.** Every default install runs the dashboard as a `--local` daemon that by design never runs that watcher, so the banner appeared on every visit, and the `NR_AI_WATCHER_MODE=local` instruction it gave cannot reach a launchd daemon (the plist carries only `PATH`). Watcher state remains visible on the Settings page.
+- **The remaining `NR_AI_ENABLE_SUBAGENT_WATCHER=0` banner now hides when today's aggregate shows any subagent spend, instead of when it shows any subagent turns.** The turn count only counts Workflow-tool script runs, so it read 0 on any day whose subagents were ordinary Task/Agent-tool spawns, and the banner could claim subagents were excluded directly above a KPI showing their spend.
+
+## [1.50.6] - 2026-09-11
+
+### Changed
+
+- **The subagent-transcript token-usage watcher and the dashboard's subagent timeline no longer each re-implement their own JSONL line parser.** Both now share one parsing module for extracting an assistant turn's model, token usage, and schema-drift fingerprints from a transcript line. Each pipeline keeps its own existing acceptance policy (which fields are required) and output shape unchanged. No behavior change.
 
 ## [1.50.5] - 2026-09-11
 
