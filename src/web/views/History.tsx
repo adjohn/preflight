@@ -28,6 +28,7 @@ import {
   fetchWeekly,
   fetchSessionsList,
   fetchCostPerOutcome,
+  fetchCostPerTool,
   fetchPersonalCoach,
   fetchRecommendations,
   fetchClaudeMdImpact,
@@ -40,6 +41,7 @@ import {
   qk,
   type WeeklyRow,
   type CostPerOutcomeResponse,
+  type TurnCostsResponse,
   type PersonalCoachResult,
   type PersonalWeekMetrics,
   type ConcurrencyHistoryResponse,
@@ -270,6 +272,11 @@ export function History(): JSX.Element {
     queryFn: () => fetchCostPerOutcome(windowNum),
   });
 
+  const costPerTool = useQuery<TurnCostsResponse>({
+    queryKey: qk.costPerTool(windowNum),
+    queryFn: () => fetchCostPerTool(undefined, windowNum),
+  });
+
   const coach = useQuery<PersonalCoachResult>({
     queryKey: qk.personalCoach,
     queryFn: fetchPersonalCoach,
@@ -370,7 +377,19 @@ export function History(): JSX.Element {
   const antiPatternSeries = buildAntiPatternSeries(weeklyChronological);
   const modelPerf = aggregateModelPerformance(windowSessions);
   const modelPerfTotalCost = modelPerf.reduce((sum, m) => sum + (m.avgCost ?? 0) * m.sessions, 0);
-  const toolTableRows = buildToolTableRows(windowSessions);
+  const toolTableRows = buildToolTableRows(windowSessions, costPerTool.data?.costByToolType);
+  const toolCostAvailable = costPerTool.data?.costByToolType !== undefined;
+  // attribution.buckets.tool is a recently-added persisted field — most
+  // historical sessions in the window predate it and simply lack it, so the
+  // Tools table's cost/token columns go sparse the further back the window
+  // reaches. Only caveat when that's actually true for this window's data.
+  const { attributedSessionCount, totalSessionCount } = costPerTool.data ?? {};
+  const toolCoverageCaveat =
+    attributedSessionCount !== undefined &&
+    totalSessionCount !== undefined &&
+    attributedSessionCount < totalSessionCount
+      ? `Cost/token breakdown only available for ${attributedSessionCount} of ${totalSessionCount} sessions in this window — older sessions predate per-tool attribution.`
+      : null;
   const kpis = computeHistoryKpis(windowSessions);
 
   return (
@@ -465,6 +484,8 @@ export function History(): JSX.Element {
           title="What's contributing to your spend"
           subtitle={windowSubtitle(windowNum)}
           toolRows={toolTableRows}
+          toolCostAvailable={toolCostAvailable}
+          toolCoverageCaveat={toolCoverageCaveat}
         />
       </div>
 
