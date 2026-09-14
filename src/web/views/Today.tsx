@@ -752,7 +752,7 @@ interface SkillShareRow {
 
 function SpendBreakdownPanel(): JSX.Element {
   const { data: costData, isError: costError } = useQuery<TurnCostsResponse>({
-    queryKey: qk.costPerTool,
+    queryKey: qk.costPerTool(),
     queryFn: () => fetchCostPerTool(),
     refetchInterval: QUALITY_REFETCH_MS,
     retry: false,
