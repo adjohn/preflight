@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.53.1] - 2026-09-15
+
+### Changed
+
+- **Money, durations, percentages, and status labels were formatted differently from panel to panel on the dashboard.** One set of formatters and shared components (`Panel`, `HealthCard`, `RankedBars`, `ShareTable`, `UsageInsightsList`) now back every panel: costs under a dollar show two or three decimals instead of four, a sub-cent cost reads `<$0.001` instead of `$0.0000`, and health-card status is one vocabulary (Healthy, Watch, Needs attention, No data).
+
 ## [1.53.0] - 2026-09-15
 
 ### Added
