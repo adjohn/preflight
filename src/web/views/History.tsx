@@ -271,7 +271,7 @@ export function History(): JSX.Element {
   const modelPerf = aggregateModelPerformance(sessions.data ?? []);
   const topTools = aggregateToolUsage(sessions.data ?? []);
   const topToolsTotal = topTools.reduce((sum, t) => sum + t.count, 0);
-  const modelPerfTotalCost = modelPerf.reduce((sum, m) => sum + (m.avgCost ?? 0) * m.sessions, 0);
+  const modelPerfTotalCost = modelPerf.reduce((sum, m) => sum + m.totalCost, 0);
   // aggregateToolUsage caps at the top 8 tools; surface how many were
   // dropped so "Top Tools" doesn't read as an exhaustive list.
   const totalToolCount = new Set(
@@ -487,8 +487,8 @@ export function History(): JSX.Element {
                       </td>
                       <td className="py-1 text-right tabular-nums">{formatUsdOrDash(m.avgCost)}</td>
                       <td className="py-1 text-right tabular-nums">
-                        {modelPerfTotalCost > 0 && m.avgCost != null
-                          ? `${Math.round(((m.avgCost * m.sessions) / modelPerfTotalCost) * 100)}%`
+                        {modelPerfTotalCost > 0 && m.costedSessions > 0
+                          ? `${Math.round((m.totalCost / modelPerfTotalCost) * 100)}%`
                           : '—'}
                       </td>
                       <td className="py-1 text-right tabular-nums text-ink-subtle">
@@ -1514,6 +1514,11 @@ export interface ModelPerformanceRow {
   readonly avgEfficiency: number | null;
   readonly avgSuccessRate: number | null;
   readonly avgCost: number | null;
+  // Sum of the costs actually reported for this model, and how many of its
+  // sessions reported one. Live/stub rows carry no cost, so a share computed
+  // from avgCost * sessions would extrapolate onto them; use these instead.
+  readonly totalCost: number;
+  readonly costedSessions: number;
   // Blended rate across sessions for this model that report both cost and
   // token counts — (totalCost / totalTokens) * 1e6, input+output tokens only
   // (matching ModelUsageTracker's server-side per-model figure, which is a
@@ -1609,6 +1614,8 @@ export function aggregateModelPerformance(rows: SessionRow[]): ModelPerformanceR
       avgEfficiency: e.effCount > 0 ? e.effSum / e.effCount : null,
       avgSuccessRate: e.successCount > 0 ? e.successSum / e.successCount : null,
       avgCost: e.costCount > 0 ? e.costSum / e.costCount : null,
+      totalCost: e.costSum,
+      costedSessions: e.costCount,
       costPerMillionTokens:
         e.blendedTokensSum > 0 ? (e.blendedCostSum / e.blendedTokensSum) * 1_000_000 : null,
       flagged:

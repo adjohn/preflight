@@ -1019,7 +1019,8 @@ function SessionTimeline({
     data.tokensInput != null &&
     data.tokensCacheRead != null &&
     data.tokensCacheCreation != null &&
-    data.tokensInput + data.tokensCacheRead + data.tokensCacheCreation > 0
+    data.tokensInput + data.tokensCacheRead + data.tokensCacheCreation > 0 &&
+    data.tokensCacheRead + data.tokensCacheCreation > 0
       ? Math.round(
           (data.tokensCacheRead /
             (data.tokensInput + data.tokensCacheRead + data.tokensCacheCreation)) *

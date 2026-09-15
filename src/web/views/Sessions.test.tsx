@@ -351,6 +351,21 @@ describe('Sessions view', () => {
     expect(text).toContain('cache 15%');
   });
 
+  it('hides the cache figure when the session had no cache reads or writes at all', async () => {
+    const detail = {
+      sessionId: 's1',
+      durationMs: 5000,
+      linesAdded: 1,
+      tokensInput: 1000,
+      tokensCacheRead: 0,
+      tokensCacheCreation: 0,
+      timeline: [{ timestamp: 1_000, toolName: 'Read', durationMs: 120, success: true }],
+    };
+    const { container } = renderSessions(SAMPLE_LIST, { s1: detail });
+    await waitFor(() => expect(screen.getAllByText('Read').length).toBeGreaterThanOrEqual(1));
+    expect(container.textContent ?? '').not.toMatch(/cache \d+%/);
+  });
+
   it('does not render API duration line when apiDurationMs is null', async () => {
     const detail = {
       sessionId: 's1',
