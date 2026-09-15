@@ -36,6 +36,49 @@ function bodyRowNames(): string[] {
 }
 
 describe('ShareTable', () => {
+  it('says how many rows were dropped when totalCount exceeds the rows given', () => {
+    render(
+      <ShareTable
+        title="Rows"
+        columns={COLUMNS}
+        rows={ROWS}
+        rowKey={(row) => row.id}
+        totalCount={12}
+      />,
+    );
+    expect(screen.getByText('top 3 of 12')).toBeInTheDocument();
+  });
+
+  it('says nothing about a cap when totalCount matches the rows or is absent', () => {
+    const { rerender } = render(
+      <ShareTable
+        title="Rows"
+        columns={COLUMNS}
+        rows={ROWS}
+        rowKey={(row) => row.id}
+        totalCount={3}
+      />,
+    );
+    expect(screen.queryByText(/top \d+ of/)).not.toBeInTheDocument();
+    rerender(<ShareTable title="Rows" columns={COLUMNS} rows={ROWS} rowKey={(row) => row.id} />);
+    expect(screen.queryByText(/top \d+ of/)).not.toBeInTheDocument();
+  });
+
+  it('puts the cap note on its own line when the title is hidden', () => {
+    render(
+      <ShareTable
+        title="Rows"
+        hideTitle
+        columns={COLUMNS}
+        rows={ROWS}
+        rowKey={(row) => row.id}
+        totalCount={5}
+      />,
+    );
+    expect(screen.queryByText('Rows')).not.toBeInTheDocument();
+    expect(screen.getByText('top 3 of 5')).toBeInTheDocument();
+  });
+
   it('renders rows in the given order by default', () => {
     render(<ShareTable title="Rows" columns={COLUMNS} rows={ROWS} rowKey={(row) => row.id} />);
     expect(bodyRowNames()).toEqual([

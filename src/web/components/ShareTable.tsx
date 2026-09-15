@@ -24,6 +24,8 @@ export interface ShareTableProps<Row> {
   readonly className?: string;
   readonly defaultSort?: ShareTableSort;
   readonly hideTitle?: boolean;
+  /** Distinct rows before the caller capped `rows`; when larger, the table says so. */
+  readonly totalCount?: number;
 }
 
 function compareSortValues(a: number | string, b: number | string): number {
@@ -41,7 +43,12 @@ export function ShareTable<Row>({
   className,
   defaultSort,
   hideTitle,
+  totalCount,
 }: ShareTableProps<Row>): JSX.Element {
+  const capNote =
+    totalCount !== undefined && totalCount > rows.length
+      ? `top ${rows.length} of ${totalCount}`
+      : null;
   const [sort, setSort] = useState<ShareTableSort | null>(defaultSort ?? null);
 
   function handleSort(columnIndex: number): void {
@@ -64,7 +71,13 @@ export function ShareTable<Row>({
 
   return (
     <div className={className ? `text-xs ${className}` : 'text-xs'}>
-      {!hideTitle && <h4 className="text-ink-muted font-medium mb-2">{title}</h4>}
+      {!hideTitle && (
+        <h4 className="text-ink-muted font-medium mb-2">
+          {title}
+          {capNote && <span className="text-ink-subtle font-normal ml-1">{capNote}</span>}
+        </h4>
+      )}
+      {hideTitle && capNote && <p className="text-ink-subtle mb-1">{capNote}</p>}
       <div className="max-h-40 overflow-auto">
         <table className="w-full">
           <thead className="text-ink-muted sticky top-0 bg-bg-panel">
