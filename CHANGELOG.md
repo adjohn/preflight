@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.54.0] - 2026-09-15
+
+### Changed
+
+- **The Today and History pages answered their questions in the wrong order: configuration notices sat above the numbers, the live session tail sat at the bottom, and the anti-pattern panel rendered one pill per file.** Today now opens with the KPI strip and the spend chart, then a "Needs attention" list aggregated by anti-pattern type with a link to the sessions involved, then where the spend went, the live tail, a health-card grid, and activity. History reads one page-level window (7, 30, 90 days), leads with spend and contribution, and labels its 12-week row. Five web type errors in the old pages are gone with them.
+
 ## [1.53.1] - 2026-09-15
 
 ### Changed
