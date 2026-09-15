@@ -87,9 +87,13 @@ describe('computeUsageInsights', () => {
       totalTokens: 0,
       insights: [],
       skills: [],
+      skillsTotalCount: 0,
       subagents: [],
+      subagentsTotalCount: 0,
       plugins: [],
+      pluginsTotalCount: 0,
       loops: [],
+      loopsTotalCount: 0,
       attributionRatePct: null,
     });
   });
@@ -275,6 +279,7 @@ describe('computeUsageInsights', () => {
       expect(report.loops).toHaveLength(10);
       expect(report.loops[0]!.costUsd).toBe(12);
       expect(report.loops[9]!.costUsd).toBe(3);
+      expect(report.loopsTotalCount).toBe(12);
     });
   });
 
@@ -305,6 +310,7 @@ describe('computeUsageInsights', () => {
       expect(report.plugins).toEqual([
         { key: 'pstack', costUsd: 3, tokens: 150, count: 2, sharePct: 30 },
       ]);
+      expect(report.pluginsTotalCount).toBe(1);
     });
 
     it('falls back to the plural headline when more than one plugin contributes', () => {
@@ -339,7 +345,24 @@ describe('computeUsageInsights', () => {
       const report = computeUsageInsights([s], { nowMs: NOW, windowDays: 7 });
 
       expect(report.plugins).toEqual([]);
+      expect(report.pluginsTotalCount).toBe(0);
       expect(report.insights.find((i) => i.id === 'plugins')).toBeUndefined();
+    });
+
+    it('caps the plugins table at 10 rows and reports the total distinct count', () => {
+      const skillBuckets: Record<string, AttributionBucket> = {};
+      for (let i = 0; i < 12; i++) {
+        skillBuckets[`plugin-${i}:skill`] = bucket({ costUsd: i + 1 });
+      }
+      const s = makeSummary({
+        startTime: NOW - DAY_MS,
+        attribution: attribution({ buckets: { skill: skillBuckets } }),
+      });
+
+      const report = computeUsageInsights([s], { nowMs: NOW, windowDays: 7 });
+
+      expect(report.plugins).toHaveLength(10);
+      expect(report.pluginsTotalCount).toBe(12);
     });
   });
 
@@ -401,6 +424,23 @@ describe('computeUsageInsights', () => {
 
       expect(report.skills).toHaveLength(10);
       expect(report.skills[0]!.key).toBe('skill-11');
+      expect(report.skillsTotalCount).toBe(12);
+    });
+
+    it('caps the subagents table at 10 rows and reports the total distinct count', () => {
+      const subagentBuckets: Record<string, AttributionBucket> = {};
+      for (let i = 0; i < 12; i++) {
+        subagentBuckets[`agent-${i}`] = bucket({ costUsd: i + 1 });
+      }
+      const s = makeSummary({
+        startTime: NOW - DAY_MS,
+        attribution: attribution({ buckets: { subagent: subagentBuckets } }),
+      });
+
+      const report = computeUsageInsights([s], { nowMs: NOW, windowDays: 7 });
+
+      expect(report.subagents).toHaveLength(10);
+      expect(report.subagentsTotalCount).toBe(12);
     });
   });
 

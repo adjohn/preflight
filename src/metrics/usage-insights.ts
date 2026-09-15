@@ -48,9 +48,17 @@ export interface UsageInsightsReport {
   /** Sorted by share descending; zero-share insights are omitted. */
   readonly insights: readonly UsageInsight[];
   readonly skills: readonly UsageShareRow[];
+  /** Distinct skills seen in the window, before capping `skills` to its top {@link TABLE_CAP} rows. */
+  readonly skillsTotalCount: number;
   readonly subagents: readonly UsageShareRow[];
+  /** Distinct subagent types seen in the window, before capping `subagents` to its top {@link TABLE_CAP} rows. */
+  readonly subagentsTotalCount: number;
   readonly plugins: readonly UsageShareRow[];
+  /** Distinct plugins seen in the window, before capping `plugins` to its top {@link TABLE_CAP} rows. */
+  readonly pluginsTotalCount: number;
   readonly loops: readonly LoopRow[];
+  /** Loop sessions seen in the window, before capping `loops` to its top {@link TABLE_CAP} rows. */
+  readonly loopsTotalCount: number;
   /** Share of window spend that carries tool/skill attribution; null when no session has attribution. */
   readonly attributionRatePct: number | null;
 }
@@ -362,9 +370,13 @@ export function computeUsageInsights(
     totalTokens,
     insights,
     skills: shareTable(skillsAccum, totalCostUsd),
+    skillsTotalCount: skillsAccum.size,
     subagents: shareTable(subagentsAccum, totalCostUsd),
+    subagentsTotalCount: subagentsAccum.size,
     plugins: shareTable(pluginsAccum, totalCostUsd),
+    pluginsTotalCount: pluginsAccum.size,
     loops: loopRows.sort((a, b) => b.costUsd - a.costUsd).slice(0, TABLE_CAP),
+    loopsTotalCount: loopRows.length,
     attributionRatePct: anyAttribution ? sharePct(attributedCostUsd, totalCostUsd) : null,
   };
 }
