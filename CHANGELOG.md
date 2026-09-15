@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Spend by skill, subagent type, plugin, and loop was persisted in 1.52.0 but nowhere on the dashboard. The Sessions detail now shows per-model input, output, cache read, cache write, and cost, lines added and removed, API versus wall duration, and cache hit rate. History gains a "What's contributing to your spend" panel with share tables by skill, subagent type, plugin, and loop, each saying how many rows its top-10 cap dropped, and the existing tool and model tables carry share-of-spend labels.
+- Sessions detail now shows per-model input, output, cache read, cache write, and cost, lines added and removed, API versus wall duration, and cache hit rate. History gains a "What's contributing to your spend" panel with share tables by skill, subagent type, plugin, and loop, each saying how many rows its top-10 cap dropped, and the existing tool and model tables carry share-of-spend labels.
 
 ## [1.52.3] - 2026-09-15
 
