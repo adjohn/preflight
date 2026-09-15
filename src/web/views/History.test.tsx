@@ -254,6 +254,10 @@ const SAMPLE_USAGE_INSIGHTS = {
       lastRunMs: Date.now() - 5 * 60 * 1000,
     },
   ],
+  skillsTotalCount: 1,
+  subagentsTotalCount: 1,
+  pluginsTotalCount: 1,
+  loopsTotalCount: 1,
   attributionRatePct: 40,
 };
 
@@ -1704,6 +1708,15 @@ describe('UsageContributionPanel', () => {
     expect(screen.getByText('pstack')).toBeInTheDocument();
     expect(screen.getByText('Nightly loop')).toBeInTheDocument();
     expect(screen.getByText(/40% of spend with/)).toBeInTheDocument();
+  });
+
+  it('says how many rows a capped table dropped, and nothing when it dropped none', async () => {
+    renderHistory({
+      usageInsights: { ...SAMPLE_USAGE_INSIGHTS, skillsTotalCount: 14, loopsTotalCount: 1 },
+    });
+    await waitFor(() => expect(screen.getByText('code-review')).toBeInTheDocument());
+    expect(screen.getByText('top 1 of 14')).toBeInTheDocument();
+    expect(screen.queryByText('top 1 of 1')).not.toBeInTheDocument();
   });
 
   it('renders "<1%" instead of "0%" for a row with spend that rounds to a zero share', async () => {

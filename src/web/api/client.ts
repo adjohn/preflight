@@ -612,6 +612,11 @@ export interface UsageInsightsReport {
   readonly subagents: readonly UsageShareRow[];
   readonly plugins: readonly UsageShareRow[];
   readonly loops: readonly LoopRow[];
+  /** Distinct keys seen in the window before each table was capped to its top rows. */
+  readonly skillsTotalCount: number;
+  readonly subagentsTotalCount: number;
+  readonly pluginsTotalCount: number;
+  readonly loopsTotalCount: number;
   readonly attributionRatePct: number | null;
 }
 

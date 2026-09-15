@@ -700,6 +700,7 @@ function UsageContributionPanel({
             <ShareTable<UsageShareRow>
               title="Skills"
               rows={data.skills}
+              totalCount={data.skillsTotalCount}
               rowKey={(row) => row.key}
               columns={[
                 { header: 'Skill', align: 'left', cell: (row) => row.key },
@@ -722,6 +723,7 @@ function UsageContributionPanel({
             <ShareTable<UsageShareRow>
               title="Subagents"
               rows={data.subagents}
+              totalCount={data.subagentsTotalCount}
               rowKey={(row) => row.key}
               columns={[
                 { header: 'Type', align: 'left', cell: (row) => row.key },
@@ -744,6 +746,7 @@ function UsageContributionPanel({
             <ShareTable<UsageShareRow>
               title="Plugins"
               rows={data.plugins}
+              totalCount={data.pluginsTotalCount}
               rowKey={(row) => row.key}
               columns={[
                 { header: 'Plugin', align: 'left', cell: (row) => row.key },
@@ -761,6 +764,7 @@ function UsageContributionPanel({
               title="Loops"
               className="md:col-span-2"
               rows={data.loops}
+              totalCount={data.loopsTotalCount}
               rowKey={(row) => row.sessionId}
               columns={[
                 {
@@ -818,16 +822,26 @@ function ShareTable<Row>({
   rows,
   rowKey,
   className,
+  totalCount,
 }: {
   title: string;
   columns: ReadonlyArray<ShareTableColumn<Row>>;
   rows: readonly Row[];
   rowKey: (row: Row) => string;
   className?: string;
+  totalCount?: number;
 }): JSX.Element {
+  const dropped = totalCount !== undefined && totalCount > rows.length;
   return (
     <div className={className}>
-      <h4 className="text-ink-muted font-medium mb-2">{title}</h4>
+      <h4 className="text-ink-muted font-medium mb-2">
+        {title}
+        {dropped && (
+          <span className="text-ink-subtle font-normal ml-1">
+            top {rows.length} of {totalCount}
+          </span>
+        )}
+      </h4>
       <div className="max-h-40 overflow-auto">
         <table className="w-full">
           <thead className="text-ink-muted sticky top-0 bg-bg-panel">
