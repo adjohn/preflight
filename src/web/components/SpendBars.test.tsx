@@ -66,6 +66,29 @@ describe('SpendBars', () => {
     });
   });
 
+  it('renders a solid cumulative line when a datum has non-null cumulativeUsd', async () => {
+    const data: ReadonlyArray<SpendBarsDatum> = [
+      { key: 'h1', label: '09:00', spendUsd: 3, cumulativeUsd: 3, projectedUsd: null },
+      { key: 'h2', label: '10:00', spendUsd: 5, cumulativeUsd: 8, projectedUsd: null },
+    ];
+    const { container } = render(
+      <div style={{ width: 400, height: 200 }}>
+        <SpendBars data={data} />
+      </div>,
+    );
+    await waitFor(() => {
+      const paths = Array.from(container.querySelectorAll('path'));
+      const solidLine = paths.some(
+        (el) =>
+          el.getAttribute('stroke') === 'var(--color-accent-green)' &&
+          !el.hasAttribute('stroke-dasharray'),
+      );
+      const dashedLine = paths.some((el) => el.getAttribute('stroke-dasharray') === '4 3');
+      expect(solidLine).toBe(true);
+      expect(dashedLine).toBe(false);
+    });
+  });
+
   it('renders a dashed projected line when at least one datum has non-null projectedUsd', async () => {
     const data: ReadonlyArray<SpendBarsDatum> = [
       {
