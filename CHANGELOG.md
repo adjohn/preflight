@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.56.0] - 2026-09-17
+
+### Added
+
+- Share tables in "What's contributing to your spend" now break each row's tokens down by category on hover: input, output, cache read, and cache write, on both the Tokens and Cost cells of the Skills, Subagents, and Plugins tables. Session records persist the same breakdown per skill, subagent type, and tool, and cache-write tokens now count toward every table's token total, so skills and subagents are measured the same way.
+
 ## [1.55.3] - 2026-09-17
 
 ### Fixed
