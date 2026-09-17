@@ -1324,6 +1324,7 @@ function countOpenPrs(records: readonly Extract<GitActivityRecord, { kind: 'pr' 
 }
 
 interface SessionStatusAggregateInput {
+  readonly replayCache: ReplaySessionCache;
   readonly sessionIds: ReadonlySet<string>;
   readonly liveSet: ReadonlySet<string>;
   readonly startMs: number;
@@ -1373,7 +1374,7 @@ function computeSessionStatusAggregate(input: SessionStatusAggregateInput): {
   ).filter((record) => record.timestamp >= startMs);
   for (const record of bufferToolCalls) activityRecorder.recordToolCall(record);
   for (const session of todaySessions) {
-    const replayed = replaySessionToActivityRecords(session, identityResolver);
+    const replayed = input.replayCache.replay(session, identityResolver);
     for (const record of replayed.records) activityStore.ingest(record);
   }
   const prRecordsBySession = new Map<string, Array<Extract<GitActivityRecord, { kind: 'pr' }>>>();
@@ -1895,6 +1896,7 @@ export function createApiHandler(
     }
 
     const sessionStatus = computeSessionStatusAggregate({
+      replayCache: gitReplayCache,
       sessionIds: sessionsSeen,
       liveSet,
       startMs,
