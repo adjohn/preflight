@@ -4016,6 +4016,175 @@ describe('api-handler GET /api/sessions/today/aggregate', () => {
     expect(parsed.forecastEndOfDayUsd).not.toBeNull();
     expect(parsed.forecastEndOfDayUsd as number).toBeGreaterThanOrEqual(parsed.totalCostUsd);
   });
+
+  type SessionStatusPayload = {
+    sessionStatus: {
+      counts: Record<string, number>;
+      sessionIds: Record<string, readonly string[]>;
+    };
+  };
+
+  it('marks a live session needing input when its last tool call is AskUserQuestion', async () => {
+    const now = Date.now();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const startMs = startOfDay.getTime();
+
+    const handler = createApiHandler({
+      localStore: {
+        peekAllBuffers: () => [
+          {
+            mode: 'post',
+            sessionId: 'needs-input-1',
+            timestamp: startMs + 10_000,
+            tool: 'AskUserQuestion',
+          },
+        ],
+      },
+      sessionStore: {
+        loadTodaySessions: () => [],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+      liveSessionRegistry: {
+        getLiveSessions: () => ['needs-input-1'],
+        getSessionName: () => null,
+      },
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as SessionStatusPayload;
+    expect(parsed.sessionStatus.counts.needs_input).toBe(1);
+    expect(parsed.sessionStatus.sessionIds.needs_input).toEqual(['needs-input-1']);
+    expect(parsed.sessionStatus.counts.working).toBe(0);
+  });
+
+  it('marks a completed session with an unmerged PR create as ready_for_review', async () => {
+    const now = Date.now();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const startMs = startOfDay.getTime();
+
+    const handler = createApiHandler({
+      localStore: { peekAllBuffers: () => [] },
+      sessionStore: {
+        loadTodaySessions: () => [
+          {
+            sessionId: 'pr-session-1',
+            timeline: [
+              {
+                timestamp: startMs + 10_000,
+                durationMs: 500,
+                toolName: 'Bash',
+                success: true,
+                command: 'gh pr create --fill',
+              },
+            ],
+          },
+        ],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as SessionStatusPayload;
+    expect(parsed.sessionStatus.counts.ready_for_review).toBe(1);
+    expect(parsed.sessionStatus.sessionIds.ready_for_review).toEqual(['pr-session-1']);
+  });
+
+  it('marks a live session with ordinary tool calls as working', async () => {
+    const now = Date.now();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const startMs = startOfDay.getTime();
+
+    const handler = createApiHandler({
+      localStore: {
+        peekAllBuffers: () => [
+          { mode: 'post', sessionId: 'working-1', timestamp: startMs + 10_000, tool: 'Read' },
+        ],
+      },
+      sessionStore: {
+        loadTodaySessions: () => [],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+      liveSessionRegistry: {
+        getLiveSessions: () => ['working-1'],
+        getSessionName: () => null,
+      },
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as SessionStatusPayload;
+    expect(parsed.sessionStatus.counts.working).toBe(1);
+    expect(parsed.sessionStatus.sessionIds.working).toEqual(['working-1']);
+  });
+
+  it('marks a completed session with no PR activity as completed', async () => {
+    const now = Date.now();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const startMs = startOfDay.getTime();
+
+    const handler = createApiHandler({
+      localStore: { peekAllBuffers: () => [] },
+      sessionStore: {
+        loadTodaySessions: () => [
+          {
+            sessionId: 'plain-1',
+            timeline: [
+              { timestamp: startMs + 10_000, durationMs: 50, toolName: 'Read', success: true },
+            ],
+          },
+        ],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as SessionStatusPayload;
+    expect(parsed.sessionStatus.counts.completed).toBe(1);
+    expect(parsed.sessionStatus.sessionIds.completed).toEqual(['plain-1']);
+  });
+
+  it('reports every status key, zero and empty, when no sessions are seen today', async () => {
+    const handler = createApiHandler({
+      localStore: { peekAllBuffers: () => [] },
+      sessionStore: {
+        loadTodaySessions: () => [],
+        listSessions: () => [],
+        loadSession: () => null,
+      } as unknown as Parameters<typeof createApiHandler>[0]['sessionStore'],
+    });
+    const req = { method: 'GET', url: '/api/sessions/today/aggregate' } as IncomingMessage;
+    const { res, status, body } = fakeRes();
+    await handler(req, res);
+    expect(status()).toBe(200);
+    const parsed = JSON.parse(body()) as SessionStatusPayload;
+    expect(parsed.sessionStatus.counts).toEqual({
+      needs_input: 0,
+      ready_for_review: 0,
+      working: 0,
+      completed: 0,
+    });
+    expect(parsed.sessionStatus.sessionIds).toEqual({
+      needs_input: [],
+      ready_for_review: [],
+      working: [],
+      completed: [],
+    });
+  });
 });
 
 describe('api-handler GET /api/workflows', () => {

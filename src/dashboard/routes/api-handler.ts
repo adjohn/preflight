@@ -25,7 +25,11 @@ import type { CostForecast } from '../../metrics/cost-forecast.js';
 import { buildCostForecastFromInputs } from '../../metrics/cost-forecast.js';
 import { attributeSessionCosts } from '../../metrics/cost-per-outcome.js';
 import type { DecisionTreeMetrics } from '../../metrics/decision-tracker.js';
-import type { GitActivityRecord } from '../../metrics/git-activity-recorder.js';
+import {
+  GitActivityRecorder,
+  type GitActivityRecord,
+} from '../../metrics/git-activity-recorder.js';
+import { ActivityStore } from '../../metrics/git-activity-store.js';
 import type { GitEfficiencyMetrics } from '../../metrics/git-efficiency-tracker.js';
 import { resolveScopeParam, resolveWindowParam } from '../../metrics/git-window-params.js';
 import type { WorktreeIdentity } from '../../metrics/git-workspace-identity.js';
@@ -50,6 +54,11 @@ import {
 } from '../../metrics/quality-proxy-tracker.js';
 import type { Recommendation } from '../../metrics/recommendation-engine.js';
 import type { RetryDetectorMetrics, RetrySessionBreakdown } from '../../metrics/retry-detector.js';
+import {
+  deriveSessionStatus,
+  SESSION_STATUSES,
+  type SessionStatus,
+} from '../../metrics/session-status.js';
 import type {
   ToolSelectionMetrics,
   ToolSelectionSummary,
@@ -866,6 +875,10 @@ interface TodayAggregatePayload {
   readonly latency: AggregateLatencyMetrics;
   readonly cacheHealth: AggregateCacheHealth;
   readonly forecastEndOfDayUsd: number | null;
+  readonly sessionStatus: {
+    readonly counts: Record<SessionStatus, number>;
+    readonly sessionIds: Record<SessionStatus, readonly string[]>;
+  };
 }
 
 // Build activity windows for every session with activity today, using the SAME
@@ -1280,6 +1293,114 @@ export function buildContextReplayEvents(
     }
   }
   return events;
+}
+
+function isPrRecord(
+  record: GitActivityRecord,
+): record is Extract<GitActivityRecord, { kind: 'pr' }> {
+  return record.kind === 'pr';
+}
+
+// A 'create' with a null prNumber can never be matched by a later 'merge'
+// (gh/MCP always resolve a real number once one exists), so it always counts
+// as open. `records` must be sorted ascending by timestamp.
+function countOpenPrs(records: readonly Extract<GitActivityRecord, { kind: 'pr' }>[]): number {
+  let open = 0;
+  for (let i = 0; i < records.length; i++) {
+    const event = records[i].prEvent;
+    if (event.action !== 'create') continue;
+    if (event.prNumber === null) {
+      open++;
+      continue;
+    }
+    const merged = records
+      .slice(i + 1)
+      .some(
+        (later) => later.prEvent.action === 'merge' && later.prEvent.prNumber === event.prNumber,
+      );
+    if (!merged) open++;
+  }
+  return open;
+}
+
+interface SessionStatusAggregateInput {
+  readonly sessionIds: ReadonlySet<string>;
+  readonly liveSet: ReadonlySet<string>;
+  readonly startMs: number;
+  readonly now: number;
+  readonly peeked: readonly { readonly [key: string]: unknown }[];
+  readonly todaySessions: readonly FullSessionSummary[];
+}
+
+// Per-session lifecycle status (#693) for today's Sessions today KPI.
+// `lastToolName` is "latest timestamp wins" across the live buffer and each
+// persisted timeline, which is exactly the brief's rule (persisted last
+// entry, or the buffer's if it's newer). `openPrCount` reuses
+// GitActivityRecorder's own PR/gh-command classification against both
+// sources rather than re-implementing it.
+function computeSessionStatusAggregate(input: SessionStatusAggregateInput): {
+  counts: Record<SessionStatus, number>;
+  sessionIds: Record<SessionStatus, readonly string[]>;
+} {
+  const { sessionIds, liveSet, startMs, now, peeked, todaySessions } = input;
+
+  const lastToolBySession = new Map<string, { toolName: string; ts: number }>();
+  const trackLatestTool = (sessionId: string, toolName: string, ts: number): void => {
+    const existing = lastToolBySession.get(sessionId);
+    if (!existing || ts > existing.ts) lastToolBySession.set(sessionId, { toolName, ts });
+  };
+  for (const ev of peeked) {
+    if (ev.mode !== 'post') continue;
+    const ts = typeof ev.timestamp === 'number' ? ev.timestamp : 0;
+    if (ts < startMs) continue;
+    const sid = ev.sessionId;
+    if (typeof sid !== 'string' || sid.length === 0) continue;
+    trackLatestTool(sid, typeof ev.tool === 'string' ? ev.tool : 'Unknown', ts);
+  }
+  for (const session of todaySessions) {
+    if (!session.timeline) continue;
+    for (const entry of session.timeline) {
+      if (entry.timestamp < startMs) continue;
+      trackLatestTool(session.sessionId, entry.toolName, entry.timestamp);
+    }
+  }
+
+  const identityResolver = new WorktreeIdentityResolver();
+  const activityStore = new ActivityStore<GitActivityRecord>();
+  const activityRecorder = new GitActivityRecorder(activityStore, identityResolver);
+  const bufferToolCalls = pairToolCallsFromBufferEvents(
+    peeked as unknown as readonly HookEvent[],
+  ).filter((record) => record.timestamp >= startMs);
+  for (const record of bufferToolCalls) activityRecorder.recordToolCall(record);
+  for (const session of todaySessions) {
+    const replayed = replaySessionToActivityRecords(session, identityResolver);
+    for (const record of replayed.records) activityStore.ingest(record);
+  }
+  const prRecordsBySession = new Map<string, Array<Extract<GitActivityRecord, { kind: 'pr' }>>>();
+  for (const record of activityStore.query({ since: startMs, until: now })) {
+    if (!isPrRecord(record)) continue;
+    const list = prRecordsBySession.get(record.sessionId);
+    if (list) list.push(record);
+    else prRecordsBySession.set(record.sessionId, [record]);
+  }
+
+  const counts = Object.fromEntries(SESSION_STATUSES.map((s) => [s, 0])) as Record<
+    SessionStatus,
+    number
+  >;
+  const idsByStatus = Object.fromEntries(
+    SESSION_STATUSES.map((s) => [s, [] as string[]]),
+  ) as Record<SessionStatus, string[]>;
+  for (const sessionId of sessionIds) {
+    const status = deriveSessionStatus({
+      live: liveSet.has(sessionId),
+      lastToolName: lastToolBySession.get(sessionId)?.toolName ?? null,
+      openPrCount: countOpenPrs(prRecordsBySession.get(sessionId) ?? []),
+    });
+    counts[status]++;
+    idsByStatus[status].push(sessionId);
+  }
+  return { counts, sessionIds: idsByStatus };
 }
 
 export function createApiHandler(
@@ -1773,6 +1894,15 @@ export function createApiHandler(
       }
     }
 
+    const sessionStatus = computeSessionStatusAggregate({
+      sessionIds: sessionsSeen,
+      liveSet,
+      startMs,
+      now,
+      peeked,
+      todaySessions,
+    });
+
     // (3) include this MCP's live session today-portion. Per-day attribution
     // comes from CostTracker, which buckets each token event by local-day at
     // record time (see CostTracker.accumulateTokens). Falls back to session
@@ -1935,6 +2065,7 @@ export function createApiHandler(
         forecast?.forecastEndOfDayUsd != null
           ? Math.round(forecast.forecastEndOfDayUsd * 1000) / 1000
           : null,
+      sessionStatus,
     };
     return payload;
   }
