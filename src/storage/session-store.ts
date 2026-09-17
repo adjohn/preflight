@@ -31,6 +31,7 @@ import type {
   SessionAttribution,
   AttributionFacet,
   AttributionBucket,
+  TokenBreakdown,
 } from './types.js';
 import type { SessionTracker } from '../metrics/session-tracker.js';
 import type { CostTracker, CostMetrics } from '../metrics/cost-tracker.js';
@@ -299,6 +300,20 @@ export interface ListSessionsOptions {
  * circuiting, so a session that only recently gained a `turnCostAttributor`
  * still merges cleanly against an earlier write that had none.
  */
+function mergeTokenBreakdown(
+  a: TokenBreakdown | undefined,
+  b: TokenBreakdown | undefined,
+): TokenBreakdown | undefined {
+  if (!a && !b) return undefined;
+  const maxNum = (x: number | undefined, y: number | undefined): number => Math.max(x ?? 0, y ?? 0);
+  return {
+    inputTokens: maxNum(a?.inputTokens, b?.inputTokens),
+    outputTokens: maxNum(a?.outputTokens, b?.outputTokens),
+    cacheReadTokens: maxNum(a?.cacheReadTokens, b?.cacheReadTokens),
+    cacheCreationTokens: maxNum(a?.cacheCreationTokens, b?.cacheCreationTokens),
+  };
+}
+
 function mergeAttribution(
   existing: SessionAttribution | undefined,
   incoming: SessionAttribution | undefined,
@@ -325,11 +340,13 @@ function mergeAttribution(
     for (const key of keys) {
       const ba = facetA[key];
       const bb = facetB[key];
+      const breakdown = mergeTokenBreakdown(ba?.breakdown, bb?.breakdown);
       merged[key] = {
         costUsd: maxNum(ba?.costUsd, bb?.costUsd),
         tokens: maxNum(ba?.tokens, bb?.tokens),
         count: maxNum(ba?.count, bb?.count),
         durationMs: maxNum(ba?.durationMs, bb?.durationMs),
+        ...(breakdown ? { breakdown } : {}),
       };
     }
     if (Object.keys(merged).length > 0) buckets[facet] = merged;
@@ -872,11 +889,26 @@ function buildAttribution(
   if (turnMetrics) {
     const toolBuckets: Record<string, AttributionBucket> = {};
     for (const [tool, entry] of Object.entries(turnMetrics.costByToolType)) {
+      const hasTokenSignal =
+        entry.inputTokens > 0 ||
+        entry.outputTokens > 0 ||
+        entry.cacheReadTokens > 0 ||
+        entry.cacheCreationTokens > 0;
       toolBuckets[tool] = {
         costUsd: entry.totalCost,
-        tokens: 0,
+        tokens: entry.tokens,
         count: entry.callCount,
         durationMs: 0,
+        ...(hasTokenSignal
+          ? {
+              breakdown: {
+                inputTokens: entry.inputTokens,
+                outputTokens: entry.outputTokens,
+                cacheReadTokens: entry.cacheReadTokens,
+                cacheCreationTokens: entry.cacheCreationTokens,
+              },
+            }
+          : {}),
       };
     }
     if (Object.keys(toolBuckets).length > 0) buckets.tool = toolBuckets;
@@ -885,9 +917,15 @@ function buildAttribution(
     for (const [skill, entry] of Object.entries(turnMetrics.costBySkill)) {
       skillBuckets[skill] = {
         costUsd: entry.totalCost,
-        tokens: entry.inputTokens + entry.outputTokens + entry.cacheReadTokens,
+        tokens: entry.tokens,
         count: entry.callCount,
         durationMs: entry.totalDurationMs,
+        breakdown: {
+          inputTokens: entry.inputTokens,
+          outputTokens: entry.outputTokens,
+          cacheReadTokens: entry.cacheReadTokens,
+          cacheCreationTokens: entry.cacheCreationTokens,
+        },
       };
     }
     if (Object.keys(skillBuckets).length > 0) buckets.skill = skillBuckets;
@@ -1183,9 +1221,35 @@ interface SerializedFullSessionSummary {
 }
 
 /**
- * Accept a bucket only when all four fields are finite numbers; any other
- * shape is dropped rather than partially hydrated. Used to parse each key of
- * every facet in an on-disk `SessionAttribution.buckets`.
+ * Accept a breakdown only when all four fields are finite numbers; any other
+ * shape is dropped (the bucket itself still parses, just without a
+ * breakdown) rather than partially hydrated.
+ */
+function parseTokenBreakdown(raw: unknown): TokenBreakdown | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const r = raw as Record<string, unknown>;
+  const { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens } = r;
+  if (
+    typeof inputTokens === 'number' &&
+    Number.isFinite(inputTokens) &&
+    typeof outputTokens === 'number' &&
+    Number.isFinite(outputTokens) &&
+    typeof cacheReadTokens === 'number' &&
+    Number.isFinite(cacheReadTokens) &&
+    typeof cacheCreationTokens === 'number' &&
+    Number.isFinite(cacheCreationTokens)
+  ) {
+    return { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens };
+  }
+  return undefined;
+}
+
+/**
+ * Accept a bucket only when all four core fields are finite numbers; any
+ * other shape is dropped rather than partially hydrated. Used to parse each
+ * key of every facet in an on-disk `SessionAttribution.buckets`. `breakdown`
+ * is optional and validated separately — a malformed breakdown drops only
+ * itself, never the bucket (see `parseTokenBreakdown`).
  */
 function parseAttributionBucket(raw: unknown): AttributionBucket | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
@@ -1201,7 +1265,8 @@ function parseAttributionBucket(raw: unknown): AttributionBucket | undefined {
     typeof durationMs === 'number' &&
     Number.isFinite(durationMs)
   ) {
-    return { costUsd, tokens, count, durationMs };
+    const breakdown = parseTokenBreakdown(r.breakdown);
+    return { costUsd, tokens, count, durationMs, ...(breakdown ? { breakdown } : {}) };
   }
   return undefined;
 }
