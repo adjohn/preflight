@@ -1,5 +1,5 @@
 import type { FullSessionSummary } from '../storage/session-store.js';
-import type { AttributionBucket } from '../storage/types.js';
+import type { AttributionBucket, TokenBreakdown } from '../storage/types.js';
 
 /**
  * "What's contributing to your spend": independent characteristics of the
@@ -20,6 +20,8 @@ export interface UsageShareRow {
   readonly count: number;
   /** Percentage of `UsageInsightsReport.totalCostUsd`, rounded to a whole number. */
   readonly sharePct: number;
+  /** Summed across every contributing bucket that had one; absent when none did. */
+  readonly breakdown?: TokenBreakdown;
 }
 
 export interface UsageInsight extends UsageShareRow {
@@ -145,6 +147,27 @@ interface RowAccum {
   costUsd: number;
   tokens: number;
   count: number;
+  breakdown?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+  };
+}
+
+function addBreakdown(existing: RowAccum, bucket: AttributionBucket): void {
+  if (!bucket.breakdown) return;
+  const b = existing.breakdown ?? {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+  };
+  b.inputTokens += bucket.breakdown.inputTokens;
+  b.outputTokens += bucket.breakdown.outputTokens;
+  b.cacheReadTokens += bucket.breakdown.cacheReadTokens;
+  b.cacheCreationTokens += bucket.breakdown.cacheCreationTokens;
+  existing.breakdown = b;
 }
 
 function addToAccum(map: Map<string, RowAccum>, key: string, bucket: AttributionBucket): void {
@@ -153,8 +176,15 @@ function addToAccum(map: Map<string, RowAccum>, key: string, bucket: Attribution
     existing.costUsd += bucket.costUsd;
     existing.tokens += bucket.tokens;
     existing.count += bucket.count;
+    addBreakdown(existing, bucket);
   } else {
-    map.set(key, { costUsd: bucket.costUsd, tokens: bucket.tokens, count: bucket.count });
+    const created: RowAccum = {
+      costUsd: bucket.costUsd,
+      tokens: bucket.tokens,
+      count: bucket.count,
+    };
+    addBreakdown(created, bucket);
+    map.set(key, created);
   }
 }
 
@@ -167,6 +197,7 @@ function shareTable(rows: Map<string, RowAccum>, totalCostUsd: number): UsageSha
       tokens: acc.tokens,
       count: acc.count,
       sharePct: sharePct(acc.costUsd, totalCostUsd),
+      ...(acc.breakdown ? { breakdown: acc.breakdown } : {}),
     }))
     .sort((a, b) => b.costUsd - a.costUsd)
     .slice(0, TABLE_CAP);

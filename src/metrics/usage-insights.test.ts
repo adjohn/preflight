@@ -440,6 +440,71 @@ describe('computeUsageInsights', () => {
       ]);
     });
 
+    it('sums breakdown per key across sessions that have one', () => {
+      const a = makeSummary({
+        startTime: NOW - DAY_MS,
+        attribution: attribution({
+          buckets: {
+            skill: {
+              unslop: bucket({
+                costUsd: 1,
+                tokens: 100,
+                count: 1,
+                breakdown: {
+                  inputTokens: 60,
+                  outputTokens: 20,
+                  cacheReadTokens: 10,
+                  cacheCreationTokens: 10,
+                },
+              }),
+            },
+          },
+        }),
+      });
+      const b = makeSummary({
+        startTime: NOW - DAY_MS,
+        attribution: attribution({
+          buckets: {
+            skill: {
+              unslop: bucket({
+                costUsd: 2,
+                tokens: 200,
+                count: 2,
+                breakdown: {
+                  inputTokens: 120,
+                  outputTokens: 40,
+                  cacheReadTokens: 20,
+                  cacheCreationTokens: 20,
+                },
+              }),
+            },
+          },
+        }),
+      });
+
+      const report = computeUsageInsights([a, b], { nowMs: NOW, windowDays: 7 });
+
+      expect(report.skills[0]!.breakdown).toEqual({
+        inputTokens: 180,
+        outputTokens: 60,
+        cacheReadTokens: 30,
+        cacheCreationTokens: 30,
+      });
+    });
+
+    it('omits breakdown from a row when no contributing bucket had one', () => {
+      const s = makeSummary({
+        startTime: NOW - DAY_MS,
+        attribution: attribution({
+          buckets: { skill: { unslop: bucket({ costUsd: 1, tokens: 10, count: 1 }) } },
+        }),
+      });
+
+      const report = computeUsageInsights([s], { nowMs: NOW, windowDays: 7 });
+
+      expect(report.skills[0]!.breakdown).toBeUndefined();
+    });
+
     it('caps the skills table at 10 rows', () => {
       const skillBuckets: Record<string, AttributionBucket> = {};
       for (let i = 0; i < 12; i++) {
