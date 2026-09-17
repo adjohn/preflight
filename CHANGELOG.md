@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.57.0] - 2026-09-17
+
+### Added
+
+- Today's "Sessions today" tile now says how many of the day's sessions need input, are ready for review, or are still working, each linking to those sessions. A session needs input when its last tool call asked you a question; it is ready for review when it opened a pull request that has not merged; it is working when it is live; otherwise it is completed.
+
 ## [1.56.0] - 2026-09-17
 
 ### Added
