@@ -35,7 +35,11 @@ export interface ToolTypeCostEntry {
   readonly totalCost: number;
   readonly callCount: number;
   readonly avgCost: number;
-  /** input + output + cache-read tokens across `callCount`'s attributed calls; mirrors SkillCostEntry.tokens. */
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadTokens: number;
+  readonly cacheCreationTokens: number;
+  /** input + output + cache-read + cache-creation tokens across `callCount`'s attributed calls; mirrors SkillCostEntry.tokens. */
   readonly tokens: number;
 }
 
@@ -56,14 +60,16 @@ export interface SkillCostEntry {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly cacheReadTokens: number;
+  readonly cacheCreationTokens: number;
   readonly totalDurationMs: number;
   /**
-   * Authoritative token total: `inputTokens + outputTokens + cacheReadTokens`
-   * for a live (this-process) entry. `GET /api/cost-per-tool` folds in other
-   * today sessions' persisted attribution buckets, which carry only a token
-   * total and no input/output/cache-read split — those merged sessions'
-   * tokens land here too, so this field (not the three split fields, which
-   * stay live-only) is the one to read for a skill's total token usage.
+   * Authoritative token total: `inputTokens + outputTokens + cacheReadTokens
+   * + cacheCreationTokens` for a live (this-process) entry. `GET
+   * /api/cost-per-tool` folds in other today sessions' persisted attribution
+   * buckets, which carry only a token total and no per-category split —
+   * those merged sessions' tokens land here too, so this field (not the
+   * split fields, which stay live-only) is the one to read for a skill's
+   * total token usage.
    */
   readonly tokens: number;
 }
@@ -153,6 +159,7 @@ interface AttributionBucket extends BucketIdentity {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
+  cacheCreationTokens: number;
   totalDurationMs: number;
 }
 
@@ -163,6 +170,7 @@ const BUCKET_COUNTERS = [
   'inputTokens',
   'outputTokens',
   'cacheReadTokens',
+  'cacheCreationTokens',
   'totalDurationMs',
 ] as const;
 
@@ -244,6 +252,7 @@ function createBucket(id: BucketIdentity): AttributionBucket {
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
+    cacheCreationTokens: 0,
     totalDurationMs: 0,
   };
 }
@@ -445,6 +454,7 @@ export class TurnCostAttributor {
       bucket.inputTokens += event.inputTokens / toolCount;
       bucket.outputTokens += event.outputTokens / toolCount;
       bucket.cacheReadTokens += event.cacheReadTokens / toolCount;
+      bucket.cacheCreationTokens += event.cacheCreationTokens / toolCount;
     }
 
     if (state.activeSlashSkill !== null) {
@@ -456,6 +466,7 @@ export class TurnCostAttributor {
       slashBucket.inputTokens += event.inputTokens;
       slashBucket.outputTokens += event.outputTokens;
       slashBucket.cacheReadTokens += event.cacheReadTokens;
+      slashBucket.cacheCreationTokens += event.cacheCreationTokens;
     }
 
     // Minted here rather than reusing `attribution.turnId`: the caller's turn
@@ -547,7 +558,14 @@ export class TurnCostAttributor {
   private static buildMetrics(state: SessionState): CostAttributionMetrics {
     const toolTypeAccum = new Map<
       string,
-      { totalCost: number; callCount: number; tokens: number }
+      {
+        totalCost: number;
+        callCount: number;
+        inputTokens: number;
+        outputTokens: number;
+        cacheReadTokens: number;
+        cacheCreationTokens: number;
+      }
     >();
     const skillAccum = new Map<string, Pick<AttributionBucket, (typeof BUCKET_COUNTERS)[number]>>();
 
@@ -561,15 +579,22 @@ export class TurnCostAttributor {
       if (bucket.toolName !== 'SlashCommand' && bucket.attributedCallCount > 0) {
         let entry = toolTypeAccum.get(bucket.toolName);
         if (entry === undefined) {
-          entry = { totalCost: 0, callCount: 0, tokens: 0 };
+          entry = {
+            totalCost: 0,
+            callCount: 0,
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+          };
           toolTypeAccum.set(bucket.toolName, entry);
         }
         entry.totalCost += bucket.totalCost;
         entry.callCount += bucket.attributedCallCount;
-        entry.tokens +=
-          Math.round(bucket.inputTokens) +
-          Math.round(bucket.outputTokens) +
-          Math.round(bucket.cacheReadTokens);
+        entry.inputTokens += bucket.inputTokens;
+        entry.outputTokens += bucket.outputTokens;
+        entry.cacheReadTokens += bucket.cacheReadTokens;
+        entry.cacheCreationTokens += bucket.cacheCreationTokens;
       }
 
       if (bucket.skillName !== null) {
@@ -593,21 +618,31 @@ export class TurnCostAttributor {
         inputTokens: Math.round(entry.inputTokens),
         outputTokens: Math.round(entry.outputTokens),
         cacheReadTokens: Math.round(entry.cacheReadTokens),
+        cacheCreationTokens: Math.round(entry.cacheCreationTokens),
         totalDurationMs: entry.totalDurationMs,
         tokens:
           Math.round(entry.inputTokens) +
           Math.round(entry.outputTokens) +
-          Math.round(entry.cacheReadTokens),
+          Math.round(entry.cacheReadTokens) +
+          Math.round(entry.cacheCreationTokens),
       };
     }
 
     const costByToolType: Record<string, ToolTypeCostEntry> = {};
     for (const [tool, entry] of toolTypeAccum) {
+      const inputTokens = Math.round(entry.inputTokens);
+      const outputTokens = Math.round(entry.outputTokens);
+      const cacheReadTokens = Math.round(entry.cacheReadTokens);
+      const cacheCreationTokens = Math.round(entry.cacheCreationTokens);
       costByToolType[tool] = {
         totalCost: entry.totalCost,
         callCount: entry.callCount,
         avgCost: entry.callCount > 0 ? entry.totalCost / entry.callCount : 0,
-        tokens: entry.tokens,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheCreationTokens,
+        tokens: inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens,
       };
     }
 

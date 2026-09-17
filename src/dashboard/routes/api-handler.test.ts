@@ -2358,6 +2358,7 @@ describe('api-handler GET /api/cost-per-tool', () => {
       inputTokens: 100,
       outputTokens: 50,
       cacheReadTokens: 0,
+      cacheCreationTokens: 0,
       totalDurationMs: 300,
       tokens: 190,
     });
@@ -2445,6 +2446,10 @@ describe('api-handler GET /api/cost-per-tool', () => {
       totalCost: 0.5,
       callCount: 4,
       avgCost: 0.125,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
       tokens: 200,
     });
     expect(result.costBySkill.unslop.totalCost).toBe(0.1);

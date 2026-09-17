@@ -557,6 +557,7 @@ describe('TurnCostAttributor', () => {
         inputTokens: 0,
         outputTokens: 0,
         cacheReadTokens: 0,
+        cacheCreationTokens: 0,
         totalDurationMs: 500,
         tokens: 0,
       });
@@ -587,6 +588,40 @@ describe('TurnCostAttributor', () => {
       const entry = attributor.getMetrics().costBySkill.design!;
       expect(entry.tokens).toBe(entry.inputTokens + entry.outputTokens + entry.cacheReadTokens);
       expect(entry.tokens).toBe(1050);
+    });
+
+    it('cacheCreationTokens are distributed and included in tokens for skills and tool types', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(
+        makeRecord({
+          toolName: 'Skill',
+          skillName: 'design',
+          timestamp: 1000,
+          toolUseId: 'skill-1',
+        }),
+      );
+      attributor.recordTokenEvent(
+        makeTokenEvent({
+          timestamp: 1100,
+          inputTokens: 900,
+          outputTokens: 100,
+          cacheReadTokens: 50,
+          cacheCreationTokens: 200,
+        }),
+      );
+
+      const metrics = attributor.getMetrics();
+      const skillEntry = metrics.costBySkill.design!;
+      expect(skillEntry.cacheCreationTokens).toBe(200);
+      expect(skillEntry.tokens).toBe(900 + 100 + 50 + 200);
+
+      const toolEntry = metrics.costByToolType['Skill']!;
+      expect(toolEntry.inputTokens).toBe(900);
+      expect(toolEntry.outputTokens).toBe(100);
+      expect(toolEntry.cacheReadTokens).toBe(50);
+      expect(toolEntry.cacheCreationTokens).toBe(200);
+      expect(toolEntry.tokens).toBe(900 + 100 + 50 + 200);
     });
 
     it('costByToolType.Skill equals the sum of costBySkill rows', () => {

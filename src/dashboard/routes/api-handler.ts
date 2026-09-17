@@ -645,15 +645,29 @@ function mergeToolTypeCostEntry(
   const totalCost = (existing?.totalCost ?? 0) + bucket.costUsd;
   const callCount = (existing?.callCount ?? 0) + bucket.count;
   const tokens = (existing?.tokens ?? 0) + bucket.tokens;
-  return { totalCost, callCount, avgCost: callCount > 0 ? totalCost / callCount : 0, tokens };
+  const inputTokens = (existing?.inputTokens ?? 0) + (bucket.breakdown?.inputTokens ?? 0);
+  const outputTokens = (existing?.outputTokens ?? 0) + (bucket.breakdown?.outputTokens ?? 0);
+  const cacheReadTokens =
+    (existing?.cacheReadTokens ?? 0) + (bucket.breakdown?.cacheReadTokens ?? 0);
+  const cacheCreationTokens =
+    (existing?.cacheCreationTokens ?? 0) + (bucket.breakdown?.cacheCreationTokens ?? 0);
+  return {
+    totalCost,
+    callCount,
+    avgCost: callCount > 0 ? totalCost / callCount : 0,
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+    tokens,
+  };
 }
 
 /**
  * Folds one persisted attribution bucket into an existing (or absent)
- * SkillCostEntry — see GET /api/cost-per-tool. A persisted bucket carries no
- * input/output/cache-read split, so `inputTokens`/`outputTokens`/
- * `cacheReadTokens` stay live-only; `tokens` (the authoritative total) gets
- * the merged sum.
+ * SkillCostEntry — see GET /api/cost-per-tool. A persisted bucket's
+ * `breakdown` (when present) folds into the per-category split;
+ * `tokens` (the authoritative total) gets the merged sum either way.
  */
 function mergeSkillCostEntry(
   existing: SkillCostEntry | undefined,
@@ -668,9 +682,11 @@ function mergeSkillCostEntry(
     attributedCallCount,
     totalCost,
     avgCost: attributedCallCount > 0 ? totalCost / attributedCallCount : 0,
-    inputTokens: existing?.inputTokens ?? 0,
-    outputTokens: existing?.outputTokens ?? 0,
-    cacheReadTokens: existing?.cacheReadTokens ?? 0,
+    inputTokens: (existing?.inputTokens ?? 0) + (bucket.breakdown?.inputTokens ?? 0),
+    outputTokens: (existing?.outputTokens ?? 0) + (bucket.breakdown?.outputTokens ?? 0),
+    cacheReadTokens: (existing?.cacheReadTokens ?? 0) + (bucket.breakdown?.cacheReadTokens ?? 0),
+    cacheCreationTokens:
+      (existing?.cacheCreationTokens ?? 0) + (bucket.breakdown?.cacheCreationTokens ?? 0),
     totalDurationMs: (existing?.totalDurationMs ?? 0) + bucket.durationMs,
     tokens: (existing?.tokens ?? 0) + bucket.tokens,
   };

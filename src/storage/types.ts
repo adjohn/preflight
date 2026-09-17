@@ -376,6 +376,13 @@ export interface ReplayTimelineEntry {
  */
 export type AttributionFacet = 'tool' | 'skill' | 'subagent';
 
+export interface TokenBreakdown {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadTokens: number;
+  readonly cacheCreationTokens: number;
+}
+
 export interface AttributionBucket {
   readonly costUsd: number;
   /** input + output + cache-read + cache-creation tokens; 0 when the facet has no token signal. */
@@ -384,6 +391,8 @@ export interface AttributionBucket {
   readonly count: number;
   /** Summed tool-call wall time; 0 when not measured. */
   readonly durationMs: number;
+  /** Per-category split of `tokens`; absent on legacy files and when the facet has no per-category signal. */
+  readonly breakdown?: TokenBreakdown;
 }
 
 export interface SessionAttribution {

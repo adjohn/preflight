@@ -1193,6 +1193,47 @@ describe('subagent token support', () => {
     );
   });
 
+  it('subagentByAgentType[agentType].breakdown accumulates per-category tokens across calls', () => {
+    const tracker = new CostTracker();
+    tracker.recordTokenUsage(
+      makeUsage({
+        inputTokens: 10_000,
+        outputTokens: 2_000,
+        cacheReadTokens: 500,
+        cacheCreationTokens: 300,
+        totalTokens: 12_000,
+      }),
+      'claude-sonnet-4',
+      { agentId: 'agent-abc', agentType: 'general-purpose' },
+    );
+    tracker.recordTokenUsage(
+      makeUsage({
+        inputTokens: 5_000,
+        outputTokens: 1_000,
+        cacheReadTokens: 100,
+        cacheCreationTokens: 50,
+        totalTokens: 6_000,
+      }),
+      'claude-sonnet-4',
+      { agentId: 'agent-def', agentType: 'general-purpose' },
+    );
+
+    const entry = tracker.getMetrics().subagentByAgentType['general-purpose']!;
+    const breakdown = entry.breakdown;
+    expect(breakdown).toEqual({
+      inputTokens: 15_000,
+      outputTokens: 3_000,
+      cacheReadTokens: 600,
+      cacheCreationTokens: 350,
+    });
+    expect(
+      breakdown!.inputTokens +
+        breakdown!.outputTokens +
+        breakdown!.cacheReadTokens +
+        breakdown!.cacheCreationTokens,
+    ).toBe(entry.tokens);
+  });
+
   it('ctx.agentId set but ctx.agentType absent → no entry added to subagentByAgentType', () => {
     const tracker = new CostTracker();
     tracker.recordTokenUsage(
