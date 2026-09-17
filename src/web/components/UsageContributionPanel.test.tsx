@@ -526,4 +526,18 @@ describe('UsageContributionPanel — Skills/Subagents/Plugins column consistency
     expect(within(pluginRow).getByRole('cell', { name: '1' })).toBeInTheDocument();
     expect(within(pluginRow).getByRole('cell', { name: '3.0k' })).toBeInTheDocument();
   });
+
+  it('shows a Cost column on the Plugins table matching Skills and Subagents', () => {
+    render(
+      <UsageContributionPanel
+        data={SAMPLE_USAGE_INSIGHTS}
+        isError={false}
+        title="What's contributing to your spend"
+        subtitle="Last 30 days"
+        toolRows={[]}
+      />,
+    );
+    const pluginRow = screen.getByRole('cell', { name: 'pstack' }).closest('tr') as HTMLElement;
+    expect(within(pluginRow).getByRole('cell', { name: '$2.00' })).toBeInTheDocument();
+  });
 });

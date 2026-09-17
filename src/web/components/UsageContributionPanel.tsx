@@ -286,7 +286,7 @@ export function UsageContributionPanel({
               rows={plugins}
               totalCount={data.pluginsTotalCount}
               rowKey={(row) => row.key}
-              defaultSort={{ column: 3, direction: 'desc' }}
+              defaultSort={{ column: 4, direction: 'desc' }}
               columns={[
                 { header: 'Plugin', align: 'left', cell: (row) => row.key },
                 {
@@ -300,6 +300,12 @@ export function UsageContributionPanel({
                   align: 'right',
                   cell: (row) => formatTokensCompact(row.tokens),
                   sortValue: (row) => row.tokens,
+                },
+                {
+                  header: 'Cost',
+                  align: 'right',
+                  cell: (row) => formatUsdOrDash(row.costUsd),
+                  sortValue: (row) => row.costUsd,
                 },
                 {
                   header: '% of spend',
