@@ -7,7 +7,7 @@ export interface ShareTableColumn<Row> {
   readonly align: 'left' | 'right';
   readonly cell: (row: Row) => ReactNode;
   readonly className?: string | ((row: Row) => string | undefined);
-  readonly title?: (row: Row) => string;
+  readonly title?: (row: Row) => string | undefined;
   /** Present on a column makes its header a sort toggle; absent renders a plain header. */
   readonly sortValue?: (row: Row) => number | string;
 }

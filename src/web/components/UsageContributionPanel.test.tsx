@@ -540,4 +540,52 @@ describe('UsageContributionPanel — Skills/Subagents/Plugins column consistency
     const pluginRow = screen.getByRole('cell', { name: 'pstack' }).closest('tr') as HTMLElement;
     expect(within(pluginRow).getByRole('cell', { name: '$2.00' })).toBeInTheDocument();
   });
+
+  it('sets the token-breakdown title on the Tokens and Cost cells when the row carries one, and omits it otherwise', () => {
+    const withBreakdown: UsageInsightsReport = {
+      ...SAMPLE_USAGE_INSIGHTS,
+      skills: [
+        {
+          key: 'code-review',
+          costUsd: 5,
+          tokens: 10000,
+          count: 6,
+          sharePct: 12,
+          breakdown: {
+            inputTokens: 1200,
+            outputTokens: 800,
+            cacheReadTokens: 30000,
+            cacheCreationTokens: 2000,
+          },
+        },
+      ],
+    };
+    render(
+      <UsageContributionPanel
+        data={withBreakdown}
+        isError={false}
+        title="What's contributing to your spend"
+        subtitle="Last 30 days"
+        toolRows={[]}
+      />,
+    );
+
+    const skillRow = screen.getByRole('cell', { name: 'code-review' }).closest('tr') as HTMLElement;
+    const expectedTitle = 'Input 1.2k · Output 800 · Cache read 30.0k · Cache write 2.0k';
+    expect(within(skillRow).getByRole('cell', { name: '10.0k' })).toHaveAttribute(
+      'title',
+      expectedTitle,
+    );
+    expect(within(skillRow).getByRole('cell', { name: '$5.00' })).toHaveAttribute(
+      'title',
+      expectedTitle,
+    );
+
+    // Subagents row in SAMPLE_USAGE_INSIGHTS carries no breakdown.
+    const subagentRow = screen
+      .getByRole('cell', { name: 'general-purpose' })
+      .closest('tr') as HTMLElement;
+    expect(within(subagentRow).getByRole('cell', { name: '8.0k' })).not.toHaveAttribute('title');
+    expect(within(subagentRow).getByRole('cell', { name: '$4.00' })).not.toHaveAttribute('title');
+  });
 });

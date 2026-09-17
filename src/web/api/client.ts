@@ -599,12 +599,21 @@ export interface AttributionBucket {
 export type UsageInsightId =
   'high_context' | 'subagent_heavy' | 'long_sessions' | 'loops' | 'plugins';
 
+// Mirrors src/storage/types.ts's TokenBreakdown.
+export interface TokenBreakdown {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadTokens: number;
+  readonly cacheCreationTokens: number;
+}
+
 export interface UsageShareRow {
   readonly key: string;
   readonly costUsd: number;
   readonly tokens: number;
   readonly count: number;
   readonly sharePct: number;
+  readonly breakdown?: TokenBreakdown;
 }
 
 export interface UsageInsight extends UsageShareRow {

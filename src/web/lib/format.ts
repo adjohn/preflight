@@ -1,3 +1,5 @@
+import type { TokenBreakdown } from '../api/client.js';
+
 /**
  * Shared number formatting helpers for the dashboard SPA.
  *
@@ -173,6 +175,19 @@ export function formatTokensCompact(n: number): string {
   if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (abs >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(Math.round(n));
+}
+
+/**
+ * Per-category token breakdown for a hover title, e.g.
+ * "Input 1.2k · Output 800 · Cache read 30.0k · Cache write 2.0k".
+ */
+export function formatTokenBreakdown(b: TokenBreakdown): string {
+  return [
+    `Input ${formatTokensCompact(b.inputTokens)}`,
+    `Output ${formatTokensCompact(b.outputTokens)}`,
+    `Cache read ${formatTokensCompact(b.cacheReadTokens)}`,
+    `Cache write ${formatTokensCompact(b.cacheCreationTokens)}`,
+  ].join(' · ');
 }
 
 /**

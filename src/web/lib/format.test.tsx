@@ -10,6 +10,7 @@ import {
   formatUsd,
   formatUsdOrDash,
   formatTokensCompact,
+  formatTokenBreakdown,
   formatRelativeTime,
   shortToolName,
   formatMs,
@@ -284,6 +285,32 @@ describe('formatTokensCompact()', () => {
 
   it('renders the M tier at the 1,000,000 boundary', () => {
     expect(formatTokensCompact(1_000_000)).toBe('1.0M');
+  });
+});
+
+describe('formatTokenBreakdown()', () => {
+  it('joins the four categories as compact counts with middle dots', () => {
+    expect(
+      formatTokenBreakdown({
+        inputTokens: 1_200,
+        outputTokens: 800,
+        cacheReadTokens: 30_000,
+        cacheCreationTokens: 2_000,
+      }),
+    ).toBe('Input 1.2k · Output 800 · Cache read 30.0k · Cache write 2.0k');
+  });
+});
+
+describe('formatTokenBreakdown()', () => {
+  it('joins all four categories with the compact formatter', () => {
+    expect(
+      formatTokenBreakdown({
+        inputTokens: 1_200,
+        outputTokens: 800,
+        cacheReadTokens: 30_000,
+        cacheCreationTokens: 2_000,
+      }),
+    ).toBe('Input 1.2k · Output 800 · Cache read 30.0k · Cache write 2.0k');
   });
 });
 
