@@ -1333,7 +1333,7 @@ interface SessionStatusAggregateInput {
   readonly todaySessions: readonly FullSessionSummary[];
 }
 
-// Per-session lifecycle status (#693) for today's Sessions today KPI.
+// Per-session lifecycle status for today's Sessions today KPI.
 // `lastToolName` is "latest timestamp wins" across the live buffer and each
 // persisted timeline, which is exactly the brief's rule (persisted last
 // entry, or the buffer's if it's newer). `openPrCount` reuses
