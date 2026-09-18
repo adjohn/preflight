@@ -1,19 +1,17 @@
 name: AI review and triage
 
 # Reviews contributor PRs once CI is green and triages issues from
-# non-collaborators. Two trust boundaries drive the shape:
+# non-collaborators.
 #
-# - The review runs on `workflow_run`, not `pull_request`, so it fires only
-#   after ci.yml succeeded for the head sha and it runs in the base repo's
-#   context, where secrets exist even for fork PRs. It checks out `main`,
-#   never the PR head, and its tool allowlist has no npm/node, so PR code is
-#   read (git show, gh pr diff) but never executed next to the API key.
-# - State lives on GitHub: every comment carries an HTML marker with the head
-#   sha (`<!-- preflight-bot kind=review sha=... -->`), so a re-run for the
-#   same sha is a no-op and a new push gets a fresh review.
+# The review runs on `workflow_run`, not `pull_request`, because GitHub
+# withholds secrets from `pull_request` runs of fork PRs. That puts the run
+# in the base repo's context, so it checks out `main`, never the PR head,
+# and the tool allowlist below has no npm/node: PR code is read, not run.
 #
-# PRs by the repo owner (adjohn) are never reviewed, by their own request.
-# Needs one repository secret: ANTHROPIC_API_KEY.
+# claude-code-action refuses actors without write access (every fork PR
+# and outside issue). `allowed_non_write_users: '*'` overrides that; the
+# action's own docs allow it only for jobs with minimal permissions, which
+# is why `permissions` has no `contents: write`.
 on:
   workflow_run:
     workflows: [CI]
@@ -86,10 +84,6 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # The action refuses to run when the actor who triggered the upstream
-          # event lacks write access, which is every fork PR and outside issue.
-          # Allowing them is safe here because the job never executes their
-          # code and the token has no contents:write.
           allowed_non_write_users: '*'
           claude_args: ${{ env.CLAUDE_ARGS }}
           prompt: |
@@ -143,10 +137,6 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # The action refuses to run when the actor who triggered the upstream
-          # event lacks write access, which is every fork PR and outside issue.
-          # Allowing them is safe here because the job never executes their
-          # code and the token has no contents:write.
           allowed_non_write_users: '*'
           claude_args: ${{ env.CLAUDE_ARGS }}
           prompt: |

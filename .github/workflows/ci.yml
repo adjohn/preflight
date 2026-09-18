@@ -8,8 +8,8 @@ name: CI
 # release.yml).
 on:
   pull_request:
-    # ready_for_review is added so marking a draft ready re-runs CI, which is
-    # what lets ai-review.yml review a PR at the moment it becomes ready.
+    # ready_for_review is not in GitHub's default set. Without it a draft
+    # marked ready never re-runs CI, and ai-review.yml keys off CI.
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
