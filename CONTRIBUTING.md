@@ -265,6 +265,12 @@ See [TEST_PATTERNS.md](./docs/TEST_PATTERNS.md) for the full testing guide.
 4. Make your changes, run `npm test` and `npm run lint`
 5. Push to your fork and open a PR against `main`
 
+### What happens after you open a PR
+
+CI (`.github/workflows/ci.yml`) runs lint, build, the full test suite, and the docs and bundle-size drift checks on every push. A maintainer has to approve the first CI run from a new contributor.
+
+Once CI is green on a non-draft PR, an automated reviewer (`.github/workflows/ai-review.yml`) posts one comment with a verdict and any findings, each tied to a `path:line` and a concrete failure scenario. It reads your code but never runs it. Push a new commit to get a fresh review; a maintainer makes the final call. New issues from non-maintainers get labels and a short triage comment the same way.
+
 ### Commit messages
 
 ```

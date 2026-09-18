@@ -8,6 +8,9 @@ name: CI
 # release.yml).
 on:
   pull_request:
+    # ready_for_review is added so marking a draft ready re-runs CI, which is
+    # what lets ai-review.yml review a PR at the moment it becomes ready.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 concurrency:
