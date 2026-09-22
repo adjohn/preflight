@@ -53,6 +53,17 @@ describe('buildWeekForecast()', () => {
     expect(result).toBeGreaterThanOrEqual(20);
   });
 
+  it('projects from recent history when nothing has been spent yet this week', () => {
+    const tuesday = nextWeekday(new Date(2026, 0, 1), 2);
+    const todayStart = localStartOfDay(tuesday.getTime());
+    const sessions = Array.from({ length: 21 }, (_, i) =>
+      makeSession(todayStart - (i + 2) * 86_400_000 + 60_000, 40),
+    );
+
+    const result = buildWeekForecast(sessions, 0, 0, tuesday.getTime());
+    expect(result).toBeGreaterThan(100);
+  });
+
   it('excludes sessions from a previous week', () => {
     const wednesday = nextWeekday(new Date(2026, 0, 1), 3);
     const todayStart = localStartOfDay(wednesday.getTime());
@@ -88,6 +99,17 @@ describe('buildMonthForecast()', () => {
     // avgDailySpend = (18 + 12) / 15 = 2; endOfMonth = 18 + 12 + 2 * 16 = 62.
     const result = buildMonthForecast(sessions, 12, 10, todayMs);
     expect(result).toBeCloseTo(18 + 12 + ((18 + 12) / 15) * 16, 5);
+  });
+
+  it('projects from recent history on the first of the month', () => {
+    const todayMs = new Date(2026, 4, 1, 12, 0, 0, 0).getTime();
+    const todayStart = localStartOfDay(todayMs);
+    const sessions = Array.from({ length: 14 }, (_, i) =>
+      makeSession(todayStart - (i + 1) * 86_400_000 + 60_000, 40),
+    );
+
+    const result = buildMonthForecast(sessions, 0, 0, todayMs);
+    expect(result).toBeGreaterThan(1000);
   });
 
   it('handles sessions from the current month correctly and excludes sessions from prior months', () => {
