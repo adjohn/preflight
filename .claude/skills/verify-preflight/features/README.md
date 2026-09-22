@@ -25,7 +25,7 @@ This directory is the maintained source for verifying Preflight's user-facing be
 - A `shot` proof passes only when every `--expect` line prints `ok`.
 - Persistence proof lists `<run>/store/sessions/*_<sid>.json`.
 - Record the feature ID and entry point with every artifact name, for example `shot / today-kpis`.
-- Report an unreachable path with the command and the unmet precondition. A host with exhausted ephemeral ports shows as curl exit 7 or `net::ERR_ADDRESS_INVALID`. Report that as blocked, not failed.
+- Report an unreachable path with the command and the unmet precondition. A connection error while `$PF doctor` shows the process up and owning the port is a host problem. Report it as blocked, not failed.
 - Do not report a skipped entry point as verified through a different surface.
 
 ## Feature entry contract
