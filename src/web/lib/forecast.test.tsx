@@ -64,18 +64,18 @@ describe('buildWeekForecast()', () => {
     expect(result).toBeGreaterThan(100);
   });
 
-  it('excludes sessions from a previous week', () => {
-    const wednesday = nextWeekday(new Date(2026, 0, 1), 3);
-    const todayStart = localStartOfDay(wednesday.getTime());
-    const monday = todayStart - 2 * 86_400_000;
+  it('counts a previous week toward the run rate but not the week-to-date total', () => {
+    const sunday = nextWeekday(new Date(2026, 0, 1), 0);
+    const todayStart = localStartOfDay(sunday.getTime());
+    const monday = todayStart - 6 * 86_400_000;
     const thisWeekOnly = [makeSession(monday + 60_000, 10)];
     const withLastWeek = [
       ...thisWeekOnly,
       makeSession(monday - 7 * 86_400_000 + 60_000, 1000), // last week's Monday
     ];
 
-    const baseline = buildWeekForecast(thisWeekOnly, 15, 12, wednesday.getTime());
-    const withStale = buildWeekForecast(withLastWeek, 15, 12, wednesday.getTime());
+    const baseline = buildWeekForecast(thisWeekOnly, 15, 12, sunday.getTime());
+    const withStale = buildWeekForecast(withLastWeek, 15, 12, sunday.getTime());
     expect(withStale).toBe(baseline);
   });
 });
@@ -112,16 +112,13 @@ describe('buildMonthForecast()', () => {
     expect(result).toBeGreaterThan(1000);
   });
 
-  it('handles sessions from the current month correctly and excludes sessions from prior months', () => {
-    const todayMs = new Date(2026, 4, 20, 12, 0, 0, 0).getTime(); // May 20, 2026
-    const monthFirst = localStartOfDay(new Date(2026, 4, 1, 12, 0, 0, 0).getTime());
-    const aprilLast = monthFirst - 86_400_000; // Last day of April
+  it('counts a prior month toward the run rate but not the month-to-date total', () => {
+    const todayMs = new Date(2026, 1, 28, 12, 0, 0, 0).getTime(); // Feb 28, 2026 (last day)
+    const monthFirst = localStartOfDay(new Date(2026, 1, 1, 12, 0, 0, 0).getTime());
+    const januaryLast = monthFirst - 86_400_000 + 60_000; // inside the 28-day run-rate window
 
     const thisMonthOnly = [makeSession(monthFirst + 60_000, 15)];
-    const withLastMonth = [
-      ...thisMonthOnly,
-      makeSession(aprilLast, 1000), // April 30 — should be excluded
-    ];
+    const withLastMonth = [...thisMonthOnly, makeSession(januaryLast, 1000)];
 
     const baseline = buildMonthForecast(thisMonthOnly, 12, 10, todayMs);
     const withStale = buildMonthForecast(withLastMonth, 12, 10, todayMs);
