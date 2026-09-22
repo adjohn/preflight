@@ -1,11 +1,12 @@
 name: CI
 
-# Runs the checks a contributor is expected to run locally before opening a
-# PR (per CLAUDE.md: `npm run build && npm test`), plus lint and the two
-# drift-checker scripts that otherwise never run automatically:
-# check-docs-inventory.ts (docs/code drift) and check-bundle-size.ts (SPA
-# bundle budget, mirrors verify:plugin-hook's already-enforced pattern in
-# release.yml).
+# Runs CONTRIBUTING.md's "Before opening a PR" checklist except two items:
+# test:e2e, which needs a browser download and has a baseline only for macOS,
+# and format:check, which is enforced by the pre-commit hook alone and is #731's
+# to add here. Plus the two drift-checker scripts that otherwise never run
+# automatically: check-docs-inventory.ts (docs/code drift) and
+# check-bundle-size.ts (SPA bundle budget, mirrors verify:plugin-hook's
+# already-enforced pattern in release.yml).
 on:
   pull_request:
   workflow_dispatch:
@@ -50,6 +51,9 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Test (web)
+        run: npm run test:web
 
       - name: Check docs/code inventory drift
         run: npm run check:docs-inventory
