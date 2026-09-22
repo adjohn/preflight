@@ -211,7 +211,7 @@ cmd_shot() {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     let failed = false;
     try {
-      await page.goto(url, { waitUntil: "networkidle" });
+      await page.goto(url, { waitUntil: "load" });
       await page.getByRole("heading", { level: 1 }).first().waitFor({ timeout: 10000 });
       for (let i = 0; i < steps.length; i += 2) {
         const [kind, text] = [steps[i], steps[i + 1]];
