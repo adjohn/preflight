@@ -29,7 +29,7 @@ Preconditions:
 ## Gotchas
 
 - The dashboard labels sessions by the first 8 characters of the session id, not by the cwd-derived `sessionName` the API returns. Expect `${SID:0:8}`, never `pf-verify-project`.
-- The `Where today's spend went` Models table reads `/api/model-usage`. On 1.57.0 that route counted one seeded turn twice (`requestCount` 2, $0.019) while `spend today` and `/api/cost` showed it once ($0.0096). Check the table against `/api/cost` before trusting it, and treat a mismatch as a product finding, not a helper fault.
+- The `Where today's spend went` Models table reads `/api/model-usage`. On 1.57.0 that route, `/api/tool-selection-score`, and `/api/quality-proxy` count a session twice once it persists (issue #805). Check the table against `/api/cost`, and read these routes before the first persist if a proof depends on them.
 - The KPIs come from persisted sessions. A `shot` taken less than one persist interval after the last input can still show the empty state.
 - The empty state disappears for the rest of the day once any session persists. Use a fresh `up` to re-prove `today-empty`.
 - `npm run test:e2e` owns the pixel baseline for the empty state on port 7790. Do not compare `shot` PNGs against `e2e/today.spec.ts-snapshots`, which use a different viewport.
