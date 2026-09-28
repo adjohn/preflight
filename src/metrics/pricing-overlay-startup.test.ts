@@ -23,25 +23,28 @@ describe('pricing overlay integration', () => {
     });
   });
 
-  it('prices Claude Opus 5.5 from the bundled overlay, including the [1m] id Claude Code reports', () => {
-    expect(resolveModelPricing('claude-opus-5-5')).toBeNull();
+  it.each([
+    ['claude-opus-5-5', 4, 20, 0.2, 5, 'claude-opus-5', 5],
+    ['claude-sonnet-5-5', 2, 10, 0.2, 2.5, 'claude-sonnet-5', 2],
+  ])(
+    'prices %s from the bundled overlay, including the [1m] id Claude Code reports',
+    (model, input, output, cacheRead, cacheCreation, predecessor, predecessorInput) => {
+      expect(resolveModelPricing(model)).toBeNull();
 
-    applyGapFilledOverlay(resolvePricingOverlayPath() as string);
+      applyGapFilledOverlay(resolvePricingOverlayPath() as string);
 
-    const expected = {
-      inputPerMTok: 4,
-      outputPerMTok: 20,
-      cacheReadPerMTok: 0.2,
-      cacheCreationPerMTok: 5,
-      contextWindow: 1_000_000,
-    };
-    expect(resolveModelPricing('claude-opus-5-5')).toMatchObject(expected);
-    expect(resolveModelPricing('claude-opus-5-5[1m]')).toMatchObject(expected);
-    expect(resolveModelPricing('claude-opus-5')).toMatchObject({
-      inputPerMTok: 5,
-      outputPerMTok: 25,
-    });
-  });
+      const expected = {
+        inputPerMTok: input,
+        outputPerMTok: output,
+        cacheReadPerMTok: cacheRead,
+        cacheCreationPerMTok: cacheCreation,
+        contextWindow: 1_000_000,
+      };
+      expect(resolveModelPricing(model)).toMatchObject(expected);
+      expect(resolveModelPricing(`${model}[1m]`)).toMatchObject(expected);
+      expect(resolveModelPricing(predecessor)).toMatchObject({ inputPerMTok: predecessorInput });
+    },
+  );
 
   it.each([
     ['gpt-6-astra', 10, 50, 1, 20 + 75],

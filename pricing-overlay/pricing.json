@@ -7,6 +7,14 @@
     "cacheCreationPerMTok": 5,
     "contextWindow": 1000000
   },
+  "claude-sonnet-5-5": {
+    "inputPerMTok": 2,
+    "outputPerMTok": 10,
+    "thinkingPerMTok": 10,
+    "cacheReadPerMTok": 0.2,
+    "cacheCreationPerMTok": 2.5,
+    "contextWindow": 1000000
+  },
   "gpt-6-astra": {
     "inputPerMTok": 10,
     "outputPerMTok": 50,
