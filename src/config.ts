@@ -27,34 +27,42 @@ export interface ResolvedCompanionMode {
   readonly source: CompanionModeSource;
 }
 
+function otlpEndpointIsNewRelic(endpoint: string | undefined): boolean {
+  if (!endpoint) return false;
+  try {
+    const url = new URL(endpoint.includes('://') ? endpoint : `https://${endpoint}`);
+    return url.hostname === 'nr-data.net' || url.hostname.endsWith('.nr-data.net');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Companion mode only prevents double-counting when Claude Code's own OTel
+ * metrics also land in New Relic. Detection requires an nr-data.net endpoint:
+ * turning it on for an export that goes elsewhere would drop Preflight's cost
+ * gauges from New Relic with nothing replacing them.
+ */
 export function resolveCompanionMode(
   env: NodeJS.ProcessEnv,
   fileValue: boolean | undefined,
 ): ResolvedCompanionMode {
-  // Explicit env var wins
-  const envVal = env.NR_AI_COMPANION_MODE;
-  if (envVal !== undefined && envVal !== '') {
-    const value = envVal === 'true' || envVal === '1';
-    return { value, source: 'env NR_AI_COMPANION_MODE' };
-  }
+  const envValue = parseEnvBool(env.NR_AI_COMPANION_MODE);
+  if (envValue !== undefined) return { value: envValue, source: 'env NR_AI_COMPANION_MODE' };
+  if (fileValue !== undefined) return { value: fileValue, source: 'config file' };
 
-  // Config file wins
-  if (fileValue !== undefined) {
-    return { value: fileValue, source: 'config file' };
-  }
-
-  // Auto-detect: Claude Code's OTel export active?
-  const claudeCodeEnabled =
-    env.CLAUDE_CODE_ENABLE_TELEMETRY === '1' || env.CLAUDE_CODE_ENABLE_TELEMETRY === 'true';
-  const otelExporter = env.OTEL_METRICS_EXPORTER;
-  const exporterIsActive =
-    otelExporter !== undefined && otelExporter !== '' && otelExporter !== 'none';
-
-  if (claudeCodeEnabled && exporterIsActive) {
+  const exporters = (env.OTEL_METRICS_EXPORTER ?? '')
+    .split(',')
+    .map((e) => e.trim())
+    .filter((e) => e !== '' && e !== 'none');
+  const endpoint = env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || env.OTEL_EXPORTER_OTLP_ENDPOINT;
+  if (
+    parseEnvBool(env.CLAUDE_CODE_ENABLE_TELEMETRY) === true &&
+    exporters.includes('otlp') &&
+    otlpEndpointIsNewRelic(endpoint)
+  ) {
     return { value: true, source: 'detected Claude Code OTel export' };
   }
-
-  // Default
   return { value: false, source: 'default' };
 }
 
@@ -405,11 +413,15 @@ function inferRepoUrl(): string | null {
   return getGitRemoteUrl();
 }
 
-function envBool(key: string, defaultValue: boolean): boolean {
-  const val = process.env[key]?.trim().toLowerCase();
+function parseEnvBool(raw: string | undefined): boolean | undefined {
+  const val = raw?.trim().toLowerCase();
   if (val === 'true' || val === '1' || val === 'yes' || val === 'y' || val === 'on') return true;
   if (val === 'false' || val === '0' || val === 'no' || val === 'n' || val === 'off') return false;
-  return defaultValue;
+  return undefined;
+}
+
+function envBool(key: string, defaultValue: boolean): boolean {
+  return parseEnvBool(process.env[key]) ?? defaultValue;
 }
 
 // Applied to every return path of envInt (not just the parsed-env-var one) so
@@ -1485,7 +1497,6 @@ export function validateConfigFile(filePath: string): ConfigValidationResult {
       fileExists: false,
       malformed: false,
       hasLicenseKey: false,
-      companionMode: undefined,
       errors,
       warnings,
     };
@@ -1497,43 +1508,19 @@ export function validateConfigFile(filePath: string): ConfigValidationResult {
     raw = readFileSync(filePath, 'utf-8');
   } catch (err) {
     errors.push(`Could not read file: ${err instanceof Error ? err.message : String(err)}`);
-    return {
-      filePath,
-      fileExists: true,
-      malformed: true,
-      hasLicenseKey: false,
-      companionMode: undefined,
-      errors,
-      warnings,
-    };
+    return { filePath, fileExists: true, malformed: true, hasLicenseKey: false, errors, warnings };
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
     errors.push(`Invalid JSON: ${err instanceof Error ? err.message : String(err)}`);
-    return {
-      filePath,
-      fileExists: true,
-      malformed: true,
-      hasLicenseKey: false,
-      companionMode: undefined,
-      errors,
-      warnings,
-    };
+    return { filePath, fileExists: true, malformed: true, hasLicenseKey: false, errors, warnings };
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     errors.push('Config must be a JSON object, not an array or primitive value');
-    return {
-      filePath,
-      fileExists: true,
-      malformed: true,
-      hasLicenseKey: false,
-      companionMode: undefined,
-      errors,
-      warnings,
-    };
+    return { filePath, fileExists: true, malformed: true, hasLicenseKey: false, errors, warnings };
   }
 
   // Zod type/value errors

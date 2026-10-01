@@ -119,9 +119,9 @@ Similarly, Preflight cannot detect the data-residency premium per-response the w
 
 Claude Code has its own built-in OTel export for cost, tokens, lines-of-code, and session-time metrics. Preflight's `session_id` equals that export's `session.id` for Claude Code sessions, so the two streams join cleanly — which also means an org that enables both, feeding them into one blended "org AI spend" dashboard, roughly doubles the true cost and token counts. `companionMode` exists to stop that without losing either signal.
 
-**Automatic detection**: Companion mode defaults to `true` if Claude Code's OTel export is active (detected from `CLAUDE_CODE_ENABLE_TELEMETRY=1` and `OTEL_METRICS_EXPORTER` set to something other than `none`). An explicit configuration always wins:
+Companion mode turns on by itself when Preflight sees Claude Code's OTel metrics export going to New Relic. It checks the environment Claude Code passes to the MCP server: `CLAUDE_CODE_ENABLE_TELEMETRY` is on, `OTEL_METRICS_EXPORTER` includes `otlp`, and the OTLP endpoint (`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, else `OTEL_EXPORTER_OTLP_ENDPOINT`) is an `nr-data.net` host. An export to any other backend, or through a collector on another host, is not detected. Set companion mode explicitly in those cases.
 
-Add to `~/.newrelic-preflight/config.json` to override:
+An explicit setting always wins over detection. In `~/.newrelic-preflight/config.json`:
 
 ```json
 {
@@ -129,16 +129,17 @@ Add to `~/.newrelic-preflight/config.json` to override:
 }
 ```
 
-Or via an environment variable to override:
+Or in the environment:
 
 ```bash
-export NR_AI_COMPANION_MODE=true
-export NR_AI_COMPANION_MODE=false  # opt out if auto-detected
+export NR_AI_COMPANION_MODE=false
 ```
 
-| Setting         | What it does                                                       | Default                                                                |
-| --------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `companionMode` | Suppresses `ai.cost.*` gauges and tags cost-bearing events (below) | `true` if Claude Code OTel export active, else `false` (auto-detected) |
+`preflight doctor` shows the resolved value and where it came from.
+
+| Setting         | What it does                                                       | Default                                                               |
+| --------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `companionMode` | Suppresses `ai.cost.*` gauges and tags cost-bearing events (below) | `true` when Claude Code's OTel export goes to New Relic, else `false` |
 
 With `companionMode: true`:
 

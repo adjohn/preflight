@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Companion mode auto-detection**: When companion mode is not explicitly configured, it now defaults to `true` if Claude Code's OTel export is active (`CLAUDE_CODE_ENABLE_TELEMETRY=1` and `OTEL_METRICS_EXPORTER` set to something other than `none`). Orgs running both Claude Code's built-in export and Preflight now get companion mode by default, stopping double-counting of cost and tokens. Opt out with `NR_AI_COMPANION_MODE=false` in config or environment. The resolved value and source are shown in `preflight doctor` and `nr_observe_get_config`.
+- **Adding Preflight to an org that already exports Claude Code's OTel metrics to New Relic doubled its reported cost and tokens until someone turned on companion mode.** Companion mode now turns on by itself when Claude Code's telemetry is on, `OTEL_METRICS_EXPORTER` includes `otlp`, and the OTLP endpoint is an `nr-data.net` host. `NR_AI_COMPANION_MODE` or `companionMode` in the config file still wins in either direction, so `NR_AI_COMPANION_MODE=false` turns it off. `preflight doctor` shows the resolved value and its source, and `nr_observe_get_config` shows the value.
 
 ## [1.57.2] - 2026-09-29
 

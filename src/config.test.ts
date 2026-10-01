@@ -11,6 +11,7 @@ import {
   validateConfigFile,
   resolveCompanionMode,
 } from './config.js';
+import type { CompanionModeSource } from './config.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let savedEnv: NodeJS.ProcessEnv;
@@ -2536,127 +2537,125 @@ describe('loadMcpConfig() — tiers', () => {
 });
 
 describe('resolveCompanionMode()', () => {
-  const baseEnv: NodeJS.ProcessEnv = {};
+  const NR_EXPORT = {
+    CLAUDE_CODE_ENABLE_TELEMETRY: '1',
+    OTEL_METRICS_EXPORTER: 'otlp',
+    OTEL_EXPORTER_OTLP_ENDPOINT: 'https://otlp.nr-data.net:4317',
+  };
 
-  it('resolves explicit env NR_AI_COMPANION_MODE to true with source', () => {
-    const env = { ...baseEnv, NR_AI_COMPANION_MODE: 'true' };
-    const result = resolveCompanionMode(env, undefined);
-    expect(result).toEqual({ value: true, source: 'env NR_AI_COMPANION_MODE' });
-  });
-
-  it('resolves explicit env NR_AI_COMPANION_MODE to false with source', () => {
-    const env = { ...baseEnv, NR_AI_COMPANION_MODE: 'false' };
-    const result = resolveCompanionMode(env, undefined);
-    expect(result).toEqual({ value: false, source: 'env NR_AI_COMPANION_MODE' });
-  });
-
-  it('accepts "1" as true in env var', () => {
-    const env = { ...baseEnv, NR_AI_COMPANION_MODE: '1' };
-    const result = resolveCompanionMode(env, undefined);
-    expect(result).toEqual({ value: true, source: 'env NR_AI_COMPANION_MODE' });
-  });
-
-  it('accepts "0" as false in env var', () => {
-    const env = { ...baseEnv, NR_AI_COMPANION_MODE: '0' };
-    const result = resolveCompanionMode(env, undefined);
-    expect(result).toEqual({ value: false, source: 'env NR_AI_COMPANION_MODE' });
-  });
-
-  it('explicit env false overrides config file true', () => {
-    const env = { ...baseEnv, NR_AI_COMPANION_MODE: 'false' };
-    const result = resolveCompanionMode(env, true);
-    expect(result).toEqual({ value: false, source: 'env NR_AI_COMPANION_MODE' });
-  });
-
-  it('explicit env true overrides config file false', () => {
-    const env = { ...baseEnv, NR_AI_COMPANION_MODE: 'true' };
-    const result = resolveCompanionMode(env, false);
-    expect(result).toEqual({ value: true, source: 'env NR_AI_COMPANION_MODE' });
-  });
-
-  it('uses config file value when env unset', () => {
-    const env = baseEnv;
-    const result = resolveCompanionMode(env, true);
-    expect(result).toEqual({ value: true, source: 'config file' });
-  });
-
-  it('uses config file false when env unset', () => {
-    const env = baseEnv;
-    const result = resolveCompanionMode(env, false);
-    expect(result).toEqual({ value: false, source: 'config file' });
-  });
-
-  it('detects Claude Code OTel export when both env vars set', () => {
-    const env = {
-      ...baseEnv,
-      CLAUDE_CODE_ENABLE_TELEMETRY: '1',
-      OTEL_METRICS_EXPORTER: 'otlp',
-    };
-    const result = resolveCompanionMode(env, undefined);
-    expect(result).toEqual({ value: true, source: 'detected Claude Code OTel export' });
-  });
-
-  it('detects Claude Code OTel export with CLAUDE_CODE_ENABLE_TELEMETRY=true', () => {
-    const env = {
-      ...baseEnv,
-      CLAUDE_CODE_ENABLE_TELEMETRY: 'true',
-      OTEL_METRICS_EXPORTER: 'otlp',
-    };
-    const result = resolveCompanionMode(env, undefined);
-    expect(result).toEqual({ value: true, source: 'detected Claude Code OTel export' });
-  });
-
-  it('supports comma-separated OTEL_METRICS_EXPORTER list', () => {
-    const env = {
-      ...baseEnv,
-      CLAUDE_CODE_ENABLE_TELEMETRY: '1',
-      OTEL_METRICS_EXPORTER: 'otlp,console',
-    };
-    const result = resolveCompanionMode(env, undefined);
-    expect(result).toEqual({ value: true, source: 'detected Claude Code OTel export' });
-  });
-
-  it('does not detect when OTEL_METRICS_EXPORTER is none', () => {
-    const env = {
-      ...baseEnv,
-      CLAUDE_CODE_ENABLE_TELEMETRY: '1',
-      OTEL_METRICS_EXPORTER: 'none',
-    };
-    const result = resolveCompanionMode(env, undefined);
-    expect(result).toEqual({ value: false, source: 'default' });
-  });
-
-  it('does not detect when OTEL_METRICS_EXPORTER is unset', () => {
-    const env = {
-      ...baseEnv,
-      CLAUDE_CODE_ENABLE_TELEMETRY: '1',
-    };
-    const result = resolveCompanionMode(env, undefined);
-    expect(result).toEqual({ value: false, source: 'default' });
-  });
-
-  it('does not detect when CLAUDE_CODE_ENABLE_TELEMETRY is unset', () => {
-    const env = {
-      ...baseEnv,
-      OTEL_METRICS_EXPORTER: 'otlp',
-    };
-    const result = resolveCompanionMode(env, undefined);
-    expect(result).toEqual({ value: false, source: 'default' });
-  });
-
-  it('does not detect when CLAUDE_CODE_ENABLE_TELEMETRY is false', () => {
-    const env = {
-      ...baseEnv,
-      CLAUDE_CODE_ENABLE_TELEMETRY: 'false',
-      OTEL_METRICS_EXPORTER: 'otlp',
-    };
-    const result = resolveCompanionMode(env, undefined);
-    expect(result).toEqual({ value: false, source: 'default' });
-  });
-
-  it('defaults to false when no conditions match', () => {
-    const env = baseEnv;
-    const result = resolveCompanionMode(env, undefined);
-    expect(result).toEqual({ value: false, source: 'default' });
+  it.each<[string, NodeJS.ProcessEnv, boolean | undefined, boolean, CompanionModeSource]>([
+    ['env true', { NR_AI_COMPANION_MODE: 'true' }, undefined, true, 'env NR_AI_COMPANION_MODE'],
+    ['env "yes"', { NR_AI_COMPANION_MODE: 'yes' }, undefined, true, 'env NR_AI_COMPANION_MODE'],
+    ['env "0"', { NR_AI_COMPANION_MODE: '0' }, undefined, false, 'env NR_AI_COMPANION_MODE'],
+    [
+      'env false beats file true',
+      { NR_AI_COMPANION_MODE: 'false' },
+      true,
+      false,
+      'env NR_AI_COMPANION_MODE',
+    ],
+    [
+      'env true beats file false',
+      { NR_AI_COMPANION_MODE: 'true' },
+      false,
+      true,
+      'env NR_AI_COMPANION_MODE',
+    ],
+    [
+      'env false beats detection',
+      { ...NR_EXPORT, NR_AI_COMPANION_MODE: 'false' },
+      undefined,
+      false,
+      'env NR_AI_COMPANION_MODE',
+    ],
+    ['unparseable env falls through', { NR_AI_COMPANION_MODE: 'maybe' }, true, true, 'config file'],
+    ['file true', {}, true, true, 'config file'],
+    ['file false beats detection', NR_EXPORT, false, false, 'config file'],
+    ['export to New Relic', NR_EXPORT, undefined, true, 'detected Claude Code OTel export'],
+    [
+      'telemetry "true"',
+      { ...NR_EXPORT, CLAUDE_CODE_ENABLE_TELEMETRY: 'true' },
+      undefined,
+      true,
+      'detected Claude Code OTel export',
+    ],
+    [
+      'exporter list',
+      { ...NR_EXPORT, OTEL_METRICS_EXPORTER: 'console,otlp' },
+      undefined,
+      true,
+      'detected Claude Code OTel export',
+    ],
+    [
+      'EU endpoint without scheme',
+      { ...NR_EXPORT, OTEL_EXPORTER_OTLP_ENDPOINT: 'otlp.eu01.nr-data.net:4317' },
+      undefined,
+      true,
+      'detected Claude Code OTel export',
+    ],
+    [
+      'metrics-specific endpoint',
+      {
+        ...NR_EXPORT,
+        OTEL_EXPORTER_OTLP_ENDPOINT: undefined,
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'https://gov-otlp.nr-data.net/v1/metrics',
+      },
+      undefined,
+      true,
+      'detected Claude Code OTel export',
+    ],
+    [
+      'export to another backend',
+      { ...NR_EXPORT, OTEL_EXPORTER_OTLP_ENDPOINT: 'https://api.honeycomb.io' },
+      undefined,
+      false,
+      'default',
+    ],
+    [
+      'look-alike host',
+      { ...NR_EXPORT, OTEL_EXPORTER_OTLP_ENDPOINT: 'https://evil-nr-data.net' },
+      undefined,
+      false,
+      'default',
+    ],
+    [
+      'no endpoint',
+      { ...NR_EXPORT, OTEL_EXPORTER_OTLP_ENDPOINT: undefined },
+      undefined,
+      false,
+      'default',
+    ],
+    ['exporter none', { ...NR_EXPORT, OTEL_METRICS_EXPORTER: 'none' }, undefined, false, 'default'],
+    [
+      'prometheus exporter',
+      { ...NR_EXPORT, OTEL_METRICS_EXPORTER: 'prometheus' },
+      undefined,
+      false,
+      'default',
+    ],
+    [
+      'exporter unset',
+      { ...NR_EXPORT, OTEL_METRICS_EXPORTER: undefined },
+      undefined,
+      false,
+      'default',
+    ],
+    [
+      'telemetry off',
+      { ...NR_EXPORT, CLAUDE_CODE_ENABLE_TELEMETRY: '0' },
+      undefined,
+      false,
+      'default',
+    ],
+    [
+      'telemetry unset',
+      { ...NR_EXPORT, CLAUDE_CODE_ENABLE_TELEMETRY: undefined },
+      undefined,
+      false,
+      'default',
+    ],
+    ['nothing set', {}, undefined, false, 'default'],
+  ])('%s', (_name, env, fileValue, value, source) => {
+    expect(resolveCompanionMode(env, fileValue)).toEqual({ value, source });
   });
 });
