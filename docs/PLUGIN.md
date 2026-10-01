@@ -173,9 +173,7 @@ What each key does:
 
 To stage a rollout, deliver a different value of the variable to each device
 group (separate managed settings files or MDM profiles). To roll back, change
-the value and users pick it up at their next session start. Managed `env`
-takes precedence over user settings, so a developer cannot override the pin
-locally.
+the value and users pick it up at their next session start.
 
 The pinned version must exist on npm (`npm view @newrelic/preflight versions`)
 or the server fails to start with an npm "No matching version" error in the
