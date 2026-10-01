@@ -51,6 +51,7 @@ import {
   resolveBinaryPath,
   resolveNamedBinaryOnPath,
 } from './schedule.js';
+import type { DiagnosticCheck } from './diagnostics.js';
 import { readJsonFileStrict, writeJsonFile, errMsg } from './json-utils.js';
 import { LocalStore } from '../storage/index.js';
 import { getDashboardAddress, waitForHealthyDashboard } from './dashboard-health.js';
@@ -1562,8 +1563,9 @@ function handleValidate(options: { config?: string }): void {
 // Doctor handler
 // ---------------------------------------------------------------------------
 
-function hasFailingStatus(check: { status: string }): boolean {
-  return check.status === 'fail';
+function doctorExitCode(checks: readonly DiagnosticCheck[]): number {
+  if (checks.some((c) => c.status === 'fail')) return 1;
+  return checks.some((c) => c.status === 'warn') ? 2 : 0;
 }
 
 async function handleDoctor(options: {
@@ -1581,8 +1583,8 @@ async function handleDoctor(options: {
   const checks = await runDiagnostics({ configPath, storagePath, platform: options.platform });
 
   if (options.json) {
-    process.stdout.write(JSON.stringify(checks));
-    process.exitCode = checks.some(hasFailingStatus) ? 1 : 0;
+    process.stdout.write(`${JSON.stringify(checks)}\n`);
+    process.exitCode = doctorExitCode(checks);
     return;
   }
 
@@ -1611,7 +1613,7 @@ async function handleDoctor(options: {
   if (warns > 0) parts.push(`${warns} warning${warns > 1 ? 's' : ''}`);
   print(`${parts.join(', ')} found. Run the fix commands above, then restart.`);
 
-  process.exitCode = fails > 0 ? 1 : 0;
+  process.exitCode = doctorExitCode(checks);
 }
 
 // ---------------------------------------------------------------------------

@@ -9,11 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `preflight doctor --json` exports diagnostic checks as a JSON array to stdout, suitable for scripts and MDM deployment. Exit code is 1 if any check has a failing status (not a warning), 0 otherwise, in both human and JSON modes.
-
-### Fixed
-
-- `preflight doctor` now exits with 0 when only warnings are present (previously 2). Exit code is now 1 only when a check actually fails, making both modes consistent and suitable for scripting.
+- **Scripts and fleet tooling could read `preflight doctor` results only by parsing its human-readable output.** `preflight doctor --json` prints the diagnostic checks as a JSON array on stdout, with each check's `check`, `status`, `detail`, and `fix`. The exit code is the same in both modes: 0 when every check passes, 1 when any check fails, and 2 when the only problems are warnings.
 
 ## [1.57.2] - 2026-09-29
 

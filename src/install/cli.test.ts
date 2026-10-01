@@ -2208,12 +2208,12 @@ describe('preflight doctor', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('sets exit code 0 when only warnings', async () => {
+  it('sets exit code 2 when only warnings', async () => {
     mockedRunDiagnostics.mockResolvedValue([makeCheck({ status: 'warn', detail: 'mild' })]);
     const { createInstallProgram } = await import('./cli.js');
     const prog = createInstallProgram();
     await prog.parseAsync(['node', 'preflight', 'doctor']);
-    expect(process.exitCode).toBe(0);
+    expect(process.exitCode).toBe(2);
   });
 
   it('prints fix instructions for failing checks', async () => {
@@ -2239,7 +2239,7 @@ describe('preflight doctor', () => {
     expect(output.join('')).toContain('-');
   });
 
-  it('sets exit code 0 (not 1) when daemon is not installed', async () => {
+  it('sets exit code 2 (not 1) when daemon is not installed', async () => {
     mockedRunDiagnostics.mockResolvedValue([
       makeCheck({
         check: 'Daemon installed',
@@ -2251,7 +2251,7 @@ describe('preflight doctor', () => {
     const { createInstallProgram } = await import('./cli.js');
     const prog = createInstallProgram();
     await prog.parseAsync(['node', 'preflight', 'doctor']);
-    expect(process.exitCode).toBe(0);
+    expect(process.exitCode).toBe(2);
   });
 
   it('outputs JSON when --json flag is passed', async () => {
@@ -2288,12 +2288,12 @@ describe('preflight doctor', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('exits with 0 when --json and only warnings', async () => {
+  it('exits with 2 when --json and only warnings', async () => {
     mockedRunDiagnostics.mockResolvedValue([makeCheck({ status: 'warn', detail: 'mild' })]);
     const { createInstallProgram } = await import('./cli.js');
     const prog = createInstallProgram();
     await prog.parseAsync(['node', 'preflight', 'doctor', '--json']);
-    expect(process.exitCode).toBe(0);
+    expect(process.exitCode).toBe(2);
   });
 
   it('does not print banner when --json is passed', async () => {
