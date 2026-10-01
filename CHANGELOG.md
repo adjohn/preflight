@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.59.0] - 2026-10-01
+
+### Added
+
+- **Companion mode auto-detection**: When companion mode is not explicitly configured, it now defaults to `true` if Claude Code's OTel export is active (`CLAUDE_CODE_ENABLE_TELEMETRY=1` and `OTEL_METRICS_EXPORTER` set to something other than `none`). Orgs running both Claude Code's built-in export and Preflight now get companion mode by default, stopping double-counting of cost and tokens. Opt out with `NR_AI_COMPANION_MODE=false` in config or environment. The resolved value and source are shown in `preflight doctor` and `nr_observe_get_config`.
+
 ## [1.57.2] - 2026-09-29
 
 ### Fixed

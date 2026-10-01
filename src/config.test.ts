@@ -9,6 +9,7 @@ import {
   sanitizeDeveloper,
   normalizeDeveloperName,
   validateConfigFile,
+  resolveCompanionMode,
 } from './config.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
@@ -2531,5 +2532,131 @@ describe('loadMcpConfig() — tiers', () => {
     const written = warnSpy.mock.calls.map((call) => String(call[0])).join('\n');
     warnSpy.mockRestore();
     expect(written).not.toContain('Unknown keys in config file');
+  });
+});
+
+describe('resolveCompanionMode()', () => {
+  const baseEnv: NodeJS.ProcessEnv = {};
+
+  it('resolves explicit env NR_AI_COMPANION_MODE to true with source', () => {
+    const env = { ...baseEnv, NR_AI_COMPANION_MODE: 'true' };
+    const result = resolveCompanionMode(env, undefined);
+    expect(result).toEqual({ value: true, source: 'env NR_AI_COMPANION_MODE' });
+  });
+
+  it('resolves explicit env NR_AI_COMPANION_MODE to false with source', () => {
+    const env = { ...baseEnv, NR_AI_COMPANION_MODE: 'false' };
+    const result = resolveCompanionMode(env, undefined);
+    expect(result).toEqual({ value: false, source: 'env NR_AI_COMPANION_MODE' });
+  });
+
+  it('accepts "1" as true in env var', () => {
+    const env = { ...baseEnv, NR_AI_COMPANION_MODE: '1' };
+    const result = resolveCompanionMode(env, undefined);
+    expect(result).toEqual({ value: true, source: 'env NR_AI_COMPANION_MODE' });
+  });
+
+  it('accepts "0" as false in env var', () => {
+    const env = { ...baseEnv, NR_AI_COMPANION_MODE: '0' };
+    const result = resolveCompanionMode(env, undefined);
+    expect(result).toEqual({ value: false, source: 'env NR_AI_COMPANION_MODE' });
+  });
+
+  it('explicit env false overrides config file true', () => {
+    const env = { ...baseEnv, NR_AI_COMPANION_MODE: 'false' };
+    const result = resolveCompanionMode(env, true);
+    expect(result).toEqual({ value: false, source: 'env NR_AI_COMPANION_MODE' });
+  });
+
+  it('explicit env true overrides config file false', () => {
+    const env = { ...baseEnv, NR_AI_COMPANION_MODE: 'true' };
+    const result = resolveCompanionMode(env, false);
+    expect(result).toEqual({ value: true, source: 'env NR_AI_COMPANION_MODE' });
+  });
+
+  it('uses config file value when env unset', () => {
+    const env = baseEnv;
+    const result = resolveCompanionMode(env, true);
+    expect(result).toEqual({ value: true, source: 'config file' });
+  });
+
+  it('uses config file false when env unset', () => {
+    const env = baseEnv;
+    const result = resolveCompanionMode(env, false);
+    expect(result).toEqual({ value: false, source: 'config file' });
+  });
+
+  it('detects Claude Code OTel export when both env vars set', () => {
+    const env = {
+      ...baseEnv,
+      CLAUDE_CODE_ENABLE_TELEMETRY: '1',
+      OTEL_METRICS_EXPORTER: 'otlp',
+    };
+    const result = resolveCompanionMode(env, undefined);
+    expect(result).toEqual({ value: true, source: 'detected Claude Code OTel export' });
+  });
+
+  it('detects Claude Code OTel export with CLAUDE_CODE_ENABLE_TELEMETRY=true', () => {
+    const env = {
+      ...baseEnv,
+      CLAUDE_CODE_ENABLE_TELEMETRY: 'true',
+      OTEL_METRICS_EXPORTER: 'otlp',
+    };
+    const result = resolveCompanionMode(env, undefined);
+    expect(result).toEqual({ value: true, source: 'detected Claude Code OTel export' });
+  });
+
+  it('supports comma-separated OTEL_METRICS_EXPORTER list', () => {
+    const env = {
+      ...baseEnv,
+      CLAUDE_CODE_ENABLE_TELEMETRY: '1',
+      OTEL_METRICS_EXPORTER: 'otlp,console',
+    };
+    const result = resolveCompanionMode(env, undefined);
+    expect(result).toEqual({ value: true, source: 'detected Claude Code OTel export' });
+  });
+
+  it('does not detect when OTEL_METRICS_EXPORTER is none', () => {
+    const env = {
+      ...baseEnv,
+      CLAUDE_CODE_ENABLE_TELEMETRY: '1',
+      OTEL_METRICS_EXPORTER: 'none',
+    };
+    const result = resolveCompanionMode(env, undefined);
+    expect(result).toEqual({ value: false, source: 'default' });
+  });
+
+  it('does not detect when OTEL_METRICS_EXPORTER is unset', () => {
+    const env = {
+      ...baseEnv,
+      CLAUDE_CODE_ENABLE_TELEMETRY: '1',
+    };
+    const result = resolveCompanionMode(env, undefined);
+    expect(result).toEqual({ value: false, source: 'default' });
+  });
+
+  it('does not detect when CLAUDE_CODE_ENABLE_TELEMETRY is unset', () => {
+    const env = {
+      ...baseEnv,
+      OTEL_METRICS_EXPORTER: 'otlp',
+    };
+    const result = resolveCompanionMode(env, undefined);
+    expect(result).toEqual({ value: false, source: 'default' });
+  });
+
+  it('does not detect when CLAUDE_CODE_ENABLE_TELEMETRY is false', () => {
+    const env = {
+      ...baseEnv,
+      CLAUDE_CODE_ENABLE_TELEMETRY: 'false',
+      OTEL_METRICS_EXPORTER: 'otlp',
+    };
+    const result = resolveCompanionMode(env, undefined);
+    expect(result).toEqual({ value: false, source: 'default' });
+  });
+
+  it('defaults to false when no conditions match', () => {
+    const env = baseEnv;
+    const result = resolveCompanionMode(env, undefined);
+    expect(result).toEqual({ value: false, source: 'default' });
   });
 });

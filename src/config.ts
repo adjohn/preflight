@@ -19,6 +19,45 @@ const logger = createLogger('mcp-config');
 export const VALID_MODES = ['cloud', 'local', 'both'] as const;
 export type Mode = (typeof VALID_MODES)[number];
 
+export type CompanionModeSource =
+  'env NR_AI_COMPANION_MODE' | 'config file' | 'detected Claude Code OTel export' | 'default';
+
+export interface ResolvedCompanionMode {
+  readonly value: boolean;
+  readonly source: CompanionModeSource;
+}
+
+export function resolveCompanionMode(
+  env: NodeJS.ProcessEnv,
+  fileValue: boolean | undefined,
+): ResolvedCompanionMode {
+  // Explicit env var wins
+  const envVal = env.NR_AI_COMPANION_MODE;
+  if (envVal !== undefined && envVal !== '') {
+    const value = envVal === 'true' || envVal === '1';
+    return { value, source: 'env NR_AI_COMPANION_MODE' };
+  }
+
+  // Config file wins
+  if (fileValue !== undefined) {
+    return { value: fileValue, source: 'config file' };
+  }
+
+  // Auto-detect: Claude Code's OTel export active?
+  const claudeCodeEnabled =
+    env.CLAUDE_CODE_ENABLE_TELEMETRY === '1' || env.CLAUDE_CODE_ENABLE_TELEMETRY === 'true';
+  const otelExporter = env.OTEL_METRICS_EXPORTER;
+  const exporterIsActive =
+    otelExporter !== undefined && otelExporter !== '' && otelExporter !== 'none';
+
+  if (claudeCodeEnabled && exporterIsActive) {
+    return { value: true, source: 'detected Claude Code OTel export' };
+  }
+
+  // Default
+  return { value: false, source: 'default' };
+}
+
 export interface McpServerConfig {
   readonly licenseKey?: string;
   readonly accountId?: string;
@@ -883,10 +922,17 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       ),
     ),
 
-    companionMode: envBool(
-      'NR_AI_COMPANION_MODE',
-      typeof file.companionMode === 'boolean' ? file.companionMode : false,
-    ),
+    companionMode: (() => {
+      const resolved = resolveCompanionMode(
+        process.env,
+        typeof file.companionMode === 'boolean' ? file.companionMode : undefined,
+      );
+      logger.info('Companion mode resolved', {
+        value: resolved.value,
+        source: resolved.source,
+      });
+      return resolved.value;
+    })(),
 
     redactionPatterns: DEFAULT_REDACTION_PATTERNS,
 
@@ -1414,6 +1460,8 @@ export interface ConfigValidationResult {
   readonly mode?: string;
   /** The `storagePath` field from the parsed config, if present and a string. */
   readonly storagePath?: string;
+  /** The `companionMode` field from the parsed config, if present and a boolean. */
+  readonly companionMode?: boolean;
   /** True when a non-blank licenseKey is present in the parsed config. Raw value is intentionally not exposed. */
   readonly hasLicenseKey: boolean;
   /** Fatal problems that will prevent the MCP server from starting. */
@@ -1437,6 +1485,7 @@ export function validateConfigFile(filePath: string): ConfigValidationResult {
       fileExists: false,
       malformed: false,
       hasLicenseKey: false,
+      companionMode: undefined,
       errors,
       warnings,
     };
@@ -1448,19 +1497,43 @@ export function validateConfigFile(filePath: string): ConfigValidationResult {
     raw = readFileSync(filePath, 'utf-8');
   } catch (err) {
     errors.push(`Could not read file: ${err instanceof Error ? err.message : String(err)}`);
-    return { filePath, fileExists: true, malformed: true, hasLicenseKey: false, errors, warnings };
+    return {
+      filePath,
+      fileExists: true,
+      malformed: true,
+      hasLicenseKey: false,
+      companionMode: undefined,
+      errors,
+      warnings,
+    };
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
     errors.push(`Invalid JSON: ${err instanceof Error ? err.message : String(err)}`);
-    return { filePath, fileExists: true, malformed: true, hasLicenseKey: false, errors, warnings };
+    return {
+      filePath,
+      fileExists: true,
+      malformed: true,
+      hasLicenseKey: false,
+      companionMode: undefined,
+      errors,
+      warnings,
+    };
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     errors.push('Config must be a JSON object, not an array or primitive value');
-    return { filePath, fileExists: true, malformed: true, hasLicenseKey: false, errors, warnings };
+    return {
+      filePath,
+      fileExists: true,
+      malformed: true,
+      hasLicenseKey: false,
+      companionMode: undefined,
+      errors,
+      warnings,
+    };
   }
 
   // Zod type/value errors
@@ -1543,6 +1616,7 @@ export function validateConfigFile(filePath: string): ConfigValidationResult {
     malformed: false,
     mode: typeof file.mode === 'string' ? file.mode : undefined,
     storagePath: typeof file.storagePath === 'string' ? file.storagePath : undefined,
+    companionMode: typeof file.companionMode === 'boolean' ? file.companionMode : undefined,
     hasLicenseKey: typeof file.licenseKey === 'string' && file.licenseKey.trim().length > 0,
     errors,
     warnings,
