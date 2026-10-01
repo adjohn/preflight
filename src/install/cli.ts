@@ -1562,13 +1562,29 @@ function handleValidate(options: { config?: string }): void {
 // Doctor handler
 // ---------------------------------------------------------------------------
 
-async function handleDoctor(options: { config?: string; platform?: string }): Promise<void> {
+function hasFailingStatus(check: { status: string }): boolean {
+  return check.status === 'fail';
+}
+
+async function handleDoctor(options: {
+  config?: string;
+  platform?: string;
+  json?: boolean;
+}): Promise<void> {
   const { runDiagnostics } = await import('./diagnostics.js');
   const configPath = options.config ?? resolve(DEFAULT_STORAGE_PATH, 'config.json');
 
   const storagePath = process.env.NEW_RELIC_AI_MCP_STORAGE_PATH ?? undefined;
-  print('Running diagnostics...');
+  if (!options.json) {
+    print('Running diagnostics...');
+  }
   const checks = await runDiagnostics({ configPath, storagePath, platform: options.platform });
+
+  if (options.json) {
+    process.stdout.write(JSON.stringify(checks));
+    process.exitCode = checks.some(hasFailingStatus) ? 1 : 0;
+    return;
+  }
 
   const ICON: Record<string, string> = { ok: '✓', warn: '⚠', fail: '✗', skip: '-' };
   const COL = 22;
@@ -1595,7 +1611,7 @@ async function handleDoctor(options: { config?: string; platform?: string }): Pr
   if (warns > 0) parts.push(`${warns} warning${warns > 1 ? 's' : ''}`);
   print(`${parts.join(', ')} found. Run the fix commands above, then restart.`);
 
-  process.exitCode = fails > 0 ? 1 : 2;
+  process.exitCode = fails > 0 ? 1 : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -1708,6 +1724,7 @@ export function createInstallProgram(): Command {
       '--platform <name>',
       'Platform to check hooks for (e.g. kiro, cursor) — Claude Code checked by default',
     )
+    .option('--json', 'Output results as JSON array instead of human-readable text')
     .action(handleDoctor);
 
   program

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.60.0] - 2026-10-01
+
+### Added
+
+- `preflight doctor --json` exports diagnostic checks as a JSON array to stdout, suitable for scripts and MDM deployment. Exit code is 1 if any check has a failing status (not a warning), 0 otherwise, in both human and JSON modes.
+
+### Fixed
+
+- `preflight doctor` now exits with 0 when only warnings are present (previously 2). Exit code is now 1 only when a check actually fails, making both modes consistent and suitable for scripting.
+
 ## [1.57.2] - 2026-09-29
 
 ### Fixed
