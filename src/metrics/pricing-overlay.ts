@@ -157,6 +157,8 @@ function validateAliasTargets(aliases: Map<string, string>): void {
  * opaque model name to a known model id; the remaining entries are rate
  * objects handed to the shared loader, which would otherwise warn on the
  * `aliases` key and reject an alias-only file as having no valid entries.
+ * An alias-only file sets no rates, so the bundled gap-fill overlay still
+ * applies, and alias targets are validated after it.
  */
 function applyCustomPricingFile(path: string): void {
   let parsed: Record<string, unknown>;
@@ -176,6 +178,7 @@ function applyCustomPricingFile(path: string): void {
     initPricingFromEntries(rates);
   } else {
     initPricing(null);
+    applyBundledOverlay();
   }
   const aliases = parseAliases(rawAliases);
   validateAliasTargets(aliases);
@@ -200,6 +203,10 @@ export function applyPricingOverlay(customPricingFile: string | null): void {
     applyCustomPricingFile(customPricingFile);
     return;
   }
+  applyBundledOverlay();
+}
+
+function applyBundledOverlay(): void {
   const overlayPath = resolvePricingOverlayPath();
   if (overlayPath) {
     applyGapFilledOverlay(overlayPath);
