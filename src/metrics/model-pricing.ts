@@ -1,4 +1,4 @@
-import type { CostBreakdown, ModelPricing, TokenUsage } from '../shared/index.js';
+import type { CostBreakdown, ModelPricing, PricingTable, TokenUsage } from '../shared/index.js';
 import {
   calculateCost,
   createLogger,
@@ -10,6 +10,7 @@ const logger = createLogger('model-pricing');
 
 export type PricingResolution =
   | { readonly kind: 'priced'; readonly source: 'table'; readonly pricing: ModelPricing }
+  | { readonly kind: 'priced'; readonly source: 'refreshed'; readonly pricing: ModelPricing }
   | {
       readonly kind: 'priced';
       readonly source: 'estimated';
@@ -92,9 +93,30 @@ export interface PricedUsage {
 const MAX_MEMOIZED_MODELS = 512;
 const resolutions = new Map<string, PricingResolution>();
 
+// Refreshed prices stay out of the vendored singleton: its prefix matching would
+// let a refreshed key retarget ids the bundled table already resolves. They are
+// consulted only on an exact id match, after the bundled table has missed.
+let refreshedTable: PricingTable | null = null;
+let refreshedIds: ReadonlySet<string> = new Set();
+
+export function setRefreshedPricing(table: PricingTable | null, ids: ReadonlySet<string>): void {
+  refreshedTable = table;
+  refreshedIds = ids;
+  resolutions.clear();
+}
+
 function computeResolution(model: string): PricingResolution {
   const pricing = resolveModelPricing(model);
   if (pricing) return { kind: 'priced', source: 'table', pricing };
+
+  if (refreshedTable !== null) {
+    const id = model.replace(CONTEXT_TAG_RE, '');
+    const refreshed = refreshedIds.has(id) ? refreshedTable.resolve(id) : null;
+    if (refreshed) {
+      logger.info('Pricing from the LiteLLM refresh', { model });
+      return { kind: 'priced', source: 'refreshed', pricing: refreshed };
+    }
+  }
 
   const estimatedFrom = estimateFromFamily(model, TABLE_IDS);
   const estimatedPricing = estimatedFrom === null ? null : resolveModelPricing(estimatedFrom);
@@ -131,6 +153,10 @@ export function priceUsage(model: string, usage: TokenUsage): PricedUsage {
         savingsFromCacheUsd: 0,
       },
     };
+  }
+  if (resolution.source === 'refreshed' && refreshedTable !== null) {
+    const id = model.replace(CONTEXT_TAG_RE, '');
+    return { resolution, breakdown: refreshedTable.calculateCost(id, usage) };
   }
   const priceId = resolution.source === 'estimated' ? resolution.estimatedFrom : model;
   return { resolution, breakdown: calculateCost(priceId, usage) };

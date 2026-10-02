@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.64.0] - 2026-10-02
+
+### Added
+
+- **A new model stayed at $0 until a Preflight release shipped its price.** Preflight now fetches LiteLLM's community price file (`model_prices_and_context_window.json` in `BerriAI/litellm`) in the background at server start, caches it at `<storagePath>/pricing-cache.json`, and refetches at a later start once the cache is a day old. The cached prices apply only to exact model IDs that the bundled table, the pricing overlay, and `customPricingFile` do not resolve, so they cannot change a price Preflight already knows. They take precedence over family estimates. The request goes to a fixed `https` URL with redirects refused, a 30 second timeout, and an 8 MB cap, and the response is schema-validated. Opt out with `NEW_RELIC_AI_PRICING_REFRESH=false` or `pricingRefresh: false`; `highSecurity=true` forces it off. With refresh off, nothing is fetched and no cache file is read or written.
+
 ## [1.63.0] - 2026-10-02
 
 ### Added

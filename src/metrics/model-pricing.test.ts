@@ -3,13 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { calculateCost, initPricing } from '../shared/index.js';
+import { calculateCost, initPricing, PricingTable } from '../shared/index.js';
 import { makeUsage } from '../__test-utils__/token-usage.js';
 import {
   clearPricingResolutions,
   estimateFromFamily,
   priceUsage,
   resolvePricing,
+  setRefreshedPricing,
 } from './model-pricing.js';
 import { applyGapFilledOverlay } from './pricing-overlay.js';
 
@@ -153,5 +154,41 @@ describe('priceUsage', () => {
     const priced = priceUsage('claude-foo-9-9', USAGE);
     expect(priced.resolution.kind).toBe('unpriced');
     expect(priced.breakdown.totalUsd).toBe(0);
+  });
+});
+
+describe('refreshed pricing', () => {
+  const entry = { inputPerMTok: 7, outputPerMTok: 9, contextWindow: 1000 };
+
+  function register(ids: Record<string, typeof entry>): void {
+    tmpDir = mkdtempSync(join(tmpdir(), 'preflight-refreshed-'));
+    const p = join(tmpDir, 'pricing-cache.json');
+    writeFileSync(p, JSON.stringify(ids));
+    setRefreshedPricing(new PricingTable(p), new Set(Object.keys(ids)));
+  }
+
+  afterEach(() => {
+    setRefreshedPricing(null, new Set());
+  });
+
+  it('prices an exact refreshed id and strips the context tag', () => {
+    register({ 'zz-model-1': entry });
+    expect(resolvePricing('zz-model-1[1m]')).toMatchObject({ kind: 'priced', source: 'refreshed' });
+    const usage = makeUsage({ inputTokens: 1_000_000, totalTokens: 1_000_000 });
+    expect(priceUsage('zz-model-1[1m]', usage).breakdown.inputUsd).toBe(7);
+  });
+
+  it('falls through to the family estimate, then unpriced, on a refreshed miss', () => {
+    register({ 'zz-model-1': entry });
+    expect(resolvePricing('claude-sonnet-9-9')).toMatchObject({ source: 'estimated' });
+    expect(resolvePricing('zz-model-2')).toEqual({ kind: 'unpriced' });
+  });
+
+  it('clears the memo when refreshed pricing is set', () => {
+    expect(resolvePricing('zz-model-1')).toEqual({ kind: 'unpriced' });
+    register({ 'zz-model-1': entry });
+    expect(resolvePricing('zz-model-1')).toMatchObject({ source: 'refreshed' });
+    setRefreshedPricing(null, new Set());
+    expect(resolvePricing('zz-model-1')).toEqual({ kind: 'unpriced' });
   });
 });
