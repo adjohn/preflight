@@ -25,7 +25,8 @@ import { spawnSync } from 'node:child_process';
 import { localDateKey } from '../lib/date.js';
 import type { ReplayTimelineEntry, ToolCallRecord } from '../storage/types.js';
 import { hasAttributableActivity, type FullSessionSummary } from '../storage/session-store.js';
-import type { UnpricedModelUsage } from './cost-tracker.js';
+import type { EstimatedModelUsage, UnpricedModelUsage } from './cost-tracker.js';
+import { addCallUsage } from './call-usage.js';
 import type { ModelBreakdownEntry } from './model-usage-tracker.js';
 import { resolvePricing } from './model-pricing.js';
 import { QualityProxyTracker } from './quality-proxy-tracker.js';
@@ -120,6 +121,7 @@ export interface LocalSessionRollup {
   tokensCacheCreation: number;
   models: Set<string>;
   unpricedByModel: Map<string, UnpricedModelUsage>;
+  estimatedByModel: Map<string, EstimatedModelUsage>;
   successCount: number;
 }
 
@@ -286,6 +288,7 @@ export class LocalSessionAggregator {
         tokensCacheCreation: 0,
         models: new Set(),
         unpricedByModel: new Map(),
+        estimatedByModel: new Map(),
         successCount: 0,
       };
       this.sessions.set(sessionId, rollup);
@@ -445,12 +448,17 @@ export class LocalSessionAggregator {
         (usage.thinkingTokens ?? 0) +
         (usage.cacheReadTokens ?? 0) +
         (usage.cacheCreationTokens ?? 0);
-      if (tokens > 0 && resolvePricing(usage.model).kind === 'unpriced') {
-        const prior = rollup.unpricedByModel.get(usage.model);
-        rollup.unpricedByModel.set(usage.model, {
-          calls: (prior?.calls ?? 0) + 1,
-          tokens: (prior?.tokens ?? 0) + tokens,
-        });
+      if (tokens > 0) {
+        const resolution = resolvePricing(usage.model);
+        if (resolution.kind === 'unpriced') {
+          addCallUsage(rollup.unpricedByModel, usage.model, { calls: 1, tokens });
+        } else if (resolution.source === 'estimated') {
+          addCallUsage(rollup.estimatedByModel, usage.model, {
+            calls: 1,
+            tokens,
+            estimatedFrom: resolution.estimatedFrom,
+          });
+        }
       }
     }
   }
@@ -558,6 +566,9 @@ export class LocalSessionAggregator {
           : {}),
         ...(rollup.unpricedByModel.size > 0
           ? { unpricedByModel: Object.fromEntries(rollup.unpricedByModel) }
+          : {}),
+        ...(rollup.estimatedByModel.size > 0
+          ? { estimatedByModel: Object.fromEntries(rollup.estimatedByModel) }
           : {}),
         tokensInput: rollup.tokensInput,
         tokensOutput: rollup.tokensOutput,

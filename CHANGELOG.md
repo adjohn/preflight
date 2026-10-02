@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.63.0] - 2026-10-02
+
+### Added
+
+- **A point release of a known Claude family, such as `claude-opus-5-5` or `claude-sonnet-5-5[1m]`, recorded $0 when the pricing table had no exact entry.** Preflight now prices it from the newest priced release of the same family and major version, or from the family's newest release when no sibling shares the major version. The price is marked as an estimate. An exact table entry always wins, IDs outside the `claude-<family>-<major>[-<minor>]` form are never estimated, and two differently priced candidates at the chosen version leave the model unpriced. Estimated calls are counted per model with the sibling they were priced from. The Today page lists them under the unpriced notice as "Spend is an estimate", `nr_observe_get_cost_breakdown` returns `estimated_by_model`, and `ai.cost.estimated_calls` is emitted tagged by `model` and `estimatedFrom`.
+
 ## [1.62.0] - 2026-10-02
 
 ### Added

@@ -192,6 +192,7 @@ export function handleGetCostBreakdown(costTracker: CostTracker, taskDetector?: 
     // list-price computation, which is still only an estimate either way.
     rate_multiplier_applied: metrics.costRateMultiplierApplied,
     unpriced_by_model: metrics.unpricedByModel,
+    estimated_by_model: metrics.estimatedByModel,
   };
 
   return {
