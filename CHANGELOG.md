@@ -5,11 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.57.2] - 2026-09-22
+## [1.58.4] - 2026-10-06
 
 ### Fixed
 
 - **The "On pace for" projection on History and Today could read ~$0.00 for the week while the month beside it read over $1,000.** The week projection only extrapolated from spend since Monday, so after a quiet Monday, and before today's spend was counted, it projected nothing for the rest of the week. The month projection had the same gap on the 1st. Both now project the remaining days from your average daily spend over the last 28 days plus today, so the week and month figures use the same pace.
+
+## [1.58.3] - 2026-10-06
+
+### Fixed
+
+- A session's "Session Quality" card no longer shows "Diff Apply NaN%" and "Test Pass NaN%" on sessions with no diff or test signals. The session detail response carried the session's raw signal counts under the key the dashboard reads the two rates from, and those counts have no rate fields. Such a session now hides the card, matching what the other session-detail paths already did.
+
+## [1.58.2] - 2026-10-06
+
+### Fixed
+
+- A git remote with a token in it no longer leaks the token. With a remote such as `https://<token>@github.com/widgets.git` or `ssh://git@github.com/widgets.git`, the repository name recorded on session summaries and shown in the dashboard header came out as `<token>@github.com/widgets`; it is now `github.com/widgets`. `repo_url` also drops the credential part of the remote now, including a token used as the username, which the secret patterns did not always catch; before, the value kept the token or had the whole host replaced by `[REDACTED]`. Only `ssh://`-style and `git@host:path` remotes keep a login name, and only the name. Every other kind, including the `git+https://` form used in `package.json`, loses everything up to the `@`, even when a password contains an unencoded `/`. A remote that goes through a remote helper, such as `hg::https://...` or `gcrypt::https://...`, gives no repository name, `project_id`, commit link, or `repo_url` at all, because only the helper can parse what follows the `::`; before, a token in one could reach the repository name. Without a repository name, such a checkout is handled like one with no remote: its sessions and the same day's sessions in other repositories count toward each other's git totals, on the dashboard and in the `ai.git.*` metrics. Session summaries saved before the upgrade keep the repository name they were saved with, token included, and the dashboard can still show it. Edit or delete the `repoName` field in those files, under `~/.newrelic-preflight/sessions/` by default, to remove it.
+- Repository names and commit links now work for remotes with a trailing slash, an uppercase `.GIT` suffix, or a query string, and commit links from `ssh://` remotes with a port no longer put the port in the link's path. A remote whose path has no owner segment, such as `git@host:repo.git`, gets the repository name `host/repo` and the `project_id` `repo`. The host can name an internal git server, so it is sent only in `repo_url`, which can be turned off, and never in `project_id`, which goes on every event. Before, its `project_id` was `host/repo` for an `https://` remote and missing for most ssh ones. A repository name with characters other than letters, digits, `.`, `_`, and `-`, such as `~jdoe/widgets`, `acme/my+repo`, or a local `My Drive/widgets`, also gives a `project_id` now; before, it gave none. For a remote ending in `.GIT` or carrying a query string, the repository name changes (from `acme/widgets.GIT` to `acme/widgets`), so on the day of the upgrade, git activity from sessions saved earlier that day under the old name is left out of that day's git stats.
+
+## [1.58.1] - 2026-10-06
+
+### Fixed
+
+- **`preflight update` on a Homebrew install no longer tells you to `npm install -g`.** Following that advice created a second, competing copy of preflight on `PATH`. It now says `brew upgrade preflight`. `preflight schedule --time` refuses on a Homebrew install with the same hint, since the daily job runs `preflight update` and would fail every run; `preflight schedule` and `preflight schedule --disable` still work, so an existing job can be removed.
+
+## [1.58.0] - 2026-10-06
+
+### Added
+
+- **Preflight is now installable via Homebrew on macOS** (`brew tap newrelic-experimental/preflight && brew trust newrelic-experimental/preflight && brew install preflight`), alongside the existing npm install path. The formula tracks the npm package; the Release workflow regenerates it and opens a PR against the tap repo on every release, documented in `docs/maintaining-homebrew-tap.md`.
+
+## [1.57.3] - 2026-10-01
+
+### Fixed
+
+- The Kiro Power manifest (`kiro-power/plugin.json`) now validates against the Agent Plugins 1.0.0 schema it declares. It carried a root `displayName` key, which the schema does not allow and which marketplaces validating against it rejected. Kiro's Powers documentation does not list `displayName` as a manifest field, so the key was removed rather than moved.
+
+## [1.57.2] - 2026-09-29
+
+### Fixed
+
+- Crossing a budget threshold no longer clears other local alerts that are still true. A firing `cost.window` rule reported "cleared" and could not fire again for its `deduplicateSeconds`, and a firing `budget.session` rule cleared whenever a daily or weekly threshold crossed. A budget-threshold crossing now evaluates only budget rules, and every other rule is left to the periodic alert check. When the cost trackers cannot be read, cost rules skip that check instead of reading $0.
+
+## [1.57.1] - 2026-09-29
+
+### Fixed
+
+- Loading an alert rules file no longer warns that `cost.window` rules with `costPeriod: "today"` or `"week"` are not yet implemented. Those periods have worked since the snapshot collector started reading daily and weekly spend from the budget tracker, so the warning was false and appeared on every load and reload of the rules file.
 
 ## [1.57.0] - 2026-09-17
 
