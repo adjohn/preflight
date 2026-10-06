@@ -64,6 +64,16 @@ describe('buildWeekForecast()', () => {
     expect(result).toBeGreaterThan(100);
   });
 
+  it('starts the run-rate window at the oldest session so a new user is not diluted by empty days', () => {
+    const tuesday = nextWeekday(new Date(2026, 0, 1), 2);
+    const todayStart = localStartOfDay(tuesday.getTime());
+    const sessions = [makeSession(todayStart - 2 * 86_400_000 + 60_000, 30)];
+
+    // Window covers 3 days (Sunday through Tuesday): rate = 30 / 3 = 10.
+    // Sunday belongs to the previous week, so week-to-date is 0; Wed-Sun = 5 days remain.
+    expect(buildWeekForecast(sessions, 0, 0, tuesday.getTime())).toBeCloseTo(50, 5);
+  });
+
   it('counts a previous week toward the run rate but not the week-to-date total', () => {
     const sunday = nextWeekday(new Date(2026, 0, 1), 0);
     const todayStart = localStartOfDay(sunday.getTime());
