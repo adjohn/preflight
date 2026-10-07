@@ -66,6 +66,36 @@ Web tests follow the same factory-function and spy patterns as Jest tests — ju
 
 ---
 
+## Browser Tests (Playwright)
+
+`e2e/` runs the built dashboard in real Chromium against real `--local` servers. `playwright.config.ts` starts two, each over its own temp directory, which also stands in for `HOME`, so neither reads your credentials, your `~/.newrelic-preflight`, or your Claude Code transcripts:
+
+| Server | URL                                | Store                                                        |
+| ------ | ---------------------------------- | ------------------------------------------------------------ |
+| empty  | the default `baseURL`              | nothing                                                      |
+| seeded | `SEEDED_URL` from `e2e/servers.ts` | one persisted session from `e2e/fixtures/session-fixture.ts` |
+
+```bash
+npm run test:e2e                          # Build, then run the suite
+npx playwright test e2e/views.spec.ts     # One spec, against an existing build
+```
+
+### Adding a view smoke test
+
+`e2e/views.spec.ts` holds a smoke test per dashboard route, run once against each server. Each reaches the view from the sidebar, then again by reloading on its URL, and asserts the view's `<h1>`, no "Not found", and no console error, uncaught exception, failed request or unexpected 4xx/5xx while it loads. A new view needs one row in `VIEWS`; a test comparing `VIEWS` against the sidebar fails until it has one:
+
+```typescript
+{ nav: 'Workflows', path: '/workflows', heading: 'Workflows', query: /^\/api\/workflows$/ },
+```
+
+`nav` is the Sidebar button's label and `heading` the view's `<h1>` text. `query` matches the pathname of a request the view issues on mount; the test waits for it to be answered after the reload, so it must not be one the App shell makes (`/api/session/current`, `/api/anti-patterns`, `/api/health` and `/sse`, on every route). Another view may share it. It proves the request was answered, not that the view rendered its data, and the error checks cover the reloaded load: the sidebar visit is checked by URL and heading only, and its fetches are cancelled by the reload. If the view requests something that legitimately answers with an error status, add it to `EXPECTED_ERROR_RESPONSES` with a comment saying why, rather than loosening the check.
+
+To assert what a view shows with data, `test.use({ baseURL: SEEDED_URL })` in a `describe` and, if the fixture lacks what you need, extend `buildFixtureSession()`. Import the values you assert on from `session-fixture.ts` instead of repeating them.
+
+Smoke tests take no screenshots. Screenshots are per-platform baselines, and every new one means recording a Linux copy too — see [The three suites](../CONTRIBUTING.md#the-three-suites).
+
+---
+
 ## Global Test Setup
 
 Nearly every test file follows this setup pattern:
@@ -285,25 +315,19 @@ Tests that touch the filesystem create a unique temp directory per test and clea
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = resolve(
-    tmpdir(),
-    `nr-localstore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
+  tmpDir = mkdtempSync(resolve(tmpdir(), 'nr-localstore-test-'));
 });
 
 afterEach(() => {
-  if (existsSync(tmpDir)) {
-    rmSync(tmpDir, { recursive: true, force: true });
-  }
+  rmSync(tmpDir, { recursive: true, force: true });
 });
 ```
 
-The directory name includes both `Date.now()` and a random suffix to guarantee uniqueness across parallel runs and rapid re-runs. Tests call `mkdirSync(tmpDir, { recursive: true })` or `store.initialize()` at the start of each test case.
+`mkdtempSync` creates the directory under a name no other process holds. A name built from `Date.now()` alone collides when two Jest processes start a test in the same millisecond, and the first to finish deletes the directory under the other; older tests that add a `Math.random()` suffix to it are also safe.
 
 ```typescript
 it('round-trips a single event', () => {
   const store = new LocalStore(tmpDir);
-  mkdirSync(tmpDir, { recursive: true });
 
   const event = makeEvent({ tool: 'Write' });
   store.appendToBuffer(event);
@@ -340,6 +364,14 @@ it('fires events harvest at 5s intervals', async () => {
 ```
 
 **Important:** Use `jest.advanceTimersByTimeAsync()` (not the sync version) when the code under test uses `async/await` or Promises. Always call `scheduler.stop()` or equivalent cleanup before the test ends.
+
+### Time-zone-dependent tests
+
+Tests must pass in any host zone; CI runs both suites under `America/New_York` and under `UTC`, and the Jest suite under `Pacific/Auckland` as well. Build day-boundary fixtures with the same local-date helpers the code uses (`localStartOfDay`, `localDateKey` from `src/lib/date.ts`, or `new Date(y, m, d)`), or pass an explicit IANA `tz` to helpers that accept one. Don't hardcode a zone's offset or DST dates. A UTC instant such as `Date.parse('2026-09-10T12:00:00Z')` is already September 11 from UTC+12 eastward, so give a fixture that the code reads as a local day a local time instead (`new Date(2026, 8, 10, 12)`).
+
+Jest gives each test file its own copy of `process.env`, so `process.env.TZ = '...'` inside a Jest test has no effect. A test that needs a zone property, such as a DST transition, derives it from the host zone and skips when the host has none (see the `dailyPeaks` DST test in `src/dashboard/routes/api-handler.test.ts`). In a zone that springs forward at local midnight (`America/Havana`, `Africa/Cairo`), `new Date(y, m, d)` for that day resolves to 01:00, so check that a derived day start reads 00:00. A test that skips on a missing zone property can also skip because CI's `TZ` is misspelled or its zone data is missing, so pair it with a CI-only guard that the zone resolved (the `runs under the time zone TZ requests` test beside it).
+
+Vitest does honor a runtime `process.env.TZ`. Assert that the pin took effect (for example with `getTimezoneOffset()`): if it silently stopped working, the test would run in the host's zone, and on a host where its bug can't occur, such as UTC, it would pass against buggy code. Restore it with `delete process.env.TZ` when it was unset, since assigning `undefined` stores the string `"undefined"`.
 
 ### Transport / HTTP tests
 
