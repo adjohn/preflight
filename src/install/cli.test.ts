@@ -140,6 +140,11 @@ const mockedSetupWizard = {
 };
 
 describe('schedule subcommand', () => {
+  const mockedFsForSchedule = fsMod as unknown as {
+    existsSync: jest.Mock;
+    realpathSync: jest.Mock;
+  };
+  const mockedChildForSchedule = childMod as unknown as { execFileSync: jest.Mock };
   let stdoutSpy: ReturnType<typeof jest.spyOn>;
   let exitSpy: ReturnType<typeof jest.spyOn>;
   const savedPlatform = process.platform;
@@ -153,12 +158,48 @@ describe('schedule subcommand', () => {
         throw new Error(`process.exit(${String(code)})`);
       });
     Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+    mockedFsForSchedule.realpathSync.mockReturnValue('/home/user/preflight/dist/index.js');
+    mockedFsForSchedule.existsSync.mockImplementation(
+      (p: unknown) => String(p) === '/home/user/preflight/package.json',
+    );
+    mockedChildForSchedule.execFileSync.mockReset();
+    mockedChildForSchedule.execFileSync.mockReturnValue('/home/user/preflight');
   });
 
   afterEach(() => {
     stdoutSpy.mockRestore();
     exitSpy.mockRestore();
     Object.defineProperty(process, 'platform', { value: savedPlatform, configurable: true });
+    mockedFsForSchedule.existsSync.mockImplementation(() => false);
+    mockedFsForSchedule.realpathSync.mockImplementation((p: unknown) => p);
+    mockedChildForSchedule.execFileSync.mockReset();
+  });
+
+  function mockHomebrewEntryPoint(): void {
+    const mFs = fsMod as unknown as { existsSync: jest.Mock; realpathSync: jest.Mock };
+    mFs.realpathSync.mockReturnValue(
+      '/opt/homebrew/Cellar/preflight/1.57.4/libexec/lib/node_modules/@newrelic/preflight/dist/index.js',
+    );
+    mFs.existsSync.mockImplementation(
+      (p: unknown) =>
+        String(p) ===
+        '/opt/homebrew/Cellar/preflight/1.57.4/libexec/lib/node_modules/@newrelic/preflight/package.json',
+    );
+  }
+
+  it('refuses --time on a Homebrew install and points at brew upgrade', async () => {
+    mockHomebrewEntryPoint();
+    await expect(runInstallCli(['schedule', '--time', '08:00'])).rejects.toThrow('process.exit(1)');
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).toContain('brew upgrade preflight');
+    expect(mockedSchedule.installSchedule).not.toHaveBeenCalled();
+  });
+
+  it('still allows --disable on a Homebrew install so an existing schedule can be removed', async () => {
+    mockHomebrewEntryPoint();
+    mockedSchedule.removeSchedule.mockReturnValue(true);
+    await runInstallCli(['schedule', '--disable']);
+    expect(mockedSchedule.removeSchedule).toHaveBeenCalled();
   });
 
   it('prints status when no flags given and no schedule installed', async () => {
@@ -187,6 +228,33 @@ describe('schedule subcommand', () => {
     const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     expect(output).toContain('plist unreadable');
     expect(output).toContain('reinstall');
+  });
+
+  it('refuses --time on a package-manager install with the upgrade hint and does not install', async () => {
+    mockedFsForSchedule.realpathSync.mockReturnValue(
+      '/usr/local/lib/node_modules/@newrelic/preflight/dist/index.js',
+    );
+    mockedFsForSchedule.existsSync.mockImplementation(
+      (p: unknown) => String(p) === '/usr/local/lib/node_modules/@newrelic/preflight/package.json',
+    );
+    mockedChildForSchedule.execFileSync.mockImplementation(() => {
+      throw new Error('not a repository');
+    });
+    await expect(runInstallCli(['schedule', '--time', '08:00'])).rejects.toThrow('process.exit(1)');
+    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(output).toContain('package manager');
+    expect(output).toContain('npm install -g @newrelic/preflight@latest');
+    expect(mockedSchedule.installSchedule).not.toHaveBeenCalled();
+  });
+
+  it('still allows --disable on a package-manager install so a stale schedule can be removed', async () => {
+    mockedFsForSchedule.realpathSync.mockReturnValue('/usr/local/lib/node_modules/p/dist/index.js');
+    mockedChildForSchedule.execFileSync.mockImplementation(() => {
+      throw new Error('not a repository');
+    });
+    mockedSchedule.removeSchedule.mockReturnValue(true);
+    await runInstallCli(['schedule', '--disable']);
+    expect(mockedSchedule.removeSchedule).toHaveBeenCalled();
   });
 
   it('installs schedule with --time 08:00', async () => {
@@ -1433,6 +1501,27 @@ describe('preflight update', () => {
     const output = getOutput();
     expect(output).toContain('package manager');
     expect(output).toContain('npm install -g @newrelic/preflight@latest');
+  });
+
+  it('exits 1 with the brew upgrade hint on a Homebrew install, without running git', async () => {
+    mFs.realpathSync.mockReturnValue(
+      '/opt/homebrew/Cellar/preflight/1.57.4/libexec/lib/node_modules/@newrelic/preflight/dist/index.js',
+    );
+    mFs.existsSync.mockImplementation(
+      (p: unknown) =>
+        String(p) ===
+        '/opt/homebrew/Cellar/preflight/1.57.4/libexec/lib/node_modules/@newrelic/preflight/package.json',
+    );
+    // On Apple Silicon the Cellar is inside Homebrew's own git repo.
+    mExec.execFileSync.mockImplementation((cmd: unknown, args: unknown) => {
+      if (cmd === 'git' && (args as string[]).includes('--show-toplevel')) return '/opt/homebrew';
+    });
+    await expect(runInstallCli(['update'])).rejects.toThrow('process.exit(1)');
+    const output = getOutput();
+    expect(output).toContain('installed with Homebrew');
+    expect(output).toContain('brew upgrade preflight');
+    expect(output).not.toContain('npm install -g');
+    expect(mExec.execFileSync).not.toHaveBeenCalled();
   });
 
   it('exits 1 with git-not-installed hint when git binary is absent', async () => {
