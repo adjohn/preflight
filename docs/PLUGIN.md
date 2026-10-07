@@ -12,8 +12,9 @@ the plugin is an additional distribution channel, not a replacement.
 
 ## What you get
 
-- **Hooks** — `PreToolUse`/`PostToolUse` capture for every built-in tool call,
-  same as the npm install's hook wiring (`preflight setup` / `preflight
+- **Hooks** — capture for every hook event
+  (tool calls, permissions, API failures, prompts, session lifecycle), same
+  as the npm install's hook wiring (`preflight setup` / `preflight
 install`). The plugin ships a small, dependency-free, precompiled copy of
   the hook collector (see [Packaging](#packaging) below) rather than relying
   on a globally-installed binary.
@@ -51,11 +52,32 @@ start, same as the npm install.
 
 Local mode (no New Relic account needed, dashboard at `localhost:7777`) is
 the default when the plugin's MCP server sees no license key. To send
-telemetry to New Relic, set the same environment variables the npm install's
-`preflight install --mode cloud` would configure — e.g.
-`NEW_RELIC_LICENSE_KEY` and `NEW_RELIC_AI_ACCOUNT_ID` — in your shell profile
-or in Claude Code's own `env` settings. See [ADVANCED.md](./ADVANCED.md) for
-the full field reference.
+telemetry to New Relic, set three environment variables:
+
+| Variable                | Value                                                   |
+| ----------------------- | ------------------------------------------------------- |
+| `NR_AI_MODE`            | `cloud` (or `both` to keep the local dashboard as well) |
+| `NEW_RELIC_LICENSE_KEY` | Your New Relic ingest license key                       |
+| `NEW_RELIC_ACCOUNT_ID`  | Your numeric New Relic account ID (1 to 12 digits)      |
+
+`NR_AI_MODE` is required. A license key with no explicit mode fails at
+startup, because telemetry export is opt-in, and the plugin's tools do not
+appear.
+
+Set them in your shell profile or in Claude Code's `env` settings. This is the
+shape an admin puts in `settings.json` or managed settings:
+
+```json
+{
+  "env": {
+    "NR_AI_MODE": "cloud",
+    "NEW_RELIC_LICENSE_KEY": "<your-license-key>",
+    "NEW_RELIC_ACCOUNT_ID": "1234567"
+  }
+}
+```
+
+See [ADVANCED.md](./ADVANCED.md) for the full field reference.
 
 ## Packaging
 
@@ -103,8 +125,8 @@ simply pointing it at this repo's own `dist/`:
   [esbuild](https://esbuild.github.io/) bundle of `collector-script.ts` (plus
   its two dependency-free local imports, `redaction-patterns.ts` and
   `record-content-gate.ts` — it has no npm dependencies to begin with),
-  committed to the repo. `plugin/hooks/hooks.json` points both `PreToolUse`
-  and `PostToolUse` at this one file via `${CLAUDE_PLUGIN_ROOT}`.
+  committed to the repo. `plugin/hooks/hooks.json` points every hook event
+  at this one file via `${CLAUDE_PLUGIN_ROOT}`.
 - **`plugin/.claude-plugin/plugin.json`** — the plugin manifest itself, at
   the location required relative to the plugin's own root (`plugin/`, not
   the repo root).
@@ -174,6 +196,10 @@ What each key does:
 To stage a rollout, deliver a different value of the variable to each device
 group (separate managed settings files or MDM profiles). To roll back, change
 the value and users pick it up at their next session start.
+
+The pin only works with a plugin at 1.61.0 or later. Earlier plugin versions
+launch `@latest` and ignore the variable, so a `ref` older than `v1.61.0` does
+not hold the server.
 
 The pinned version must exist on npm (`npm view @newrelic/preflight versions`)
 or the server fails to start with an npm "No matching version" error in the
