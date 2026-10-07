@@ -5,11 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.57.4] - 2026-10-01
+## [1.59.2] - 2026-10-07
 
 ### Fixed
 
 - **Following the plugin's cloud-mode setup produced a server that would not start.** `docs/PLUGIN.md` now lists the three variables cloud mode needs, `NR_AI_MODE=cloud`, `NEW_RELIC_LICENSE_KEY` and `NEW_RELIC_ACCOUNT_ID`, with a complete Claude Code `env` settings example. The account ID variable is `NEW_RELIC_ACCOUNT_ID`, the name config reads, on that page and in `smithery.yaml`.
+
+## [1.59.1] - 2026-10-07
+
+### Fixed
+
+- Audit trail and security events for tool calls made inside a subagent now carry the subagent's id and type (for example `Explore`) on installs whose Claude Code hook payload leaves `agent_id` or `agent_type` out, so sensitive-file access and destructive commands can be attributed to the subagent that made them. Preflight finds the call in the subagent's transcript, reading the transcript's newest lines as the call's hook record arrives, and takes the type from the metadata file Claude Code writes next to each transcript when the subagent starts. Both can still be missing on a call Claude Code has not yet written to the transcript when Preflight processes it: Claude Code writes transcript lines about 0.1 seconds after the model produces them, and a fast `Read` or `Grep` can finish sooner. They can also be missing on calls made before Preflight's scan for new transcripts, which runs every 2 seconds (10 seconds in `--local` mode), has found the subagent's transcript: a session's first subagent (in `--local` mode, its first in 24 hours), a subagent a workflow starts, and any subagent during the first scan interval after Preflight starts. Preflight checks at most 32 transcripts and reads at most 1 MiB per call, so a call can also be missed when its transcript is not among its session's 32 most recently written or sits behind more than 1 MiB of unread lines. A type the hook payload does send is kept as is, unless it is over 128 characters or contains control characters: such a value is dropped and the type is filled in the same way.
+- Subagent turn events (`AiSubagentTurn`) and subagent cost by type get the subagent's type while it runs, from the same metadata file or from the type the hook payload sends with the subagent's tool calls, instead of only after the parent's `Agent` call returns.
+- The long-running `--local` daemon no longer keeps a record of every subagent tool call it has ever seen. Subagent attribution now keeps at most 10,000 tool calls and 1,000 subagents, and drops entries unused for 24 hours.
+
+## [1.59.0] - 2026-10-07
+
+### Added
+
+- **The Claude Code plugin now captures permission, API failure, prompt, model switch, and session lifecycle events, not just tool calls.** `plugin/hooks/hooks.json` registers every hook event that `preflight install` writes, and a test keeps the two in sync.
+
+## [1.58.5] - 2026-10-07
+
+### Fixed
+
+- **The local dashboard counted a session twice once it was saved to disk.** Today's "Where today's spend went" Models table showed double the requests and cost of the "Spend today" tile beside it, and the Tool Selection and Quality panels counted the same calls and signals twice. Each session now counts once, before and after it is saved.
+
+## [1.58.4] - 2026-10-06
+
+### Fixed
+
+- **The "On pace for" projection on History and Today could read ~$0.00 for the week while the month beside it read over $1,000.** The week projection only extrapolated from spend since Monday, so after a quiet Monday, and before today's spend was counted, it projected nothing for the rest of the week. The month projection had the same gap on the 1st. Both now project the remaining days from your average daily spend over the last 28 days plus today, so the week and month figures use the same pace.
+
+## [1.58.3] - 2026-10-06
+
+### Fixed
+
+- A session's "Session Quality" card no longer shows "Diff Apply NaN%" and "Test Pass NaN%" on sessions with no diff or test signals. The session detail response carried the session's raw signal counts under the key the dashboard reads the two rates from, and those counts have no rate fields. Such a session now hides the card, matching what the other session-detail paths already did.
+
+## [1.58.2] - 2026-10-06
+
+### Fixed
+
+- A git remote with a token in it no longer leaks the token. With a remote such as `https://<token>@github.com/widgets.git` or `ssh://git@github.com/widgets.git`, the repository name recorded on session summaries and shown in the dashboard header came out as `<token>@github.com/widgets`; it is now `github.com/widgets`. `repo_url` also drops the credential part of the remote now, including a token used as the username, which the secret patterns did not always catch; before, the value kept the token or had the whole host replaced by `[REDACTED]`. Only `ssh://`-style and `git@host:path` remotes keep a login name, and only the name. Every other kind, including the `git+https://` form used in `package.json`, loses everything up to the `@`, even when a password contains an unencoded `/`. A remote that goes through a remote helper, such as `hg::https://...` or `gcrypt::https://...`, gives no repository name, `project_id`, commit link, or `repo_url` at all, because only the helper can parse what follows the `::`; before, a token in one could reach the repository name. Without a repository name, such a checkout is handled like one with no remote: its sessions and the same day's sessions in other repositories count toward each other's git totals, on the dashboard and in the `ai.git.*` metrics. Session summaries saved before the upgrade keep the repository name they were saved with, token included, and the dashboard can still show it. Edit or delete the `repoName` field in those files, under `~/.newrelic-preflight/sessions/` by default, to remove it.
+- Repository names and commit links now work for remotes with a trailing slash, an uppercase `.GIT` suffix, or a query string, and commit links from `ssh://` remotes with a port no longer put the port in the link's path. A remote whose path has no owner segment, such as `git@host:repo.git`, gets the repository name `host/repo` and the `project_id` `repo`. The host can name an internal git server, so it is sent only in `repo_url`, which can be turned off, and never in `project_id`, which goes on every event. Before, its `project_id` was `host/repo` for an `https://` remote and missing for most ssh ones. A repository name with characters other than letters, digits, `.`, `_`, and `-`, such as `~jdoe/widgets`, `acme/my+repo`, or a local `My Drive/widgets`, also gives a `project_id` now; before, it gave none. For a remote ending in `.GIT` or carrying a query string, the repository name changes (from `acme/widgets.GIT` to `acme/widgets`), so on the day of the upgrade, git activity from sessions saved earlier that day under the old name is left out of that day's git stats.
+
+## [1.58.1] - 2026-10-06
+
+### Fixed
+
+- **`preflight update` on a Homebrew install no longer tells you to `npm install -g`.** Following that advice created a second, competing copy of preflight on `PATH`. It now says `brew upgrade preflight`. `preflight schedule --time` refuses on a Homebrew install with the same hint, since the daily job runs `preflight update` and would fail every run; `preflight schedule` and `preflight schedule --disable` still work, so an existing job can be removed.
+
+## [1.58.0] - 2026-10-06
+
+### Added
+
+- **Preflight is now installable via Homebrew on macOS** (`brew tap newrelic-experimental/preflight && brew trust newrelic-experimental/preflight && brew install preflight`), alongside the existing npm install path. The formula tracks the npm package; the Release workflow regenerates it and opens a PR against the tap repo on every release, documented in `docs/maintaining-homebrew-tap.md`.
+
+## [1.57.3] - 2026-10-01
+
+### Fixed
+
+- The Kiro Power manifest (`kiro-power/plugin.json`) now validates against the Agent Plugins 1.0.0 schema it declares. It carried a root `displayName` key, which the schema does not allow and which marketplaces validating against it rejected. Kiro's Powers documentation does not list `displayName` as a manifest field, so the key was removed rather than moved.
 
 ## [1.57.2] - 2026-09-29
 
