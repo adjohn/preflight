@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Scripts and fleet tooling could read `preflight doctor` results only by parsing its human-readable output.** `preflight doctor --json` prints the diagnostic checks as a JSON array on stdout, with each check's `check`, `status`, `detail`, and `fix`. The exit code is the same in both modes: 0 when every check passes, 1 when any check fails, and 2 when the only problems are warnings.
 
+## [1.59.5] - 2026-10-07
+
+### Fixed
+
+- **Google Antigravity: every tool call failed after Preflight's `PostToolUse` hook ran.** Antigravity sends the same payload shape for `PreToolUse` and `PostToolUse`, so Preflight read each `PostToolUse` as `PreToolUse` and replied with `{"decision":"allow"}`, which Antigravity rejects for that event. Preflight now takes the event name from the hook command and replies `{}` to `PostToolUse`, and records it as the end of the tool call. Update `hooks.json` to run `preflight-collector PreToolUse` and `preflight-collector PostToolUse` (see the Antigravity section of `docs/ADAPTERS.md`). Without the argument, Preflight falls back to treating a payload with an `error` field as `PostToolUse`, so a successful call whose `PostToolUse` omits that field gets the `PreToolUse` reply and is recorded as a failed call.
+
 ## [1.59.4] - 2026-10-07
 
 ### Fixed
