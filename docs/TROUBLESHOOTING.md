@@ -25,7 +25,7 @@ For scripts, `preflight doctor --json` prints the checks as a JSON array. This l
 preflight doctor --json | jq -r '.[] | select(.status == "fail") | .check'
 ```
 
-Both forms exit 0 when every check passes, 1 when any check fails, and 2 when the only problems are warnings.
+Both forms exit 0 when every check passes, 1 when any check fails, and 2 when the only problems are warnings. A script that treats warnings as healthy should test for `$? -ne 1`.
 
 ---
 
