@@ -9,6 +9,8 @@ coverage/
 docs/superpowers/
 .claude/*
 !.claude/skills/
+.claude/skills/*
+!.claude/skills/verify-preflight/
 test-results/
 playwright-report/
 
