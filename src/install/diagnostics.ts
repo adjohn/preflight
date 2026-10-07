@@ -9,7 +9,7 @@ import { VERSION } from '../version.js';
 
 import { validateConfigFile, loadMcpConfig, DEFAULT_STORAGE_PATH } from '../config.js';
 import { getDashboardDaemonStatus, findExecutableNodeDir, getScheduleStatus } from './schedule.js';
-import { detectUpdateSupport, UPGRADE_COMMAND } from './update-support.js';
+import { detectUpdateSupport, upgradeCommandFor } from './update-support.js';
 import {
   detectSettingsPath,
   entryContainsNrObserve,
@@ -245,7 +245,8 @@ function checkUpdateSchedule(): DiagnosticCheck {
   if (!getScheduleStatus().installed) {
     return { check: name, status: 'ok', detail: 'No update schedule installed.' };
   }
-  if (detectUpdateSupport().supported) {
+  const support = detectUpdateSupport();
+  if (support.supported) {
     return { check: name, status: 'ok', detail: 'com.preflight.update.plist found' };
   }
   return {
@@ -253,7 +254,7 @@ function checkUpdateSchedule(): DiagnosticCheck {
     status: 'warn',
     detail:
       'com.preflight.update.plist is installed, but `preflight update` cannot run on this install (not a source clone), so the daily job fails every run.',
-    fix: `preflight schedule --disable, then upgrade with: ${UPGRADE_COMMAND}`,
+    fix: `preflight schedule --disable, then upgrade with: ${upgradeCommandFor(support.blocker)}`,
   };
 }
 

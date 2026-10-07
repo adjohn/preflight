@@ -542,7 +542,7 @@ function handleSchedule(options: { time?: string; disable?: boolean }): void {
     const support = detectUpdateSupport();
     if (!support.supported) {
       for (const line of updateBlockerLines(support.blocker)) print(line);
-      print('  The daily schedule runs `preflight update`, which needs a source clone.');
+      print('  The daily schedule runs `preflight update`, which cannot run on this install.');
       process.exit(1);
     }
     const match = options.time.match(/^(\d{1,2}):(\d{2})$/);

@@ -38,7 +38,9 @@ jest.mock('./cli.js', () => ({
 jest.mock('./update-support.js', () => ({
   findRepoRoot: jest.fn(() => null),
   detectUpdateSupport: jest.fn(() => ({ supported: true, repoRoot: '/src/preflight' })),
-  UPGRADE_COMMAND: 'npm install -g @newrelic/preflight@latest',
+  upgradeCommandFor: jest.fn((blocker: string) =>
+    blocker === 'homebrew' ? 'brew upgrade preflight' : 'npm install -g @newrelic/preflight@latest',
+  ),
 }));
 jest.mock('./platform.js', () => ({
   isWsl: jest.fn(() => false),
@@ -1297,7 +1299,7 @@ describe('setupWizard daemon install step', () => {
   });
 });
 
-describe('setupWizard auto-update step on a package-manager install', () => {
+describe('setupWizard auto-update step on an install where update cannot run', () => {
   let stdoutSpy: ReturnType<typeof jest.spyOn>;
   let stderrSpy: ReturnType<typeof jest.spyOn>;
   let mockRl: { question: jest.Mock; close: jest.Mock };
@@ -1315,10 +1317,6 @@ describe('setupWizard auto-update step on a package-manager install', () => {
     mockedFs.readFileSync.mockReturnValue('{}');
     Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
     mockedSchedule.resolveBinaryPath.mockReturnValue('/usr/local/bin/preflight');
-    mockedUpdateSupport.detectUpdateSupport.mockReturnValue({
-      supported: false,
-      blocker: 'package-manager',
-    });
   });
 
   afterEach(() => {
@@ -1331,19 +1329,27 @@ describe('setupWizard auto-update step on a package-manager install', () => {
     Object.defineProperty(process, 'platform', { value: savedPlatform, configurable: true });
   });
 
-  it('does not ask about auto-updates or install a schedule, and prints the upgrade command', async () => {
-    const values = ['local', 'tester', '', '', '', '', '', 'n', 'n', 'n', 'n'];
-    let i = 0;
-    mockRl.question.mockImplementation(async () => values[i++] ?? '');
+  it.each([
+    ['package-manager', 'npm install -g @newrelic/preflight@latest'],
+    ['homebrew', 'brew upgrade preflight'],
+    ['no-git', 'Install git'],
+  ])(
+    'does not ask about auto-updates or install a schedule on a %s install, and prints %s',
+    async (blocker, expected) => {
+      mockedUpdateSupport.detectUpdateSupport.mockReturnValue({ supported: false, blocker });
+      const values = ['local', 'tester', '', '', '', '', '', 'n', 'n', 'n', 'n'];
+      let i = 0;
+      mockRl.question.mockImplementation(async () => values[i++] ?? '');
 
-    await runSetupWizard();
+      await runSetupWizard();
 
-    const asked = mockRl.question.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
-    expect(asked).not.toContain('auto-updates');
-    expect(mockedSchedule.installSchedule).not.toHaveBeenCalled();
-    const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
-    expect(output).toContain('npm install -g @newrelic/preflight@latest');
-  });
+      const asked = mockRl.question.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      expect(asked).not.toContain('auto-updates');
+      expect(mockedSchedule.installSchedule).not.toHaveBeenCalled();
+      const output = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+      expect(output).toContain(expected);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------

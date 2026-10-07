@@ -35,7 +35,9 @@ jest.mock('./schedule.js', () => ({
 
 jest.mock('./update-support.js', () => ({
   detectUpdateSupport: jest.fn(() => ({ supported: true, repoRoot: '/src/preflight' })),
-  UPGRADE_COMMAND: 'npm install -g @newrelic/preflight@latest',
+  upgradeCommandFor: jest.fn((blocker: string) =>
+    blocker === 'homebrew' ? 'brew upgrade preflight' : 'npm install -g @newrelic/preflight@latest',
+  ),
 }));
 
 // Stub config module.
@@ -318,6 +320,15 @@ describe('runDiagnostics', () => {
       expect(c.detail).toContain('com.preflight.update.plist');
       expect(c.fix).toContain('preflight schedule --disable');
       expect(c.fix).toContain('npm install -g @newrelic/preflight@latest');
+    });
+
+    it('names brew upgrade, not npm, when the install is Homebrew', async () => {
+      mockedGetScheduleStatus.mockReturnValue({ installed: true, readable: true });
+      mockedDetectUpdateSupport.mockReturnValue({ supported: false, blocker: 'homebrew' });
+      const c = findCheck(await runDiagnostics(makeOpts()));
+      expect(c.status).toBe('warn');
+      expect(c.fix).toContain('brew upgrade preflight');
+      expect(c.fix).not.toContain('npm install');
     });
   });
 

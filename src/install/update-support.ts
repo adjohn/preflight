@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 
+import { HOMEBREW_UPGRADE_COMMAND, isHomebrewInstall } from './homebrew-install.js';
+
 export function findRepoRoot(): string | null {
   try {
     let dir = dirname(realpathSync(process.argv[1]));
@@ -18,7 +20,7 @@ export function findRepoRoot(): string | null {
 
 export const UPGRADE_COMMAND = 'npm install -g @newrelic/preflight@latest';
 
-export type UpdateBlocker = 'no-repo-root' | 'no-git' | 'package-manager';
+export type UpdateBlocker = 'no-repo-root' | 'no-git' | 'package-manager' | 'homebrew';
 
 export type UpdateSupport =
   | { readonly supported: true; readonly repoRoot: string }
@@ -32,6 +34,11 @@ export type UpdateSupport =
 export function detectUpdateSupport(): UpdateSupport {
   const repoRoot = findRepoRoot();
   if (!repoRoot) return { supported: false, blocker: 'no-repo-root' };
+
+  // Checked before git: on Apple Silicon the Cellar sits inside Homebrew's own
+  // repo (/opt/homebrew), so the node_modules check below would catch it and
+  // give npm advice that installs a second, competing copy.
+  if (isHomebrewInstall(repoRoot)) return { supported: false, blocker: 'homebrew' };
 
   let gitRoot: string;
   try {
@@ -54,6 +61,11 @@ export function detectUpdateSupport(): UpdateSupport {
   return { supported: true, repoRoot };
 }
 
+/** The command that upgrades an install `preflight update` cannot upgrade. */
+export function upgradeCommandFor(blocker: UpdateBlocker): string {
+  return blocker === 'homebrew' ? HOMEBREW_UPGRADE_COMMAND : UPGRADE_COMMAND;
+}
+
 export function updateBlockerLines(blocker: UpdateBlocker): string[] {
   switch (blocker) {
     case 'no-repo-root':
@@ -64,6 +76,11 @@ export function updateBlockerLines(blocker: UpdateBlocker): string[] {
       return [
         '✗ git is not installed or not found on PATH.',
         '  Install git (https://git-scm.com) then retry: preflight update',
+      ];
+    case 'homebrew':
+      return [
+        '✗ preflight was installed with Homebrew.',
+        `  To update: ${HOMEBREW_UPGRADE_COMMAND}`,
       ];
     case 'package-manager':
       return [
