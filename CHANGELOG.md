@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.59.0] - 2026-10-07
+
+### Added
+
+- **The Claude Code plugin now captures permission, API failure, prompt, model switch, and session lifecycle events, not just tool calls.** `plugin/hooks/hooks.json` registers every hook event that `preflight install` writes, and a test keeps the two in sync.
+
 ## [1.58.5] - 2026-10-07
 
 ### Fixed
