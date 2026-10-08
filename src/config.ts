@@ -11,6 +11,7 @@ import type { PersonalAlertThresholds } from './alerts/types.js';
 import { DEFAULT_PERSONAL_THRESHOLDS } from './alerts/types.js';
 import { REDACTION_PATTERNS as DEFAULT_REDACTION_PATTERNS } from './redaction-patterns.js';
 import { resolveRecordContent } from './record-content-gate.js';
+import { projectIdFromRemote, stripRemoteCredentials } from './lib/git-remote.js';
 import { validateTiers, DEFAULT_TIER_NAME, WILDCARD_EVENT_TYPE } from './transport/tier-types.js';
 import type { ResolvedTier } from './transport/tier-types.js';
 
@@ -400,17 +401,7 @@ function getGitRemoteUrl(): string | null {
 }
 
 function inferProjectId(): string | null {
-  const remote = getGitRemoteUrl();
-  if (!remote) return null;
-  // Extract "org/repo" from HTTPS or SSH remotes:
-  // https://github.com/org/repo.git  → org/repo
-  // git@github.com:org/repo.git      → org/repo
-  const match = remote.match(/[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
-  return match ? match[1] : null;
-}
-
-function inferRepoUrl(): string | null {
-  return getGitRemoteUrl();
+  return projectIdFromRemote(getGitRemoteUrl());
 }
 
 function parseEnvBool(raw: string | undefined): boolean | undefined {
@@ -880,10 +871,22 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
   // copy-pasted from an authenticated `git remote -v`).
   const rawRepoUrl =
     process.env.NEW_RELIC_AI_REPO_URL ??
-    (typeof file.repoUrl === 'string' ? file.repoUrl : inferRepoUrl());
+    (typeof file.repoUrl === 'string' ? file.repoUrl : getGitRemoteUrl());
+  // stripRemoteCredentials drops URL userinfo and query strings;
+  // redactSensitive then catches any token elsewhere in the value.
+  const strippedRepoUrl = stripRemoteCredentials(rawRepoUrl);
   const resolvedRepoUrl = sanitizeOrgField(
-    rawRepoUrl === null ? null : redactSensitive(rawRepoUrl),
+    strippedRepoUrl === null ? null : redactSensitive(strippedRepoUrl),
   );
+
+  const resolvedCompanionMode = resolveCompanionMode(
+    process.env,
+    typeof file.companionMode === 'boolean' ? file.companionMode : undefined,
+  );
+  logger.info('Companion mode resolved', {
+    value: resolvedCompanionMode.value,
+    source: resolvedCompanionMode.source,
+  });
 
   const config: McpServerConfig = {
     licenseKey,
@@ -934,17 +937,7 @@ export function loadMcpConfig(cliOptions?: Partial<CliOptions>): Readonly<McpSer
       ),
     ),
 
-    companionMode: (() => {
-      const resolved = resolveCompanionMode(
-        process.env,
-        typeof file.companionMode === 'boolean' ? file.companionMode : undefined,
-      );
-      logger.info('Companion mode resolved', {
-        value: resolved.value,
-        source: resolved.source,
-      });
-      return resolved.value;
-    })(),
+    companionMode: resolvedCompanionMode.value,
 
     redactionPatterns: DEFAULT_REDACTION_PATTERNS,
 

@@ -13,16 +13,16 @@ import {
   DEFAULT_STORAGE_PATH,
   resolveCompanionMode,
 } from '../config.js';
-import { getDashboardDaemonStatus, findExecutableNodeDir } from './schedule.js';
+import { getDashboardDaemonStatus, findExecutableNodeDir, getScheduleStatus } from './schedule.js';
+import { detectUpdateSupport, upgradeCommandFor } from './update-support.js';
+import { HOOK_EVENT_TYPES, type HookEventType } from '../hook-subcommands.js';
 import {
   detectSettingsPath,
   entryContainsNrObserve,
   entryHasAnyCommandHook,
-  HOOK_EVENT_TYPES,
   HOOK_SUBCOMMAND_PATTERN,
   NR_HOOK_RE,
 } from './install-helper.js';
-import type { HookEventType } from './install-helper.js';
 import { isWsl, resolveWindowsHome } from './platform.js';
 import { LocalStore } from '../storage/index.js';
 import { createDefaultRegistry } from '../platforms/index.js';
@@ -255,6 +255,27 @@ function checkDaemon(): DiagnosticCheck[] {
   }
 
   return [installedCheck, nodePathCheck];
+}
+
+function checkUpdateSchedule(): DiagnosticCheck {
+  const name = 'Update schedule';
+  if (platform() !== 'darwin') {
+    return { check: name, status: 'skip', detail: 'Update scheduling is macOS-only.' };
+  }
+  if (!getScheduleStatus().installed) {
+    return { check: name, status: 'ok', detail: 'No update schedule installed.' };
+  }
+  const support = detectUpdateSupport();
+  if (support.supported) {
+    return { check: name, status: 'ok', detail: 'com.preflight.update.plist found' };
+  }
+  return {
+    check: name,
+    status: 'warn',
+    detail:
+      'com.preflight.update.plist is installed, but `preflight update` cannot run on this install (not a source clone), so the daily job fails every run.',
+    fix: `preflight schedule --disable, then upgrade with: ${upgradeCommandFor(support.blocker)}`,
+  };
 }
 
 /** The settings.json hook keys this diagnostic checks — the installer's own set. */
@@ -661,6 +682,7 @@ export async function runDiagnostics(opts?: {
     companionModeCheck,
     checkNodeVersionDiagnostic(),
     ...checkDaemon(),
+    checkUpdateSchedule(),
     checkHooksWired(settingsPaths, opts?.platform),
     checkHookNodePath(settingsPaths, opts?.platform),
     checkStorageWritable(context.storagePath),
