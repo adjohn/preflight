@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.63.0] - 2026-10-08
+
+### Added
+
+- `ai.efficiency.*` gauges now carry a `model` attribute, matching `ai.cost.*`. `ai.cost.*`, `ai.efficiency.*`, and `ai.api.*` gauges also carry a `provider` attribute (`anthropic`, `google`, `openai`, `mistral`, `cohere`, or `bedrock` for the Bedrock model IDs in the pricing table) derived from the model ID, so dashboards can facet directly on either without joining against the corresponding event.
+
 ## [1.62.0] - 2026-10-08
 
 ### Added
