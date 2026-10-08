@@ -5,11 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.61.0] - 2026-10-08
+## [1.62.0] - 2026-10-08
 
 ### Added
 
 - **Adding Preflight to an org that already exports Claude Code's OTel metrics to New Relic doubled its reported cost and tokens until someone turned on companion mode.** Companion mode now turns on by itself when Claude Code's telemetry is on, `OTEL_METRICS_EXPORTER` includes `otlp`, and the OTLP endpoint is an `nr-data.net` host. `NR_AI_COMPANION_MODE` or `companionMode` in the config file still wins in either direction, so `NR_AI_COMPANION_MODE=false` turns it off. `preflight doctor` shows the resolved value and its source, and `nr_observe_get_config` shows the value.
+
+## [1.61.0] - 2026-10-07
+
+### Added
+
+- Fleet admins can hold the Claude Code plugin's MCP server on a specific version. The plugin's `.mcp.json` now launches `@newrelic/preflight@${NEW_RELIC_AI_PREFLIGHT_VERSION:-latest}`, which Claude Code expands at session start, so setting `NEW_RELIC_AI_PREFLIGHT_VERSION` in the managed settings `env` pins every machine that receives it, stages a rollout per device group, and rolls back without a new release. Unset, the server follows `latest` as before. `docs/PLUGIN.md` has a managed settings example that also pins the plugin to its release tag so the bundled hook collector and the server stay in lockstep.
 
 ## [1.60.0] - 2026-10-07
 
