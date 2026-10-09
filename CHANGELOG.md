@@ -5,17 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.62.0] - 2026-10-02
+## [1.64.0] - 2026-10-09
 
 ### Added
 
 - **Calls on a model with no price were recorded as $0 with nothing on the dashboard to say so, so Spend Today read low without explanation.** Preflight now counts those calls per model ID. The Today page shows a notice above the spend figures naming the models, for example "2 calls unpriced (claude-opus-5-5). Spend is understated." The counts are persisted with each session, summed across today's sessions, returned as `unpriced_by_model` by `nr_observe_get_cost_breakdown`, and emitted as the `ai.cost.unpriced_calls` metric tagged by `model`.
 
-## [1.61.1] - 2026-10-02
+## [1.63.4] - 2026-10-09
 
 ### Fixed
 
 - **An unpriced model logged "Unknown model, pricing not available" on every token event.** A session on a model missing from the pricing table repeated the warning for each call. Pricing lookups now resolve once per model ID per process, so the warning appears once per model.
+
+## [1.63.2] - 2026-10-08
+
+### Fixed
+
+- The per-session Git Efficiency view and the `ai.git.commit_count` gauge no longer count a standalone `git commit` that failed, such as one a pre-commit hook rejected, or an `--amend`, so they agree with the weekly/30-day panel. Expect the count to step down. A commit message that mentions `--amend` no longer reads as an amend. One exception remains: once the next `git log` refresh runs, every 5 minutes or on restart, the per-session view can count the commit that a `git commit --amend --reset-author` rewrote a second time, since the reset author time no longer matches the original commit's. A commit made just before a `git checkout -m` or `git apply --3way` that leaves files unmerged can also go uncounted when a later commit in the same command refuses over them, since neither prints text that shows it ran.
+- A chained git command reports one exit status for all its steps, so each step's outcome is now inferred from the error text and from bash's grouping, which reads `&&` and `||` left to right and a pipeline as one step whose status is its last command's. The failure goes to the step the text names: the push in `git commit -m x && git push` with a rejected push, the commit in that chain with nothing to commit (the earliest commit of the `&&` run, when it holds more than one, since the text doesn't say which failed: a failed first commit in `git commit -m a && git commit -m b` counts neither, and neither does anything in that run after the first commit, so when only `b` failed in `git commit -m a && git push && git commit -m b`, the commit and push before it don't count either), or, for conflict text, the earliest step of the `&&` run that can conflict (a plain `git stash` or `git checkout <branch>` cannot, nor can `git merge-base`, `git mergetool`, `git merge --continue` or a `--abort` or `--quit` right after the verb), such as the pull in `git pull && git commit -m merge && git checkout other`. The steps `&&` then skipped are not recorded, so they count in none of `ai.git.commit_count`, `ai.git.push_count`, the build-before-push practice or the weekly panel. A step is recorded as succeeded only when `&&` alone joins it to the step the failure goes to, such as the commit before that rejected push. Every other step keeps the command's failure, so neither commit in `git commit -m x || git commit --no-verify -m x` counts, nor the commit in `git diff --quiet || git commit -am wip && git push`, which the `||` may have skipped. When the text names no step, the failure goes to the last command, and the steps of the final `&&` run after its first are not recorded, since any of them may not have run: a failing `npm test && git add -A && git commit -m x && git push` counts no commit and no push. That run's first step counts when `&&` alone joins it to the last command, so the commit in `git commit -m x && gh pr create` counts when gh fails, and also when the commit failed with text that names no git failure, such as a gpg signing error. In `git commit -m x && git log --oneline | head -1` the `|` keeps it from counting.
+- `ai.git.push_count` and the weekly panel count a push, and the build-before-push practice judges one, only when it succeeded. A push that fails on auth no longer counts, nor does the push in `git pull; git push`, or the two on separate lines, after the pull conflicts: a `;` or newline list exits with its last command's status, so the command's failure is the push's. When that push's error also shows a rejection, it counts as a rejected push, and the rejection goes to the last push that ran, not one `&&` then skipped. A push followed by a failing non-git step in a `;` or newline list, such as `git push -u origin feat` and a failing `gh pr create --fill` on the next line, doesn't count either, because nothing shows which step failed. A failed force push still counts in `ai.git.force_push_count` and the `--force-with-lease` practice, which judge the command run. Expect the push count to step down, including in the weekly panel for history recorded before this release, where a push chained with a later failing step was stored as failed.
+- A step that `&` runs in the background no longer counts as a commit or push, since its exit status never reaches the command's, so the commit in `git commit -m x & git push` doesn't count. In a failed command whose quotes don't pair up, no step counts as succeeded, since bash runs no part of such a command.
+
+## [1.63.1] - 2026-10-08
+
+### Fixed
+
+- When the config asks for cloud export (`mode: "cloud"` or `"both"`) but the `preflight --local` dashboard process can't see your credentials, the sessions it collects for you no longer fail to reach New Relic silently. This usually happens because the credentials are set only as shell environment variables, which the macOS dashboard LaunchAgent does not inherit. The dashboard now logs a warning once for each session it keeps only locally, and `GET /api/health` reports them under `unforwardedSessions`, with a count and the most recent session ids. To fix it, add `licenseKey` and `accountId` to the config file and restart the dashboard.
+- On macOS, an MCP server launched through `npx` that took its session id from the directory it started in can now correct that id once the host's own hooks report the real one. Before, a GitHub Copilot session started in a directory where Claude Code was already running could stay filed under the Claude Code session for its whole life.
+
+## [1.63.0] - 2026-10-08
+
+### Added
+
+- `ai.efficiency.*` gauges now carry a `model` attribute, matching `ai.cost.*`. `ai.cost.*`, `ai.efficiency.*`, and `ai.api.*` gauges also carry a `provider` attribute (`anthropic`, `google`, `openai`, `mistral`, `cohere`, or `bedrock` for the Bedrock model IDs in the pricing table) derived from the model ID, so dashboards can facet directly on either without joining against the corresponding event.
+
+## [1.62.0] - 2026-10-08
+
+### Added
+
+- **Adding Preflight to an org that already exports Claude Code's OTel metrics to New Relic doubled its reported cost and tokens until someone turned on companion mode.** Companion mode now turns on by itself when Claude Code's telemetry is on, `OTEL_METRICS_EXPORTER` includes `otlp`, and the OTLP endpoint is an `nr-data.net` host. `NR_AI_COMPANION_MODE` or `companionMode` in the config file still wins in either direction, so `NR_AI_COMPANION_MODE=false` turns it off. `preflight doctor` shows the resolved value and its source, and `nr_observe_get_config` shows the value.
+
+## [1.61.0] - 2026-10-07
+
+### Added
+
+- Fleet admins can hold the Claude Code plugin's MCP server on a specific version. The plugin's `.mcp.json` now launches `@newrelic/preflight@${NEW_RELIC_AI_PREFLIGHT_VERSION:-latest}`, which Claude Code expands at session start, so setting `NEW_RELIC_AI_PREFLIGHT_VERSION` in the managed settings `env` pins every machine that receives it, stages a rollout per device group, and rolls back without a new release. Unset, the server follows `latest` as before. `docs/PLUGIN.md` has a managed settings example that also pins the plugin to its release tag so the bundled hook collector and the server stay in lockstep.
+
+## [1.60.0] - 2026-10-07
+
+### Added
+
+- **Scripts and fleet tooling could read `preflight doctor` results only by parsing its human-readable output.** `preflight doctor --json` prints the diagnostic checks as a JSON array on stdout, with each check's `check`, `status`, `detail`, and `fix`. The exit code is the same in both modes: 0 when every check passes, 1 when any check fails, and 2 when the only problems are warnings.
+
+## [1.59.5] - 2026-10-07
+
+### Fixed
+
+- **Google Antigravity: every tool call failed after Preflight's `PostToolUse` hook ran.** Antigravity sends the same payload shape for `PreToolUse` and `PostToolUse`, so Preflight read each `PostToolUse` as `PreToolUse` and replied with `{"decision":"allow"}`, which Antigravity rejects for that event. Preflight now takes the event name from the hook command and replies `{}` to `PostToolUse`, and records it as the end of the tool call. Update `hooks.json` to run `preflight-collector PreToolUse` and `preflight-collector PostToolUse` (see the Antigravity section of `docs/ADAPTERS.md`). Without the argument, Preflight falls back to treating a payload with an `error` field as `PostToolUse`, so a successful call whose `PostToolUse` omits that field gets the `PreToolUse` reply and is recorded as a failed call.
 
 ## [1.59.4] - 2026-10-07
 
