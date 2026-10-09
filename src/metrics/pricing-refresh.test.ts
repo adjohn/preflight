@@ -168,7 +168,7 @@ describe('fetchLiteLlmPrices', () => {
 });
 
 describe('startPricingRefresh', () => {
-  const body = { 'claude-sonnet-5-5': SONNET_5_5, 'claude-opus-5-5': OPUS };
+  const body = { 'refresh-only-sonnet': SONNET_5_5, 'refresh-only-opus': OPUS };
 
   function cachePath(): string {
     return join(tmpDir, 'sub', 'pricing-cache.json');
@@ -199,12 +199,12 @@ describe('startPricingRefresh', () => {
     expect(statSync(cachePath()).mode & 0o777).toBe(0o600);
     expect(existsSync(`${cachePath()}.tmp`)).toBe(false);
 
-    const resolution = resolvePricing('claude-sonnet-5-5[1m]');
+    const resolution = resolvePricing('refresh-only-sonnet[1m]');
     expect(resolution).toMatchObject({ kind: 'priced', source: 'refreshed' });
     if (resolution.kind === 'priced') expect(resolution.pricing.inputPerMTok).toBe(2);
 
     const usage = makeUsage({ inputTokens: 1_000_000, totalTokens: 1_000_000 });
-    expect(priceUsage('claude-sonnet-5-5[1m]', usage).breakdown.totalUsd).toBeCloseTo(2, 10);
+    expect(priceUsage('refresh-only-sonnet[1m]', usage).breakdown.totalUsd).toBeCloseTo(2, 10);
   });
 
   it('a fresh cache is used without fetching', async () => {
@@ -217,7 +217,7 @@ describe('startPricingRefresh', () => {
     const fetchImpl = fakeFetch(body);
     await startPricingRefresh({ enabled: true, cachePath: cachePath(), fetchImpl });
     expect(fetchImpl).not.toHaveBeenCalled();
-    expect(resolvePricing('claude-sonnet-5-5')).toMatchObject({ source: 'refreshed' });
+    expect(resolvePricing('refresh-only-sonnet')).toMatchObject({ source: 'refreshed' });
   });
 
   it('a stale cache triggers a fetch', async () => {
@@ -245,7 +245,7 @@ describe('startPricingRefresh', () => {
     const fetchImpl = fakeFetch({}, { status: 500 });
     await startPricingRefresh({ enabled: true, cachePath: cachePath(), fetchImpl });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(resolvePricing('claude-opus-5-5')).toMatchObject({ source: 'refreshed' });
+    expect(resolvePricing('refresh-only-opus')).toMatchObject({ source: 'refreshed' });
   });
 
   it('never rejects when fetch throws', async () => {
