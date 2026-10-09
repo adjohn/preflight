@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.63.4] - 2026-10-09
+
+### Fixed
+
+- **A new `--stdio` MCP engine could add cost for other sessions' tool calls to its own session's persisted cost.** Before the engine learned its real session id, it drained hook activity left behind by sessions that had ended without a live owner, and estimated a cost from each call's payload size. Those estimates stayed in its cost total after the real id resolved, so they were saved as part of its session. The payload-size estimate now applies only to tool calls recorded for the engine's own session. As a result, a standalone `preflight --local` process (whose session id is always synthetic) no longer estimates cost, and `--stdio` engines on platforms that never report a session id to the collector (Cursor, Windsurf, Antigravity) show no estimated cost; platforms with exact token reports are unaffected, and saved session files are unchanged.
+
 ## [1.63.3] - 2026-10-09
 
 ### Fixed
