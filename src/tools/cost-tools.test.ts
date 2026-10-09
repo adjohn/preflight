@@ -9,6 +9,7 @@ import {
   registerCostTools,
 } from './cost-tools.js';
 import { CostTracker } from '../metrics/cost-tracker.js';
+import { estimatedFromOf } from '../__test-utils__/estimated-from.js';
 import { BudgetTracker } from '../metrics/budget-tracker.js';
 import { SessionResumeTracker } from '../metrics/session-resume-tracker.js';
 import { localDateKey } from '../lib/date.js';
@@ -310,7 +311,11 @@ describe('handleGetCostBreakdown()', () => {
     const body = JSON.parse(handleGetCostBreakdown(tracker).content[0].text);
 
     expect(body.estimated_by_model).toEqual({
-      'claude-opus-5-9': { calls: 1, tokens: 1_200, estimatedFrom: 'claude-opus-5' },
+      'claude-opus-5-9': {
+        calls: 1,
+        tokens: 1_200,
+        estimatedFrom: estimatedFromOf('claude-opus-5-9'),
+      },
     });
     expect(body.unpriced_by_model).toEqual({});
   });
