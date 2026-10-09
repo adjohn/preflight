@@ -1,6 +1,7 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import { CostTracker } from './cost-tracker.js';
 import { makeUsage } from '../__test-utils__/token-usage.js';
+import { estimatedFromOf } from '../__test-utils__/estimated-from.js';
 import type { TokenRecordContext, CostTrackerSeed } from './cost-tracker.js';
 import { localDateKey } from '../lib/date.js';
 import { SessionTracker } from './session-tracker.js';
@@ -650,7 +651,7 @@ describe('CostTracker', () => {
       expect(metrics.estimatedByModel['claude-opus-5-9']).toEqual({
         calls: 2,
         tokens: 300,
-        estimatedFrom: 'claude-opus-5',
+        estimatedFrom: estimatedFromOf('claude-opus-5-9'),
       });
       expect(metrics.unpricedByModel).toEqual({});
       expect(metrics.sessionTotalCostUsd).toBeGreaterThan(0);
@@ -691,7 +692,7 @@ describe('CostTracker', () => {
         .filter((m) => m.name === 'ai.cost.estimated_calls');
       expect(estimated).toHaveLength(1);
       expect(estimated[0]?.attributes?.model).toBe('claude-opus-5-9');
-      expect(estimated[0]?.attributes?.estimatedFrom).toBe('claude-opus-5');
+      expect(estimated[0]?.attributes?.estimatedFrom).toBe(estimatedFromOf('claude-opus-5-9'));
     });
   });
 

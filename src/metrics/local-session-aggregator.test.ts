@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
+import { estimatedFromOf } from '../__test-utils__/estimated-from.js';
 import {
   spawnSync as nodeSpawnSync,
   type SpawnSyncOptions,
@@ -206,7 +207,11 @@ describe('LocalSessionAggregator', () => {
 
     const byId = new Map(summariesOf(agg).map((s) => [s.sessionId, s]));
     expect(byId.get(REAL_ID)?.estimatedByModel).toEqual({
-      'claude-opus-5-9': { calls: 2, tokens: 150, estimatedFrom: 'claude-opus-5' },
+      'claude-opus-5-9': {
+        calls: 2,
+        tokens: 150,
+        estimatedFrom: estimatedFromOf('claude-opus-5-9'),
+      },
     });
     expect(byId.get(REAL_ID)?.unpricedByModel).toBeUndefined();
     expect(byId.get(other)?.estimatedByModel).toBeUndefined();

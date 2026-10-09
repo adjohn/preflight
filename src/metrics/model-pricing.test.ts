@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { calculateCost, initPricing } from '../shared/index.js';
+import { calculateCost, initPricing, resolveModelPricing } from '../shared/index.js';
 import { makeUsage } from '../__test-utils__/token-usage.js';
 import {
   clearPricingResolutions,
@@ -74,30 +74,19 @@ describe('resolvePricing', () => {
 });
 
 describe('resolvePricing family fallback', () => {
-  function estimate(model: string): { estimatedFrom: string; input: number } | null {
-    const r = resolvePricing(model);
-    if (r.kind !== 'priced' || r.source !== 'estimated') return null;
-    return { estimatedFrom: r.estimatedFrom, input: r.pricing.inputPerMTok };
-  }
-
-  it('prices an unlisted opus point release from the same-major sibling', () => {
-    expect(estimate('claude-opus-5-9')).toEqual({ estimatedFrom: 'claude-opus-5', input: 5 });
-  });
-
-  it('strips a context tag before estimating', () => {
-    expect(estimate('claude-sonnet-5-9[1m]')).toEqual({
-      estimatedFrom: 'claude-sonnet-5',
-      input: 2,
-    });
-  });
-
-  it('picks the highest minor of the major', () => {
-    expect(estimate('claude-fable-5-9')?.estimatedFrom).toBe('claude-fable-5-1');
-  });
-
-  it('falls back to the newest release when no sibling shares the major', () => {
-    expect(estimate('claude-haiku-5-9')?.estimatedFrom).toBe('claude-haiku-4-5');
-  });
+  // Which sibling is newest changes with every vendored table sync, so these
+  // assert the contract and leave sibling selection to estimateFromFamily below.
+  it.each(['claude-opus-5-9', 'claude-sonnet-5-9[1m]'])(
+    'prices %s at the exact rate of a priced same-family, same-major release',
+    (model) => {
+      const r = resolvePricing(model);
+      if (r.kind !== 'priced' || r.source !== 'estimated')
+        throw new Error(`not estimated: ${model}`);
+      const family = model.replace(/\[.*$/, '').replace(/-\d+$/, '');
+      expect(r.estimatedFrom.startsWith(family)).toBe(true);
+      expect(r.pricing).toEqual(resolveModelPricing(r.estimatedFrom));
+    },
+  );
 
   it('leaves unknown families and other vendors unpriced', () => {
     expect(resolvePricing('claude-foo-9-9')).toEqual({ kind: 'unpriced' });
@@ -129,6 +118,18 @@ describe('estimateFromFamily', () => {
     expect(loggedText()).toContain('Ambiguous family pricing fallback; returning null');
   });
 
+  it('picks the highest minor of the same major', () => {
+    expect(
+      estimateFromFamily('claude-x-5-9', ['claude-x-4-9', 'claude-x-5', 'claude-x-5-1'], same),
+    ).toBe('claude-x-5-1');
+  });
+
+  it('falls back to the newest release when no sibling shares the major', () => {
+    expect(estimateFromFamily('claude-x-6-9', ['claude-x-4-5', 'claude-x-5-1'], same)).toBe(
+      'claude-x-5-1',
+    );
+  });
+
   it('never crosses families or vendors', () => {
     expect(estimateFromFamily('claude-y-1-9', ['claude-x-1-1'], same)).toBeNull();
     expect(estimateFromFamily('gpt-5', ['claude-x-1-1'], same)).toBeNull();
@@ -144,8 +145,9 @@ describe('priceUsage', () => {
 
   it('prices an estimated model at its sibling rate', () => {
     const priced = priceUsage('claude-opus-5-9', USAGE);
-    expect(priced.resolution).toMatchObject({ kind: 'priced', source: 'estimated' });
-    expect(priced.breakdown).toEqual(calculateCost('claude-opus-5', USAGE));
+    const r = priced.resolution;
+    if (r.kind !== 'priced' || r.source !== 'estimated') throw new Error('not estimated');
+    expect(priced.breakdown).toEqual(calculateCost(r.estimatedFrom, USAGE));
     expect(priced.breakdown.totalUsd).toBeGreaterThan(0);
   });
 
