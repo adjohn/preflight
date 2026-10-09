@@ -574,7 +574,7 @@ Source: `src/transport/nr-ingest.ts` — `emitSessionGauges()`, `src/metrics/pro
 
 ### MCP Server — Cost Metrics
 
-Emitted every 60 seconds alongside session gauges (only when a `CostTracker` is wired in). All metrics include `{developer, session_id?, team_id?, project_id?, org_id?, repo_url?}` attributes plus `{model?}` when a current model is known.
+Emitted every 60 seconds alongside session gauges (only when a `CostTracker` is wired in). All metrics include `{developer, session_id?, team_id?, project_id?, org_id?, repo_url?}` attributes plus `{model?, provider?}` when a current model is known — `provider` (`anthropic`/`google`/`openai`/`mistral`/`cohere`/`bedrock`) is derived from `model` via `classifyProvider()`.
 
 | Metric Name                      | Value | How Computed                                             |
 | -------------------------------- | ----- | -------------------------------------------------------- |
@@ -592,7 +592,7 @@ Source: `src/metrics/cost-tracker.ts` — `emitMetrics()`
 
 ### MCP Server — Efficiency Metrics
 
-Emitted every 60 seconds alongside session gauges (only when an `EfficiencyScorer` is wired in and has scored at least one task). Attributes: `{developer, session_id?, team_id?, project_id?, org_id?, repo_url?}`.
+Emitted every 60 seconds alongside session gauges (only when an `EfficiencyScorer` is wired in and has scored at least one task). Attributes: `{developer, session_id?, team_id?, project_id?, org_id?, repo_url?, model?, provider?}` — `model` is the model current on `costTracker` when the task was scored, and `provider` is derived from it via `classifyProvider()`.
 
 | Metric Name                           | Value       | How Computed                        |
 | ------------------------------------- | ----------- | ----------------------------------- |
@@ -606,7 +606,7 @@ Source: `src/metrics/efficiency-score.ts` — `emitMetrics()`
 
 ### MCP Server — API Failure Metrics
 
-Emitted every 60 seconds alongside session gauges (only when an `ApiFailureTracker` is wired in). Attributes: `{developer, session_id?, team_id?, project_id?, org_id?, repo_url?}` plus `{error_type}` or `{model}` where noted.
+Emitted every 60 seconds alongside session gauges (only when an `ApiFailureTracker` is wired in). Attributes: `{developer, session_id?, team_id?, project_id?, org_id?, repo_url?}` plus `{error_type}` or `{model, provider?}` where noted.
 
 | Metric Name                     | Value      | Attributes     | How Computed                                                                                                                  |
 | ------------------------------- | ---------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -622,13 +622,13 @@ Source: `src/metrics/api-failure-tracker.ts` — `emitMetrics()`
 
 Emitted every 60 seconds alongside session gauges (only when a `GitEfficiencyTracker` is wired in). Attributes: `{developer, session_id?, team_id?, project_id?, org_id?}`. Each count blends hook-observed git/gh-CLI activity with commits hydrated from `git log` at session start — the two sources are deduped upstream (see `GitEfficiencyTracker.hydrateGitLog()`), so there is no separate hook-observed-vs-hydrated breakdown.
 
-| Metric Name               | Value | How Computed                             |
-| ------------------------- | ----- | ---------------------------------------- |
-| `ai.git.commit_count`     | count | `GitEfficiencyMetrics.commitCount`       |
-| `ai.git.push_count`       | count | `GitEfficiencyMetrics.pushCount`         |
-| `ai.git.force_push_count` | count | `GitEfficiencyMetrics.forcePushes`       |
-| `ai.git.pr_created`       | count | `GitEfficiencyMetrics.prMetrics.created` |
-| `ai.git.pr_merged`        | count | `GitEfficiencyMetrics.prMetrics.merged`  |
+| Metric Name               | Value | How Computed                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ai.git.commit_count`     | count | `GitEfficiencyMetrics.commitCount`: commits that are not `--amend` and that `classifyGitSegments` marks succeeded. A chained command reports one exit status, so that mark is inferred from the error text and from bash's `&&`/`\|\|`/`\|` grouping, and a failed commit can still count when `&&` alone joins it to a later step and the text does not show its failure (a gpg signing error, for one) |
+| `ai.git.push_count`       | count | `GitEfficiencyMetrics.pushCount`: plain and force pushes that `classifyGitSegments` records as succeeded, inferred as for `ai.git.commit_count`                                                                                                                                                                                                                                                          |
+| `ai.git.force_push_count` | count | `GitEfficiencyMetrics.forcePushes`: every force push run, including one that failed                                                                                                                                                                                                                                                                                                                      |
+| `ai.git.pr_created`       | count | `GitEfficiencyMetrics.prMetrics.created`                                                                                                                                                                                                                                                                                                                                                                 |
+| `ai.git.pr_merged`        | count | `GitEfficiencyMetrics.prMetrics.merged`                                                                                                                                                                                                                                                                                                                                                                  |
 
 Source: `src/metrics/git-efficiency-tracker.ts` — `emitMetrics()`
 
@@ -676,8 +676,8 @@ Every tracker below defines an `emitMetrics(aggregator)` method (or, for `TrendA
 | `ai.api.failures_total`                    | count       | `{}`                                               | `src/metrics/api-failure-tracker.ts` — `ApiFailureTracker.emitMetrics()`                 |
 | `ai.api.tokens_lost`                       | count       | `{}`                                               | `src/metrics/api-failure-tracker.ts` — `ApiFailureTracker.emitMetrics()`                 |
 | `ai.api.failure_by_type`                   | count       | `{error_type}`                                     | `src/metrics/api-failure-tracker.ts` — `ApiFailureTracker.emitMetrics()`                 |
-| `ai.api.model_failure_rate`                | rate (0–1)  | `{model}`                                          | `src/metrics/api-failure-tracker.ts` — `ApiFailureTracker.emitMetrics()`                 |
-| `ai.api.model_mean_recovery_ms`            | duration    | `{model}`                                          | `src/metrics/api-failure-tracker.ts` — `ApiFailureTracker.emitMetrics()`                 |
+| `ai.api.model_failure_rate`                | rate (0–1)  | `{model, provider?}`                               | `src/metrics/api-failure-tracker.ts` — `ApiFailureTracker.emitMetrics()`                 |
+| `ai.api.model_mean_recovery_ms`            | duration    | `{model, provider?}`                               | `src/metrics/api-failure-tracker.ts` — `ApiFailureTracker.emitMetrics()`                 |
 | `ai.trend.efficiency_score_weekly`         | score (0–1) | `{developer, week}`                                | `src/metrics/trend-analyzer.ts` — `TrendAnalyzer.emitWeeklySummaryEvent()`               |
 | `ai.trend.cost_weekly`                     | USD         | `{developer, week}`                                | `src/metrics/trend-analyzer.ts` — `TrendAnalyzer.emitWeeklySummaryEvent()`               |
 | `ai.trend.task_success_rate_weekly`        | rate (0–1)  | `{developer, week}`                                | `src/metrics/trend-analyzer.ts` — `TrendAnalyzer.emitWeeklySummaryEvent()`               |
