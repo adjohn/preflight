@@ -595,6 +595,20 @@ describe('CostTracker', () => {
       });
     });
 
+    it('does not flag a Bedrock ARN or provider-prefixed id that resolves to a priced model', () => {
+      const tracker = new CostTracker();
+      for (const model of [
+        'arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-sonnet-4-6',
+        'us.anthropic.claude-sonnet-4-6',
+      ]) {
+        tracker.recordTokenUsage(
+          makeUsage({ inputTokens: 100, outputTokens: 50, totalTokens: 150 }),
+          model,
+        );
+      }
+      expect(tracker.getMetrics().unpricedByModel).toEqual({});
+    });
+
     it('is empty for a priced model', () => {
       const tracker = new CostTracker();
       tracker.recordTokenUsage(
