@@ -1,6 +1,6 @@
 import type { MetricAggregator } from '../shared/index.js';
 import { createLogger } from '../shared/index.js';
-import { resolvePricing } from './model-pricing.js';
+import { resolvePricing } from './pricing-overlay.js';
 import type { TokenEvent } from '../storage/types.js';
 
 const logger = createLogger('context-composition');
@@ -168,12 +168,9 @@ export class ContextCompositionTracker {
     // Self-update from the resolved model's pricing entry, mirroring
     // ContextTracker.recordTurn — never shrinks, so a mid-session model switch
     // to a smaller-window model doesn't understate an already-larger window.
-    const resolution = resolvePricing(event.model);
-    if (
-      resolution.kind === 'priced' &&
-      resolution.pricing.contextWindow > this.modelContextWindow
-    ) {
-      this.modelContextWindow = resolution.pricing.contextWindow;
+    const pricing = resolvePricing(event.model);
+    if (pricing && pricing.contextWindow > this.modelContextWindow) {
+      this.modelContextWindow = pricing.contextWindow;
     }
 
     // cacheCreationTokens are newly-cached conversation context (not just the system prompt),

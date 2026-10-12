@@ -6,11 +6,11 @@ import { join } from 'node:path';
 import { DEFAULT_PRICING_TABLE, initPricing } from '../shared/index.js';
 import { makeUsage } from '../__test-utils__/token-usage.js';
 import {
-  clearPricingResolutions,
-  priceUsage,
-  resolvePricing,
+  clearPricingMemo,
+  priceModelUsage,
+  resolvePricingDetail,
   setRefreshedPricing,
-} from './model-pricing.js';
+} from './pricing-overlay.js';
 import {
   fetchLiteLlmPrices,
   LITELLM_PRICES_URL,
@@ -47,7 +47,7 @@ afterEach(() => {
   consoleError.mockRestore();
   setRefreshedPricing(null, new Set());
   initPricing(null);
-  clearPricingResolutions();
+  clearPricingMemo();
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -61,8 +61,8 @@ function fakeFetch(body: unknown, init?: ResponseInit): jest.Mock<typeof fetch> 
 
 describe('parseLiteLlmPrices', () => {
   it('maps a per-token entry to per-MTok pricing exactly', () => {
-    const result = parseLiteLlmPrices({ 'claude-opus-5-5': OPUS });
-    expect(result['claude-opus-5-5']).toEqual({
+    const result = parseLiteLlmPrices({ 'claude-opus-8-5': OPUS });
+    expect(result['claude-opus-8-5']).toEqual({
       inputPerMTok: 4,
       outputPerMTok: 20,
       cacheReadPerMTok: 0.2,
@@ -123,9 +123,9 @@ describe('parseLiteLlmPrices', () => {
 
 describe('fetchLiteLlmPrices', () => {
   it('returns parsed entries and calls the fixed URL without following redirects', async () => {
-    const fetchImpl = fakeFetch({ 'claude-sonnet-5-5': SONNET_5_5 });
+    const fetchImpl = fakeFetch({ 'claude-sonnet-8-5': SONNET_5_5 });
     const result = await fetchLiteLlmPrices({ fetchImpl });
-    expect(result?.['claude-sonnet-5-5'].inputPerMTok).toBe(2);
+    expect(result?.['claude-sonnet-8-5'].inputPerMTok).toBe(2);
     expect(fetchImpl).toHaveBeenCalledWith(
       LITELLM_PRICES_URL,
       expect.objectContaining({ redirect: 'error' }),
@@ -168,7 +168,7 @@ describe('fetchLiteLlmPrices', () => {
 });
 
 describe('startPricingRefresh', () => {
-  const body = { 'refresh-only-sonnet': SONNET_5_5, 'refresh-only-opus': OPUS };
+  const body = { 'claude-sonnet-8-5': SONNET_5_5, 'claude-opus-8-5': OPUS };
 
   function cachePath(): string {
     return join(tmpDir, 'sub', 'pricing-cache.json');
@@ -185,7 +185,7 @@ describe('startPricingRefresh', () => {
     const fetchImpl = fakeFetch(body);
     await startPricingRefresh({ enabled: false, cachePath: p, fetchImpl });
     expect(fetchImpl).not.toHaveBeenCalled();
-    expect(resolvePricing('fake-model-9')).toEqual({ kind: 'unpriced' });
+    expect(resolvePricingDetail('fake-model-9')).toEqual({ kind: 'unpriced' });
 
     const absent = join(tmpDir, 'absent', 'pricing-cache.json');
     await startPricingRefresh({ enabled: false, cachePath: absent, fetchImpl });
@@ -199,12 +199,12 @@ describe('startPricingRefresh', () => {
     expect(statSync(cachePath()).mode & 0o777).toBe(0o600);
     expect(existsSync(`${cachePath()}.tmp`)).toBe(false);
 
-    const resolution = resolvePricing('refresh-only-sonnet[1m]');
+    const resolution = resolvePricingDetail('claude-sonnet-8-5[1m]');
     expect(resolution).toMatchObject({ kind: 'priced', source: 'refreshed' });
     if (resolution.kind === 'priced') expect(resolution.pricing.inputPerMTok).toBe(2);
 
     const usage = makeUsage({ inputTokens: 1_000_000, totalTokens: 1_000_000 });
-    expect(priceUsage('refresh-only-sonnet[1m]', usage).breakdown.totalUsd).toBeCloseTo(2, 10);
+    expect(priceModelUsage('claude-sonnet-8-5[1m]', usage).breakdown.totalUsd).toBeCloseTo(2, 10);
   });
 
   it('a fresh cache is used without fetching', async () => {
@@ -217,7 +217,7 @@ describe('startPricingRefresh', () => {
     const fetchImpl = fakeFetch(body);
     await startPricingRefresh({ enabled: true, cachePath: cachePath(), fetchImpl });
     expect(fetchImpl).not.toHaveBeenCalled();
-    expect(resolvePricing('refresh-only-sonnet')).toMatchObject({ source: 'refreshed' });
+    expect(resolvePricingDetail('claude-sonnet-8-5')).toMatchObject({ source: 'refreshed' });
   });
 
   it('a stale cache triggers a fetch', async () => {
@@ -245,7 +245,48 @@ describe('startPricingRefresh', () => {
     const fetchImpl = fakeFetch({}, { status: 500 });
     await startPricingRefresh({ enabled: true, cachePath: cachePath(), fetchImpl });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(resolvePricing('refresh-only-opus')).toMatchObject({ source: 'refreshed' });
+    expect(resolvePricingDetail('claude-opus-8-5')).toMatchObject({ source: 'refreshed' });
+  });
+
+  it('a stale cache plus a failed fetch is not refetched on the next start', async () => {
+    await startPricingRefresh({
+      enabled: true,
+      cachePath: cachePath(),
+      fetchImpl: fakeFetch(body),
+    });
+    const old = new Date(Date.now() - 2 * DAY_MS);
+    utimesSync(cachePath(), old, old);
+    await startPricingRefresh({
+      enabled: true,
+      cachePath: cachePath(),
+      fetchImpl: fakeFetch({}, { status: 500 }),
+    });
+    const retry = fakeFetch(body);
+    await startPricingRefresh({ enabled: true, cachePath: cachePath(), fetchImpl: retry });
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it('a failed fetch is retried once the backoff hour has passed', async () => {
+    await startPricingRefresh({
+      enabled: true,
+      cachePath: cachePath(),
+      fetchImpl: fakeFetch(body),
+    });
+    const old = new Date(Date.now() - 2 * DAY_MS);
+    utimesSync(cachePath(), old, old);
+    await startPricingRefresh({
+      enabled: true,
+      cachePath: cachePath(),
+      fetchImpl: fakeFetch({}, { status: 500 }),
+    });
+    const retry = fakeFetch(body);
+    await startPricingRefresh({
+      enabled: true,
+      cachePath: cachePath(),
+      fetchImpl: retry,
+      nowMs: () => Date.now() + 2 * 60 * 60 * 1000,
+    });
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 
   it('never rejects when fetch throws', async () => {
@@ -259,13 +300,13 @@ describe('startPricingRefresh', () => {
 
   describe('safety', () => {
     it('a refreshed entry never changes a model the bundled table prices', async () => {
-      const before = resolvePricing('claude-sonnet-5');
+      const before = resolvePricingDetail('claude-sonnet-5');
       expect(before).toMatchObject({ source: 'table' });
       const fetchImpl = fakeFetch({
         'claude-sonnet-5': { ...SONNET_5_5, input_cost_per_token: 999e-6 },
       });
       await startPricingRefresh({ enabled: true, cachePath: cachePath(), fetchImpl });
-      const after = resolvePricing('claude-sonnet-5');
+      const after = resolvePricingDetail('claude-sonnet-5');
       expect(after).toEqual(before);
       if (after.kind === 'priced') expect(after.pricing.inputPerMTok).not.toBe(999);
     });
@@ -273,13 +314,13 @@ describe('startPricingRefresh', () => {
     it('a refreshed key extending a bundled key retargets nothing', async () => {
       const keys = Object.keys(DEFAULT_PRICING_TABLE);
       const probes = [...keys, 'claude-sonnet'];
-      const before = probes.map((k) => resolvePricing(k));
+      const before = probes.map((k) => resolvePricingDetail(k));
       const fetchImpl = fakeFetch({
         'claude-sonnet-5-9': { ...SONNET_5_5, input_cost_per_token: 999e-6 },
       });
       await startPricingRefresh({ enabled: true, cachePath: cachePath(), fetchImpl });
-      expect(resolvePricing('claude-sonnet-5-9')).toMatchObject({ source: 'refreshed' });
-      probes.forEach((k, i) => expect(resolvePricing(k)).toEqual(before[i]));
+      expect(resolvePricingDetail('claude-sonnet-5-9')).toMatchObject({ source: 'refreshed' });
+      probes.forEach((k, i) => expect(resolvePricingDetail(k)).toEqual(before[i]));
     });
 
     it.each([
@@ -290,7 +331,7 @@ describe('startPricingRefresh', () => {
       const fetchImpl = fakeFetch(raw);
       await startPricingRefresh({ enabled: true, cachePath: cachePath(), fetchImpl });
       expect(existsSync(cachePath())).toBe(false);
-      expect(resolvePricing('boom')).toEqual({ kind: 'unpriced' });
+      expect(resolvePricingDetail('boom')).toEqual({ kind: 'unpriced' });
       expect(({} as Record<string, unknown>).inputPerMTok).toBeUndefined();
     });
   });

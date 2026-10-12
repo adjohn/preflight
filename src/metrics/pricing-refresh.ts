@@ -1,11 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname } from 'node:path';
 
 import { createLogger, PricingTable } from '../shared/index.js';
 import type { ModelPricing } from '../shared/index.js';
 import { loadCustomPricing } from '../shared/pricing.js';
-import { setRefreshedPricing } from './model-pricing.js';
+import { setRefreshedPricing } from './pricing-overlay.js';
 
 const logger = createLogger('pricing-refresh');
 
@@ -20,6 +28,7 @@ const MAX_RATE_PER_MTOK = 10_000;
 const MAX_CONTEXT_WINDOW = 10_000_000;
 const LONG_CONTEXT_THRESHOLD = 200_000;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const RETRY_AFTER_FAILURE_MS = 60 * 60 * 1000;
 const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'sample_spec']);
 
 function isNonNegative(value: unknown): value is number {
@@ -188,7 +197,15 @@ export async function startPricingRefresh(opts: {
     if (cached && now - statSync(opts.cachePath).mtimeMs < CACHE_TTL_MS) return;
 
     const entries = await fetchLiteLlmPrices({ fetchImpl: opts.fetchImpl });
-    if (entries === null || Object.keys(entries).length === 0) return;
+    if (entries === null || Object.keys(entries).length === 0) {
+      // Age the stale cache so it counts as fresh for another hour instead of
+      // paying the fetch timeout on every start while the host is unreachable.
+      if (cached) {
+        const backoffUntil = new Date(now - CACHE_TTL_MS + RETRY_AFTER_FAILURE_MS);
+        utimesSync(opts.cachePath, backoffUntil, backoffUntil);
+      }
+      return;
+    }
     writeCache(opts.cachePath, entries);
     loadAndRegister(opts.cachePath);
   } catch (err) {

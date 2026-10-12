@@ -1,4 +1,4 @@
-import { resolvePricing } from '../metrics/model-pricing.js';
+import { resolvePricingDetail } from '../metrics/pricing-overlay.js';
 
 /**
  * The sibling the resolver currently estimates `model` from. Tests that check
@@ -6,7 +6,7 @@ import { resolvePricing } from '../metrics/model-pricing.js';
  * newest priced sibling changes with every vendored pricing-table sync.
  */
 export function estimatedFromOf(model: string): string {
-  const r = resolvePricing(model);
+  const r = resolvePricingDetail(model);
   if (r.kind !== 'priced' || r.source !== 'estimated') {
     throw new Error(`${model} is not family-estimated`);
   }

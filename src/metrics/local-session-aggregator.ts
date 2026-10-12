@@ -29,7 +29,7 @@ import { hasAttributableActivity, type FullSessionSummary } from '../storage/ses
 import type { EstimatedModelUsage, UnpricedModelUsage } from './cost-tracker.js';
 import { addCallUsage } from './call-usage.js';
 import type { ModelBreakdownEntry } from './model-usage-tracker.js';
-import { resolvePricing } from './model-pricing.js';
+import { resolvePricingDetail } from './pricing-overlay.js';
 import { QualityProxyTracker } from './quality-proxy-tracker.js';
 import { ToolSelectionScorer, toToolSelectionSummary } from './tool-selection-scorer.js';
 
@@ -526,7 +526,7 @@ export class LocalSessionAggregator {
         (usage.cacheReadTokens ?? 0) +
         (usage.cacheCreationTokens ?? 0);
       if (tokens > 0) {
-        const resolution = resolvePricing(usage.model);
+        const resolution = resolvePricingDetail(usage.model);
         if (resolution.kind === 'unpriced') {
           addCallUsage(rollup.unpricedByModel, usage.model, { calls: 1, tokens });
         } else if (resolution.source === 'estimated') {

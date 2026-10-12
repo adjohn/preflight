@@ -1,10 +1,5 @@
-import type { CostBreakdown, ModelPricing, PricingTable, TokenUsage } from '../shared/index.js';
-import {
-  calculateCost,
-  createLogger,
-  DEFAULT_PRICING_TABLE,
-  resolveModelPricing,
-} from '../shared/index.js';
+import type { ModelPricing } from '../shared/index.js';
+import { createLogger, resolveModelPricing } from '../shared/index.js';
 
 const logger = createLogger('model-pricing');
 
@@ -21,6 +16,9 @@ export type PricingResolution =
 
 const CLAUDE_ID_RE = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/;
 const CONTEXT_TAG_RE = /(\[[^\]]*\])+$/;
+// Bedrock spells the same ids `[<region>.]anthropic.claude-...[-v1:0]`.
+const BEDROCK_PREFIX_RE = /^(?:[a-z-]+\.)?anthropic\./;
+const BEDROCK_VERSION_RE = /-v\d+(?::\d+)?$/;
 
 interface ParsedClaudeId {
   readonly family: string;
@@ -35,7 +33,6 @@ function parseClaudeId(id: string): ParsedClaudeId | null {
 }
 
 const DATED_SUFFIX_RE = /-\d{8}$/;
-const TABLE_IDS = Object.keys(DEFAULT_PRICING_TABLE);
 
 /**
  * Picks the table id to price an unlisted point release from: the highest minor
@@ -48,7 +45,11 @@ export function estimateFromFamily(
   candidateIds: readonly string[],
   priceOf: (id: string) => unknown = (id) => resolveModelPricing(id),
 ): string | null {
-  const target = parseClaudeId(model);
+  // Only the target is reduced from its Bedrock spelling: the table's own
+  // Bedrock twins are priced separately and must not pool with the bare ids.
+  const target = parseClaudeId(
+    model.replace(BEDROCK_PREFIX_RE, '').replace(BEDROCK_VERSION_RE, ''),
+  );
   if (!target) return null;
 
   const siblings: { readonly id: string; readonly major: number; readonly minor: number }[] = [];
@@ -81,88 +82,4 @@ export function estimateFromFamily(
     return null;
   }
   return [...byPrice.values()][0];
-}
-
-export interface PricedUsage {
-  readonly breakdown: CostBreakdown;
-  readonly resolution: PricingResolution;
-}
-
-// Model ids arrive from transcripts and MCP tool input, so the memo is capped
-// rather than trusting the set of ids to stay small.
-const MAX_MEMOIZED_MODELS = 512;
-const resolutions = new Map<string, PricingResolution>();
-
-// Refreshed prices stay out of the vendored singleton: its prefix matching would
-// let a refreshed key retarget ids the bundled table already resolves. They are
-// consulted only on an exact id match, after the bundled table has missed.
-let refreshedTable: PricingTable | null = null;
-let refreshedIds: ReadonlySet<string> = new Set();
-
-export function setRefreshedPricing(table: PricingTable | null, ids: ReadonlySet<string>): void {
-  refreshedTable = table;
-  refreshedIds = ids;
-  resolutions.clear();
-}
-
-function computeResolution(model: string): PricingResolution {
-  const pricing = resolveModelPricing(model);
-  if (pricing) return { kind: 'priced', source: 'table', pricing };
-
-  if (refreshedTable !== null) {
-    const id = model.replace(CONTEXT_TAG_RE, '');
-    const refreshed = refreshedIds.has(id) ? refreshedTable.resolve(id) : null;
-    if (refreshed) {
-      logger.info('Pricing from the LiteLLM refresh', { model });
-      return { kind: 'priced', source: 'refreshed', pricing: refreshed };
-    }
-  }
-
-  const estimatedFrom = estimateFromFamily(model, TABLE_IDS);
-  const estimatedPricing = estimatedFrom === null ? null : resolveModelPricing(estimatedFrom);
-  if (estimatedFrom === null || estimatedPricing === null) return { kind: 'unpriced' };
-  logger.info('Pricing estimated from model family', { model, estimatedFrom });
-  return { kind: 'priced', source: 'estimated', pricing: estimatedPricing, estimatedFrom };
-}
-
-/**
- * Memoized per model id so the vendored resolver's "Unknown model" warning
- * fires once per process rather than once per token event.
- */
-export function resolvePricing(model: string): PricingResolution {
-  const cached = resolutions.get(model);
-  if (cached) return cached;
-  const resolution = computeResolution(model);
-  if (resolutions.size >= MAX_MEMOIZED_MODELS) resolutions.clear();
-  resolutions.set(model, resolution);
-  return resolution;
-}
-
-export function priceUsage(model: string, usage: TokenUsage): PricedUsage {
-  const resolution = resolvePricing(model);
-  if (resolution.kind === 'unpriced') {
-    return {
-      resolution,
-      breakdown: {
-        inputUsd: 0,
-        outputUsd: 0,
-        thinkingUsd: 0,
-        cacheReadUsd: 0,
-        cacheCreationUsd: 0,
-        totalUsd: 0,
-        savingsFromCacheUsd: 0,
-      },
-    };
-  }
-  if (resolution.source === 'refreshed' && refreshedTable !== null) {
-    const id = model.replace(CONTEXT_TAG_RE, '');
-    return { resolution, breakdown: refreshedTable.calculateCost(id, usage) };
-  }
-  const priceId = resolution.source === 'estimated' ? resolution.estimatedFrom : model;
-  return { resolution, breakdown: calculateCost(priceId, usage) };
-}
-
-/** Call after anything mutates the vendored pricing singleton. */
-export function clearPricingResolutions(): void {
-  resolutions.clear();
 }
