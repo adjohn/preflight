@@ -46,7 +46,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { createLogger } from '../shared/index.js';
-import { resolvePricing } from '../metrics/model-pricing.js';
+import { resolvePricing } from '../metrics/pricing-overlay.js';
 import { getCopilotAppDir } from '../platforms/copilot-app-adapter.js';
 import type { LocalStore } from '../storage/local-store.js';
 
@@ -286,9 +286,7 @@ export class CopilotAppUsageWatcher {
     // by its prompt volume (input + cache), so a backlog of small requests
     // would bill the whole session at the long-context rate. Skip the backlog
     // rather than overbill it; later polls emit their own deltas.
-    const resolution = resolvePricing(row.model ?? '');
-    const tierThreshold =
-      resolution.kind === 'priced' ? resolution.pricing.tierThreshold : undefined;
+    const tierThreshold = resolvePricing(row.model ?? '')?.tierThreshold;
     if (
       !existsSync(this.cursorPath(sessionId)) &&
       tierThreshold !== undefined &&
