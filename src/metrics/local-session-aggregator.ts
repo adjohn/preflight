@@ -28,7 +28,7 @@ import type { ReplayTimelineEntry, ToolCallRecord } from '../storage/types.js';
 import { hasAttributableActivity, type FullSessionSummary } from '../storage/session-store.js';
 import type { UnpricedModelUsage } from './cost-tracker.js';
 import type { ModelBreakdownEntry } from './model-usage-tracker.js';
-import { resolvePricing } from './model-pricing.js';
+import { resolvePricing } from './pricing-overlay.js';
 import { QualityProxyTracker } from './quality-proxy-tracker.js';
 import { ToolSelectionScorer, toToolSelectionSummary } from './tool-selection-scorer.js';
 
@@ -522,7 +522,7 @@ export class LocalSessionAggregator {
         (usage.thinkingTokens ?? 0) +
         (usage.cacheReadTokens ?? 0) +
         (usage.cacheCreationTokens ?? 0);
-      if (tokens > 0 && resolvePricing(usage.model).kind === 'unpriced') {
+      if (tokens > 0 && !resolvePricing(usage.model)) {
         const prior = rollup.unpricedByModel.get(usage.model);
         rollup.unpricedByModel.set(usage.model, {
           calls: (prior?.calls ?? 0) + 1,

@@ -5,12 +5,12 @@
  *   1. Self-reporting via the `nr_observe_report_tokens` MCP tool (primary)
  *   2. Estimation from hook input/output byte sizes (fallback)
  *
- * Cost calculation goes through `priceUsage()` in `model-pricing.ts`.
+ * Cost calculation delegates to `calculateModelCost()` (pricing-overlay.ts), which normalizes the model id and wraps the shared `calculateCost()`.
  */
 
 import type { TokenUsage, CostBreakdown, MetricAggregator } from '../shared/index.js';
 import { createLogger } from '../shared/index.js';
-import { priceUsage } from './model-pricing.js';
+import { calculateModelCost, resolvePricing } from './pricing-overlay.js';
 import { localDateKey } from '../lib/date.js';
 import type { SessionTracker } from './session-tracker.js';
 import type { Resettable } from './tracker-contracts.js';
@@ -386,8 +386,8 @@ export class CostTracker implements Resettable {
     model: string,
     ctx?: TokenRecordContext,
   ): CostBreakdown {
-    const { breakdown: rawBreakdown, resolution } = priceUsage(model, usage);
-    if (resolution.kind === 'unpriced') {
+    const rawBreakdown = calculateModelCost(model, usage);
+    if (!resolvePricing(model)) {
       const tokens =
         usage.inputTokens +
         usage.outputTokens +
