@@ -30,7 +30,11 @@ const logger = createLogger('pricing-overlay');
 
 const BEDROCK_SYSTEM_ARN_RE =
   /^arn:aws[a-z-]*:bedrock:[a-z0-9-]+:\d*:(?:inference-profile|foundation-model)\/(.+)$/;
+// Mirrors the private limit in src/shared/pricing.ts so an oversized file falls
+// through to the shared loader, which logs the rejection. Keep the two equal.
 const MAX_PRICING_FILE_BYTES = 1_000_000;
+// Deliberately strips any one leading `<segment>/`, not a fixed provider list, so
+// gateway prefixes we have never seen (`bedrock/`, `anthropic/`, `vertex/`) resolve too.
 const PROVIDER_PREFIX_RE = /^[a-z0-9_-]+\//;
 const VARIANT_TAG_RE = /\[[^\]]*\]$/;
 

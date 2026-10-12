@@ -7,9 +7,13 @@ coverage/
 !.env.example
 .superpowers/
 docs/superpowers/
-.claude/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/verify-preflight/
 test-results/
 playwright-report/
+.playwright-mcp/
 
 # Terraform
 terraform/.terraform/
