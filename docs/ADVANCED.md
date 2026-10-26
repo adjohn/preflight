@@ -83,12 +83,12 @@ Point your application's OTel SDK at `http://localhost:4318`. JSON and protobuf 
 
 ## Proxy HTTP Upstreams (`https://` Required)
 
-Each `proxyUpstreams` entry with `transportType: "http"` must use `https://`. Cleartext `http://` is accepted only when the host is loopback (`localhost`, `127.0.0.1`, `::1`) and `allowPrivateHosts` is set, or when the host is a private-range address with both `allowPrivateHosts: true` and `allowInsecureHttp: true`. Any other `http://` upstream fails at startup with an error naming the upstream.
+Each `proxyUpstreams` entry with `transportType: "http"` must use `https://`. Cleartext `http://` is accepted only when the host is loopback (`localhost`, `127.0.0.1`, `::1`) and `allowPrivateHosts` is set, or when the host is a private-range IP address with both `allowPrivateHosts: true` and `allowInsecureHttp: true`. A hostname is not resolved for this check, so a LAN host given by name (for example `http://nas.lan`) needs `https://` or its IP address. Any other `http://` upstream is skipped at startup with a warning naming it, and the other upstreams still start.
 
-| Field               | Effect                                                                                                                                                            | Default |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `allowPrivateHosts` | Skips the RFC-1918/loopback host check for this upstream. Development and testing only.                                                                           | `false` |
-| `allowInsecureHttp` | With `allowPrivateHosts`, permits `http://` to a private-range host. Has no effect on public hosts, and is not needed for loopback. Development and testing only. | `false` |
+| Field               | Effect                                                                                                                                                                  | Default |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `allowPrivateHosts` | Skips the RFC-1918/loopback host check for this upstream. Development and testing only.                                                                                 | `false` |
+| `allowInsecureHttp` | With `allowPrivateHosts`, permits `http://` to a private-range IP address. Has no effect on public hosts, and is not needed for loopback. Development and testing only. | `false` |
 
 Migration: an upstream configured as `http://` with a non-loopback host (for example `http://mcp.internal.example.com`) must move to `https://`, or, if it is a private-range address on a trusted LAN you are testing, set `allowPrivateHosts: true` and `allowInsecureHttp: true` on that upstream.
 

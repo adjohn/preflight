@@ -103,7 +103,17 @@ export class ProxyManager {
 
   /** Register an upstream MCP server for proxying. */
   registerUpstream(config: UpstreamConfig): void {
-    const upstream = createUpstream(config);
+    let upstream: ProxyUpstream;
+    try {
+      upstream = createUpstream(config);
+    } catch (err) {
+      // One invalid entry (e.g. a legacy http:// URL) must not take down the
+      // other upstreams; start() already tolerates individual connect failures.
+      logger.warn(`Skipping upstream "${config.name}"`, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
     this.upstreams.set(config.name, upstream);
     logger.info(`Registered upstream "${config.name}"`, { transportType: config.transportType });
   }

@@ -147,6 +147,21 @@ describe('ProxyManager', () => {
     expect(manager.getUpstreamNames()).toEqual(['server-a', 'server-b']);
   });
 
+  it('skips an upstream that fails validation and keeps the others', () => {
+    manager = new ProxyManager({ port: 0 });
+    manager.registerUpstream({
+      name: 'legacy',
+      url: 'http://mcp.corp.example.com',
+      transportType: 'http',
+    });
+    manager.registerUpstream({
+      name: 'secure',
+      url: 'https://mcp.example.com',
+      transportType: 'http',
+    });
+    expect(manager.getUpstreamNames()).toEqual(['secure']);
+  });
+
   it('getUpstream() returns the registered upstream', () => {
     manager = new ProxyManager({ port: 0 });
     manager.registerUpstream({

@@ -87,7 +87,7 @@ export class HttpUpstream implements ProxyUpstream {
         throw new Error(
           privateTarget
             ? `${label}: http:// to private host "${this.url.hostname}" requires https:// or allowInsecureHttp: true on this upstream`
-            : `${label}: http:// to host "${this.url.hostname}" is not allowed; use https:// (http:// is only accepted for localhost, 127.0.0.1 and ::1)`,
+            : `${label}: http:// to host "${this.url.hostname}" is not allowed; use https:// (http:// is only accepted for localhost, 127.0.0.1 and ::1, or with allowInsecureHttp for a private IP address; hostnames are not resolved for this check)`,
         );
       }
     }
