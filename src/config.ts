@@ -14,8 +14,8 @@ import { resolveRecordContent } from './record-content-gate.js';
 import { projectIdFromRemote, stripRemoteCredentials } from './lib/git-remote.js';
 import { validateTiers, DEFAULT_TIER_NAME, WILDCARD_EVENT_TYPE } from './transport/tier-types.js';
 import type { ResolvedTier } from './transport/tier-types.js';
-import { isSecretConfigured, resolveSecret } from './secret-command.js';
-import type { SecretSources } from './secret-command.js';
+import { SecretCommandError, isSecretConfigured, resolveSecret } from './secret-command.js';
+import type { ResolvedSecret, SecretSources } from './secret-command.js';
 
 const logger = createLogger('mcp-config');
 
@@ -704,7 +704,7 @@ export function digestWebhookUrlOverride(
   config: Pick<McpServerConfig, 'digestWebhookUrl' | 'secretSources'>,
 ): string | undefined {
   const source = config.secretSources.digestWebhookUrl;
-  return (source === 'env' || source === 'command') && config.digestWebhookUrl !== null
+  return (source === 'env' || source === 'command') && config.digestWebhookUrl
     ? config.digestWebhookUrl
     : undefined;
 }
@@ -847,11 +847,21 @@ export function loadMcpConfig(
     mode = 'local';
   }
 
-  const licenseKeySecret = resolveSecret(
-    'licenseKey',
-    mode === 'local' ? { ...licenseKeySources, command: undefined } : licenseKeySources,
-    { skipCommand },
-  );
+  let licenseKeySecret: ResolvedSecret;
+  try {
+    licenseKeySecret = resolveSecret(
+      'licenseKey',
+      mode === 'local' ? { ...licenseKeySources, command: undefined } : licenseKeySources,
+      { skipCommand },
+    );
+  } catch (err) {
+    // The cause lets --local fall back to local mode, as it does for a
+    // missing key, instead of dying when nobody answers the helper's prompt.
+    if (err instanceof SecretCommandError) {
+      err.cause = new MissingCloudCredentialError('licenseKey', mode, configFilePath);
+    }
+    throw err;
+  }
   const licenseKeyRaw = licenseKeySecret.value;
 
   if (

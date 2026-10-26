@@ -1356,6 +1356,29 @@ describe('Cross-session tool handlers', () => {
         fetchSpy.mockRestore();
       }
     });
+
+    it('does not fall back to the file URL when digestWebhookUrlCommand is configured', async () => {
+      const configFilePath = resolve(tmpDir, 'config.json');
+      writeFileSync(
+        configFilePath,
+        JSON.stringify({
+          digestWebhookUrl: 'https://hooks.slack.com/services/T000/B000/RETIRED',
+          digestWebhookUrlCommand: ['vault', 'read', 'slack'],
+        }),
+        'utf-8',
+      );
+      const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
+      const fetchSpy = jest.spyOn(global, 'fetch');
+
+      try {
+        const result = await handleSendDigest(generator, configFilePath);
+        const body = JSON.parse(result.content[0]!.text);
+        expect(body.error).toMatch(/No webhook URL configured/);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
   });
 
   describe('handleGetPersonalInsights()', () => {

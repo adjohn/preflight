@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { __resetLogLevelCache } from './shared/logger.js';
 import { digestWebhookUrlOverride, loadMcpConfig } from './config.js';
 import { resolveSecretCommand, SecretCommandError } from './secret-command.js';
+import { detectCloudForwardingGap } from './transport/unforwarded-session-monitor.js';
 
 const SECRET = 'test-user-api-key-0001';
 const WEBHOOK = 'https://hooks.slack.com/services/T000/B000/abcdefSECRET';
@@ -213,6 +214,34 @@ describe('loadMcpConfig() with *Command fields', () => {
     );
     expect(() => loadMcpConfig({ config: path })).not.toThrow(SECRET);
     expect(logged.join('\n')).not.toContain(SECRET);
+  });
+
+  it('lets --local fall back to local mode when licenseKeyCommand fails', () => {
+    const path = writeConfig({
+      mode: 'cloud',
+      accountId: '12345',
+      licenseKeyCommand: script('fail', 'process.exit(1);'),
+    });
+
+    let thrown: unknown;
+    try {
+      loadMcpConfig({ config: path });
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(detectCloudForwardingGap(thrown)).toEqual({
+      reason: 'missing-license-key',
+      missingField: 'licenseKey',
+      requestedMode: 'cloud',
+    });
+  });
+
+  it('reads the file webhook URL when NEW_RELIC_AI_DIGEST_WEBHOOK_URL is blank', () => {
+    process.env.NEW_RELIC_AI_DIGEST_WEBHOOK_URL = '';
+    const path = writeConfig({ digestWebhookUrl: WEBHOOK });
+
+    expect(digestWebhookUrlOverride(loadMcpConfig({ config: path }))).toBeUndefined();
   });
 
   it.each([

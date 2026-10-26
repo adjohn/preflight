@@ -1077,7 +1077,9 @@ export async function handleSendDigest(
   if (webhookUrl === undefined) {
     try {
       const raw = JSON.parse(readFileSync(configFilePath, 'utf-8')) as Record<string, unknown>;
-      if (typeof raw.digestWebhookUrl === 'string') {
+      // A configured command outranks the file, so a plaintext URL left
+      // beside it is never a fallback when the command fails.
+      if (typeof raw.digestWebhookUrl === 'string' && raw.digestWebhookUrlCommand === undefined) {
         webhookUrl = raw.digestWebhookUrl;
       }
     } catch {
