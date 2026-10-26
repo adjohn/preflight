@@ -1049,10 +1049,12 @@ export function loadMcpConfig(
 
     companionMode: resolvedCompanionMode.value,
 
-    allowHeadlessInstall: envBool(
-      'NEW_RELIC_AI_ALLOW_HEADLESS_INSTALL',
-      typeof file.allowHeadlessInstall === 'boolean' ? file.allowHeadlessInstall : false,
-    ),
+    allowHeadlessInstall: highSecurity
+      ? false
+      : envBool(
+          'NEW_RELIC_AI_ALLOW_HEADLESS_INSTALL',
+          typeof file.allowHeadlessInstall === 'boolean' ? file.allowHeadlessInstall : false,
+        ),
 
     redactionPatterns: DEFAULT_REDACTION_PATTERNS,
 

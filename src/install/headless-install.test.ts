@@ -184,6 +184,22 @@ describe('createHeadlessInstaller()', () => {
     expect(entries[0].sessionId).toBe('sess-on');
   });
 
+  it('hands the HookInstall audit record to onAuditRecord', () => {
+    const settingsPath = join(tmpDir, 'settings.json');
+    const audit = new AuditTrailManager({ developer: 'dev', sessionId: 'sess-nr' });
+    const sent: string[] = [];
+    const installer = createHeadlessInstaller({
+      allowHeadlessInstall: true,
+      getAuditTrail: () => audit,
+      onAuditRecord: (record) => sent.push(`${record.action} ${record.detail}`),
+      _settingsPathOverride: settingsPath,
+    });
+
+    installer();
+
+    expect(sent).toEqual([`HookInstall HookInstall: ${settingsPath}`]);
+  });
+
   it('writes no audit entry when hooks are already installed', () => {
     const settingsPath = join(tmpDir, 'settings.json');
     writeJsonFile(settingsPath, mergeSettings({}), tmpDir);

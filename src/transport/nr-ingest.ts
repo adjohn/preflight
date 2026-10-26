@@ -1327,6 +1327,18 @@ export class NrIngestManager {
     this.proxyMetrics.recordProxyRequest(record);
   }
 
+  /** Sends an audit record that wasn't produced by a tool call, such as a headless hook install. */
+  ingestAuditRecord(record: AuditRecord): void {
+    this.routeEvent(
+      auditRecordToNrEvent(record, {
+        teamId: this.teamId,
+        projectId: this.projectId,
+        orgId: this.orgId,
+        repoUrl: this.repoUrl,
+      }),
+    );
+  }
+
   ingestToolCall(record: ToolCallRecord, auditRecord?: AuditRecord): void {
     // Buffer event for NR Events API. Prefer the record's own sessionId over
     // this process's sessionTraceId: a scoped engine's own records always

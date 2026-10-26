@@ -2,7 +2,7 @@ import { dirname } from 'node:path';
 import { areHooksInstalled, mergeSettings, detectSettingsPath } from './install-helper.js';
 import { readJsonFileStrict, writeJsonFile, errMsg } from './json-utils.js';
 import { resolveBinaryPath } from './schedule.js';
-import type { AuditTrailManager } from '../security/audit-trail.js';
+import type { AuditRecord, AuditTrailManager } from '../security/audit-trail.js';
 
 export type HeadlessInstallResult =
   | { readonly status: 'installed'; readonly settingsPath: string }
@@ -63,6 +63,8 @@ export function installHooksHeadless(
 export function createHeadlessInstaller(options: {
   allowHeadlessInstall: boolean;
   getAuditTrail: () => AuditTrailManager | undefined;
+  /** Sends the install's audit record on to New Relic as an AiAuditEvent. */
+  onAuditRecord?: (record: AuditRecord) => void;
   _settingsPathOverride?: string;
 }): () => HeadlessInstallResult {
   return () => {
@@ -71,7 +73,8 @@ export function createHeadlessInstaller(options: {
       _settingsPathOverride: options._settingsPathOverride,
     });
     if (result.status === 'installed') {
-      options.getAuditTrail()?.recordHeadlessHookInstall(result.settingsPath);
+      const record = options.getAuditTrail()?.recordHeadlessHookInstall(result.settingsPath);
+      if (record) options.onAuditRecord?.(record);
     }
     return result;
   };

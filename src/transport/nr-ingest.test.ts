@@ -874,6 +874,34 @@ describe('NrIngestManager', () => {
     });
   });
 
+  describe('ingestAuditRecord()', () => {
+    it('sends a non-tool-call audit record as an AiAuditEvent', async () => {
+      const manager = new NrIngestManager(makeIngestOptions());
+
+      manager.ingestAuditRecord({
+        id: 'audit-1',
+        timestamp: 1_700_000_000_000,
+        sessionId: 'sess-1',
+        action: 'HookInstall',
+        tool: 'nr_observe_install_hooks',
+        detail: 'HookInstall: /home/dev/.claude/settings.json',
+        developer: 'dev',
+      });
+
+      manager.start();
+      await manager.stop();
+
+      const sentEvents = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
+      expect(sentEvents).toHaveLength(1);
+      expect(sentEvents[0]).toMatchObject({
+        eventType: 'AiAuditEvent',
+        tool: 'nr_observe_install_hooks',
+      });
+    });
+  });
+
   describe('start() / stop() lifecycle', () => {
     it('starts and stops without errors', async () => {
       const manager = new NrIngestManager(makeIngestOptions());

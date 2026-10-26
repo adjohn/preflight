@@ -45,6 +45,7 @@ import { SubagentWatcher, type SubagentTokenEvent } from './hooks/subagent-watch
 import { WorkflowWatcher } from './hooks/workflow-watcher.js';
 import { migrateStoragePath } from './install/migrate.js';
 import { createHeadlessInstaller } from './install/headless-install.js';
+import { readAndCheckHooks } from './install/install-helper.js';
 import { checkNodeVersion } from './install/node-version-check.js';
 import { localDateKey } from './lib/date.js';
 import { repoNameFromRemote } from './lib/git-remote.js';
@@ -859,6 +860,12 @@ async function main(): Promise<void> {
   let weeklySummaryGenerator: WeeklySummaryGenerator | undefined;
   let persistSession: ((opts?: { periodic?: boolean }) => void) | undefined;
   let config: import('./config.js').McpServerConfig | undefined;
+  const buildHeadlessInstaller = () =>
+    createHeadlessInstaller({
+      allowHeadlessInstall: config!.allowHeadlessInstall,
+      getAuditTrail: () => mcpServer?.auditTrailManager,
+      onAuditRecord: (record) => nrIngest?.ingestAuditRecord(record),
+    });
   let sessionTracker: SessionTracker | undefined;
   let taskDetector: TaskDetector | undefined;
   let sessionSpan: SessionSpan | undefined;
@@ -3083,10 +3090,7 @@ async function main(): Promise<void> {
         allowHeadlessInstall: config!.allowHeadlessInstall,
       };
       registerTools(mcpServer!.server, {
-        headlessInstaller: createHeadlessInstaller({
-          allowHeadlessInstall: config!.allowHeadlessInstall,
-          getAuditTrail: () => mcpServer?.auditTrailManager,
-        }),
+        headlessInstaller: buildHeadlessInstaller(),
         sessionTracker: sessionTracker!,
         costTracker,
         budgetTracker,
@@ -3255,6 +3259,10 @@ async function main(): Promise<void> {
             companionMode: config.companionMode,
             allowHeadlessInstall: config.allowHeadlessInstall,
           },
+          // A session with no hooks never resolves, so this is where the
+          // opt-in install has to work.
+          hooksInstalledFn: () => readAndCheckHooks(),
+          headlessInstaller: buildHeadlessInstaller(),
         });
         logger.info('Dashboard started early; awaiting session_id resolution (breadcrumb poll)');
 
@@ -3325,10 +3333,7 @@ async function main(): Promise<void> {
           allowHeadlessInstall: config.allowHeadlessInstall,
         };
         registerTools(mcpServer!.server, {
-          headlessInstaller: createHeadlessInstaller({
-            allowHeadlessInstall: config.allowHeadlessInstall,
-            getAuditTrail: () => mcpServer?.auditTrailManager,
-          }),
+          headlessInstaller: buildHeadlessInstaller(),
           sessionTracker,
           costTracker,
           budgetTracker,
