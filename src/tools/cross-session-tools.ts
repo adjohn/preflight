@@ -15,6 +15,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 
+import { SecretCommandSchema } from '../config.js';
 import { validateSsrfUrl } from '../security/index.js';
 import { stagingHost } from '../shared/transport/http-client.js';
 import type { SessionStore } from '../storage/session-store.js';
@@ -994,17 +995,20 @@ export async function handleGetTeamSummary(options: {
   return { content: [{ type: 'text', text: JSON.stringify(result) }] };
 }
 
-/**
- * Mirrors the loader's validation of `digestWebhookUrlCommand` (a non-empty
- * array of non-empty strings) on the raw config file.
- */
-function isDigestWebhookCommandConfigured(raw: Record<string, unknown>): boolean {
-  const command = raw.digestWebhookUrlCommand;
-  return (
-    Array.isArray(command) &&
-    command.length > 0 &&
-    command.every((part) => typeof part === 'string' && part.length > 0)
-  );
+/** Whether the raw config file sets a `digestWebhookUrlCommand` the loader would accept. */
+export function isDigestWebhookCommandConfigured(raw: Record<string, unknown>): boolean {
+  return SecretCommandSchema.safeParse(raw.digestWebhookUrlCommand).success;
+}
+
+/** Why a webhook URL saved to the config file would never be used, or null when it would be. */
+export function digestWebhookUrlShadowedBy(raw: Record<string, unknown>): string | null {
+  if (process.env.NEW_RELIC_AI_DIGEST_WEBHOOK_URL?.trim()) {
+    return 'NEW_RELIC_AI_DIGEST_WEBHOOK_URL is set and outranks digestWebhookUrl, so a webhook saved here would never be used. Unset it to subscribe a URL.';
+  }
+  if (isDigestWebhookCommandConfigured(raw)) {
+    return 'digestWebhookUrlCommand is configured and outranks digestWebhookUrl, so a webhook saved here would never be used. Remove digestWebhookUrlCommand from the config file to subscribe a URL.';
+  }
+  return null;
 }
 
 export function handleSubscribeDigest(
@@ -1031,18 +1035,10 @@ export function handleSubscribeDigest(
     } catch {
       /* no existing config */
     }
-    if (isDigestWebhookCommandConfigured(existing)) {
+    const shadowedBy = digestWebhookUrlShadowedBy(existing);
+    if (shadowedBy) {
       return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({
-              error:
-                'digestWebhookUrlCommand is configured and outranks digestWebhookUrl, so a webhook saved here would never be used. ' +
-                'Remove digestWebhookUrlCommand from the config file to subscribe a URL.',
-            }),
-          },
-        ],
+        content: [{ type: 'text', text: JSON.stringify({ error: shadowedBy }) }],
         isError: true,
       };
     }
@@ -1124,7 +1120,7 @@ export async function handleSendDigest(
           type: 'text',
           text: JSON.stringify({
             error: commandConfigured
-              ? 'digestWebhookUrlCommand is configured but supplied no webhook URL. Run the command yourself to see why it failed.'
+              ? "digestWebhookUrlCommand is configured, so the file's digestWebhookUrl is not used, and no URL from the command is loaded. If the command was added after Preflight started, restart Preflight; otherwise run the command yourself to see why it failed."
               : 'No webhook URL configured. Call nr_observe_subscribe_digest first.',
           }),
         },

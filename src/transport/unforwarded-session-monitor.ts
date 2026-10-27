@@ -104,8 +104,18 @@ export function unforwardedSessionsHint(reason: CloudForwardingGapReason): strin
  * for any other error, which `--local` rethrows.
  */
 export function detectCloudForwardingGap(err: unknown): CloudForwardingGap | null {
-  if (err instanceof CloudSecretCommandError) {
-    return { reason: 'secret-helper-failed', missingField: 'licenseKey', requestedMode: err.mode };
+  const helperFailure =
+    err instanceof CloudSecretCommandError
+      ? err
+      : err instanceof Error && err.cause instanceof CloudSecretCommandError
+        ? err.cause
+        : undefined;
+  if (helperFailure) {
+    return {
+      reason: 'secret-helper-failed',
+      missingField: 'licenseKey',
+      requestedMode: helperFailure.mode,
+    };
   }
   const source =
     err instanceof MissingCloudCredentialError

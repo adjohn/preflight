@@ -229,7 +229,7 @@ export type PlatformTarget = 'native' | 'wsl-windows-cc' | 'wsl-linux-cc';
 
 // argv array only: a single string would invite shell-style quoting that
 // Preflight never interprets, since the command runs without a shell.
-const SecretCommandSchema = z.array(z.string().min(1)).min(1);
+export const SecretCommandSchema = z.array(z.string().min(1)).min(1);
 
 export const ConfigFileSchema = z
   .object({
@@ -895,9 +895,9 @@ export function loadMcpConfig(
   // In local mode, undefined if licenseKey is missing (NR transport won't be used)
   const licenseKey = licenseKeyRaw;
 
-  // --- accountId: env > file ---
+  // --- accountId: env > file; a blank env var counts as unset, as for the secrets ---
   const accountIdRaw =
-    process.env.NEW_RELIC_ACCOUNT_ID ??
+    (process.env.NEW_RELIC_ACCOUNT_ID?.trim() ? process.env.NEW_RELIC_ACCOUNT_ID : undefined) ??
     (typeof file.accountId === 'string' ? file.accountId : undefined);
   if (mode !== 'local' && !accountIdRaw) {
     throw new MissingCloudCredentialError('accountId', mode, configFilePath);

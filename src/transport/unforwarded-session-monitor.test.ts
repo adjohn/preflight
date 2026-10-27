@@ -72,6 +72,21 @@ describe('detectCloudForwardingGap', () => {
     });
   });
 
+  it('reads a failing secret helper wrapped the way loadConfigOrDie wraps it', () => {
+    const helperFailure = new CloudSecretCommandError(
+      new SecretCommandError('licenseKey', 'timeout', ' after 20000ms'),
+      'both',
+    );
+    const wrapped = new Error(`${helperFailure.message}\n\nRun 'preflight doctor' to diagnose.`, {
+      cause: helperFailure,
+    });
+    expect(detectCloudForwardingGap(wrapped)).toEqual({
+      reason: 'secret-helper-failed',
+      missingField: 'licenseKey',
+      requestedMode: 'both',
+    });
+  });
+
   it('points the snapshot hint at the helper when the helper failed', () => {
     const { monitor } = makeMonitor({ gap: { ...GAP, reason: 'secret-helper-failed' } });
     expect(monitor.getSnapshot().hint).toBe(SECRET_HELPER_FAILED_HINT);

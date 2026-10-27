@@ -273,6 +273,25 @@ describe('loadMcpConfig() with *Command fields', () => {
     expect(config.secretSources.licenseKey).toBe('command');
   });
 
+  it('runs licenseKeyCommand when NEW_RELIC_LICENSE_KEY is only whitespace', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = '  ';
+    const path = writeConfig({
+      mode: 'cloud',
+      accountId: '12345',
+      licenseKeyCommand: printArg(SECRET),
+    });
+
+    expect(loadMcpConfig({ config: path }).licenseKey).toBe(SECRET);
+  });
+
+  it('reads the file accountId when NEW_RELIC_ACCOUNT_ID is blank', () => {
+    process.env.NEW_RELIC_ACCOUNT_ID = '';
+    process.env.NEW_RELIC_LICENSE_KEY = 'env-license';
+    const path = writeConfig({ mode: 'cloud', accountId: '12345' });
+
+    expect(loadMcpConfig({ config: path }).accountId).toBe('12345');
+  });
+
   it.each([
     ['nrApiKeyCommand', 'nrApiKey'],
     ['digestWebhookUrlCommand', 'digestWebhookUrl'],

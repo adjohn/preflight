@@ -121,7 +121,7 @@ type SecretInputs = {
  * alone, and a blank one is treated as unset.
  */
 export function isSecretConfigured(sources: SecretInputs): boolean {
-  if (sources.env) return true;
+  if (sources.env?.trim()) return true;
   return sources.command !== undefined || Boolean(sources.file);
 }
 
@@ -138,7 +138,7 @@ export function resolveSecret(
   sources: SecretInputs,
   options: { readonly optional?: boolean; readonly skipCommand?: boolean } = {},
 ): ResolvedSecret {
-  if (sources.env) return { source: 'env', value: sources.env };
+  if (sources.env?.trim()) return { source: 'env', value: sources.env };
   if (sources.command !== undefined) {
     if (sources.file !== undefined) {
       logger.warn(`Both ${field} and ${field}Command are set; using ${field}Command`, { field });
