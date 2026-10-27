@@ -84,11 +84,16 @@ export class HttpUpstream implements ProxyUpstream {
     if (this.url.protocol === 'http:' && !isLoopbackHost(this.url.hostname)) {
       const privateTarget = this.allowPrivateHosts && isPrivateTarget(label, this.url);
       if (!(privateTarget && config.allowInsecureHttp === true)) {
-        throw new Error(
-          privateTarget
-            ? `${label}: http:// to private host "${this.url.hostname}" requires https:// or allowInsecureHttp: true on this upstream`
-            : `${label}: http:// to host "${this.url.hostname}" is not allowed; use https:// (http:// is only accepted for localhost, 127.0.0.1 and ::1, or with allowInsecureHttp for a private IP address; hostnames are not resolved for this check)`,
-        );
+        const host = this.url.hostname;
+        let message: string;
+        if (privateTarget) {
+          message = `${label}: http:// to private host "${host}" requires https:// or allowInsecureHttp: true on this upstream`;
+        } else if (this.allowPrivateHosts) {
+          message = `${label}: http:// to host "${host}" is not allowed; allowInsecureHttp only applies to a private IP address (hostnames are not resolved for this check), so use https:// or the host's IP address`;
+        } else {
+          message = `${label}: http:// to host "${host}" is not allowed; use https:// (http:// is only accepted for localhost, 127.0.0.1 and ::1, or for a private IP address with both allowPrivateHosts and allowInsecureHttp)`;
+        }
+        throw new Error(message);
       }
     }
     this.timeoutMs = config.timeoutMs ?? 30_000;

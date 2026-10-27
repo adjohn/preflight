@@ -207,6 +207,8 @@ describe('HttpUpstream', () => {
   });
 
   describe('SSRF protection', () => {
+    const SSRF_ERROR = /metadata service|private or loopback|scheme "/;
+
     const ssrfCases: Array<[string, string]> = [
       ['loopback IPv4', 'https://127.0.0.1:8080'],
       ['localhost', 'https://localhost:8080'],
@@ -242,7 +244,7 @@ describe('HttpUpstream', () => {
 
     it.each(ssrfCases)('blocks %s (%s)', (_label, url) => {
       expect(() => new HttpUpstream({ name: 'test', url, transportType: 'http' })).toThrow(
-        /metadata service|private or loopback|scheme "/,
+        SSRF_ERROR,
       );
     });
 
@@ -371,6 +373,31 @@ describe('HttpUpstream', () => {
         ).toThrow(/HttpUpstream "remote": http:\/\/ to host "example.com" is not allowed/);
       });
 
+      it('rejects http:// to a LAN hostname even with allowPrivateHosts and allowInsecureHttp', () => {
+        expect(
+          () =>
+            new HttpUpstream({
+              name: 'nas',
+              url: 'http://nas.lan/mcp',
+              transportType: 'http',
+              allowPrivateHosts: true,
+              allowInsecureHttp: true,
+            }),
+        ).toThrow(/"nas.lan" is not allowed; allowInsecureHttp only applies to a private IP/);
+      });
+
+      it('names allowPrivateHosts as a requirement when a public http:// host is rejected', () => {
+        expect(
+          () =>
+            new HttpUpstream({
+              name: 'remote',
+              url: 'http://example.com/mcp',
+              transportType: 'http',
+              allowInsecureHttp: true,
+            }),
+        ).toThrow(/with both allowPrivateHosts and allowInsecureHttp/);
+      });
+
       it('treats allowInsecureHttp as opt-in only when the value is exactly true', () => {
         expect(
           () =>
@@ -427,21 +454,21 @@ describe('HttpUpstream', () => {
         expect(
           () =>
             new HttpUpstream({ name: 'test', url: 'https://2130706433/', transportType: 'http' }),
-        ).toThrow(/metadata service|private or loopback|scheme "/);
+        ).toThrow(SSRF_ERROR);
       });
 
       it('blocks decimal encoding of RFC-1918 10.0.0.1 (167772161)', () => {
         expect(
           () =>
             new HttpUpstream({ name: 'test', url: 'https://167772161/', transportType: 'http' }),
-        ).toThrow(/metadata service|private or loopback|scheme "/);
+        ).toThrow(SSRF_ERROR);
       });
 
       it('blocks octal encoding of loopback (0177.0.0.1)', () => {
         expect(
           () =>
             new HttpUpstream({ name: 'test', url: 'https://0177.0.0.1/', transportType: 'http' }),
-        ).toThrow(/metadata service|private or loopback|scheme "/);
+        ).toThrow(SSRF_ERROR);
       });
 
       it('blocks octal encoding of RFC-1918 192.168.1.1 (0300.0250.0.1)', () => {
@@ -452,28 +479,28 @@ describe('HttpUpstream', () => {
               url: 'https://0300.0250.0.1/',
               transportType: 'http',
             }),
-        ).toThrow(/metadata service|private or loopback|scheme "/);
+        ).toThrow(SSRF_ERROR);
       });
 
       it('blocks hex encoding of loopback (0x7f.0.0.1)', () => {
         expect(
           () =>
             new HttpUpstream({ name: 'test', url: 'https://0x7f.0.0.1/', transportType: 'http' }),
-        ).toThrow(/metadata service|private or loopback|scheme "/);
+        ).toThrow(SSRF_ERROR);
       });
 
       it('blocks hex encoding of RFC-1918 10.0.0.1 (0xa.0.0.1)', () => {
         expect(
           () =>
             new HttpUpstream({ name: 'test', url: 'https://0xa.0.0.1/', transportType: 'http' }),
-        ).toThrow(/metadata service|private or loopback|scheme "/);
+        ).toThrow(SSRF_ERROR);
       });
 
       it('blocks mixed decimal/hex encoding (127.0x0.0.1)', () => {
         expect(
           () =>
             new HttpUpstream({ name: 'test', url: 'https://127.0x0.0.1/', transportType: 'http' }),
-        ).toThrow(/metadata service|private or loopback|scheme "/);
+        ).toThrow(SSRF_ERROR);
       });
 
       it('allows public URLs with numeric-looking suffixes that are not IPs', () => {
