@@ -182,6 +182,22 @@ describe('ProxyManager', () => {
     );
   });
 
+  it('still throws for a stdio upstream with no command', () => {
+    manager = new ProxyManager({ port: 0 });
+    expect(() => manager.registerUpstream({ name: 'bare', transportType: 'stdio' })).toThrow(
+      'StdioUpstream "bare" requires a command',
+    );
+    expect(manager.getSkippedUpstreamNames()).toEqual([]);
+  });
+
+  it('does not list a name as skipped when another entry with that name registered', () => {
+    manager = new ProxyManager({ port: 0 });
+    manager.registerUpstream({ name: 'a', url: 'https://mcp.example.com', transportType: 'http' });
+    manager.registerUpstream({ name: 'a', url: 'http://mcp.example.com', transportType: 'http' });
+    expect(manager.getUpstreamNames()).toEqual(['a']);
+    expect(manager.getSkippedUpstreamNames()).toEqual([]);
+  });
+
   it('start() with no upstreams configured at all still starts', async () => {
     manager = new ProxyManager({ port: 0 });
     await expect(manager.start()).resolves.toBeUndefined();
@@ -299,8 +315,11 @@ describe('ProxyManager HTTP server', () => {
 
     const response = await httpRequest(`http://127.0.0.1:${proxyPort}/health`, { method: 'GET' });
     const body = JSON.parse(response.body);
-    expect(body.upstreams).toEqual(['server-a']);
-    expect(body.skippedUpstreams).toEqual(['legacy']);
+    expect(body).toMatchObject({
+      status: 'degraded',
+      upstreams: ['server-a'],
+      skippedUpstreams: ['legacy'],
+    });
   });
 
   it('reports otlpReceiverStatus as disabled in /health when otlpReceiverEnabled is not set', async () => {
@@ -967,6 +986,27 @@ describe('ProxyManager upstream connection failures', () => {
     };
 
     await expect(manager.start()).rejects.toThrow('All upstreams failed to connect');
+  });
+
+  it('names upstreams rejected at startup when the rest fail to connect', async () => {
+    const manager = new ProxyManager({ port: 0 });
+    manager.registerUpstream({
+      name: 'legacy',
+      url: 'http://mcp.corp.example.com',
+      transportType: 'http',
+    });
+    manager.registerUpstream({
+      name: 'bad-server',
+      transportType: 'stdio',
+      command: '/nonexistent/binary',
+    });
+    manager.getUpstream('bad-server')!.connect = async () => {
+      throw new Error('spawn failed');
+    };
+
+    await expect(manager.start()).rejects.toThrow(
+      'All upstreams failed to connect (bad-server). Proxy cannot start. Also rejected at startup: legacy.',
+    );
   });
 
   it('starts in degraded mode when some upstreams fail', async () => {

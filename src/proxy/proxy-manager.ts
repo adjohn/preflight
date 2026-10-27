@@ -108,9 +108,14 @@ export class ProxyManager {
     try {
       upstream = createUpstream(config);
     } catch (err) {
-      // One invalid entry (e.g. a legacy http:// URL) must not take down the
-      // other upstreams; start() already tolerates individual connect failures.
-      this.skippedUpstreams.push(config.name);
+      // One invalid http entry (e.g. a legacy http:// URL) must not take down
+      // the other upstreams; start() already tolerates individual connect
+      // failures. A stdio entry that fails command validation is a security
+      // misconfiguration and still stops startup.
+      if (config.transportType !== 'http') throw err;
+      if (!this.upstreams.has(config.name) && !this.skippedUpstreams.includes(config.name)) {
+        this.skippedUpstreams.push(config.name);
+      }
       logger.error('Skipping invalid upstream', {
         name: config.name,
         error: err instanceof Error ? err.message : String(err),
@@ -118,6 +123,8 @@ export class ProxyManager {
       return;
     }
     this.upstreams.set(config.name, upstream);
+    const skippedIndex = this.skippedUpstreams.indexOf(config.name);
+    if (skippedIndex >= 0) this.skippedUpstreams.splice(skippedIndex, 1);
     logger.info(`Registered upstream "${config.name}"`, { transportType: config.transportType });
   }
 
@@ -174,8 +181,12 @@ export class ProxyManager {
       }
     }
     if (failedNames.length > 0 && failedNames.length === this.upstreams.size) {
+      const skipped =
+        this.skippedUpstreams.length > 0
+          ? ` Also rejected at startup: ${this.skippedUpstreams.join(', ')}.`
+          : '';
       throw new Error(
-        `All upstreams failed to connect (${failedNames.join(', ')}). Proxy cannot start.`,
+        `All upstreams failed to connect (${failedNames.join(', ')}). Proxy cannot start.${skipped}`,
       );
     }
     if (failedNames.length > 0) {
@@ -305,11 +316,9 @@ export class ProxyManager {
     // Health check
     if (url === '/health' && req.method === 'GET') {
       const body = JSON.stringify({
-        status: 'ok',
+        status: this.skippedUpstreams.length > 0 ? 'degraded' : 'ok',
         upstreams: this.getUpstreamNames(),
-        ...(this.skippedUpstreams.length > 0
-          ? { skippedUpstreams: this.getSkippedUpstreamNames() }
-          : {}),
+        skippedUpstreams: this.getSkippedUpstreamNames(),
         ...(this.options.otlpReceiverEnabled
           ? { otlpReceiverStatus: this.otlpReceiverStatus }
           : {}),

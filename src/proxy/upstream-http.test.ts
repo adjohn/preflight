@@ -386,6 +386,34 @@ describe('HttpUpstream', () => {
         ).toThrow(/"nas.lan" is not allowed; allowInsecureHttp only applies to a private IP/);
       });
 
+      it('rejects http:// to a cloud metadata hostname even with both flags', () => {
+        expect(
+          () =>
+            new HttpUpstream({
+              name: 'meta',
+              url: 'http://metadata.google.internal/',
+              transportType: 'http',
+              allowPrivateHosts: true,
+              allowInsecureHttp: true,
+            }),
+        ).toThrow(/"metadata.google.internal" is not allowed/);
+      });
+
+      it('tells a public IP with both flags to use https, not its IP', () => {
+        expect(
+          () =>
+            new HttpUpstream({
+              name: 'pub',
+              url: 'http://8.8.8.8/mcp',
+              transportType: 'http',
+              allowPrivateHosts: true,
+              allowInsecureHttp: true,
+            }),
+        ).toThrow(
+          'HttpUpstream "pub": http:// to public address "8.8.8.8" is not allowed; allowInsecureHttp only applies to a private IP address, so use https://',
+        );
+      });
+
       it('names allowPrivateHosts as a requirement when a public http:// host is rejected', () => {
         expect(
           () =>
