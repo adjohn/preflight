@@ -1,7 +1,9 @@
 import { describe, it, expect } from '@jest/globals';
 
-import { MissingCloudCredentialError, type Mode } from '../config.js';
+import { CloudSecretCommandError, MissingCloudCredentialError, type Mode } from '../config.js';
+import { SecretCommandError } from '../secret-command.js';
 import {
+  SECRET_HELPER_FAILED_HINT,
   UNFORWARDED_SESSIONS_HINT,
   UnforwardedSessionMonitor,
   detectCloudForwardingGap,
@@ -19,14 +21,16 @@ interface WarnCall {
   readonly fields: Record<string, unknown>;
 }
 
-function makeMonitor(overrides: { maxTrackedSessions?: number; clock?: { t: number } } = {}): {
+function makeMonitor(
+  overrides: { maxTrackedSessions?: number; clock?: { t: number }; gap?: CloudForwardingGap } = {},
+): {
   monitor: UnforwardedSessionMonitor;
   warns: WarnCall[];
 } {
   const warns: WarnCall[] = [];
   const clock = overrides.clock ?? { t: 1_000 };
   const monitor = new UnforwardedSessionMonitor({
-    gap: GAP,
+    gap: overrides.gap ?? GAP,
     maxTrackedSessions: overrides.maxTrackedSessions,
     warn: (message, fields) => warns.push({ message, fields }),
     now: () => clock.t,
@@ -54,6 +58,23 @@ describe('detectCloudForwardingGap', () => {
       missingField: 'accountId',
       requestedMode: 'cloud',
     });
+  });
+
+  it('reads a failing secret helper as its own reason, not a missing key', () => {
+    const err = new CloudSecretCommandError(
+      new SecretCommandError('licenseKey', 'non-zero-exit', ' (1)'),
+      'cloud',
+    );
+    expect(detectCloudForwardingGap(err)).toEqual({
+      reason: 'secret-helper-failed',
+      missingField: 'licenseKey',
+      requestedMode: 'cloud',
+    });
+  });
+
+  it('points the snapshot hint at the helper when the helper failed', () => {
+    const { monitor } = makeMonitor({ gap: { ...GAP, reason: 'secret-helper-failed' } });
+    expect(monitor.getSnapshot().hint).toBe(SECRET_HELPER_FAILED_HINT);
   });
 
   it("keeps the error's Mode type on the gap and the snapshot", () => {

@@ -696,6 +696,23 @@ export class MissingCloudCredentialError extends Error {
 }
 
 /**
+ * A `SecretCommandError` raised while resolving a secret that cloud export
+ * needs. It keeps the helper's own message for stdio users and adds the mode
+ * the config asked for, so `--local` can tell a failing helper from a missing
+ * credential and still fall back to local mode.
+ */
+export class CloudSecretCommandError extends SecretCommandError {
+  readonly mode: Mode;
+
+  constructor(original: SecretCommandError, mode: Mode) {
+    super(original.field, original.failure);
+    this.message = original.message;
+    this.cause = original;
+    this.mode = mode;
+  }
+}
+
+/**
  * The startup-resolved digest webhook URL when a source that outranks the
  * file's `digestWebhookUrl` (env var or digestWebhookUrlCommand) supplied it.
  * Undefined means "read the file at send time".
@@ -855,11 +872,7 @@ export function loadMcpConfig(
       { skipCommand },
     );
   } catch (err) {
-    // The cause lets --local fall back to local mode, as it does for a
-    // missing key, instead of dying when nobody answers the helper's prompt.
-    if (err instanceof SecretCommandError) {
-      err.cause = new MissingCloudCredentialError('licenseKey', mode, configFilePath);
-    }
+    if (err instanceof SecretCommandError) throw new CloudSecretCommandError(err, mode);
     throw err;
   }
   const licenseKeyRaw = licenseKeySecret.value;

@@ -230,8 +230,10 @@ describe('loadMcpConfig() with *Command fields', () => {
       thrown = err;
     }
 
+    expect(thrown).toBeInstanceOf(SecretCommandError);
+    expect((thrown as Error).message).toContain('Could not read licenseKey from licenseKeyCommand');
     expect(detectCloudForwardingGap(thrown)).toEqual({
-      reason: 'missing-license-key',
+      reason: 'secret-helper-failed',
       missingField: 'licenseKey',
       requestedMode: 'cloud',
     });
