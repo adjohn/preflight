@@ -1111,6 +1111,77 @@ describe('stdio integration', () => {
     }
   }, 30000);
 
+  describe.each([
+    [false, 'refuses with the opt-in message and writes nothing'],
+    [true, 'installs the hooks'],
+  ])(
+    'nr_observe_install_hooks while the session is still pending (allowHeadlessInstall=%s)',
+    (allow, outcome) => {
+      it(
+        outcome,
+        async () => {
+          const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+          const { StdioClientTransport } =
+            await import('@modelcontextprotocol/sdk/client/stdio.js');
+
+          const binPath = resolve(__dirname, '..', 'dist', 'index.js');
+          const tmpStoragePath = mkdtempSync(join(tmpdir(), 'nr-pending-install-storage-'));
+          const tmpHome = mkdtempSync(join(tmpdir(), 'nr-pending-install-home-'));
+          const settingsPath = resolve(tmpHome, '.claude', 'settings.json');
+
+          // No breadcrumb and no CLAUDE_JOB_DIR keeps the server in pending mode
+          // for the whole call, as on a fresh install that has no hooks yet.
+          const env = { ...process.env };
+          delete env.CLAUDE_JOB_DIR;
+          for (const name of Object.keys(env)) {
+            if (name.startsWith('CLAUDE')) delete env[name];
+          }
+
+          const transport = new StdioClientTransport({
+            command: 'node',
+            args: [binPath, '--stdio'],
+            env: {
+              ...env,
+              HOME: tmpHome,
+              NR_AI_DASHBOARD_PORT: '0',
+              NR_AI_MODE: 'local',
+              NEW_RELIC_AI_MCP_STORAGE_PATH: tmpStoragePath,
+              NEW_RELIC_AI_ALLOW_HEADLESS_INSTALL: String(allow),
+            },
+          });
+
+          const client = new Client({ name: 'test-client', version: '1.0.0' });
+          try {
+            await client.connect(transport);
+            const names = (await client.listTools()).tools.map((t) => t.name);
+            expect(names).not.toContain('nr_observe_get_session_stats');
+
+            const result = await client.callTool({
+              name: 'nr_observe_install_hooks',
+              arguments: {},
+            });
+            const body = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+
+            expect(JSON.stringify(body)).not.toContain('not available in this server mode');
+            if (allow) {
+              expect(body.status).toBe('installed');
+              expect(readFileSync(settingsPath, 'utf-8')).toContain('PreToolUse');
+            } else {
+              expect(result.isError).toBe(true);
+              expect(body.status).toBe('disabled');
+              expect(existsSync(settingsPath)).toBe(false);
+            }
+            await client.close();
+          } finally {
+            rmSync(tmpStoragePath, { recursive: true, force: true });
+            rmSync(tmpHome, { recursive: true, force: true });
+          }
+        },
+        30000,
+      );
+    },
+  );
+
   it('self-corrects when the pending path resolves via the cwd fallback and a differing PPID breadcrumb appears later', async () => {
     // The pending -> async poller flow (not the eager synchronous one) can
     // also resolve via cwd instead of ppid. Mirrors the provisional-path
