@@ -22,6 +22,7 @@ import {
 
 const logger = createLogger('nr-ingest');
 import { redactSensitive } from '../config.js';
+import { isSyntheticSessionId } from '../hooks/session-resolver.js';
 import { VERSION } from '../version.js';
 import type { ToolCallRecord, SubagentTokenEvent } from '../storage/types.js';
 import type { ProxyToolCallRecord, ProxyRequestRecord } from '../proxy/types.js';
@@ -1327,16 +1328,28 @@ export class NrIngestManager {
     this.proxyMetrics.recordProxyRequest(record);
   }
 
-  /** Sends an audit record that wasn't produced by a tool call, such as a headless hook install. */
+  get isRunning(): boolean {
+    return this.running;
+  }
+
+  /** Sends an audit record as an AiAuditEvent and an NR Logs API entry. */
   ingestAuditRecord(record: AuditRecord): void {
+    // The audit trail drops synthetic ids (pending-, local-, proxy-), so the
+    // fallback does too, or a placeholder id would reach New Relic.
+    const fallbackSessionId = isSyntheticSessionId(this.sessionTraceId)
+      ? null
+      : (this.sessionTraceId ?? null);
+    const attributed =
+      record.sessionId == null ? { ...record, sessionId: fallbackSessionId } : record;
     this.routeEvent(
-      auditRecordToNrEvent(record, {
+      auditRecordToNrEvent(attributed, {
         teamId: this.teamId,
         projectId: this.projectId,
         orgId: this.orgId,
         repoUrl: this.repoUrl,
       }),
     );
+    this.logIngest.addAuditRecord(attributed);
   }
 
   ingestToolCall(record: ToolCallRecord, auditRecord?: AuditRecord): void {
@@ -1418,14 +1431,7 @@ export class NrIngestManager {
       (isProxyToolCall(record)
         ? this.auditTrail.recordProxyCall(record)
         : this.auditTrail.recordToolCall(record));
-    this.routeEvent(
-      auditRecordToNrEvent(finalAuditRecord, {
-        teamId: this.teamId,
-        projectId: this.projectId,
-        orgId: this.orgId,
-        repoUrl: this.repoUrl,
-      }),
-    );
+    this.ingestAuditRecord(finalAuditRecord);
     if (finalAuditRecord.securityAlert) {
       this.routeEvent(
         securityAlertToNrEvent(finalAuditRecord, {
@@ -1436,8 +1442,6 @@ export class NrIngestManager {
         }),
       );
     }
-    // Queue audit log entry for NR Logs API
-    this.logIngest.addAuditRecord(finalAuditRecord);
   }
 
   ingestCodingTask(task: AiCodingTask): void {

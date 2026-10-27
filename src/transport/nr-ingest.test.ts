@@ -900,6 +900,50 @@ describe('NrIngestManager', () => {
         tool: 'nr_observe_install_hooks',
       });
     });
+
+    function makeInstallRecord(sessionId: string | null) {
+      return {
+        id: 'audit-2',
+        timestamp: 1_700_000_000_000,
+        sessionId,
+        action: 'HookInstall' as const,
+        tool: 'nr_observe_install_hooks',
+        detail: 'HookInstall: /home/dev/.claude/settings.json',
+        developer: 'dev',
+      };
+    }
+
+    async function sendOne(sessionTraceId: string, sessionId: string | null) {
+      const manager = new NrIngestManager(makeIngestOptions({ sessionTraceId }));
+      manager.ingestAuditRecord(makeInstallRecord(sessionId));
+      manager.start();
+      await manager.stop();
+      const events = (mockSendEvents.mock.calls[0] as unknown[])[0] as Array<
+        Record<string, unknown>
+      >;
+      const logs = (mockSendLogs.mock.calls[0] as unknown[])[0] as Array<Record<string, unknown>>;
+      return { event: events[0], logs };
+    }
+
+    it('falls back to sessionTraceId when the record has no sessionId', async () => {
+      const { event } = await sendOne('trace-abc', null);
+      expect(event.session_id).toBe('trace-abc');
+    });
+
+    it("keeps the record's own sessionId over sessionTraceId", async () => {
+      const { event } = await sendOne('trace-abc', 'sess-own');
+      expect(event.session_id).toBe('sess-own');
+    });
+
+    it('does not fall back to a synthetic pending sessionTraceId', async () => {
+      const { event } = await sendOne('pending-1700000000000', null);
+      expect('session_id' in event).toBe(false);
+    });
+
+    it('queues the record for the NR Logs API', async () => {
+      const { logs } = await sendOne('trace-abc', null);
+      expect(logs.map((l) => l.message)).toEqual(['HookInstall: /home/dev/.claude/settings.json']);
+    });
   });
 
   describe('start() / stop() lifecycle', () => {
