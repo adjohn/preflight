@@ -160,6 +160,31 @@ describe('ProxyManager', () => {
       transportType: 'http',
     });
     expect(manager.getUpstreamNames()).toEqual(['secure']);
+    expect(manager.getSkippedUpstreamNames()).toEqual(['legacy']);
+  });
+
+  it('skips an upstream with an unparseable url', () => {
+    manager = new ProxyManager({ port: 0 });
+    manager.registerUpstream({ name: 'typo', url: 'not a url', transportType: 'http' });
+    expect(manager.getUpstreamNames()).toEqual([]);
+    expect(manager.getSkippedUpstreamNames()).toEqual(['typo']);
+  });
+
+  it('start() throws when every configured upstream was rejected', async () => {
+    manager = new ProxyManager({ port: 0 });
+    manager.registerUpstream({
+      name: 'legacy',
+      url: 'http://mcp.corp.example.com',
+      transportType: 'http',
+    });
+    await expect(manager.start()).rejects.toThrow(
+      /All configured upstreams were rejected \(legacy\)/,
+    );
+  });
+
+  it('start() with no upstreams configured at all still starts', async () => {
+    manager = new ProxyManager({ port: 0 });
+    await expect(manager.start()).resolves.toBeUndefined();
   });
 
   it('getUpstream() returns the registered upstream', () => {
@@ -249,6 +274,33 @@ describe('ProxyManager HTTP server', () => {
     const body = JSON.parse(response.body);
     expect(body.status).toBe('ok');
     expect(body.upstreams).toEqual(['server-a', 'server-b']);
+  });
+
+  it('reports skipped upstreams in /health', async () => {
+    ({ server: mockServer, port: proxyPort } = await createMockMcpServer());
+    const mockPort = proxyPort;
+    manager = new ProxyManager({ port: 0 });
+    manager.registerUpstream({
+      name: 'legacy',
+      url: 'http://mcp.corp.example.com',
+      transportType: 'http',
+    });
+    manager.registerUpstream({
+      name: 'server-a',
+      url: `http://127.0.0.1:${mockPort}`,
+      transportType: 'http',
+      allowPrivateHosts: true,
+    });
+    await manager.start();
+    const addr = (
+      manager as unknown as { httpServer: { address: () => { port: number } } }
+    ).httpServer?.address();
+    proxyPort = typeof addr === 'object' && addr ? addr.port : 0;
+
+    const response = await httpRequest(`http://127.0.0.1:${proxyPort}/health`, { method: 'GET' });
+    const body = JSON.parse(response.body);
+    expect(body.upstreams).toEqual(['server-a']);
+    expect(body.skippedUpstreams).toEqual(['legacy']);
   });
 
   it('reports otlpReceiverStatus as disabled in /health when otlpReceiverEnabled is not set', async () => {

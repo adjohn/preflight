@@ -81,6 +81,7 @@ function peekJsonRpc(body: Buffer): JsonRpcPeek | null {
 
 export class ProxyManager {
   private readonly upstreams = new Map<string, ProxyUpstream>();
+  private readonly skippedUpstreams: string[] = [];
   private readonly connectionSessionIds = new WeakMap<Socket, string>();
   private httpServer: Server | null = null;
   private otlpReceiver: OtlpReceiver | null = null;
@@ -109,7 +110,9 @@ export class ProxyManager {
     } catch (err) {
       // One invalid entry (e.g. a legacy http:// URL) must not take down the
       // other upstreams; start() already tolerates individual connect failures.
-      logger.warn(`Skipping upstream "${config.name}"`, {
+      this.skippedUpstreams.push(config.name);
+      logger.error('Skipping invalid upstream', {
+        name: config.name,
         error: err instanceof Error ? err.message : String(err),
       });
       return;
@@ -121,6 +124,11 @@ export class ProxyManager {
   /** Get the list of registered upstream names. */
   getUpstreamNames(): string[] {
     return Array.from(this.upstreams.keys());
+  }
+
+  /** Names of configured upstreams that failed validation and were not registered. */
+  getSkippedUpstreamNames(): string[] {
+    return [...this.skippedUpstreams];
   }
 
   /** Get a registered upstream by name (for testing). */
@@ -139,6 +147,18 @@ export class ProxyManager {
 
   /** Connect all upstreams and start the HTTP proxy server. */
   async start(): Promise<void> {
+    if (this.skippedUpstreams.length > 0 && this.upstreams.size === 0) {
+      throw new Error(
+        `All configured upstreams were rejected (${this.skippedUpstreams.join(', ')}). Proxy cannot start.`,
+      );
+    }
+    if (this.skippedUpstreams.length > 0) {
+      logger.warn('Some upstreams were rejected — proxy starting in degraded mode', {
+        skipped: this.skippedUpstreams,
+        registered: this.upstreams.size,
+      });
+    }
+
     // Connect all upstreams
     const upstreamNames = Array.from(this.upstreams.keys());
     const connectResults = await Promise.allSettled(
@@ -287,6 +307,9 @@ export class ProxyManager {
       const body = JSON.stringify({
         status: 'ok',
         upstreams: this.getUpstreamNames(),
+        ...(this.skippedUpstreams.length > 0
+          ? { skippedUpstreams: this.getSkippedUpstreamNames() }
+          : {}),
         ...(this.options.otlpReceiverEnabled
           ? { otlpReceiverStatus: this.otlpReceiverStatus }
           : {}),
