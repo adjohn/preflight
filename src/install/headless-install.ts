@@ -2,7 +2,10 @@ import { dirname } from 'node:path';
 import { areHooksInstalled, mergeSettings, detectSettingsPath } from './install-helper.js';
 import { readJsonFileStrict, writeJsonFile, errMsg } from './json-utils.js';
 import { resolveBinaryPath } from './schedule.js';
+import { createLogger } from '../shared/index.js';
 import type { AuditRecord, AuditTrailManager } from '../security/audit-trail.js';
+
+const logger = createLogger('headless-install');
 
 export type HeadlessInstallResult =
   | { readonly status: 'installed'; readonly settingsPath: string }
@@ -73,8 +76,14 @@ export function createHeadlessInstaller(options: {
       _settingsPathOverride: options._settingsPathOverride,
     });
     if (result.status === 'installed') {
-      const record = options.getAuditTrail()?.recordHeadlessHookInstall(result.settingsPath);
-      if (record) options.onAuditRecord?.(record);
+      // The hooks are already on disk, so a failed audit step must not turn
+      // the call into an error the client would retry.
+      try {
+        const record = options.getAuditTrail()?.recordHeadlessHookInstall(result.settingsPath);
+        if (record) options.onAuditRecord?.(record);
+      } catch (err) {
+        logger.warn('Hook install succeeded but its audit record failed', { error: errMsg(err) });
+      }
     }
     return result;
   };

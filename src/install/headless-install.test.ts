@@ -200,6 +200,37 @@ describe('createHeadlessInstaller()', () => {
     expect(sent).toEqual([`HookInstall HookInstall: ${settingsPath}`]);
   });
 
+  it.each([
+    [
+      'onAuditRecord throws',
+      (audit: AuditTrailManager) => ({
+        getAuditTrail: () => audit,
+        onAuditRecord: () => {
+          throw new Error('ingest down');
+        },
+      }),
+    ],
+    [
+      'the audit trail throws',
+      () => ({
+        getAuditTrail: (): AuditTrailManager | undefined => {
+          throw new Error('audit store gone');
+        },
+      }),
+    ],
+  ])('still reports installed when %s', (_label, makeOptions) => {
+    const settingsPath = join(tmpDir, 'settings.json');
+    const audit = new AuditTrailManager({ developer: 'dev', sessionId: 'sess-guard' });
+    const installer = createHeadlessInstaller({
+      allowHeadlessInstall: true,
+      _settingsPathOverride: settingsPath,
+      ...makeOptions(audit),
+    });
+
+    expect(installer()).toEqual({ status: 'installed', settingsPath });
+    expect(existsSync(settingsPath)).toBe(true);
+  });
+
   it('writes no audit entry when hooks are already installed', () => {
     const settingsPath = join(tmpDir, 'settings.json');
     writeJsonFile(settingsPath, mergeSettings({}), tmpDir);
