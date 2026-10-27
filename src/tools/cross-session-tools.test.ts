@@ -1283,6 +1283,23 @@ describe('Cross-session tool handlers', () => {
     });
   });
 
+  describe('handleSubscribeDigest() with digestWebhookUrlCommand', () => {
+    it('refuses to save a URL the command would outrank, leaving the file unchanged', () => {
+      const configFilePath = resolve(tmpDir, 'config.json');
+      const original = JSON.stringify({ digestWebhookUrlCommand: ['vault', 'read', 'slack'] });
+      writeFileSync(configFilePath, original, 'utf-8');
+
+      const result = handleSubscribeDigest(
+        'https://hooks.slack.com/services/T000/B000/XXXX',
+        configFilePath,
+      );
+
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content[0]!.text).error).toMatch(/digestWebhookUrlCommand/);
+      expect(readFileSync(configFilePath, 'utf-8')).toBe(original);
+    });
+  });
+
   describe('handleUnsubscribeDigest()', () => {
     it('removes digestWebhookUrl from an existing config file', () => {
       const configFilePath = resolve(tmpDir, 'config.json');
@@ -1373,8 +1390,34 @@ describe('Cross-session tool handlers', () => {
       try {
         const result = await handleSendDigest(generator, configFilePath);
         const body = JSON.parse(result.content[0]!.text);
-        expect(body.error).toMatch(/No webhook URL configured/);
+        expect(body.error).toMatch(
+          /digestWebhookUrlCommand is configured but supplied no webhook URL/,
+        );
         expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('still reads the file URL when digestWebhookUrlCommand is not a valid command', async () => {
+      const configFilePath = resolve(tmpDir, 'config.json');
+      writeFileSync(
+        configFilePath,
+        JSON.stringify({
+          digestWebhookUrl: 'https://hooks.slack.com/services/T000/B000/FILE',
+          digestWebhookUrlCommand: [],
+        }),
+        'utf-8',
+      );
+      const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
+      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('ok'));
+
+      try {
+        await handleSendDigest(generator, configFilePath);
+        expect(fetchSpy).toHaveBeenCalledWith(
+          'https://hooks.slack.com/services/T000/B000/FILE',
+          expect.anything(),
+        );
       } finally {
         fetchSpy.mockRestore();
       }

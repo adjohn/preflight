@@ -994,6 +994,19 @@ export async function handleGetTeamSummary(options: {
   return { content: [{ type: 'text', text: JSON.stringify(result) }] };
 }
 
+/**
+ * Mirrors the loader's validation of `digestWebhookUrlCommand` (a non-empty
+ * array of non-empty strings) on the raw config file.
+ */
+function isDigestWebhookCommandConfigured(raw: Record<string, unknown>): boolean {
+  const command = raw.digestWebhookUrlCommand;
+  return (
+    Array.isArray(command) &&
+    command.length > 0 &&
+    command.every((part) => typeof part === 'string' && part.length > 0)
+  );
+}
+
 export function handleSubscribeDigest(
   webhookUrl: string,
   configFilePath: string,
@@ -1017,6 +1030,21 @@ export function handleSubscribeDigest(
       existing = JSON.parse(readFileSync(configFilePath, 'utf-8')) as Record<string, unknown>;
     } catch {
       /* no existing config */
+    }
+    if (isDigestWebhookCommandConfigured(existing)) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              error:
+                'digestWebhookUrlCommand is configured and outranks digestWebhookUrl, so a webhook saved here would never be used. ' +
+                'Remove digestWebhookUrlCommand from the config file to subscribe a URL.',
+            }),
+          },
+        ],
+        isError: true,
+      };
     }
     existing.digestWebhookUrl = webhookUrl;
     writeFileSync(configFilePath, JSON.stringify(existing, null, 2), { mode: 0o600 });
@@ -1074,12 +1102,14 @@ export async function handleSendDigest(
   // Otherwise read the file at call time (not in-memory config, which won't
   // reflect updates made via nr_observe_subscribe_digest without a server restart).
   let webhookUrl = webhookUrlOverride;
+  let commandConfigured = false;
   if (webhookUrl === undefined) {
     try {
       const raw = JSON.parse(readFileSync(configFilePath, 'utf-8')) as Record<string, unknown>;
       // A configured command outranks the file, so a plaintext URL left
       // beside it is never a fallback when the command fails.
-      if (typeof raw.digestWebhookUrl === 'string' && raw.digestWebhookUrlCommand === undefined) {
+      commandConfigured = isDigestWebhookCommandConfigured(raw);
+      if (typeof raw.digestWebhookUrl === 'string' && !commandConfigured) {
         webhookUrl = raw.digestWebhookUrl;
       }
     } catch {
@@ -1093,7 +1123,9 @@ export async function handleSendDigest(
         {
           type: 'text',
           text: JSON.stringify({
-            error: 'No webhook URL configured. Call nr_observe_subscribe_digest first.',
+            error: commandConfigured
+              ? 'digestWebhookUrlCommand is configured but supplied no webhook URL. Run the command yourself to see why it failed.'
+              : 'No webhook URL configured. Call nr_observe_subscribe_digest first.',
           }),
         },
       ],
