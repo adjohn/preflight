@@ -111,6 +111,7 @@ import { WorkflowRunTracker } from './metrics/workflow-run-tracker.js';
 import { createDefaultRegistry, GenericMcpAdapter } from './platforms/index.js';
 import type { ProxyRequestRecord, ProxyToolCallRecord } from './proxy/index.js';
 import { ProxyManager } from './proxy/index.js';
+import { createAuditRecordRelay } from './security/audit-record-relay.js';
 import { AuditTrailManager } from './security/audit-trail.js';
 import { createServer } from './server.js';
 import type { CostBreakdown, TokenUsage } from './shared/index.js';
@@ -860,11 +861,14 @@ async function main(): Promise<void> {
   let weeklySummaryGenerator: WeeklySummaryGenerator | undefined;
   let persistSession: ((opts?: { periodic?: boolean }) => void) | undefined;
   let config: import('./config.js').McpServerConfig | undefined;
+  // A pending stdio session has no NrIngestManager yet; the relay holds the
+  // install's audit record until the session resolves and one is built.
+  const auditRecordRelay = createAuditRecordRelay();
   const buildHeadlessInstaller = () =>
     createHeadlessInstaller({
       allowHeadlessInstall: config!.allowHeadlessInstall,
       getAuditTrail: () => mcpServer?.auditTrailManager,
-      onAuditRecord: (record) => nrIngest?.ingestAuditRecord(record),
+      onAuditRecord: auditRecordRelay.send,
     });
   let sessionTracker: SessionTracker | undefined;
   let taskDetector: TaskDetector | undefined;
@@ -2027,6 +2031,7 @@ async function main(): Promise<void> {
         sessionTraceId,
       });
       capturedNrIngest = nrIngest;
+      auditRecordRelay.attach((record) => nrIngest?.ingestAuditRecord(record));
     }
 
     // Start homelab forwarder if configured. Construction validates
@@ -3062,6 +3067,7 @@ async function main(): Promise<void> {
           sessionTraceId: realId,
         });
         capturedNrIngest = nrIngest;
+        auditRecordRelay.attach((record) => nrIngest?.ingestAuditRecord(record));
         nrIngest.start();
       }
 

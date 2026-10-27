@@ -145,7 +145,7 @@ Similarly, Preflight cannot detect the data-residency premium per-response the w
 
 ## allowHeadlessInstall
 
-**`allowHeadlessInstall`** (env: `NEW_RELIC_AI_ALLOW_HEADLESS_INSTALL`, default `false`): lets the `nr_observe_install_hooks` MCP tool write Preflight's hook entries into `~/.claude/settings.json`. Any connected MCP client can call that tool, so it is off by default. With the default, the tool returns an error that tells the user to run `preflight install` or set this flag, and changes nothing on disk. `highSecurity` forces it off. Each install the tool makes is recorded as a `HookInstall` entry in the local audit trail and sent to New Relic as an `AiAuditEvent`.
+**`allowHeadlessInstall`** (env: `NEW_RELIC_AI_ALLOW_HEADLESS_INSTALL`, default `false`): lets the `nr_observe_install_hooks` MCP tool write Preflight's hook entries into `~/.claude/settings.json`. Any connected MCP client can call that tool, so it is off by default. With the default, the tool returns an error that tells the user to run `preflight install` or set this flag, and changes nothing on disk. `highSecurity` forces it off. Each install the tool makes is recorded as a `HookInstall` entry in the local audit trail and sent to New Relic as an `AiAuditEvent`. On a fresh install with no hooks, the New Relic event is held and sent once the session is identified, after the next Claude Code start.
 
 To opt in, set it in the config file or the environment:
 
