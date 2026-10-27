@@ -241,7 +241,34 @@ describe('loadMcpConfig() with *Command fields', () => {
     process.env.NEW_RELIC_AI_DIGEST_WEBHOOK_URL = '';
     const path = writeConfig({ digestWebhookUrl: WEBHOOK });
 
-    expect(digestWebhookUrlOverride(loadMcpConfig({ config: path }))).toBeUndefined();
+    const config = loadMcpConfig({ config: path });
+
+    expect(config.secretSources.digestWebhookUrl).toBe('file');
+    expect(digestWebhookUrlOverride(config)).toBeUndefined();
+  });
+
+  it('runs digestWebhookUrlCommand when NEW_RELIC_AI_DIGEST_WEBHOOK_URL is blank', () => {
+    process.env.NEW_RELIC_AI_DIGEST_WEBHOOK_URL = '';
+    const path = writeConfig({ digestWebhookUrlCommand: printArg(WEBHOOK) });
+
+    const config = loadMcpConfig({ config: path });
+
+    expect(config.secretSources.digestWebhookUrl).toBe('command');
+    expect(digestWebhookUrlOverride(config)).toBe(WEBHOOK);
+  });
+
+  it('runs licenseKeyCommand when NEW_RELIC_LICENSE_KEY is blank', () => {
+    process.env.NEW_RELIC_LICENSE_KEY = '';
+    const path = writeConfig({
+      mode: 'cloud',
+      accountId: '12345',
+      licenseKeyCommand: printArg(SECRET),
+    });
+
+    const config = loadMcpConfig({ config: path });
+
+    expect(config.licenseKey).toBe(SECRET);
+    expect(config.secretSources.licenseKey).toBe('command');
   });
 
   it.each([

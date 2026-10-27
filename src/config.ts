@@ -704,7 +704,7 @@ export function digestWebhookUrlOverride(
   config: Pick<McpServerConfig, 'digestWebhookUrl' | 'secretSources'>,
 ): string | undefined {
   const source = config.secretSources.digestWebhookUrl;
-  return (source === 'env' || source === 'command') && config.digestWebhookUrl
+  return (source === 'env' || source === 'command') && config.digestWebhookUrl !== null
     ? config.digestWebhookUrl
     : undefined;
 }
