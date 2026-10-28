@@ -97,14 +97,21 @@ export class WorktreeIdentityResolver {
       return updated;
     }
 
-    // Misses are cached for the TTL too; a dir that later gets `git init` is
-    // picked up after expiry.
-    const identity = this.computeIdentity(dir);
-    this.cache.set(key, { identity, resolvedAt: now });
-    return identity;
+    // Definite misses are cached for the TTL, so a later `git init` is picked
+    // up after expiry. A timed-out or failed spawn is not cached; the next
+    // call retries.
+    const lookup = this.computeIdentity(dir);
+    if (lookup.ok) this.cache.set(key, { identity: lookup.identity, resolvedAt: now });
+    return lookup.identity;
   }
 
-  private computeIdentity(dir: string): WorktreeIdentity | null {
+  /** `ok: false` means the git process itself failed (timeout, signal, spawn
+   *  error) and the caller must not cache the null. `ok: true, identity: null`
+   *  is a definite answer that `dir` is not a repository. */
+  private computeIdentity(dir: string): {
+    ok: boolean;
+    identity: WorktreeIdentity | null;
+  } {
     let repoKey: string;
     let worktreeKey: string;
 
@@ -122,19 +129,25 @@ export class WorktreeIdentityResolver {
         GIT_OPTS,
       );
 
-      if (result.status !== 0 || typeof result.stdout !== 'string') {
-        return null;
+      if (typeof result.status === 'number' && result.status !== 0) {
+        return { ok: true, identity: null };
+      }
+      if (result.status === null || result.error) {
+        return { ok: false, identity: null };
+      }
+      if (typeof result.stdout !== 'string') {
+        return { ok: true, identity: null };
       }
 
       const lines = result.stdout.trim().split('\n');
       if (lines.length < 2 || !lines[0] || !lines[1]) {
-        return null;
+        return { ok: true, identity: null };
       }
 
       repoKey = lines[0].trim();
       worktreeKey = lines[1].trim();
     } catch {
-      return null;
+      return { ok: false, identity: null };
     }
 
     // Failure here (unborn HEAD, or any other reason) is a real, common
@@ -146,12 +159,15 @@ export class WorktreeIdentityResolver {
     const worktreeLabel = this.deriveLabel(worktreeKey, repoKey, worktreeRoot);
 
     return {
-      repoKey,
-      worktreeKey,
-      repoName,
-      worktreeRoot,
-      worktreeLabel,
-      branch,
+      ok: true,
+      identity: {
+        repoKey,
+        worktreeKey,
+        repoName,
+        worktreeRoot,
+        worktreeLabel,
+        branch,
+      },
     };
   }
 
