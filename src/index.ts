@@ -63,8 +63,7 @@ import {
 import { ContextCompositionTracker } from './metrics/context-composition-tracker.js';
 import { ContextTrackerRegistry } from './metrics/context-tracker.js';
 import { ContextWindowTracker } from './metrics/context-window-tracker.js';
-import { applyPricingOverlay } from './metrics/pricing-overlay.js';
-import { startPricingRefresh } from './metrics/pricing-refresh.js';
+import { initModelPricing } from './metrics/pricing-init.js';
 import { buildCostForecastFromInputs } from './metrics/cost-forecast.js';
 import { CostPerOutcomeAnalyzer } from './metrics/cost-per-outcome.js';
 import { buildCostTrackerSeed } from './metrics/cost-tracker-seed.js';
@@ -790,14 +789,6 @@ export function parseArgs(argv: string[]): CliOptions {
   };
 }
 
-function initModelPricing(config: McpServerConfig): void {
-  applyPricingOverlay(config.customPricingFile);
-  void startPricingRefresh({
-    enabled: config.pricingRefresh,
-    cachePath: resolve(config.storagePath, 'pricing-cache.json'),
-  });
-}
-
 async function main(): Promise<void> {
   const nodeVersionError = checkNodeVersion();
   if (nodeVersionError) {
@@ -1185,7 +1176,12 @@ async function main(): Promise<void> {
     // dashboard owner's GC pass can tell which buffer files still have a live
     // owner. Removed in the shutdown handler below. Skipped during the
     // provisional window — the real heartbeat is written after resolution.
-    if (options.stdio && !isProvisional) localStore.writeHeartbeat();
+    if (options.stdio && !isProvisional) {
+      localStore.writeHeartbeat(process.pid, process.argv.slice(1), process.cwd(), {
+        value: config.companionMode,
+        source: config.companionModeSource,
+      });
+    }
     localStoreForShutdown = localStore;
 
     // Migrate any pre-existing events from the legacy shared `buffer.jsonl` into
@@ -2991,7 +2987,10 @@ async function main(): Promise<void> {
       // Replace the current LocalStore with one scoped to the real id.
       const realLocalStore = new LocalStore(config!.storagePath, realId);
       realLocalStore.initialize();
-      realLocalStore.writeHeartbeat();
+      realLocalStore.writeHeartbeat(process.pid, process.argv.slice(1), process.cwd(), {
+        value: config!.companionMode,
+        source: config!.companionModeSource,
+      });
       localStoreForShutdown = realLocalStore;
       try {
         realLocalStore.migrateLegacyBuffer();
@@ -3066,6 +3065,7 @@ async function main(): Promise<void> {
         configFilePath,
         companionMode: config!.companionMode,
         allowHeadlessInstall: config!.allowHeadlessInstall,
+        companionModeSource: config!.companionModeSource,
       };
       registerTools(mcpServer!.server, {
         headlessInstaller: buildHeadlessInstaller(),
@@ -3236,6 +3236,7 @@ async function main(): Promise<void> {
             configFilePath: pendingConfigFilePath,
             companionMode: config.companionMode,
             allowHeadlessInstall: config.allowHeadlessInstall,
+            companionModeSource: config.companionModeSource,
           },
           // A Claude Code session with no hooks never resolves, so this is
           // where the opt-in install has to work. Other stdio clients have no
@@ -3312,6 +3313,7 @@ async function main(): Promise<void> {
           configFilePath,
           companionMode: config.companionMode,
           allowHeadlessInstall: config.allowHeadlessInstall,
+          companionModeSource: config.companionModeSource,
         };
         registerTools(mcpServer!.server, {
           headlessInstaller: buildHeadlessInstaller(),
