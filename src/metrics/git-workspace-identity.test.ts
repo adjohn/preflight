@@ -161,6 +161,48 @@ describe('WorktreeIdentityResolver', () => {
     expect(identity).toBeNull();
   });
 
+  it('caches a non-repo miss until the TTL expires', () => {
+    const dir = join(tmpDir, 'later-repo');
+    execSync(`mkdir -p "${dir}"`);
+    const realNow = Date.now();
+    const nowSpy = jest.spyOn(Date, 'now');
+    try {
+      nowSpy.mockReturnValue(realNow);
+      expect(resolver.resolve(dir)).toBeNull();
+
+      initGitRepo(dir);
+      expect(resolver.resolve(dir)).toBeNull();
+
+      nowSpy.mockReturnValue(realNow + 30_000);
+      expect(resolver.resolve(dir)).toMatchObject({
+        worktreeLabel: 'primary',
+        branch: getCurrentBranch(dir),
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('shares one cache entry across path spellings on win32', () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      const repoDir = join(tmpDir, 'spelling-repo');
+      execSync(`mkdir -p "${repoDir}"`);
+      initGitRepo(repoDir);
+      const initialBranch = getCurrentBranch(repoDir);
+
+      resolver.resolve(repoDir);
+      execSync('git checkout -b other-branch', { cwd: repoDir });
+
+      expect(resolver.resolve(`${repoDir.toUpperCase()}/`)).toMatchObject({
+        branch: initialBranch,
+      });
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+    }
+  });
+
   it('caches results and produces consistent identity across calls', () => {
     const repoDir = join(tmpDir, 'cached-repo');
     execSync(`mkdir -p "${repoDir}"`);
