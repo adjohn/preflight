@@ -45,6 +45,7 @@ import { SubagentWatcher, type SubagentTokenEvent } from './hooks/subagent-watch
 import { WorkflowWatcher } from './hooks/workflow-watcher.js';
 import { migrateStoragePath } from './install/migrate.js';
 import { createHeadlessInstaller } from './install/headless-install.js';
+import { areHooksInstalledAtAnyScope } from './install/install-helper.js';
 import { checkNodeVersion } from './install/node-version-check.js';
 import { localDateKey } from './lib/date.js';
 import { repoNameFromRemote } from './lib/git-remote.js';
@@ -107,7 +108,7 @@ import { TrendAnalyzer } from './metrics/trend-analyzer.js';
 import { TurnCostAttributor } from './metrics/turn-cost-attributor.js';
 import { TurnTracker } from './metrics/turn-tracker.js';
 import { WorkflowRunTracker } from './metrics/workflow-run-tracker.js';
-import { createDefaultRegistry, GenericMcpAdapter } from './platforms/index.js';
+import { ClaudeCodeAdapter, createDefaultRegistry, GenericMcpAdapter } from './platforms/index.js';
 import type { ProxyRequestRecord, ProxyToolCallRecord } from './proxy/index.js';
 import { ProxyManager } from './proxy/index.js';
 import { AuditTrailManager } from './security/audit-trail.js';
@@ -131,6 +132,7 @@ import { initMcpTracer } from './tracing/mcp-tracer.js';
 import { SessionSpan } from './tracing/session-span.js';
 import { TaskSpanTracker } from './tracing/task-span-tracker.js';
 import { emitToolCallSpan } from './tracing/tool-call-span.js';
+import { nrIngestOptionsFromConfig, sendAuditRecord } from './transport/audit-record-sender.js';
 import { NrIngestManager } from './transport/nr-ingest.js';
 import {
   unforwardedSessionsHint,
@@ -1022,6 +1024,22 @@ async function main(): Promise<void> {
 
   if (options.stdio || options.local) {
     let sessionTraceId: string;
+    // Sends the install's audit record at install time: a pending session that
+    // never resolves never builds a live ingest manager to send it later.
+    const buildHeadlessInstaller = () =>
+      createHeadlessInstaller({
+        allowHeadlessInstall: config!.allowHeadlessInstall,
+        getAuditTrail: () => mcpServer?.auditTrailManager,
+        onAuditRecord: (record) => {
+          sendAuditRecord(record, {
+            config: config!,
+            liveIngest: nrIngest,
+            sessionTraceId,
+          }).catch((err) => {
+            logger.warn('Failed to send the hook install audit event', { error: String(err) });
+          });
+        },
+      });
     // True when the synchronous resolution chain below succeeded ONLY via
     // the cwd fallback — the collision-prone source (shared by every
     // session that ever ran in this directory), unlike the ppid breadcrumb
@@ -1993,32 +2011,11 @@ async function main(): Promise<void> {
     // AiMcpToolCall/etc. event is silently dropped — see issue #320.
     let warnedMissingIngest = false;
     if (config.mode !== 'local' && !isProvisional) {
-      if (!config.licenseKey || !config.accountId) {
-        throw new Error(
-          'licenseKey and accountId must be defined. ' +
-            'This should have been caught by config validation. ' +
-            'Check that mode is not "local" or that cloud credentials are configured.',
-        );
-      }
       nrIngest = new NrIngestManager({
-        licenseKey: config.licenseKey,
-        transportOptions: {
-          accountId: config.accountId,
-          collectorHost: config.collectorHost,
-        },
-        developer: config.developer,
-        appName: config.appName,
-        teamId: config.teamId,
-        projectId: config.projectId,
-        orgId: config.orgId,
-        repoUrl: config.repoUrl,
-        companionMode: config.companionMode,
-        tiers: config.tiers,
+        ...nrIngestOptionsFromConfig(config),
         sessionTracker,
         localStore,
         auditTrail,
-        eventHarvestIntervalMs: config.harvestIntervalMs.events,
-        metricHarvestIntervalMs: config.harvestIntervalMs.metrics,
         costTracker,
         efficiencyScorer,
         feedbackCollector,
@@ -3029,31 +3026,11 @@ async function main(): Promise<void> {
       }
 
       if (config!.mode !== 'local') {
-        if (!config!.licenseKey || !config!.accountId) {
-          throw new Error(
-            'licenseKey and accountId must be defined for non-local mode. ' +
-              'This should have been caught by config validation.',
-          );
-        }
         nrIngest = new NrIngestManager({
-          licenseKey: config!.licenseKey,
-          transportOptions: {
-            accountId: config!.accountId,
-            collectorHost: config!.collectorHost,
-          },
-          developer: config!.developer,
-          appName: config!.appName,
-          teamId: config!.teamId,
-          projectId: config!.projectId,
-          orgId: config!.orgId,
-          repoUrl: config!.repoUrl,
-          companionMode: config!.companionMode,
-          tiers: config!.tiers,
+          ...nrIngestOptionsFromConfig(config!),
           sessionTracker: sessionTracker!,
           localStore: realLocalStore,
           auditTrail,
-          eventHarvestIntervalMs: config!.harvestIntervalMs.events,
-          metricHarvestIntervalMs: config!.harvestIntervalMs.metrics,
           costTracker,
           efficiencyScorer,
           feedbackCollector,
@@ -3091,10 +3068,7 @@ async function main(): Promise<void> {
         allowHeadlessInstall: config!.allowHeadlessInstall,
       };
       registerTools(mcpServer!.server, {
-        headlessInstaller: createHeadlessInstaller({
-          allowHeadlessInstall: config!.allowHeadlessInstall,
-          getAuditTrail: () => mcpServer?.auditTrailManager,
-        }),
+        headlessInstaller: buildHeadlessInstaller(),
         sessionTracker: sessionTracker!,
         costTracker,
         budgetTracker,
@@ -3263,6 +3237,13 @@ async function main(): Promise<void> {
             companionMode: config.companionMode,
             allowHeadlessInstall: config.allowHeadlessInstall,
           },
+          // A Claude Code session with no hooks never resolves, so this is
+          // where the opt-in install has to work. Other stdio clients have no
+          // Claude Code hooks to install or report missing.
+          ...(createDefaultRegistry().getActive() instanceof ClaudeCodeAdapter && {
+            hooksInstalledFn: () => areHooksInstalledAtAnyScope(),
+            headlessInstaller: buildHeadlessInstaller(),
+          }),
         });
         logger.info('Dashboard started early; awaiting session_id resolution (breadcrumb poll)');
 
@@ -3333,10 +3314,7 @@ async function main(): Promise<void> {
           allowHeadlessInstall: config.allowHeadlessInstall,
         };
         registerTools(mcpServer!.server, {
-          headlessInstaller: createHeadlessInstaller({
-            allowHeadlessInstall: config.allowHeadlessInstall,
-            getAuditTrail: () => mcpServer?.auditTrailManager,
-          }),
+          headlessInstaller: buildHeadlessInstaller(),
           sessionTracker,
           costTracker,
           budgetTracker,
@@ -3444,13 +3422,7 @@ async function main(): Promise<void> {
     // load-time validation), so this mirrors that guard rather than
     // re-deriving it.
     if (config.mode !== 'local') {
-      if (!config.licenseKey || !config.accountId) {
-        throw new Error(
-          'licenseKey and accountId must be defined. ' +
-            'This should have been caught by config validation. ' +
-            'Check that mode is not "local" or that cloud credentials are configured.',
-        );
-      }
+      const configOptions = nrIngestOptionsFromConfig(config);
       // Unscoped LocalStore (mirrors --local mode) — proxy mode multiplexes
       // many concurrent clients, so there's no single session id to scope a
       // buffer file to. Passing it into NrIngestManager gives AuditTrailManager
@@ -3468,23 +3440,9 @@ async function main(): Promise<void> {
       const apiFailureTracker = new ApiFailureTracker();
 
       nrIngest = new NrIngestManager({
-        licenseKey: config.licenseKey,
-        transportOptions: {
-          accountId: config.accountId,
-          collectorHost: config.collectorHost,
-        },
-        developer: config.developer,
-        appName: config.appName,
-        teamId: config.teamId,
-        projectId: config.projectId,
-        orgId: config.orgId,
-        repoUrl: config.repoUrl,
-        companionMode: config.companionMode,
-        tiers: config.tiers,
+        ...configOptions,
         sessionTracker: new SessionTracker(sessionTraceId),
         localStore: proxyLocalStore,
-        eventHarvestIntervalMs: config.harvestIntervalMs.events,
-        metricHarvestIntervalMs: config.harvestIntervalMs.metrics,
         apiFailureTracker,
         sessionTraceId,
         // Proxy mode has no single coherent session — sessionTracker above is
