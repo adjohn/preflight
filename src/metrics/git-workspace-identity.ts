@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { basename, dirname } from 'node:path';
+import { basename, dirname, resolve as resolvePath } from 'node:path';
 
 import { repoNameFromRemote } from '../lib/git-remote.js';
 
@@ -60,41 +60,47 @@ const GIT_OPTS = {
 };
 
 interface CachedIdentity {
-  identity: WorktreeIdentity;
-  branchResolvedAt: number;
+  identity: WorktreeIdentity | null;
+  resolvedAt: number;
+}
+
+// Windows paths are case-insensitive, so every spelling must share one entry.
+function cacheKeyOf(dir: string): string {
+  const abs = resolvePath(dir);
+  return process.platform === 'win32' ? abs.toLowerCase() : abs;
 }
 
 export class WorktreeIdentityResolver {
   private readonly cache = new Map<string, CachedIdentity>();
-  private readonly branchTtlMs = 30_000;
+  private readonly ttlMs = 30_000;
 
   resolve(dir: string | null | undefined): WorktreeIdentity | null {
     if (typeof dir !== 'string' || dir.length === 0) return null;
 
-    const cached = this.cache.get(dir);
+    const key = cacheKeyOf(dir);
+    const cached = this.cache.get(key);
     const now = Date.now();
 
-    if (cached) {
-      if (now - cached.branchResolvedAt >= this.branchTtlMs) {
-        const refreshed = this.resolveBranch(dir);
-        // `refreshed.branch` is legitimately null for detached HEAD, which is
-        // a real state a worktree can transition into — `refreshed.ok`, not
-        // the branch value itself, is what distinguishes that from "the
-        // subprocess call failed, keep reporting the last known branch".
-        const updated: WorktreeIdentity = {
-          ...cached.identity,
-          branch: refreshed.ok ? refreshed.branch : cached.identity.branch,
-        };
-        this.cache.set(dir, { identity: updated, branchResolvedAt: now });
-        return updated;
-      }
-      return cached.identity;
+    if (cached && now - cached.resolvedAt < this.ttlMs) return cached.identity;
+
+    if (cached?.identity) {
+      const refreshed = this.resolveBranch(dir);
+      // `refreshed.branch` is legitimately null for detached HEAD, which is
+      // a real state a worktree can transition into — `refreshed.ok`, not
+      // the branch value itself, is what distinguishes that from "the
+      // subprocess call failed, keep reporting the last known branch".
+      const updated: WorktreeIdentity = {
+        ...cached.identity,
+        branch: refreshed.ok ? refreshed.branch : cached.identity.branch,
+      };
+      this.cache.set(key, { identity: updated, resolvedAt: now });
+      return updated;
     }
 
+    // Misses are cached for the TTL too; a dir that later gets `git init` is
+    // picked up after expiry.
     const identity = this.computeIdentity(dir);
-    if (identity) {
-      this.cache.set(dir, { identity, branchResolvedAt: now });
-    }
+    this.cache.set(key, { identity, resolvedAt: now });
     return identity;
   }
 
