@@ -6,7 +6,7 @@ import {
   type SpawnSyncOptions,
   type SpawnSyncReturns,
 } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { WorktreeIdentityResolver } from './git-workspace-identity.js';
@@ -274,4 +274,28 @@ describe('WorktreeIdentityResolver', () => {
       done();
     }, 30_100);
   }, 40_000);
+
+  it('does not cache a git timeout as a miss', () => {
+    const repoDir = join(tmpDir, 'slow-repo');
+    mkdirSync(repoDir);
+    initGitRepo(repoDir);
+    const hangingDir = join(tmpDir, 'hanging-git-bin');
+    mkdirSync(hangingDir);
+    const fakeGit = join(hangingDir, 'git');
+    writeFileSync(fakeGit, '#!/bin/sh\nexec sleep 5\n');
+    chmodSync(fakeGit, 0o755);
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${hangingDir}:${originalPath}`;
+    try {
+      expect(resolver.resolve(repoDir)).toBeNull();
+    } finally {
+      process.env.PATH = originalPath;
+    }
+
+    expect(resolver.resolve(repoDir)).toMatchObject({
+      worktreeLabel: 'primary',
+      branch: getCurrentBranch(repoDir),
+    });
+  }, 15_000);
 });
