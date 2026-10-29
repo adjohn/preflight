@@ -12,6 +12,7 @@ import {
   loadMcpConfig,
   DEFAULT_STORAGE_PATH,
   resolveCompanionMode,
+  type CompanionReceiver,
   type ResolvedCompanionMode,
 } from '../config.js';
 import type { McpServerConfig } from '../config.js';
@@ -191,8 +192,12 @@ function checkSecretSources(loaded: LoadedConfig): DiagnosticCheck {
   };
 }
 
-function checkCompanionMode(fileValue: boolean | undefined, storagePath: string): DiagnosticCheck {
-  const shell = resolveCompanionMode(process.env, fileValue);
+function checkCompanionMode(
+  fileValue: boolean | undefined,
+  storagePath: string,
+  receiver: CompanionReceiver | undefined,
+): DiagnosticCheck {
+  const shell = resolveCompanionMode(process.env, fileValue, receiver);
   const shellText = `${shell.value} (source: ${shell.source})`;
   const servers = listRunningServerCompanionModes(storagePath);
 
@@ -776,7 +781,11 @@ export async function runDiagnostics(opts?: {
   const { check: configCheck, context } = checkConfigValid(configPath, opts?.storagePath);
   const loaded = loadConfigForDiagnostics(configPath, opts?.resolveSecrets ?? true);
   const modeCheck = checkTelemetryMode(loaded, context.fileMode);
-  const companionModeCheck = checkCompanionMode(context.fileCompanionMode, context.storagePath);
+  const companionModeCheck = checkCompanionMode(
+    context.fileCompanionMode,
+    context.storagePath,
+    loaded.ok ? loaded.config.otlp : undefined,
+  );
 
   const settingsPaths: string[] = [detectSettingsPath('user')];
   if (isWsl()) {

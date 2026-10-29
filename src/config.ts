@@ -23,7 +23,11 @@ export const VALID_MODES = ['cloud', 'local', 'both'] as const;
 export type Mode = (typeof VALID_MODES)[number];
 
 export type CompanionModeSource =
-  'env NR_AI_COMPANION_MODE' | 'config file' | 'detected Claude Code OTel export' | 'default';
+  | 'env NR_AI_COMPANION_MODE'
+  | 'config file'
+  | 'detected Claude Code OTel export'
+  | 'detected Claude Code OTel export via Preflight receiver'
+  | 'default';
 
 export interface ResolvedCompanionMode {
   readonly value: boolean;
@@ -40,15 +44,47 @@ function otlpEndpointIsNewRelic(endpoint: string | undefined): boolean {
   }
 }
 
+export interface CompanionReceiver {
+  readonly receiverEnabled: boolean;
+  readonly receiverPort: number;
+  readonly receiverBindAddress: string;
+  readonly forwardEndpoint: string | null;
+}
+
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
+function endpointTargetsReceiver(
+  endpoint: string | undefined,
+  receiver: CompanionReceiver,
+): boolean {
+  if (!endpoint) return false;
+  try {
+    const url = new URL(endpoint.includes('://') ? endpoint : `http://${endpoint}`);
+    const port = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
+    return (
+      port === receiver.receiverPort &&
+      (LOOPBACK_HOSTS.has(url.hostname) || url.hostname === receiver.receiverBindAddress)
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Companion mode only prevents double-counting when Claude Code's own OTel
  * metrics also land in New Relic. Detection requires an nr-data.net endpoint:
  * turning it on for an export that goes elsewhere would drop Preflight's cost
  * gauges from New Relic with nothing replacing them.
+ *
+ * Detection also fires when Claude Code exports to Preflight's own OTLP
+ * receiver and the receiver forwards to a New Relic endpoint: the export
+ * targets the receiver's host and port, so its metrics reach New Relic through
+ * the forwarder.
  */
 export function resolveCompanionMode(
   env: NodeJS.ProcessEnv,
   fileValue: boolean | undefined,
+  receiver?: CompanionReceiver,
 ): ResolvedCompanionMode {
   const envValue = parseEnvBool(env.NR_AI_COMPANION_MODE);
   if (envValue !== undefined) return { value: envValue, source: 'env NR_AI_COMPANION_MODE' };
@@ -65,6 +101,15 @@ export function resolveCompanionMode(
     otlpEndpointIsNewRelic(endpoint)
   ) {
     return { value: true, source: 'detected Claude Code OTel export' };
+  }
+  if (
+    receiver?.receiverEnabled &&
+    otlpEndpointIsNewRelic(receiver.forwardEndpoint ?? undefined) &&
+    parseEnvBool(env.CLAUDE_CODE_ENABLE_TELEMETRY) === true &&
+    exporters.includes('otlp') &&
+    endpointTargetsReceiver(endpoint, receiver)
+  ) {
+    return { value: true, source: 'detected Claude Code OTel export via Preflight receiver' };
   }
   return { value: false, source: 'default' };
 }
@@ -984,15 +1029,6 @@ export function loadMcpConfig(
     strippedRepoUrl === null ? null : redactIdentifier(strippedRepoUrl),
   );
 
-  const resolvedCompanionMode = resolveCompanionMode(
-    process.env,
-    typeof file.companionMode === 'boolean' ? file.companionMode : undefined,
-  );
-  logger.info('Companion mode resolved', {
-    value: resolvedCompanionMode.value,
-    source: resolvedCompanionMode.source,
-  });
-
   const nrApiKeySecret = resolveSecret(
     'nrApiKey',
     {
@@ -1012,7 +1048,7 @@ export function loadMcpConfig(
     { optional: true, skipCommand },
   );
 
-  const config: McpServerConfig = {
+  const config: Omit<McpServerConfig, 'companionMode' | 'companionModeSource'> = {
     licenseKey,
     accountId,
 
@@ -1073,9 +1109,6 @@ export function loadMcpConfig(
           'NEW_RELIC_AI_PRICING_REFRESH',
           typeof file.pricingRefresh === 'boolean' ? file.pricingRefresh : true,
         ),
-
-    companionMode: resolvedCompanionMode.value,
-    companionModeSource: resolvedCompanionMode.source,
 
     allowHeadlessInstall: highSecurity
       ? false
@@ -1591,7 +1624,21 @@ export function loadMcpConfig(
     weeklyBudgetUsd: config.weeklyBudgetUsd,
   });
 
-  return Object.freeze(config);
+  const resolvedCompanionMode = resolveCompanionMode(
+    process.env,
+    typeof file.companionMode === 'boolean' ? file.companionMode : undefined,
+    config.otlp,
+  );
+  logger.info('Companion mode resolved', {
+    value: resolvedCompanionMode.value,
+    source: resolvedCompanionMode.source,
+  });
+
+  return Object.freeze({
+    ...config,
+    companionMode: resolvedCompanionMode.value,
+    companionModeSource: resolvedCompanionMode.source,
+  });
 }
 
 // ---------------------------------------------------------------------------
