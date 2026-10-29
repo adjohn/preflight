@@ -29,6 +29,7 @@ import { CopilotUsageWatcher } from './hooks/copilot-usage-watcher.js';
 import { HookEventProcessor } from './hooks/index.js';
 import { isPlatformDetectionFellBack } from './hooks/platform-detection-health.js';
 import { ParentTranscriptWatcher } from './hooks/parent-transcript-watcher.js';
+import { pruneBilledTurns } from './hooks/billed-turn-ledger.js';
 import {
   isSyntheticSessionId,
   readJobState,
@@ -345,8 +346,17 @@ export function runRetentionSweep(deps: RetentionSweepDeps): void {
     deps.storagePath,
     deps.retainSessionsDays,
   );
-  if (deletedSessionFiles > 0 || deletedWeeklySummaryFiles > 0) {
-    logger.info('Retention purge complete', { deletedSessionFiles, deletedWeeklySummaryFiles });
+  const deletedBilledTurnDays = pruneBilledTurns(
+    deps.storagePath,
+    deps.retainSessionsDays,
+    Date.now(),
+  );
+  if (deletedSessionFiles > 0 || deletedWeeklySummaryFiles > 0 || deletedBilledTurnDays > 0) {
+    logger.info('Retention purge complete', {
+      deletedSessionFiles,
+      deletedWeeklySummaryFiles,
+      deletedBilledTurnDays,
+    });
   }
 }
 
@@ -2812,6 +2822,7 @@ async function main(): Promise<void> {
           storagePath: config!.storagePath,
           parentSessionId: isStdioWatcher ? watcherSessionId : undefined,
           localStore,
+          retainDays: config!.retainSessionsDays,
         });
         activeParentTranscriptWatcher.start();
         logger.info('ParentTranscriptWatcher started', {

@@ -128,6 +128,25 @@ describe('ParentTranscriptWatcher', () => {
     expect(readTokenEvents()).toHaveLength(1);
   });
 
+  it('keeps its cursor and emits nothing while the billed-turn ledger fails, then catches up', () => {
+    writeFileSync(transcriptPath, makeAssistantLine({ messageId: 'msg_1' }) + '\n');
+    const blocker = join(storagePath, 'billed-turns');
+    writeFileSync(blocker, '');
+    const watcher = new ParentTranscriptWatcher({
+      storagePath,
+      projectsDir,
+      parentSessionId: SESSION_ID,
+    });
+    watcher.poll();
+    expect(readTokenEvents()).toHaveLength(0);
+    expect(existsSync(buildParentTranscriptCursorPath(storagePath, SESSION_ID))).toBe(false);
+
+    rmSync(blocker);
+    watcher.poll();
+    watcher.poll();
+    expect(readTokenEvents().map((e) => e.messageId)).toEqual(['msg_1']);
+  });
+
   it('emits new lines that arrive after the cursor', () => {
     writeFileSync(transcriptPath, makeAssistantLine({ messageId: 'msg_1' }) + '\n');
     const watcher = new ParentTranscriptWatcher({
@@ -432,7 +451,7 @@ describe('ParentTranscriptWatcher', () => {
       expect(events[0]!.responseMs).toBe(4_000);
     });
 
-    it('omits responseMs on the second line of the same message', () => {
+    it('emits one event per multi-line message, timed from its first line', () => {
       const lines =
         makeUserLine({ timestamp: '2026-06-15T12:00:00.000Z' }) +
         '\n' +
@@ -448,9 +467,8 @@ describe('ParentTranscriptWatcher', () => {
       });
       watcher.poll();
       const events = readTokenEvents();
-      expect(events).toHaveLength(2);
+      expect(events).toHaveLength(1);
       expect(events[0]!.responseMs).toBe(4_000);
-      expect(events[1]!.responseMs).toBeUndefined();
     });
 
     it('omits responseMs when the gap exceeds 30 minutes', () => {
@@ -508,6 +526,22 @@ describe('ParentTranscriptWatcher', () => {
       watcher.poll();
 
       expect(readTokenEvents()).toHaveLength(0);
+    });
+
+    it('bills turns shared with a fork to the transcript created first, even when the parent was written last', () => {
+      const forkId = '00000000-1111-2222-3333-444444444444';
+      const shared = makeAssistantLine({ messageId: 'msg_shared' }) + '\n';
+      writeFileSync(join(projectsDir, 'project-slug', `${SESSION_ID}.jsonl`), shared);
+      mkdirSync(join(projectsDir, 'a-fork-slug'));
+      const forkPath = join(projectsDir, 'a-fork-slug', `${forkId}.jsonl`);
+      writeFileSync(forkPath, shared);
+      const later = new Date(Date.now() + 60_000);
+      utimesSync(transcriptPath, later, later);
+
+      new ParentTranscriptWatcher({ storagePath, projectsDir }).poll();
+
+      expect(readTokenEvents().map((e) => e.messageId)).toEqual(['msg_shared']);
+      expect(existsSync(join(storagePath, `buffer-${forkId}.jsonl`))).toBe(false);
     });
   });
 });
