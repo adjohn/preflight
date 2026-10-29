@@ -65,7 +65,7 @@ interface CachedIdentity {
 }
 
 // Windows paths are case-insensitive, so every spelling must share one entry.
-function cacheKeyOf(dir: string): string {
+export function cacheKeyOf(dir: string): string {
   const abs = resolvePath(dir);
   return process.platform === 'win32' ? abs.toLowerCase() : abs;
 }
@@ -73,6 +73,10 @@ function cacheKeyOf(dir: string): string {
 export class WorktreeIdentityResolver {
   private readonly cache = new Map<string, CachedIdentity>();
   private readonly ttlMs = 30_000;
+  // Short, because live tool calls share this resolver: a session started in
+  // an empty directory must see its `git init` and first commit within a few
+  // seconds. It only needs to outlast one replay burst of repeated lookups.
+  private readonly missTtlMs = 3_000;
 
   resolve(dir: string | null | undefined): WorktreeIdentity | null {
     if (typeof dir !== 'string' || dir.length === 0) return null;
@@ -81,7 +85,8 @@ export class WorktreeIdentityResolver {
     const cached = this.cache.get(key);
     const now = Date.now();
 
-    if (cached && now - cached.resolvedAt < this.ttlMs) return cached.identity;
+    const ttl = cached?.identity ? this.ttlMs : this.missTtlMs;
+    if (cached && now - cached.resolvedAt < ttl) return cached.identity;
 
     if (cached?.identity) {
       const refreshed = this.resolveBranch(dir);
@@ -97,9 +102,9 @@ export class WorktreeIdentityResolver {
       return updated;
     }
 
-    // Definite misses are cached for the TTL, so a later `git init` is picked
-    // up after expiry. A timed-out or failed spawn is not cached; the next
-    // call retries.
+    // Definite misses are cached for the short miss TTL, so a later `git init`
+    // is picked up after expiry. A timed-out or failed spawn is not cached;
+    // the next call retries.
     const lookup = this.computeIdentity(dir);
     if (lookup.ok) this.cache.set(key, { identity: lookup.identity, resolvedAt: now });
     return lookup.identity;

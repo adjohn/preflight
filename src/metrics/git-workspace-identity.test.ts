@@ -8,8 +8,8 @@ import {
 } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { WorktreeIdentityResolver } from './git-workspace-identity.js';
+import { delimiter, join } from 'node:path';
+import { cacheKeyOf, WorktreeIdentityResolver } from './git-workspace-identity.js';
 
 // git sets GIT_DIR/GIT_WORK_TREE for hook subprocesses (e.g. a pre-push
 // hook), which override `-C <dir>` and silently redirect every fixture call
@@ -171,9 +171,10 @@ describe('WorktreeIdentityResolver', () => {
       expect(resolver.resolve(dir)).toBeNull();
 
       initGitRepo(dir);
+      nowSpy.mockReturnValue(realNow + 2_999);
       expect(resolver.resolve(dir)).toBeNull();
 
-      nowSpy.mockReturnValue(realNow + 30_000);
+      nowSpy.mockReturnValue(realNow + 3_000);
       expect(resolver.resolve(dir)).toMatchObject({
         worktreeLabel: 'primary',
         branch: getCurrentBranch(dir),
@@ -198,6 +199,16 @@ describe('WorktreeIdentityResolver', () => {
       expect(resolver.resolve(`${repoDir.toUpperCase()}/`)).toMatchObject({
         branch: initialBranch,
       });
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+    }
+  });
+
+  it('keeps path spellings apart off win32', () => {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    try {
+      expect(cacheKeyOf('/Repo')).not.toBe(cacheKeyOf('/repo'));
     } finally {
       Object.defineProperty(process, 'platform', platform);
     }
@@ -275,7 +286,10 @@ describe('WorktreeIdentityResolver', () => {
     }, 30_100);
   }, 40_000);
 
-  it('does not cache a git timeout as a miss', () => {
+  // The fake git is a POSIX shell script, so there is nothing to run on win32.
+  const itPosix = process.platform === 'win32' ? it.skip : it;
+
+  itPosix('does not cache a git timeout as a miss', () => {
     const repoDir = join(tmpDir, 'slow-repo');
     mkdirSync(repoDir);
     initGitRepo(repoDir);
@@ -286,7 +300,7 @@ describe('WorktreeIdentityResolver', () => {
     chmodSync(fakeGit, 0o755);
 
     const originalPath = process.env.PATH;
-    process.env.PATH = `${hangingDir}:${originalPath}`;
+    process.env.PATH = `${hangingDir}${delimiter}${originalPath}`;
     try {
       expect(resolver.resolve(repoDir)).toBeNull();
     } finally {
