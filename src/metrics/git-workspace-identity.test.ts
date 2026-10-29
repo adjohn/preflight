@@ -289,27 +289,31 @@ describe('WorktreeIdentityResolver', () => {
   // The fake git is a POSIX shell script, so there is nothing to run on win32.
   const itPosix = process.platform === 'win32' ? it.skip : it;
 
-  itPosix('does not cache a git timeout as a miss', () => {
-    const repoDir = join(tmpDir, 'slow-repo');
-    mkdirSync(repoDir);
-    initGitRepo(repoDir);
-    const hangingDir = join(tmpDir, 'hanging-git-bin');
-    mkdirSync(hangingDir);
-    const fakeGit = join(hangingDir, 'git');
-    writeFileSync(fakeGit, '#!/bin/sh\nexec sleep 5\n');
-    chmodSync(fakeGit, 0o755);
+  itPosix(
+    'does not cache a git timeout as a miss',
+    () => {
+      const repoDir = join(tmpDir, 'slow-repo');
+      mkdirSync(repoDir);
+      initGitRepo(repoDir);
+      const hangingDir = join(tmpDir, 'hanging-git-bin');
+      mkdirSync(hangingDir);
+      const fakeGit = join(hangingDir, 'git');
+      writeFileSync(fakeGit, '#!/bin/sh\nexec sleep 5\n');
+      chmodSync(fakeGit, 0o755);
 
-    const originalPath = process.env.PATH;
-    process.env.PATH = `${hangingDir}${delimiter}${originalPath}`;
-    try {
-      expect(resolver.resolve(repoDir)).toBeNull();
-    } finally {
-      process.env.PATH = originalPath;
-    }
+      const originalPath = process.env.PATH;
+      process.env.PATH = `${hangingDir}${delimiter}${originalPath}`;
+      try {
+        expect(resolver.resolve(repoDir)).toBeNull();
+      } finally {
+        process.env.PATH = originalPath;
+      }
 
-    expect(resolver.resolve(repoDir)).toMatchObject({
-      worktreeLabel: 'primary',
-      branch: getCurrentBranch(repoDir),
-    });
-  }, 15_000);
+      expect(resolver.resolve(repoDir)).toMatchObject({
+        worktreeLabel: 'primary',
+        branch: getCurrentBranch(repoDir),
+      });
+    },
+    15_000,
+  );
 });
