@@ -1689,6 +1689,26 @@ describe('SubagentWatcher.readLiveTails (on-demand read at hook intake)', () => 
     expect(turnsRead.map((t) => t.messageId)).toEqual(['msg_1', 'msg_2']);
   });
 
+  it('emits nothing from a read whose ledger claim fails, and the poll then emits each turn once', () => {
+    const watcher = makeWatcher();
+    watcher.poll();
+    appendFileSync(
+      agentJsonl,
+      toolUseLine('msg_1', 'toolu_sub_1') + '\n' + toolUseLine('msg_2', 'toolu_sub_2') + '\n',
+    );
+    const ledgerDir = join(storagePath, 'billed-turns');
+    writeFileSync(ledgerDir, '');
+
+    watcher.poll();
+
+    expect(bufferedTurns()).toEqual([]);
+    expect(turnsRead).toEqual([]);
+    rmSync(ledgerDir);
+    watcher.poll();
+    expect(bufferedTurns().map((t) => t.messageId)).toEqual(['msg_1', 'msg_2']);
+    expect(turnsRead.map((t) => t.messageId)).toEqual(['msg_1', 'msg_2']);
+  });
+
   it('neither repeats nor corrupts a line when the cursor write fails during an on-demand read', () => {
     const watcher = makeWatcher();
     watcher.poll();

@@ -15,10 +15,12 @@
  *
  * Cursor durability: byte cursors persisted to
  * `~/.newrelic-preflight/.subagent-pos-<parentSessionId>-<agentId>` survive restart.
- * A read takes effect only once its advanced cursor is written: a read whose
- * cursor write fails emits nothing and is redone from the old cursor, the same
- * as a failed read. A crash between the cursor write and the buffer appends
- * loses those turns instead.
+ * A read takes effect only once its advanced cursor is written and its turns
+ * are claimed in the BilledTurnLedger: a read where either fails emits nothing
+ * and is redone from the old cursor, the same as a failed read. The ledger
+ * buffers each message id once, so a re-read after a restart, a torn cursor or
+ * a moved transcript emits nothing it already emitted. A crash between the
+ * cursor write and the buffer appends loses those turns instead.
  *
  * Startup-discovery budget: only files with mtime in the last 24h are eligible
  * for cold scan (configurable via `NR_AI_WATCHER_DISCOVERY_HOURS`); older
@@ -49,6 +51,7 @@ import { StringDecoder } from 'node:string_decoder';
 
 import { createLogger } from '../shared/index.js';
 import { AGENT_ID_RE, normalizeAgentType } from '../lib/agent-id.js';
+import { BilledTurnLedger } from './billed-turn-ledger.js';
 import { parseAssistantTurnLine } from '../lib/subagent-transcript-parser.js';
 import type { LocalStore } from '../storage/local-store.js';
 
@@ -184,11 +187,12 @@ interface SubagentWatcherBaseOptions {
   readonly discoveryHours?: number;
   /** LocalStore (used to peek the parent buffer path naming convention). */
   readonly localStore?: LocalStore;
+  readonly retainDays?: number | null;
   /**
    * Called with every turn the watcher reads, by `poll()` or `readLiveTails()`,
-   * right after it is appended to the parent buffer. Claude Code writes a
-   * message one content block per line, each repeating the message id, and the
-   * buffer drain counts each message once, so the later lines, which usually
+   * right after the parent buffer appends. Claude Code writes a message one
+   * content block per line, each repeating the message id, and only a
+   * message's first line reaches the buffer, so the later lines, which usually
    * hold the tool_use blocks, never reach the drain's consumers. This sees
    * every line as soon as it is read. Errors are caught and recorded.
    */
@@ -291,6 +295,7 @@ export class SubagentWatcher {
   private readonly costSelfCheck: SubagentWatcherOptions['costSelfCheck'];
   private readonly localStore: LocalStore | undefined;
   private readonly onTurnRead: ((turn: SubagentTokenEvent) => void) | undefined;
+  private readonly ledger: BilledTurnLedger;
 
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private healthIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -379,6 +384,10 @@ export class SubagentWatcher {
     this.costSelfCheck = options.costSelfCheck;
     this.localStore = options.localStore;
     this.onTurnRead = options.onTurnRead;
+    this.ledger = new BilledTurnLedger({
+      storagePath: this.storagePath,
+      retainDays: options.retainDays,
+    });
     this.loadFingerprints();
   }
 
@@ -855,8 +864,7 @@ export class SubagentWatcher {
     // If the canonical copy for this (parentSessionId, agentId) switched project
     // dirs since the last poll (repo rename → newest-mtime copy now wins in
     // dedupeByCursorKey), the persisted byte offset belongs to the OLD file and
-    // is meaningless here. Start fresh; the event-processor dedupes shared turns
-    // by (agentId, messageId) and day-bucketing keeps "spend today" correct.
+    // is meaningless here. Start fresh from the top of the new file.
     const switchedFile = persisted.path !== undefined && persisted.path !== file.path;
     const startCursor: CursorState = switchedFile
       ? { bytePos: 0, partialLine: '', path: file.path }
@@ -948,7 +956,7 @@ export class SubagentWatcher {
 
     // Token events for each parsed assistant turn, emitted once the cursor is written.
     const agentType = lines.length > 0 ? this.readAgentType(file.path) : undefined;
-    const events: SubagentTokenEvent[] = [];
+    const turns: Array<{ messageId: string; timestampMs: number; event: SubagentTokenEvent }> = [];
     for (const line of lines) {
       if (!line) continue;
       this.linesRead += 1;
@@ -981,23 +989,34 @@ export class SubagentWatcher {
         toolUseIds: parsed.toolUseIds,
         ...(agentType !== undefined ? { agentType } : {}),
       };
-      events.push(event);
+      turns.push({ messageId: parsed.messageId, timestampMs: parsed.timestampMs, event });
     }
 
     // Persist the advanced cursor plus the (bounded) trailing partial so a
-    // restart resumes exactly where we left off. If that fails, the next read
-    // starts from this read's start again, so nothing this read found takes
-    // effect: emitting now would repeat these turns, and keeping its partial
-    // would prepend it to the same bytes. The decoder, which holds this read's
-    // trailing bytes, is reset as on a restart, and the mirror is dropped as on
-    // a failed read, leaving the file to the next poll.
-    if (!this.writeCursor(cursorPath, nextBytePos, newPartial, file.path)) {
+    // restart resumes exactly where we left off. If that or the ledger claim
+    // fails, the next read starts from this read's start again, so nothing this
+    // read found takes effect: emitting now would repeat these turns to
+    // onTurnRead, and a failed claim must not leave the cursor past turns it
+    // never buffered. Keeping its partial would prepend it to the same bytes.
+    // The decoder, which holds this read's trailing bytes, is reset as on a
+    // restart, and the mirror is dropped as on a failed read, leaving the file
+    // to the next poll.
+    const abandonRead = () => {
       this.decoderByPath.delete(file.path);
       this.consumedBytesByPath.delete(file.path);
       return nothingRead;
+    };
+    if (!this.writeCursor(cursorPath, nextBytePos, newPartial, file.path)) return abandonRead();
+    let billed: ReadonlySet<SubagentTokenEvent>;
+    try {
+      billed = new Set(this.ledger.claim(file.parentSessionId, turns).map((t) => t.event));
+    } catch (err) {
+      this.recordError(err);
+      this.writeCursor(cursorPath, startCursor.bytePos, startCursor.partialLine, file.path);
+      return abandonRead();
     }
-    for (const event of events) {
-      this.appendToParentBuffer(file.parentSessionId, event);
+    for (const { event } of turns) {
+      if (billed.has(event)) this.appendToParentBuffer(file.parentSessionId, event);
       this.notifyTurnRead(event);
     }
     // Keep the in-memory mirror in sync; when the partial is empty, drop the
@@ -1024,7 +1043,7 @@ export class SubagentWatcher {
         event: 'oversized_line_dropped',
       });
     }
-    return { bytes: actuallyRead, turns: events.length };
+    return { bytes: actuallyRead, turns: turns.length };
   }
 
   private notifyTurnRead(event: SubagentTokenEvent): void {

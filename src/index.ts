@@ -2834,6 +2834,7 @@ async function main(): Promise<void> {
           storagePath: config!.storagePath,
           parentSessionId: isStdioWatcher ? watcherSessionId : undefined,
           localStore,
+          retainDays: config!.retainSessionsDays,
         });
         activeCopilotUsageWatcher.start();
         logger.info('CopilotUsageWatcher started', {
@@ -2864,6 +2865,7 @@ async function main(): Promise<void> {
           // Only meaningful when unfiltered (--local) — lets discoverFiles()
           // skip sessions that already have a live --stdio owner tailing them.
           localStore,
+          retainDays: config!.retainSessionsDays,
           onTurnRead: (turn: SubagentTokenEvent) => subagentAttribution.recordSubagentTurn(turn),
         };
         activeSubagentWatcher = new SubagentWatcher(

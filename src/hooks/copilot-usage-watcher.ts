@@ -24,10 +24,9 @@
  *
  * Tailing/cursor mechanics mirror `ParentTranscriptWatcher`: durable byte
  * cursor per session (`.copilot-usage-pos-<sessionId>`), bounded reads per
- * poll, bounded partial-line carry, duplicate emissions after a crash are
- * deduped downstream by (sessionId, messageId) in
- * `HookEventProcessor.handleTokenEvent()` — `responseId` serves as the
- * message id.
+ * poll, bounded partial-line carry, and each `responseId` claimed in the
+ * BilledTurnLedger before it is buffered, so a re-read after a crash or a torn
+ * cursor emits nothing already emitted.
  */
 
 import {
@@ -47,6 +46,7 @@ import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 
 import { createLogger } from '../shared/index.js';
+import { BilledTurnLedger } from './billed-turn-ledger.js';
 import type { LocalStore } from '../storage/local-store.js';
 
 const logger = createLogger('copilot-usage-watcher');
@@ -125,6 +125,7 @@ export interface CopilotUsageWatcherOptions {
   readonly parentSessionId?: string;
   /** LocalStore, used to exclude sessions already owned by a live --stdio watcher in unscoped mode. */
   readonly localStore?: LocalStore;
+  readonly retainDays?: number | null;
 }
 
 export interface CopilotUsageWatcherHealth {
@@ -146,7 +147,8 @@ export interface CopilotUsageWatcherHealth {
 interface ParsedUsageRecord {
   readonly timestampMs: number;
   readonly sessionId: string | null;
-  readonly responseId: string;
+  /** The record's `responseId`, unique per API response. */
+  readonly messageId: string;
   readonly model: string;
   readonly inputTokens: number;
   readonly outputTokens: number;
@@ -169,6 +171,7 @@ export class CopilotUsageWatcher {
   private readonly discoveryHours: number;
   private readonly parentSessionFilter: string | null;
   private readonly localStore: LocalStore | undefined;
+  private readonly ledger: BilledTurnLedger;
 
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private readonly partialByPath = new Map<string, string>();
@@ -188,6 +191,10 @@ export class CopilotUsageWatcher {
     this.discoveryHours = options.discoveryHours ?? DEFAULT_DISCOVERY_HOURS;
     this.parentSessionFilter = options.parentSessionId ?? null;
     this.localStore = options.localStore;
+    this.ledger = new BilledTurnLedger({
+      storagePath: this.storagePath,
+      retainDays: options.retainDays,
+    });
   }
 
   start(): void {
@@ -363,18 +370,32 @@ export class CopilotUsageWatcher {
       this.parseErrors += 1;
     }
 
+    const records: ParsedUsageRecord[] = [];
     for (const line of lines) {
       if (!line) continue;
       this.linesRead += 1;
       const parsed = this.tryParseLine(line);
-      if (parsed === null) continue;
+      if (parsed !== null) records.push(parsed);
+    }
+
+    let toEmit: ParsedUsageRecord[];
+    try {
+      toEmit = this.ledger.claim(dirSessionId, records);
+    } catch (err) {
+      this.recordError(err);
+      this.partialByPath.delete(path);
+      this.decoderByPath.delete(path);
+      return;
+    }
+
+    for (const parsed of toEmit) {
       const sessionId = parsed.sessionId ?? dirSessionId;
       this.appendToBuffer(sessionId, {
         mode: 'token',
         tool: 'copilot-usage',
         timestamp: parsed.timestampMs,
         sessionId,
-        messageId: parsed.responseId,
+        messageId: parsed.messageId,
         model: parsed.model,
         // VS Code's inputTokens is cache-INCLUSIVE (verified against a real
         // main.jsonl: each request's cachedTokens ≈ the previous request's
@@ -443,7 +464,7 @@ export class CopilotUsageWatcher {
     return {
       timestampMs,
       sessionId: sid,
-      responseId,
+      messageId: responseId,
       model,
       inputTokens: num(a.inputTokens),
       outputTokens: num(a.outputTokens),
