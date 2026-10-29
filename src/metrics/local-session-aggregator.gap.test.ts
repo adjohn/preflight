@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { localDateKey } from '../lib/date.js';
 import { SessionStore, type FullSessionSummary } from '../storage/session-store.js';
 import { LocalSessionAggregator, RepoNameResolver } from './local-session-aggregator.js';
 import { ToolSelectionScorer } from './tool-selection-scorer.js';
@@ -74,5 +75,36 @@ describe('LocalSessionAggregator durability gaps', () => {
     }
 
     expect(store.loadSession(REAL_ID)?.estimatedCostUsd).toBeCloseTo(12, 6);
+  });
+
+  it('does not count twice the cost an engine seeded from this aggregator’s checkpoint', () => {
+    const store = new SessionStore({ storagePath });
+    const day = new Date(2026, 8, 10, 12).getTime();
+    const dayKey = localDateKey(day);
+    const checkpoint = (agg: LocalSessionAggregator): void => {
+      for (const s of summariesOf(agg)) store.saveSession(s as unknown as FullSessionSummary);
+    };
+    const agg = new LocalSessionAggregator({
+      persistedCostBaseline: (id) => store.loadSession(id),
+    });
+    agg.recordToolCall({ sessionId: REAL_ID, toolName: 'Read', timestamp: day, success: true });
+    agg.recordTokenUsage(REAL_ID, { costUsd: 2, timestamp: day });
+    checkpoint(agg);
+
+    // An engine seeds from the file (which holds the aggregator's $2) and adds $3 of its own.
+    const seeded = store.loadSession(REAL_ID)!;
+    store.saveSession({
+      ...seeded,
+      estimatedCostUsd: (seeded.estimatedCostUsd ?? 0) + 3,
+      costByDayUsd: { [dayKey]: (seeded.costByDayUsd?.[dayKey] ?? 0) + 3 },
+    });
+
+    agg.recordTokenUsage(REAL_ID, { costUsd: 1, timestamp: day + 1000 });
+    checkpoint(agg);
+    checkpoint(agg);
+
+    const file = store.loadSession(REAL_ID);
+    expect(file?.estimatedCostUsd).toBeCloseTo(6, 6);
+    expect(file?.costByDayUsd?.[dayKey]).toBeCloseTo(6, 6);
   });
 });
