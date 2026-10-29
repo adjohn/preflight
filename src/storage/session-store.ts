@@ -760,12 +760,12 @@ export class SessionStore {
     // never observed any hook activity would replace a fully recorded session
     // with an all-zero summary, erasing tool calls, tokens and cost from the
     // dashboard on the next refresh. Never let an empty summary clobber a
-    // non-empty one; other collisions keep the previous last-write-wins
-    // behaviour with a warning.
+    // non-empty one. A summary with cost or tokens but no tool calls, such as
+    // a restarted dashboard's parent-only rollup, is not empty: it merges.
     let toWrite: FullSessionSummary = summary;
     if (existingWithPath) {
       const { summary: existing } = existingWithPath;
-      if (hasAttributableActivity(existing) && !hasAttributableActivity(summary)) {
+      if (hasAttributableActivity(existing) && !hasRecordedUsage(summary)) {
         logger.warn('Refusing to overwrite recorded session with an empty summary', {
           sessionId: summary.sessionId,
         });
