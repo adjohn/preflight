@@ -601,12 +601,13 @@ export class LocalSessionAggregator {
 
   /**
    * Session summaries ready for `SessionStore.saveSession()`. Only sessions
-   * with attributable activity are returned (see `hasAttributableActivity`) —
-   * a rollup with neither tool calls nor subagent spend would be filtered out
-   * of `/api/sessions` anyway, and writing it would burn a file that the
-   * empty-summary guard then has to defend. A subagent-only rollup (dead
-   * parent, tail still being read) DOES qualify: it has real dollars even
-   * though its parent timeline and toolCallCount are both zero.
+   * with attributable activity (see `hasAttributableActivity`) or recorded
+   * usage are returned. A rollup with none of those is an idle process, and
+   * writing it would burn a file that the empty-summary guard then has to
+   * defend. A subagent-only rollup (dead parent, tail still being read) DOES
+   * qualify: it has real dollars even though its parent timeline and
+   * toolCallCount are both zero. So does a chat-only rollup: no tool calls,
+   * but real cost or tokens, matching `SessionStore.saveSession()`.
    */
   toSummaries(context: {
     developer: string;
@@ -617,7 +618,8 @@ export class LocalSessionAggregator {
   }): Array<Record<string, unknown>> {
     const out: Array<Record<string, unknown>> = [];
     for (const rollup of this.sessions.values()) {
-      if (!hasAttributableActivity(rollup)) continue;
+      const hasUsage = rollup.costUsd > 0 || rollup.tokensInput + rollup.tokensOutput > 0;
+      if (!hasAttributableActivity(rollup) && !hasUsage) continue;
       const models = [...rollup.models];
       rollup.lastEmittedCost = {
         costUsd: rollup.costUsd,

@@ -64,6 +64,11 @@ const DEFAULT_DISCOVERY_HOURS = 24;
 const MAX_BYTES_PER_POLL = 1024 * 1024;
 /** See SubagentWatcher's identical constant for the OOM-bug rationale this guards against. */
 const MAX_PARTIAL_LINE_BYTES = 4 * 1024 * 1024; // 4 MiB — sized to the larger log lines
+// A line past the cap is not dropped: its head and tail windows are kept and
+// the middle is elided, so memory stays bounded while the usage fields, which
+// sit near the line's ends, are still extracted when the line completes.
+const ELIDE_KEEP_CHARS = 64 * 1024;
+const ELIDE_MARK_RE = /\u0000ELIDED (\d+)\u0000/;
 const SESSION_ID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const COPILOT_LOG_SUBPATH = join('GitHub.copilot-chat', 'debug-logs');
 
@@ -280,7 +285,13 @@ export class CopilotUsageWatcher {
             if (!st.isFile()) continue;
             // Scoped mode always tails its own session; unscoped applies the
             // recency window so old logs don't trigger unbounded cold scans.
-            if (this.parentSessionFilter === null && st.mtimeMs < cutoffMs) continue;
+            if (
+              this.parentSessionFilter === null &&
+              st.mtimeMs < cutoffMs &&
+              !this.hasUnreadBytes(sessionId, st.size)
+            ) {
+              continue;
+            }
           } catch {
             continue;
           }
@@ -358,18 +369,23 @@ export class CopilotUsageWatcher {
       lines = combined.slice(0, lastNewline).split('\n');
       newPartial = combined.slice(lastNewline + 1);
     }
-    if (newPartial.length > MAX_PARTIAL_LINE_BYTES) {
-      newPartial = '';
-      this.parseErrors += 1;
-    }
+    newPartial = elideOversize(newPartial);
 
+    let lineStartBytePos = fromPos - partialByteLength(startCursor.partialLine);
     for (const line of lines) {
-      if (!line) continue;
+      const lineBytes = partialByteLength(line) + 1;
+      if (!line) {
+        lineStartBytePos += lineBytes;
+        continue;
+      }
       this.linesRead += 1;
       const parsed = this.tryParseLine(line);
-      if (parsed === null) continue;
+      if (parsed === null) {
+        lineStartBytePos += lineBytes;
+        continue;
+      }
       const sessionId = parsed.sessionId ?? dirSessionId;
-      this.appendToBuffer(sessionId, {
+      const appended = this.appendToBuffer(sessionId, {
         mode: 'token',
         tool: 'copilot-usage',
         timestamp: parsed.timestampMs,
@@ -396,6 +412,14 @@ export class CopilotUsageWatcher {
         cacheReadTokens: parsed.cachedTokens,
         cacheCreationTokens: 0,
       });
+      if (!appended) {
+        // Rewind to this line so the next poll retries it.
+        this.writeCursor(cursorPath, lineStartBytePos, '');
+        this.partialByPath.delete(path);
+        this.decoderByPath.delete(path);
+        return;
+      }
+      lineStartBytePos += lineBytes;
     }
 
     this.writeCursor(cursorPath, nextBytePos, newPartial);
@@ -419,6 +443,7 @@ export class CopilotUsageWatcher {
    * `llm_request` record carrying a model, responseId, and token counts.
    */
   private tryParseLine(line: string): ParsedUsageRecord | null {
+    if (ELIDE_MARK_RE.test(line)) return this.parseElidedLine(line);
     let parsed: unknown;
     try {
       parsed = JSON.parse(line);
@@ -451,12 +476,48 @@ export class CopilotUsageWatcher {
     };
   }
 
+  /**
+   * Extract usage fields from a line whose middle was elided. Only scalar
+   * fields are matched, and an escaped quote inside a string payload never
+   * matches the unescaped patterns below.
+   */
+  private parseElidedLine(line: string): ParsedUsageRecord | null {
+    const m = ELIDE_MARK_RE.exec(line);
+    if (!m) return null;
+    const head = line.slice(0, m.index);
+    const tail = line.slice(m.index + m[0].length);
+    const find = (re: RegExp): string | null => (re.exec(head) ?? re.exec(tail))?.[1] ?? null;
+    if (!/"type":"llm_request"/.test(head)) return null;
+    const model = find(/"model":"([^"\\]+)"/);
+    const responseId = find(/"responseId":"([^"\\]+)"/);
+    if (!model || !responseId) return null;
+    const numField = (name: string): number =>
+      num(Number(find(new RegExp(`"${name}":(\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)`))));
+    const ts = Number(/"ts":(\d+)/.exec(head)?.[1]);
+    const sid = /"sid":"([^"\\]+)"/.exec(head)?.[1];
+    return {
+      timestampMs: Number.isFinite(ts) && ts > 0 ? ts : Date.now(),
+      sessionId: sid !== undefined && SESSION_ID_RE.test(sid) ? sid : null,
+      responseId,
+      model,
+      inputTokens: numField('inputTokens'),
+      outputTokens: numField('outputTokens'),
+      cachedTokens: numField('cachedTokens'),
+    };
+  }
+
   // -------------------------------------------------------------------------
   // Buffer + cursor I/O
   // -------------------------------------------------------------------------
 
   private cursorPath(sessionId: string): string {
     return join(this.storagePath, `.copilot-usage-pos-${sessionId}`);
+  }
+
+  /** True when a cursor exists and the file has bytes past it. */
+  private hasUnreadBytes(sessionId: string, size: number): boolean {
+    const cursorPath = this.cursorPath(sessionId);
+    return existsSync(cursorPath) && this.readCursor(cursorPath).bytePos < size;
   }
 
   private readCursor(cursorPath: string): CursorState {
@@ -487,7 +548,7 @@ export class CopilotUsageWatcher {
   }
 
   /** Append into the session's hook buffer, same path convention as the collector. */
-  private appendToBuffer(sessionId: string, event: object): void {
+  private appendToBuffer(sessionId: string, event: object): boolean {
     try {
       if (!existsSync(this.storagePath)) {
         mkdirSync(this.storagePath, { recursive: true, mode: 0o700 });
@@ -499,8 +560,10 @@ export class CopilotUsageWatcher {
           mode: 0o600,
         },
       );
+      return true;
     } catch (err) {
       this.recordError(err);
+      return false;
     }
   }
 
@@ -513,6 +576,40 @@ export class CopilotUsageWatcher {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Bound a carried partial line. Past the cap, keep the first and last
+ * ELIDE_KEEP_CHARS and replace the middle with a marker recording how many
+ * bytes it held, so the byte position of the line start stays recoverable.
+ */
+function elideOversize(partial: string): string {
+  const m = ELIDE_MARK_RE.exec(partial);
+  if (m === null) {
+    if (partial.length <= MAX_PARTIAL_LINE_BYTES) return partial;
+    const middle = partial.slice(ELIDE_KEEP_CHARS, partial.length - ELIDE_KEEP_CHARS);
+    return (
+      partial.slice(0, ELIDE_KEEP_CHARS) +
+      `\u0000ELIDED ${Buffer.byteLength(middle)}\u0000` +
+      partial.slice(partial.length - ELIDE_KEEP_CHARS)
+    );
+  }
+  const tail = partial.slice(m.index + m[0].length);
+  if (tail.length <= 2 * ELIDE_KEEP_CHARS) return partial;
+  const dropped = tail.slice(0, tail.length - ELIDE_KEEP_CHARS);
+  const skipped = Number(m[1]) + Buffer.byteLength(dropped);
+  return (
+    partial.slice(0, m.index) +
+    `\u0000ELIDED ${skipped}\u0000` +
+    tail.slice(tail.length - ELIDE_KEEP_CHARS)
+  );
+}
+
+/** UTF-8 length of a partial line on disk, counting bytes hidden behind an elision marker. */
+function partialByteLength(partial: string): number {
+  const m = ELIDE_MARK_RE.exec(partial);
+  if (m === null) return Buffer.byteLength(partial);
+  return Buffer.byteLength(partial.replace(m[0], '')) + Number(m[1]);
+}
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0;
