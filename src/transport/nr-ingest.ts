@@ -24,7 +24,7 @@ const logger = createLogger('nr-ingest');
 import { redactSensitive } from '../config.js';
 import { isSyntheticSessionId } from '../hooks/session-resolver.js';
 import { VERSION } from '../version.js';
-import type { ToolCallRecord, SubagentTokenEvent } from '../storage/types.js';
+import type { SkillStamp, ToolCallRecord, SubagentTokenEvent } from '../storage/types.js';
 import type { ProxyToolCallRecord, ProxyRequestRecord } from '../proxy/types.js';
 import type { AiCodingTask } from '../metrics/task-detector.js';
 import type { OutcomeType } from '../metrics/cost-per-outcome.js';
@@ -181,6 +181,8 @@ const STANDARD_KEYS = new Set([
   'platform',
   'agentId',
   'agentType',
+  'skillName',
+  'activeSkill',
 ]);
 
 /**
@@ -204,8 +206,17 @@ const REDACT_FIELD_KEYS = new Set([
   'grepPath',
   'globPath',
   'agentTeamName',
-  'skillName',
 ]);
+
+/** The skill-run attributes shared by AiToolCall and AiTurnCost. */
+function skillRunAttributes(stamp: SkillStamp): NrEventData {
+  return {
+    skill_name: redactSensitive(stamp.name),
+    skill_source: stamp.source,
+    skill_run_id: stamp.runId,
+    ...(stamp.parentRunId !== undefined && { skill_parent_run_id: stamp.parentRunId }),
+  };
+}
 
 export function attachTeamAttribution(
   event: NrEventData,
@@ -280,6 +291,14 @@ export function toolCallToNrEvent(
     } else if (typeof value === 'number' || typeof value === 'boolean') {
       event[key] = value;
     }
+  }
+
+  if (record.activeSkill) {
+    Object.assign(event, skillRunAttributes(record.activeSkill));
+  } else if (record.toolName === 'Skill' && typeof record.skillName === 'string') {
+    // A failed Skill call opens no run, so outside any run it would carry no skill name.
+    event.skill_name = redactSensitive(record.skillName);
+    event.skill_source = 'tool';
   }
 
   return event;
@@ -922,9 +941,7 @@ export function turnCostToNrEvents(
       platform,
     };
 
-    if (call.skillName !== null) {
-      event.skillName = redactSensitive(call.skillName);
-    }
+    if (call.skill !== null) Object.assign(event, skillRunAttributes(call.skill));
 
     if (attrs.teamId) event.team_id = attrs.teamId;
     if (attrs.projectId) event.project_id = attrs.projectId;
