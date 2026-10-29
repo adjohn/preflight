@@ -117,17 +117,23 @@ describe('TurnCostAttributor', () => {
       expect(metrics.turns[0].toolCalls).toEqual(['toolu_001']);
     });
 
-    it('ignores token events when no pending turn exists', () => {
+    it('returns a response turn for a token event when no pending turn exists', () => {
       const attributor = new TurnCostAttributor();
 
-      attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1000 }));
+      const result = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1000 }));
+
+      expect(result.calls).toEqual([]);
+      expect(result.attribution.toolCalls).toEqual([]);
+      expect(result.attribution.estimatedCostUsd).toBeGreaterThan(0);
+      expect(result.attribution.costPerToolCall).toBe(result.attribution.estimatedCostUsd);
 
       const metrics = attributor.getMetrics();
       expect(metrics.turns).toHaveLength(0);
-      expect(metrics.droppedTokenEvents).toBe(1);
+      expect(metrics.totalAttributedCost).toBe(0);
+      expect(metrics.droppedTokenEvents).toBe(0);
     });
 
-    it('ignores a token event that predates the pending turn it would close', () => {
+    it('returns a response turn for a token event that predates the pending turn it would close', () => {
       const attributor = new TurnCostAttributor();
 
       attributor.recordToolCall(
@@ -135,11 +141,73 @@ describe('TurnCostAttributor', () => {
       );
       // Turn ends at 1500; an event timestamped before that can't be the
       // response that followed it.
-      attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1200 }));
+      const result = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1200 }));
+
+      expect(result.calls).toEqual([]);
+      expect(result.attribution.estimatedCostUsd).toBeGreaterThan(0);
 
       const metrics = attributor.getMetrics();
       expect(metrics.turns).toHaveLength(0);
-      expect(metrics.droppedTokenEvents).toBe(1);
+      expect(metrics.totalAttributedCost).toBe(0);
+      expect(metrics.droppedTokenEvents).toBe(0);
+    });
+
+    it('leaves the pending turn queued for the token event that does postdate it', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(
+        makeRecord({ toolUseId: 'toolu_001', timestamp: 1000, durationMs: 500 }),
+      );
+      attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1200 }));
+      const closed = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1600 }));
+
+      expect(closed.calls.map((c) => c.toolUseId)).toEqual(['toolu_001']);
+    });
+
+    it('stamps a response turn with the platform of the session most recent tool call', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(
+        makeRecord({ toolUseId: 'toolu_001', timestamp: 1000, platform: 'github-copilot' }),
+      );
+      attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1100 }));
+      const response = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 9000 }));
+
+      expect(response.calls).toEqual([]);
+      expect(response.platform).toBe('github-copilot');
+    });
+
+    it("uses the token report's own platform over the session's last tool call", () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(makeRecord({ timestamp: 1000, platform: 'copilot' }));
+      attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1100 }));
+      const response = attributor.recordTokenEvent(
+        makeTokenEvent({ timestamp: 9000, platform: 'claude-code' }),
+      );
+
+      expect(response.platform).toBe('claude-code');
+    });
+
+    it('keeps the last stamped platform when a later tool call carries none', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(
+        makeRecord({ toolUseId: 'a', timestamp: 1000, platform: 'copilot' }),
+      );
+      attributor.recordToolCall(makeRecord({ toolUseId: 'b', timestamp: 1500 }));
+      attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1600 }));
+      const response = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 9000 }));
+
+      expect(response.platform).toBe('copilot');
+    });
+
+    it('leaves a response turn platform undefined before any tool call', () => {
+      const attributor = new TurnCostAttributor();
+
+      const response = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1000 }));
+
+      expect(response.platform).toBeUndefined();
     });
 
     it('queues a second burst of tool calls instead of dropping the first when its token event is still outstanding', () => {
@@ -155,10 +223,8 @@ describe('TurnCostAttributor', () => {
       const result1 = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 6000 }));
       const result2 = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 6100 }));
 
-      expect(result1).not.toBeNull();
-      expect(result1!.calls.map((c) => c.toolUseId)).toEqual(['toolu_001']);
-      expect(result2).not.toBeNull();
-      expect(result2!.calls.map((c) => c.toolUseId)).toEqual(['toolu_002']);
+      expect(result1.calls.map((c) => c.toolUseId)).toEqual(['toolu_001']);
+      expect(result2.calls.map((c) => c.toolUseId)).toEqual(['toolu_002']);
 
       const metrics = attributor.getMetrics();
       expect(metrics.turns).toHaveLength(2);
@@ -179,11 +245,29 @@ describe('TurnCostAttributor', () => {
       );
 
       // toolu_001's turn was evicted as stale; the event closes toolu_002's.
-      expect(result).not.toBeNull();
-      expect(result!.calls.map((c) => c.toolUseId)).toEqual(['toolu_002']);
+      expect(result.calls.map((c) => c.toolUseId)).toEqual(['toolu_002']);
 
       const metrics = attributor.getMetrics();
       expect(metrics.turns).toHaveLength(1);
+      expect(metrics.droppedTokenEvents).toBe(1);
+    });
+
+    it('counts a burst as dropped when only a report that predates it ever arrives before it goes stale', () => {
+      const attributor = new TurnCostAttributor();
+
+      attributor.recordToolCall(
+        makeRecord({ toolUseId: 'toolu_001', timestamp: 1000, durationMs: 500 }),
+      );
+      const early = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1200 }));
+      const late = attributor.recordTokenEvent(
+        makeTokenEvent({ timestamp: 1500 + 11 * 60 * 1000 }),
+      );
+
+      expect(early.calls).toEqual([]);
+      expect(late.calls).toEqual([]);
+      expect(early.id).not.toBe(late.id);
+      const metrics = attributor.getMetrics();
+      expect(metrics.turns).toHaveLength(0);
       expect(metrics.droppedTokenEvents).toBe(1);
     });
 
@@ -205,8 +289,7 @@ describe('TurnCostAttributor', () => {
       // The oldest (toolu_0) was evicted; the next token event closes
       // whatever is now the front of the queue (toolu_1).
       const result = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1000 + 21 * 3000 }));
-      expect(result).not.toBeNull();
-      expect(result!.calls.map((c) => c.toolUseId)).toEqual(['toolu_1']);
+      expect(result.calls.map((c) => c.toolUseId)).toEqual(['toolu_1']);
     });
   });
 
@@ -959,17 +1042,11 @@ describe('TurnCostAttributor', () => {
   });
 
   describe('recordTokenEvent() return value (ClosedTurn)', () => {
-    it('returns null with no pending turn', () => {
-      const attributor = new TurnCostAttributor();
-      const result = attributor.recordTokenEvent(makeTokenEvent());
-      expect(result).toBeNull();
-    });
-
     it('closes the turn even when the token event arrives well outside the old fixed window', () => {
       const attributor = new TurnCostAttributor();
       attributor.recordToolCall(makeRecord({ toolUseId: 'toolu_001', timestamp: 1000 }));
       const result = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 7000 }));
-      expect(result).not.toBeNull();
+      expect(result.calls).not.toHaveLength(0);
     });
 
     it('returns ClosedTurn with id on successful attribution', () => {
@@ -977,10 +1054,10 @@ describe('TurnCostAttributor', () => {
       attributor.recordToolCall(makeRecord({ toolUseId: 'toolu_001', timestamp: 1000 }));
       const result = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1100 }));
 
-      expect(result).not.toBeNull();
-      expect(result!.id).toBeDefined();
-      expect(typeof result!.id).toBe('string');
-      expect(result!.id.length).toBeGreaterThan(20);
+      expect(result.calls).not.toHaveLength(0);
+      expect(result.id).toBeDefined();
+      expect(typeof result.id).toBe('string');
+      expect(result.id.length).toBeGreaterThan(20);
     });
 
     it('returns different ids for two closed turns', () => {
@@ -992,9 +1069,9 @@ describe('TurnCostAttributor', () => {
       attributor.recordToolCall(makeRecord({ toolUseId: 'toolu_002', timestamp: 5000 }));
       const result2 = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 5100 }));
 
-      expect(result1).not.toBeNull();
-      expect(result2).not.toBeNull();
-      expect(result1!.id).not.toBe(result2!.id);
+      expect(result1.calls).not.toHaveLength(0);
+      expect(result2.calls).not.toHaveLength(0);
+      expect(result1.id).not.toBe(result2.id);
     });
 
     it('returned calls carry skill for records inside a skill run', () => {
@@ -1020,15 +1097,14 @@ describe('TurnCostAttributor', () => {
       );
       const result = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1600 }));
 
-      expect(result).not.toBeNull();
-      expect(result!.calls).toHaveLength(2);
+      expect(result.calls).toHaveLength(2);
 
-      const skillCall = result!.calls.find((c) => c.toolName === 'Skill');
+      const skillCall = result.calls.find((c) => c.toolName === 'Skill');
       expect(skillCall).toBeDefined();
       expect(skillCall!.skill).not.toBeNull();
       expect(skillCall!.skill!.name).toBe('code-review');
 
-      const readCall = result!.calls.find((c) => c.toolName === 'Read');
+      const readCall = result.calls.find((c) => c.toolName === 'Read');
       expect(readCall).toBeDefined();
       expect(readCall!.skill).not.toBeNull();
       expect(readCall!.skill!.name).toBe('code-review');
@@ -1046,8 +1122,8 @@ describe('TurnCostAttributor', () => {
       );
       const result = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1100 }));
 
-      expect(result).not.toBeNull();
-      expect(result!.platform).toBe('copilot-app');
+      expect(result.calls).not.toHaveLength(0);
+      expect(result.platform).toBe('copilot-app');
     });
 
     it('platform is undefined when no record carries a stamp', () => {
@@ -1055,8 +1131,8 @@ describe('TurnCostAttributor', () => {
       attributor.recordToolCall(makeRecord({ toolUseId: 'toolu_001', timestamp: 1000 }));
       const result = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1100 }));
 
-      expect(result).not.toBeNull();
-      expect(result!.platform).toBeUndefined();
+      expect(result.calls).not.toHaveLength(0);
+      expect(result.platform).toBeUndefined();
     });
 
     it('attribution deep-equals the last entry of getMetrics().turns', () => {
@@ -1065,8 +1141,8 @@ describe('TurnCostAttributor', () => {
       const result = attributor.recordTokenEvent(makeTokenEvent({ timestamp: 1100 }));
 
       const metrics = attributor.getMetrics();
-      expect(result).not.toBeNull();
-      expect(result!.attribution).toEqual(metrics.turns[metrics.turns.length - 1]);
+      expect(result.calls).not.toHaveLength(0);
+      expect(result.attribution).toEqual(metrics.turns[metrics.turns.length - 1]);
     });
 
     it('attribution includes cacheCreationTokens', () => {
@@ -1079,8 +1155,8 @@ describe('TurnCostAttributor', () => {
         }),
       );
 
-      expect(result).not.toBeNull();
-      expect(result!.attribution.cacheCreationTokens).toBe(500);
+      expect(result.calls).not.toHaveLength(0);
+      expect(result.attribution.cacheCreationTokens).toBe(500);
     });
 
     it('rateMultiplier: 1.5 scales costUsd by 1.5 in returned attribution', () => {
@@ -1104,14 +1180,14 @@ describe('TurnCostAttributor', () => {
         }),
       );
 
-      expect(result1x).not.toBeNull();
-      expect(result15x).not.toBeNull();
-      expect(result15x!.attribution.estimatedCostUsd).toBeCloseTo(
-        result1x!.attribution.estimatedCostUsd * 1.5,
+      expect(result1x.calls).not.toHaveLength(0);
+      expect(result15x.calls).not.toHaveLength(0);
+      expect(result15x.attribution.estimatedCostUsd).toBeCloseTo(
+        result1x.attribution.estimatedCostUsd * 1.5,
         10,
       );
-      expect(result15x!.attribution.costPerToolCall).toBeCloseTo(
-        result1x!.attribution.costPerToolCall * 1.5,
+      expect(result15x.attribution.costPerToolCall).toBeCloseTo(
+        result1x.attribution.costPerToolCall * 1.5,
         10,
       );
     });

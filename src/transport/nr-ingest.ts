@@ -48,7 +48,11 @@ import {
   securityAlertToNrEvent,
 } from '../security/index.js';
 import type { AuditRecord } from '../security/index.js';
-import type { TurnCostAttributor, ClosedTurn } from '../metrics/turn-cost-attributor.js';
+import type {
+  TurnCostAttributor,
+  ClosedTurn,
+  TurnToolCall,
+} from '../metrics/turn-cost-attributor.js';
 import type { LocalStore } from '../storage/index.js';
 import { LogIngestManager } from './log-ingest.js';
 import { TierRouter } from './tier-router.js';
@@ -904,6 +908,10 @@ export function retryAlertToNrEvent(
  * One `AiTurnCost` row per tool call in a closed turn, each carrying the
  * turn's cost and tokens split evenly. `tool_use_id` cross-references the
  * call's `AiToolCall` row.
+ *
+ * A response turn (no calls) yields a single row with no `tool`,
+ * `tool_use_id` or `skillName`, carrying the whole report's cost and tokens.
+ * Its `turn_tool_call_count` is 0.
  */
 export function turnCostToNrEvents(
   turn: ClosedTurn,
@@ -917,31 +925,34 @@ export function turnCostToNrEvents(
     companionMode?: boolean;
   },
 ): NrEventData[] {
-  const events: NrEventData[] = [];
+  const { attribution } = turn;
+  const shares: readonly (TurnToolCall | null)[] = turn.calls.length > 0 ? turn.calls : [null];
   const platform = turn.platform ?? 'claude-code';
 
-  for (const call of turn.calls) {
+  const rowFor = (call: TurnToolCall | null): NrEventData => {
     const event: NrEventData = {
       eventType: 'AiTurnCost',
       event_version: 1,
-      timestamp: turn.attribution.endTime,
+      timestamp: attribution.endTime,
       turn_id: turn.id,
-      tool_use_id: call.toolUseId,
-      tool: call.toolName,
-      cost_usd: turn.attribution.costPerToolCall,
-      input_tokens: turn.attribution.inputTokens / turn.calls.length,
-      output_tokens: turn.attribution.outputTokens / turn.calls.length,
-      cache_read_tokens: turn.attribution.cacheReadTokens / turn.calls.length,
-      cache_creation_tokens: turn.attribution.cacheCreationTokens / turn.calls.length,
-      turn_cost_usd: turn.attribution.estimatedCostUsd,
+      cost_usd: attribution.costPerToolCall,
+      input_tokens: attribution.inputTokens / shares.length,
+      output_tokens: attribution.outputTokens / shares.length,
+      cache_read_tokens: attribution.cacheReadTokens / shares.length,
+      cache_creation_tokens: attribution.cacheCreationTokens / shares.length,
+      turn_cost_usd: attribution.estimatedCostUsd,
       turn_tool_call_count: turn.calls.length,
-      model: turn.attribution.model,
+      model: attribution.model,
       developer: attrs.developer,
       app_name: attrs.appName,
       platform,
     };
 
-    if (call.skill !== null) Object.assign(event, skillRunAttributes(call.skill));
+    if (call !== null) {
+      event.tool_use_id = call.toolUseId;
+      event.tool = call.toolName;
+      if (call.skill !== null) Object.assign(event, skillRunAttributes(call.skill));
+    }
 
     if (attrs.teamId) event.team_id = attrs.teamId;
     if (attrs.projectId) event.project_id = attrs.projectId;
@@ -950,7 +961,7 @@ export function turnCostToNrEvents(
     // The turn's own session wins over this process's trace id for the same
     // reason ingestToolCall() prefers the record's: a --local daemon's trace
     // id is synthetic.
-    const sessionId = turn.attribution.sessionId ?? attrs.sessionTraceId;
+    const sessionId = attribution.sessionId ?? attrs.sessionTraceId;
     if (sessionId != null) event.session_id = sessionId;
 
     // Only an explicit claude-code stamp has an OTel twin to defer to; an
@@ -959,10 +970,10 @@ export function turnCostToNrEvents(
       event.cost_authority = 'external';
     }
 
-    events.push(event);
-  }
+    return event;
+  };
 
-  return events;
+  return shares.map(rowFor);
 }
 
 // ---------------------------------------------------------------------------
