@@ -1968,6 +1968,11 @@ export function createApiHandler(
     // comes from CostTracker, which buckets each token event by local-day at
     // record time (see CostTracker.accumulateTokens). Falls back to session
     // total if no per-day data is available (older deployments / first event).
+    //
+    // The persisted loop above skips the live session unconditionally, so this
+    // top-up is the only place its today cost is counted, whether or not it
+    // already has a same-day checkpoint. liveAlreadyPersisted still guards the
+    // anti-pattern and session counts, which the todaySessions walk does count.
     const liveAlreadyPersisted = todaySessions.some(
       (s) => (s as { sessionId?: string }).sessionId === liveSid,
     );
@@ -1982,7 +1987,7 @@ export function createApiHandler(
     // whose live cost really is exclusively its own.
     const liveIsUnscopedAggregator = isUnscopedAggregatorSessionId(liveSid);
 
-    if (!liveAlreadyPersisted && !liveIsUnscopedAggregator) {
+    if (!liveIsUnscopedAggregator) {
       const liveMetrics = deps.costTracker?.getMetrics();
       sumCallUsageInto(unpricedByModel, liveMetrics?.unpricedByModel);
       sumCallUsageInto(estimatedByModel, liveMetrics?.estimatedByModel);
