@@ -129,4 +129,10 @@ Proxy mode is a **separate, mutually exclusive** code path. It does not use hook
 
 **Processing pipeline is mode-agnostic.** `HookEventProcessor`, the metric trackers, and `NrIngestManager` run identically regardless of whether Preflight is in `--stdio` or `--local` mode. Only the consumer layer (MCP tools vs. dashboard) differs between modes.
 
+**Each assistant turn is billed once.** `ParentTranscriptWatcher` records each Anthropic message id in a billed-turn ledger before it writes the turn to the buffer. The ledger is one append-only file per UTC day under `~/.newrelic-preflight/billed-turns/`, shared by every Preflight process on the machine, and the first session to claim a message id owns its cost. So a restart that re-reads a transcript moved to a new project directory does not bill its turns again, and neither does a session started with `claude --resume <id> --fork-session`, whose transcript copies its parent's turns. The guarantee has three known limits:
+
+- Session totals are saved every 30 seconds (`NR_AI_SESSION_PERSIST_INTERVAL_MS`). If Preflight is killed before the next save, the cost of the turns since the last save is lost, up to one interval. A restart does not recover it, because the ledger already holds those turns.
+- The ledger is pruned with session files after `retainSessionsDays` (default 90). A turn first seen more than that many days after it happened is not billed. With `retainSessionsDays: null` the ledger is never pruned.
+- The ledger starts empty on upgrade. A fork of a session billed by an earlier version can still bill the parent's turns a second time, once.
+
 **Proxy mode is fully separate.** Proxy mode does not use the hook collection path at all. It is architecturally independent and mutually exclusive with stdio/local modes.
