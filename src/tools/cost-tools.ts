@@ -93,8 +93,16 @@ const clampToken = (v: number): number => {
   return Math.min(Math.max(0, Math.floor(v)), MAX_TOKENS);
 };
 
-function jsonError(error: string, message: string): ToolCallResult {
-  return { content: [{ type: 'text', text: JSON.stringify({ error, message }) }], isError: true };
+function jsonResult(body: object): ToolCallResult {
+  return { content: [{ type: 'text', text: JSON.stringify(body, null, 2) }] };
+}
+
+function invalidTokenReport(err: unknown): ToolCallResult {
+  const message =
+    err instanceof z.ZodError
+      ? err.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
+      : String(err);
+  return errorResult(`Invalid token report: ${message}`);
 }
 
 type ParsedTokenReport =
@@ -112,7 +120,7 @@ function parseTokenReport(args: TokenReport): ParsedTokenReport {
   if (!/^[a-zA-Z0-9._:-]+$/.test(safeModel)) {
     return {
       ok: false,
-      result: jsonError(
+      result: errorResult(
         'invalid_model_name',
         `Model name contains invalid characters: ${safeModel}. Allowed: alphanumerics, dots, underscores, colons, hyphens.`,
       ),
@@ -147,23 +155,12 @@ export function handleReportTokens(
   modelUsageTracker?.recordUsage(model, usage, breakdown.totalUsd);
   const metrics = costTracker.getMetrics();
 
-  return {
-    content: [
-      {
-        type: 'text' as const,
-        text: JSON.stringify(
-          {
-            recorded: true,
-            cost_this_report_usd: breakdown.totalUsd,
-            session_total_cost_usd: metrics.sessionTotalCostUsd,
-            model,
-          },
-          null,
-          2,
-        ),
-      },
-    ],
-  };
+  return jsonResult({
+    recorded: true,
+    cost_this_report_usd: breakdown.totalUsd,
+    session_total_cost_usd: metrics.sessionTotalCostUsd,
+    model,
+  });
 }
 
 export const CONVERSATION_REPORT_TOKENS_TOOL = {
@@ -201,21 +198,17 @@ export function handleReportConversationTokens(
   args: Record<string, unknown> | undefined,
 ): ToolCallResult {
   const report = ConversationTokenReportSchema.safeParse(args);
-  if (!report.success) {
-    return errorResult(
-      `Invalid token report: ${report.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')}`,
-    );
-  }
+  if (!report.success) return invalidTokenReport(report.error);
   const conversationId = report.data.conversation_id;
   if (!conversationId || isSyntheticSessionId(conversationId)) {
-    return jsonError(
+    return errorResult(
       'conversation_id_required',
       'Pass conversation_id, the id of the conversation these tokens belong to. ' +
         'This server serves several conversations and cannot tell which one reported.',
     );
   }
   if (!isSavableSessionId(conversationId)) {
-    return jsonError(
+    return errorResult(
       'invalid_conversation_id',
       'conversation_id must be 1-128 letters, digits, underscores or hyphens, and not "unknown".',
     );
@@ -228,24 +221,13 @@ export function handleReportConversationTokens(
     parsed.usage,
     parsed.model,
   );
-  return {
-    content: [
-      {
-        type: 'text' as const,
-        text: JSON.stringify(
-          {
-            recorded: true,
-            conversation_id: conversationId,
-            cost_this_report_usd: costUsd,
-            conversation_total_cost_usd: conversationTotalCostUsd,
-            model: parsed.model,
-          },
-          null,
-          2,
-        ),
-      },
-    ],
-  };
+  return jsonResult({
+    recorded: true,
+    conversation_id: conversationId,
+    cost_this_report_usd: costUsd,
+    conversation_total_cost_usd: conversationTotalCostUsd,
+    model: parsed.model,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -304,9 +286,7 @@ export function handleGetCostBreakdown(costTracker: CostTracker, taskDetector?: 
     estimated_by_model: metrics.estimatedByModel,
   };
 
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-  };
+  return jsonResult(result);
 }
 
 // ---------------------------------------------------------------------------
@@ -348,7 +328,7 @@ export function handleGetBudgetStatus(budgetTracker: BudgetTracker): {
   content: Array<{ type: 'text'; text: string }>;
 } {
   const status = budgetTracker.getStatus();
-  return { content: [{ type: 'text', text: JSON.stringify(status, null, 2) }] };
+  return jsonResult(status);
 }
 
 export function handleGetCostForecast(
@@ -370,7 +350,7 @@ export function handleGetCostForecast(
   const response = sessionResumeTracker
     ? { ...forecast, resumeContext: sessionResumeTracker.getMetrics() }
     : forecast;
-  return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+  return jsonResult(response);
 }
 
 // ---------------------------------------------------------------------------
@@ -444,9 +424,7 @@ export function handleGetPromptCacheHealth(costTracker: CostTracker): {
     data_quality: metrics.reportCount > 0 ? 'self_reported' : 'estimated',
   };
 
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-  };
+  return jsonResult(result);
 }
 
 // ---------------------------------------------------------------------------
@@ -474,11 +452,7 @@ export function registerCostTools(deps: CostToolsDeps): RegisteredToolSet {
           const tokenReport = TokenReportSchema.parse(args);
           return handleReportTokens(check.value, tokenReport, deps.modelUsageTracker);
         } catch (err) {
-          const message =
-            err instanceof z.ZodError
-              ? err.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')
-              : String(err);
-          return errorResult(`Invalid token report: ${message}`);
+          return invalidTokenReport(err);
         }
       },
     },

@@ -48,9 +48,11 @@ export interface RegisteredToolSet {
   readonly handlers: Record<string, ToolHandlerFn>;
 }
 
-export function errorResult(message: string): ToolCallResult {
+export function errorResult(error: string, message?: string): ToolCallResult {
   return {
-    content: [{ type: 'text', text: JSON.stringify({ error: message }) }],
+    content: [
+      { type: 'text', text: JSON.stringify({ error, ...(message !== undefined && { message }) }) },
+    ],
     isError: true,
   };
 }
