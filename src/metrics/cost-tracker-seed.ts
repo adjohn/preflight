@@ -1,4 +1,4 @@
-import { hasAttributableActivity } from '../storage/session-store.js';
+import { exactTotalsOf, hasAttributableActivity } from '../storage/session-store.js';
 import type { FullSessionSummary } from '../storage/session-store.js';
 import type { CostTrackerSeed } from './cost-tracker.js';
 import { localDateKey, todayPortionRatio } from '../lib/date.js';
@@ -43,6 +43,21 @@ export function todayCostOfSummary(
   return { costUsd, subagentCostUsd: Math.min(subagentUsd, costUsd) };
 }
 
+// Only a summary that carries a byte-estimate ledger can be estimate-only. One
+// without it predates the exact/estimate split and counts as reported.
+function hadExactReport(persisted: FullSessionSummary): boolean {
+  if (persisted.byteEstimates === undefined) return true;
+  const exact = exactTotalsOf(persisted);
+  return (
+    exact.costUsd > 1e-9 ||
+    exact.inputTokens > 0 ||
+    exact.outputTokens > 0 ||
+    persisted.tokensThinking > 0 ||
+    persisted.tokensCacheRead > 0 ||
+    persisted.tokensCacheCreation > 0
+  );
+}
+
 // Builds the seed a freshly-started process's CostTracker needs to recover a
 // resumed session's pre-restart totals — see CostTracker.seedFromPersisted()
 // for why this exists (ParentTranscriptWatcher's read cursor durably survives
@@ -79,5 +94,6 @@ export function buildCostTrackerSeed(persisted: FullSessionSummary): CostTracker
     ...(persisted.unpricedByModel && { unpricedByModel: persisted.unpricedByModel }),
     ...(persisted.estimatedByModel && { estimatedByModel: persisted.estimatedByModel }),
     ...(persisted.byteEstimates && { byteEstimates: persisted.byteEstimates }),
+    ...(!hadExactReport(persisted) && { hadExactReport: false }),
   };
 }
