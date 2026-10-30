@@ -47,6 +47,7 @@ export class WindsurfAdapter implements PlatformAdapter {
     instructionFilePaths: ['.windsurfrules'] as const,
     // Windsurf's hooks send trajectory_id, never session_id, so they write no breadcrumb.
     sessionBreadcrumbWriters: [] as const,
+    hookConversationIdField: 'trajectory_id' as const,
   };
 
   async initialize(_config: PlatformConfig): Promise<void> {

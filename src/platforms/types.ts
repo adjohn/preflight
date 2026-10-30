@@ -75,6 +75,28 @@ export interface PlatformCapabilities {
    * produces it.
    */
   readonly sessionBreadcrumbWriters: readonly string[];
+  /**
+   * The hook payload field that names the conversation each event belongs
+   * to, when this platform's hooks send one in place of `session_id`. The
+   * hook collector files every event under it, so each conversation gets its
+   * own session file. Absent when hooks send `session_id` or no conversation
+   * id at all.
+   */
+  readonly hookConversationIdField?: 'conversation_id' | 'trajectory_id' | 'conversationId';
+}
+
+/**
+ * Whether a pending engine on this platform can save a self-report to the
+ * conversation the agent names. Its hooks must give each conversation its own
+ * session file, and must never write a breadcrumb, or the engine would later
+ * resolve to one session and drop what it recorded while pending.
+ */
+export function savesConversationSelfReports(adapter: PlatformAdapter): boolean {
+  return (
+    adapter.visibilityLevel === 'full-hooks' &&
+    adapter.capabilities.sessionBreadcrumbWriters.length === 0 &&
+    adapter.capabilities.hookConversationIdField !== undefined
+  );
 }
 
 /**

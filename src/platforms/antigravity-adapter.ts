@@ -61,6 +61,7 @@ export class AntigravityAdapter implements PlatformAdapter {
     instructionFilePaths: ['GEMINI.md', '.agents/rules/'] as const,
     // Antigravity's hooks send conversationId, never session_id, so they write no breadcrumb.
     sessionBreadcrumbWriters: [] as const,
+    hookConversationIdField: 'conversationId' as const,
   };
 
   async initialize(_config: PlatformConfig): Promise<void> {

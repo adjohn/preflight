@@ -69,6 +69,7 @@ export class CursorAdapter implements PlatformAdapter {
     instructionFilePaths: ['.cursorrules', '.cursor/rules/'] as const,
     // Cursor's hooks send conversation_id, never session_id, so they write no breadcrumb.
     sessionBreadcrumbWriters: [] as const,
+    hookConversationIdField: 'conversation_id' as const,
   };
 
   async initialize(_config: PlatformConfig): Promise<void> {

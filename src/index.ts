@@ -108,7 +108,12 @@ import { TrendAnalyzer } from './metrics/trend-analyzer.js';
 import { TurnCostAttributor } from './metrics/turn-cost-attributor.js';
 import { TurnTracker } from './metrics/turn-tracker.js';
 import { WorkflowRunTracker } from './metrics/workflow-run-tracker.js';
-import { ClaudeCodeAdapter, createDefaultRegistry, GenericMcpAdapter } from './platforms/index.js';
+import {
+  ClaudeCodeAdapter,
+  createDefaultRegistry,
+  GenericMcpAdapter,
+  savesConversationSelfReports,
+} from './platforms/index.js';
 import type { ProxyRequestRecord, ProxyToolCallRecord } from './proxy/index.js';
 import { ProxyManager } from './proxy/index.js';
 import { AuditTrailManager } from './security/audit-trail.js';
@@ -3231,6 +3236,7 @@ async function main(): Promise<void> {
         // respond to health/config requests while the real session ID resolves.
         const pendingConfigFilePath =
           options.config ?? resolve(DEFAULT_STORAGE_PATH, 'config.json');
+        const pendingAdapter = createDefaultRegistry().getActive();
         registerPendingTools(mcpServer!.server, {
           sessionStartMs: Date.now(),
           developer: config.developer,
@@ -3252,25 +3258,24 @@ async function main(): Promise<void> {
           // A Claude Code session with no hooks never resolves, so this is
           // where the opt-in install has to work. Other stdio clients have no
           // Claude Code hooks to install or report missing.
-          ...(createDefaultRegistry().getActive() instanceof ClaudeCodeAdapter
-            ? {
-                hooksInstalledFn: () => areHooksInstalledAtAnyScope(),
-                headlessInstaller: buildHeadlessInstaller(),
-              }
-            : {
-                recordConversationTokens: (conversationId, usage, model) => {
-                  const { totalUsd } = costTracker.priceUsage(usage, model);
-                  localSessionAggregator.recordTokenUsage(conversationId, {
-                    ...usage,
-                    costUsd: totalUsd,
-                    model,
-                  });
-                  return {
-                    costUsd: totalUsd,
-                    conversationTotalCostUsd: localSessionAggregator.costUsd(conversationId),
-                  };
-                },
-              }),
+          ...(pendingAdapter instanceof ClaudeCodeAdapter && {
+            hooksInstalledFn: () => areHooksInstalledAtAnyScope(),
+            headlessInstaller: buildHeadlessInstaller(),
+          }),
+          ...(savesConversationSelfReports(pendingAdapter) && {
+            recordConversationTokens: (conversationId, usage, model) => {
+              const { totalUsd } = costTracker.priceUsage(usage, model);
+              localSessionAggregator.recordTokenUsage(conversationId, {
+                ...usage,
+                costUsd: totalUsd,
+                model,
+              });
+              return {
+                costUsd: totalUsd,
+                conversationTotalCostUsd: localSessionAggregator.costUsd(conversationId),
+              };
+            },
+          }),
         });
         logger.info('Dashboard started early; awaiting session_id resolution (breadcrumb poll)');
 
