@@ -180,6 +180,14 @@ describe('LocalSessionAggregator', () => {
     expect(summary?.model).toBe('claude-opus-4.8');
   });
 
+  it('saves the thinking tokens it priced', () => {
+    const agg = new LocalSessionAggregator();
+    agg.recordToolCall({ sessionId: REAL_ID, toolName: 'read_file', timestamp: 1 });
+    agg.recordTokenUsage(REAL_ID, { costUsd: 0.1, inputTokens: 10, thinkingTokens: 300 });
+    agg.recordTokenUsage(REAL_ID, { costUsd: 0.1, inputTokens: 10, thinkingTokens: 200 });
+    expect(summariesOf(agg)[0]?.tokensThinking).toBe(500);
+  });
+
   it('counts unpriced-model calls on the session that made them', () => {
     const other = 'b0000000-0000-4000-8000-000000000000';
     const agg = new LocalSessionAggregator();

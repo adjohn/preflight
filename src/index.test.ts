@@ -1281,6 +1281,7 @@ describe('stdio integration', () => {
             conversation_id: 'conv-reported',
             input_tokens: 1000,
             output_tokens: 200,
+            thinking_tokens: 100,
             model: 'claude-sonnet-4-6',
           },
         });
@@ -1295,6 +1296,7 @@ describe('stdio integration', () => {
         }
         expect(reported?.tokensInput).toBe(1000);
         expect(reported?.tokensOutput).toBe(200);
+        expect(reported?.tokensThinking).toBe(100);
         expect(reported?.estimatedCostUsd).toBeGreaterThan(0);
         expect(silent?.toolCallCount).toBe(1);
         expect(silent?.estimatedCostUsd).toBeNull();
