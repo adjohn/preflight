@@ -15,9 +15,11 @@
  *
  * Cursor durability: byte cursors persisted to
  * `~/.newrelic-preflight/.subagent-pos-<parentSessionId>-<agentId>` survive restart.
- * A read takes effect only once its advanced cursor is written and its turns
- * are claimed in the BilledTurnLedger: a read where either fails emits nothing
- * and is redone from the old cursor, the same as a failed read. The ledger
+ * A read takes effect only once its advanced cursor is written, its turns
+ * are claimed in the BilledTurnLedger and they are appended: a read where any
+ * fails emits nothing and is redone from the old cursor, the same as a failed
+ * read. Turns claimed but not appended are remembered in memory, so the redo
+ * emits them although the ledger already holds them. The ledger
  * buffers each message id once, so a re-read after a restart, a torn cursor or
  * a moved transcript emits nothing it already emitted. A crash between the
  * cursor write and the buffer appends loses those turns instead.
@@ -308,6 +310,10 @@ export class SubagentWatcher {
   // an in-memory fast path that mirrors the `partialLine` persisted in the
   // cursor file. Bounded per-entry by MAX_PARTIAL_LINE_BYTES (see processFile)
   // and per-key by the number of files discovered this poll (see poll()).
+  // Message ids the ledger holds for this process but whose buffer append
+  // failed. Their retry is dropped by the ledger as already claimed, so this set
+  // is what lets it through. A crash empties it.
+  private readonly unappendedIds = new Set<string>();
   private readonly partialByPath = new Map<string, string>();
 
   // Per-file UTF-8 decoder state. A 64 KiB poll read can end mid-multi-byte
@@ -1015,10 +1021,23 @@ export class SubagentWatcher {
       this.writeCursor(cursorPath, startCursor.bytePos, startCursor.partialLine, file.path);
       return abandonRead();
     }
-    for (const { event } of turns) {
-      if (billed.has(event)) this.appendToParentBuffer(file.parentSessionId, event);
-      this.notifyTurnRead(event);
+    const owed = new Set<string>();
+    const unappended: Array<(typeof turns)[number]> = [];
+    for (const turn of turns) {
+      const id = turn.messageId;
+      if (owed.has(id)) continue;
+      if (!billed.has(turn.event) && !this.unappendedIds.has(id)) continue;
+      owed.add(id);
+      if (this.appendToParentBuffer(file.parentSessionId, turn.event))
+        this.unappendedIds.delete(id);
+      else unappended.push(turn);
     }
+    if (unappended.length > 0) {
+      for (const { messageId } of unappended) this.unappendedIds.add(messageId);
+      this.writeCursor(cursorPath, startCursor.bytePos, startCursor.partialLine, file.path);
+      return abandonRead();
+    }
+    for (const { event } of turns) this.notifyTurnRead(event);
     // Keep the in-memory mirror in sync; when the partial is empty, drop the
     // key entirely so a fully-consumed file leaves no residual entry in the map.
     this.consumedBytesByPath.set(file.path, nextBytePos);
@@ -1214,15 +1233,17 @@ export class SubagentWatcher {
    * Append to the parent's per-session buffer file. Mirrors the path-naming
    * used by `LocalStore` so `HookEventProcessor.poll()` will pick it up.
    */
-  private appendToParentBuffer(parentSessionId: string, event: object): void {
+  private appendToParentBuffer(parentSessionId: string, event: object): boolean {
     const path = join(this.storagePath, `buffer-${parentSessionId}.jsonl`);
     try {
       if (!existsSync(this.storagePath)) {
         mkdirSync(this.storagePath, { recursive: true, mode: 0o700 });
       }
       appendFileSync(path, JSON.stringify(event) + '\n', { mode: 0o600 });
+      return true;
     } catch (err) {
       this.recordError(err);
+      return false;
     }
   }
 

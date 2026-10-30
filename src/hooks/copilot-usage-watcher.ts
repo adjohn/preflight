@@ -174,6 +174,10 @@ export class CopilotUsageWatcher {
   private readonly ledger: BilledTurnLedger;
 
   private intervalId: ReturnType<typeof setInterval> | null = null;
+  // Response ids the ledger holds for this process but whose buffer append
+  // failed. Their retry is dropped by the ledger as already claimed, so this set
+  // is what lets it through. A crash empties it.
+  private readonly unappendedIds = new Set<string>();
   private readonly partialByPath = new Map<string, string>();
   private readonly decoderByPath = new Map<string, StringDecoder>();
 
@@ -388,9 +392,15 @@ export class CopilotUsageWatcher {
       return;
     }
 
-    for (const parsed of toEmit) {
+    const claimed = new Set(toEmit);
+    const owed = new Set<string>();
+    const failedIds: string[] = [];
+    for (const parsed of records) {
+      if (owed.has(parsed.messageId)) continue;
+      if (!claimed.has(parsed) && !this.unappendedIds.has(parsed.messageId)) continue;
+      owed.add(parsed.messageId);
       const sessionId = parsed.sessionId ?? dirSessionId;
-      this.appendToBuffer(sessionId, {
+      const appended = this.appendToBuffer(sessionId, {
         mode: 'token',
         tool: 'copilot-usage',
         timestamp: parsed.timestampMs,
@@ -417,6 +427,15 @@ export class CopilotUsageWatcher {
         cacheReadTokens: parsed.cachedTokens,
         cacheCreationTokens: 0,
       });
+      if (appended) this.unappendedIds.delete(parsed.messageId);
+      else failedIds.push(parsed.messageId);
+    }
+
+    if (failedIds.length > 0) {
+      for (const id of failedIds) this.unappendedIds.add(id);
+      this.partialByPath.delete(path);
+      this.decoderByPath.delete(path);
+      return;
     }
 
     this.writeCursor(cursorPath, nextBytePos, newPartial);
@@ -508,7 +527,7 @@ export class CopilotUsageWatcher {
   }
 
   /** Append into the session's hook buffer, same path convention as the collector. */
-  private appendToBuffer(sessionId: string, event: object): void {
+  private appendToBuffer(sessionId: string, event: object): boolean {
     try {
       if (!existsSync(this.storagePath)) {
         mkdirSync(this.storagePath, { recursive: true, mode: 0o700 });
@@ -520,8 +539,10 @@ export class CopilotUsageWatcher {
           mode: 0o600,
         },
       );
+      return true;
     } catch (err) {
       this.recordError(err);
+      return false;
     }
   }
 
