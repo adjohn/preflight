@@ -1016,6 +1016,22 @@ describe('registerPendingTools()', () => {
       expect(recorded).toEqual([]);
     });
 
+    it.each(['../sessions/x', 'a'.repeat(129), 'unknown'])(
+      'rejects conversation_id %s, which no session file can be saved under',
+      async (conversationId) => {
+        await connect(true);
+        const { isError, body } = await report({
+          conversation_id: conversationId,
+          input_tokens: 1000,
+          output_tokens: 200,
+          model: 'claude-sonnet-4-6',
+        });
+        expect(isError).toBe(true);
+        expect(body.error).toBe('invalid_conversation_id');
+        expect(recorded).toEqual([]);
+      },
+    );
+
     it('rejects an invalid model name before recording', async () => {
       await connect(true);
       const { isError, body } = await report({
