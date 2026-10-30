@@ -19,6 +19,7 @@ import {
   writePpidBreadcrumb,
 } from './collector-script.js';
 import { CLAUDE_CODE_ENV_SIGNALS } from '../platforms/claude-code-adapter.js';
+import { createDefaultRegistry } from '../platforms/platform-registry.js';
 import { parseToolSpecificFields } from './tool-parsers.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
@@ -244,6 +245,18 @@ function readBufferLines(sessionId?: string): Record<string, unknown>[] {
 }
 
 describe('collector-script', () => {
+  it.each(
+    createDefaultRegistry()
+      .getRegistered()
+      .flatMap((a) => {
+        const field = a.capabilities.hookConversationIdField;
+        return field ? [[a.platformName, field]] : [];
+      }),
+  )('files %s hook events under the conversation field it declares, %s', (_platform, field) => {
+    processHook(makePreToolUse({ session_id: undefined, [field]: 'conv-declared' }));
+    expect(readBufferEvents()[0]?.sessionId).toBe('conv-declared');
+  });
+
   describe('processHook() — PreToolUse', () => {
     it('writes a valid pre event to the buffer', () => {
       processHook(makePreToolUse());
