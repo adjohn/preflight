@@ -586,6 +586,10 @@ export class LocalSessionAggregator {
     }
   }
 
+  costUsd(sessionId: string): number {
+    return this.sessions.get(sessionId)?.costUsd ?? 0;
+  }
+
   /** Distinct working directories seen across all sessions. */
   cwds(): string[] {
     const out = new Set<string>(this.gitTargetDirs);

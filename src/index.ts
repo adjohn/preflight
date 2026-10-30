@@ -3252,10 +3252,25 @@ async function main(): Promise<void> {
           // A Claude Code session with no hooks never resolves, so this is
           // where the opt-in install has to work. Other stdio clients have no
           // Claude Code hooks to install or report missing.
-          ...(createDefaultRegistry().getActive() instanceof ClaudeCodeAdapter && {
-            hooksInstalledFn: () => areHooksInstalledAtAnyScope(),
-            headlessInstaller: buildHeadlessInstaller(),
-          }),
+          ...(createDefaultRegistry().getActive() instanceof ClaudeCodeAdapter
+            ? {
+                hooksInstalledFn: () => areHooksInstalledAtAnyScope(),
+                headlessInstaller: buildHeadlessInstaller(),
+              }
+            : {
+                recordConversationTokens: (conversationId, usage, model) => {
+                  const { totalUsd } = costTracker.priceUsage(usage, model);
+                  localSessionAggregator.recordTokenUsage(conversationId, {
+                    ...usage,
+                    costUsd: totalUsd,
+                    model,
+                  });
+                  return {
+                    costUsd: totalUsd,
+                    conversationTotalCostUsd: localSessionAggregator.costUsd(conversationId),
+                  };
+                },
+              }),
         });
         logger.info('Dashboard started early; awaiting session_id resolution (breadcrumb poll)');
 

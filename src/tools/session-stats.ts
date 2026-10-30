@@ -34,7 +34,12 @@ import type { CollaborationProfiler } from '../metrics/collaboration-profile.js'
 import type { ClaudeMdTracker } from '../metrics/claudemd-tracker.js';
 import type { CostPerOutcomeAnalyzer } from '../metrics/cost-per-outcome.js';
 import type { RecommendationEngine } from '../metrics/recommendation-engine.js';
-import { registerCostTools } from './cost-tools.js';
+import {
+  CONVERSATION_REPORT_TOKENS_TOOL,
+  handleReportConversationTokens,
+  registerCostTools,
+  type ConversationTokenRecorder,
+} from './cost-tools.js';
 import { registerWorkflowTools } from './workflow-tools.js';
 import type { FeedbackCollector } from './workflow-tools.js';
 import { registerCrossSessionTools } from './cross-session-tools.js';
@@ -69,6 +74,7 @@ import {
   buildToolSet,
   mergeToolSets,
   type RegisteredToolSet,
+  type ToolDefinition,
 } from './tool-registry.js';
 
 // ---------------------------------------------------------------------------
@@ -618,13 +624,12 @@ export function registerPendingTools(
     configSummary?: ConfigSummary;
     hooksInstalledFn?: () => boolean;
     headlessInstaller?: () => import('../install/headless-install.js').HeadlessInstallResult;
+    recordConversationTokens?: ConversationTokenRecorder;
   },
 ): void {
-  const tools: Array<typeof HEALTH_TOOL | typeof INSTALL_HOOKS_TOOL> = [
-    HEALTH_TOOL,
-    INSTALL_HOOKS_TOOL,
-  ];
+  const tools: ToolDefinition[] = [HEALTH_TOOL, INSTALL_HOOKS_TOOL];
   if (options.configSummary) tools.push(CONFIG_TOOL);
+  if (options.recordConversationTokens) tools.push(CONVERSATION_REPORT_TOKENS_TOOL);
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -642,6 +647,12 @@ export function registerPendingTools(
     }
     if (name === 'nr_observe_install_hooks') {
       return handleInstallHooks(options.headlessInstaller);
+    }
+    if (name === CONVERSATION_REPORT_TOKENS_TOOL.name && options.recordConversationTokens) {
+      return handleReportConversationTokens(
+        options.recordConversationTokens,
+        request.params.arguments,
+      );
     }
     return {
       content: [

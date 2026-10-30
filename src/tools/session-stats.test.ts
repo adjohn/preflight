@@ -923,6 +923,127 @@ describe('registerPendingTools()', () => {
     await server.close();
   });
 
+  describe('nr_observe_report_tokens while pending', () => {
+    let client: Client;
+    let server: ReturnType<typeof createServer>;
+    let recorded: Array<{ conversationId: string; model: string; inputTokens: number }>;
+
+    afterEach(async () => {
+      await client?.close();
+      await server?.close();
+    });
+
+    async function connect(withRecorder: boolean) {
+      const { registerPendingTools } = await import('./session-stats.js');
+      recorded = [];
+      server = createServer({ name: 'pending-report', version: '0.0.1' });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      client = new Client({ name: 'test', version: '1.0.0' });
+      registerPendingTools(server.server, {
+        sessionStartMs: Date.now(),
+        developer: 'tester',
+        ...(withRecorder && {
+          recordConversationTokens: (conversationId, usage, model) => {
+            recorded.push({ conversationId, model, inputTokens: usage.inputTokens });
+            return { costUsd: 0.25, conversationTotalCostUsd: 0.75 };
+          },
+        }),
+      });
+      await Promise.all([server.server.connect(st), client.connect(ct)]);
+    }
+
+    async function report(args: Record<string, unknown>) {
+      const result = await client.callTool({ name: 'nr_observe_report_tokens', arguments: args });
+      return {
+        isError: result.isError,
+        body: JSON.parse((result.content as Array<{ text: string }>)[0].text),
+      };
+    }
+
+    it('is listed with a required conversation_id when the engine can record per conversation', async () => {
+      await connect(true);
+      const tool = (await client.listTools()).tools.find(
+        (t) => t.name === 'nr_observe_report_tokens',
+      );
+      expect(tool?.inputSchema.required).toContain('conversation_id');
+      expect(tool?.description).toContain('conversation_id');
+    });
+
+    it('records the report against the named conversation', async () => {
+      await connect(true);
+      const { isError, body } = await report({
+        conversation_id: 'conv-A',
+        input_tokens: 1000,
+        output_tokens: 200,
+        model: 'claude-sonnet-4-6',
+      });
+      expect(isError).toBeUndefined();
+      expect(recorded).toEqual([
+        { conversationId: 'conv-A', model: 'claude-sonnet-4-6', inputTokens: 1000 },
+      ]);
+      expect(body).toEqual({
+        recorded: true,
+        conversation_id: 'conv-A',
+        cost_this_report_usd: 0.25,
+        conversation_total_cost_usd: 0.75,
+        model: 'claude-sonnet-4-6',
+      });
+    });
+
+    it('rejects a report that names no conversation, naming the parameter', async () => {
+      await connect(true);
+      const { isError, body } = await report({
+        input_tokens: 1000,
+        output_tokens: 200,
+        model: 'claude-sonnet-4-6',
+      });
+      expect(isError).toBe(true);
+      expect(body.error).toBe('conversation_id_required');
+      expect(body.message).toContain('conversation_id');
+      expect(recorded).toEqual([]);
+    });
+
+    it("rejects the engine's own provisional id as a conversation", async () => {
+      await connect(true);
+      const { isError, body } = await report({
+        conversation_id: 'pending-1700000000000',
+        input_tokens: 1000,
+        output_tokens: 200,
+        model: 'claude-sonnet-4-6',
+      });
+      expect(isError).toBe(true);
+      expect(body.error).toBe('conversation_id_required');
+      expect(recorded).toEqual([]);
+    });
+
+    it('rejects an invalid model name before recording', async () => {
+      await connect(true);
+      const { isError, body } = await report({
+        conversation_id: 'conv-A',
+        input_tokens: 1,
+        output_tokens: 1,
+        model: 'bad model!',
+      });
+      expect(isError).toBe(true);
+      expect(body.error).toBe('invalid_model_name');
+      expect(recorded).toEqual([]);
+    });
+
+    it('stays unlisted and unresolved without a conversation recorder', async () => {
+      await connect(false);
+      const names = (await client.listTools()).tools.map((t) => t.name);
+      expect(names).not.toContain('nr_observe_report_tokens');
+      const { isError, body } = await report({
+        conversation_id: 'conv-A',
+        input_tokens: 1,
+        output_tokens: 1,
+        model: 'claude-sonnet-4-6',
+      });
+      expect(isError).toBe(true);
+      expect(body.error).toBe('session_id not yet resolved');
+    });
+  });
+
   describe('nr_observe_install_hooks while pending', () => {
     let settingsDir: string;
     let client: Client;

@@ -26,7 +26,9 @@ import {
   requireAvailable,
   buildToolSet,
   type RegisteredToolSet,
+  type ToolCallResult,
 } from './tool-registry.js';
+import { isSyntheticSessionId } from '../hooks/session-resolver.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -75,17 +77,30 @@ export const REPORT_TOKENS_TOOL = {
 // Handlers
 // ---------------------------------------------------------------------------
 
+const TokenReportSchema = z.object({
+  model: z.string().min(1),
+  input_tokens: z.number().nonnegative(),
+  output_tokens: z.number().nonnegative(),
+  cache_creation_tokens: z.number().nonnegative().optional(),
+  cache_read_tokens: z.number().nonnegative().optional(),
+  thinking_tokens: z.number().nonnegative().optional(),
+});
+
 const MAX_TOKENS = 10_000_000;
 const clampToken = (v: number): number => {
   if (!Number.isFinite(v)) return 0;
   return Math.min(Math.max(0, Math.floor(v)), MAX_TOKENS);
 };
 
-export function handleReportTokens(
-  costTracker: CostTracker,
-  args: TokenReport,
-  modelUsageTracker?: ModelUsageTracker,
-) {
+function jsonError(error: string, message: string): ToolCallResult {
+  return { content: [{ type: 'text', text: JSON.stringify({ error, message }) }], isError: true };
+}
+
+type ParsedTokenReport =
+  | { readonly ok: true; readonly usage: TokenUsage; readonly model: string }
+  | { readonly ok: false; readonly result: ToolCallResult };
+
+function parseTokenReport(args: TokenReport): ParsedTokenReport {
   const inputTokens = clampToken(args.input_tokens);
   const outputTokens = clampToken(args.output_tokens);
   const thinkingTokens = clampToken(args.thinking_tokens ?? 0);
@@ -95,31 +110,40 @@ export function handleReportTokens(
 
   if (!/^[a-zA-Z0-9._:-]+$/.test(safeModel)) {
     return {
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify({
-            error: 'invalid_model_name',
-            message: `Model name contains invalid characters: ${safeModel}. Allowed: alphanumerics, dots, underscores, colons, hyphens.`,
-          }),
-        },
-      ],
-      isError: true,
+      ok: false,
+      result: jsonError(
+        'invalid_model_name',
+        `Model name contains invalid characters: ${safeModel}. Allowed: alphanumerics, dots, underscores, colons, hyphens.`,
+      ),
     };
   }
 
-  const usage: TokenUsage = {
-    inputTokens,
-    outputTokens,
-    thinkingTokens,
-    cacheReadTokens,
-    cacheCreationTokens,
-    // Cache tokens are billed separately and excluded from totalTokens to match Anthropic dashboard conventions
-    totalTokens: inputTokens + outputTokens + thinkingTokens,
+  return {
+    ok: true,
+    model: safeModel,
+    usage: {
+      inputTokens,
+      outputTokens,
+      thinkingTokens,
+      cacheReadTokens,
+      cacheCreationTokens,
+      // Cache tokens are billed separately and excluded from totalTokens to match Anthropic dashboard conventions
+      totalTokens: inputTokens + outputTokens + thinkingTokens,
+    },
   };
+}
 
-  const breakdown = costTracker.recordTokenUsage(usage, safeModel);
-  modelUsageTracker?.recordUsage(safeModel, usage, breakdown.totalUsd);
+export function handleReportTokens(
+  costTracker: CostTracker,
+  args: TokenReport,
+  modelUsageTracker?: ModelUsageTracker,
+) {
+  const parsed = parseTokenReport(args);
+  if (!parsed.ok) return parsed.result;
+  const { usage, model } = parsed;
+
+  const breakdown = costTracker.recordTokenUsage(usage, model);
+  modelUsageTracker?.recordUsage(model, usage, breakdown.totalUsd);
   const metrics = costTracker.getMetrics();
 
   return {
@@ -131,7 +155,83 @@ export function handleReportTokens(
             recorded: true,
             cost_this_report_usd: breakdown.totalUsd,
             session_total_cost_usd: metrics.sessionTotalCostUsd,
-            model: safeModel,
+            model,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  };
+}
+
+export const CONVERSATION_REPORT_TOKENS_TOOL = {
+  ...REPORT_TOKENS_TOOL,
+  description:
+    'Report token usage for cost tracking. This server serves several conversations, so pass ' +
+    "conversation_id, the id of the chat these tokens belong to (Cursor's conversation_id, " +
+    "Windsurf's trajectory_id, or Antigravity's conversationId). " +
+    'Provide the model name and token counts from the most recent API response.',
+  inputSchema: {
+    ...REPORT_TOKENS_TOOL.inputSchema,
+    properties: {
+      conversation_id: {
+        type: 'string',
+        description: 'Id of the conversation these tokens belong to',
+      },
+      ...REPORT_TOKENS_TOOL.inputSchema.properties,
+    },
+    required: ['conversation_id', ...REPORT_TOKENS_TOOL.inputSchema.required],
+  },
+};
+
+export type ConversationTokenRecorder = (
+  conversationId: string,
+  usage: TokenUsage,
+  model: string,
+) => { readonly costUsd: number; readonly conversationTotalCostUsd: number };
+
+const ConversationTokenReportSchema = TokenReportSchema.extend({
+  conversation_id: z.string().max(256).optional(),
+});
+
+export function handleReportConversationTokens(
+  recordConversationTokens: ConversationTokenRecorder,
+  args: Record<string, unknown> | undefined,
+): ToolCallResult {
+  const report = ConversationTokenReportSchema.safeParse(args);
+  if (!report.success) {
+    return errorResult(
+      `Invalid token report: ${report.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')}`,
+    );
+  }
+  const conversationId = report.data.conversation_id;
+  if (!conversationId || isSyntheticSessionId(conversationId)) {
+    return jsonError(
+      'conversation_id_required',
+      'Pass conversation_id, the id of the conversation these tokens belong to. ' +
+        'This server serves several conversations and cannot tell which one reported.',
+    );
+  }
+  const parsed = parseTokenReport(report.data);
+  if (!parsed.ok) return parsed.result;
+
+  const { costUsd, conversationTotalCostUsd } = recordConversationTokens(
+    conversationId,
+    parsed.usage,
+    parsed.model,
+  );
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: JSON.stringify(
+          {
+            recorded: true,
+            conversation_id: conversationId,
+            cost_this_report_usd: costUsd,
+            conversation_total_cost_usd: conversationTotalCostUsd,
+            model: parsed.model,
           },
           null,
           2,
@@ -345,15 +445,6 @@ export function handleGetPromptCacheHealth(costTracker: CostTracker): {
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
-
-const TokenReportSchema = z.object({
-  model: z.string().min(1),
-  input_tokens: z.number().nonnegative(),
-  output_tokens: z.number().nonnegative(),
-  cache_creation_tokens: z.number().nonnegative().optional(),
-  cache_read_tokens: z.number().nonnegative().optional(),
-  thinking_tokens: z.number().nonnegative().optional(),
-});
 
 export interface CostToolsDeps {
   costTracker?: CostTracker;

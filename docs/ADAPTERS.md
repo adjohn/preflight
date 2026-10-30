@@ -67,6 +67,8 @@ Detection order matters: `createDefaultRegistry()` (`src/platforms/platform-regi
 
 **Known gaps:** Cursor has no `afterReadFile` event (`beforeReadFile` is emitted as a completed read directly) and no `beforeFileEdit` event (`afterFileEdit` is post-only). `afterShellExecution`/`afterMCPExecution` have no documented failure-outcome field, so success is reported unconditionally `true`.
 
+**Token self-report:** one Preflight engine serves every chat in a Cursor window and never resolves a session of its own, so its `nr_observe_report_tokens` requires `conversation_id`, the chat's `conversation_id` hook field, and adds the report to that conversation's saved session. See [`nr_observe_report_tokens`](./COMMANDS_TABLE.md#nr_observe_report_tokens).
+
 **Setup:**
 
 1. Register the Preflight MCP server for `nr_observe_*` tools: Cursor Settings → MCP → add server, command `npx preflight --stdio`, env `NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_ACCOUNT_ID`, `NR_AI_MODE=cloud`
@@ -98,6 +100,8 @@ Detection order matters: `createDefaultRegistry()` (`src/platforms/platform-regi
 **Event vocabulary handled by `collector-script.ts`:** `pre_read_code`, `post_read_code`, `pre_write_code`, `post_write_code`, `pre_run_command`, `post_run_command`. Windsurf sends the event name as `agent_action_name`, not `hook_event_name` — the collector checks both.
 
 **Known gaps:** `post_read_code`/`post_run_command` report success `true` unconditionally, the same gap as Cursor's `afterShellExecution`. `pre_write_code` maps to `'Edit'` (it's typically a partial edit, not a full-file write).
+
+**Token self-report:** as for Cursor, `nr_observe_report_tokens` requires `conversation_id`, here the chat's `trajectory_id`.
 
 **Setup:**
 
@@ -569,6 +573,7 @@ Antigravity's hook payloads have **no field naming the event type at all**, and 
 - **`PostToolUse` carries no output content/exit-code field at all** (only `toolCall`/`stepIdx`/`error`) — `toolOutput` metadata (e.g. Bash exit codes) can never be populated for Antigravity, a platform limitation, not an implementation gap.
 - **The Antigravity SDK (Python, for building custom agents on Antigravity's own runtime) is out of scope** — it documents MCP support but no interactive hooks surface of its own.
 - **No confirmed ambient env var** — detection is explicit-opt-in only (`MCP_CLIENT=antigravity`).
+- **Token self-report needs the conversation.** As for Cursor, `nr_observe_report_tokens` requires `conversation_id`, here the chat's `conversationId`.
 
 **Setup:**
 

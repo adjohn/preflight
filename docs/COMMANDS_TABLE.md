@@ -201,6 +201,7 @@ Self-report token usage for cost tracking. Called by Claude Code to report its o
 
 | Parameter               | Type   | Required | Description                                         |
 | ----------------------- | ------ | -------- | --------------------------------------------------- |
+| `conversation_id`       | string | Pending  | Id of the conversation the tokens belong to         |
 | `input_tokens`          | number | Yes      | Input/prompt token count                            |
 | `output_tokens`         | number | Yes      | Output/completion token count                       |
 | `model`                 | string | Yes      | Model identifier (e.g., `claude-sonnet-4-20250514`) |
@@ -228,6 +229,8 @@ Self-report token usage for cost tracking. Called by Claude Code to report its o
 3. Cost breakdown: `inputCost = inputTokens * inputPricePerToken`, similarly for output, thinking, cache read, and cache creation tokens
 4. Accumulates into session total and per-model totals
 5. Returns both the cost for this specific report and the running session total
+
+**Before the engine has a session:** a Cursor, Windsurf, or Antigravity engine serves every chat in its window and never resolves a session of its own. It still lists this tool, with `conversation_id` required (`Pending` above): Cursor's `conversation_id`, Windsurf's `trajectory_id`, or Antigravity's `conversationId`. The report is priced the same way and added to that conversation's saved session, and the reply carries `conversation_id` and `conversation_total_cost_usd` in place of `session_total_cost_usd`. A report without `conversation_id` fails with `conversation_id_required`. Earlier size-based estimates for the conversation stay in place. A Claude Code engine whose session has not resolved yet does not list the tool.
 
 **Requires:** `CostTracker`
 

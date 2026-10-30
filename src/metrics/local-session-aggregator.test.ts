@@ -234,6 +234,15 @@ describe('LocalSessionAggregator', () => {
     expect(summariesOf(agg)).toEqual([]);
   });
 
+  it("reports one session's running cost without touching another's", () => {
+    const agg = new LocalSessionAggregator();
+    agg.recordTokenUsage(REAL_ID, { costUsd: 0.5 });
+    agg.recordTokenUsage(REAL_ID, { costUsd: 0.25 });
+    agg.recordTokenUsage('other-conversation', { costUsd: 9 });
+    expect(agg.costUsd(REAL_ID)).toBe(0.75);
+    expect(agg.costUsd('never-seen')).toBe(0);
+  });
+
   it('reports cost as null rather than zero when nothing was spent', () => {
     const agg = new LocalSessionAggregator();
     agg.recordToolCall({ sessionId: REAL_ID, toolName: 'read_file', timestamp: 1 });
