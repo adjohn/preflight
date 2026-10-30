@@ -1202,90 +1202,106 @@ describe('stdio integration', () => {
     }, 30000);
   });
 
-  it("saves a Cursor agent's self-reported tokens to its own conversation while the engine is pending", async () => {
-    const { spawnSync } = await import('node:child_process');
-    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
-    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
+  describe('nr_observe_report_tokens while the engine is pending', () => {
+    type Client = import('@modelcontextprotocol/sdk/client/index.js').Client;
 
-    const distDir = resolve(__dirname, '..', 'dist');
-    const tmpStoragePath = mkdtempSync(join(tmpdir(), 'nr-pending-report-storage-'));
-    const tmpHome = mkdtempSync(join(tmpdir(), 'nr-pending-report-home-'));
-    const env = { ...process.env };
-    for (const name of Object.keys(env)) {
-      if (name.startsWith('CLAUDE') || name.startsWith('CURSOR')) delete env[name];
-    }
-    const serverEnv = {
-      ...env,
-      HOME: tmpHome,
-      MCP_CLIENT: 'cursor',
-      NR_AI_DASHBOARD_PORT: '0',
-      NR_AI_MODE: 'local',
-      NEW_RELIC_AI_MCP_STORAGE_PATH: tmpStoragePath,
-      NR_AI_SESSION_PERSIST_INTERVAL_MS: '200',
-    } as Record<string, string>;
-    const hook = (payload: Record<string, unknown>) =>
-      spawnSync('node', [resolve(distDir, 'hooks', 'collector-script.js')], {
-        input: JSON.stringify(payload),
-        env: { ...env, HOME: tmpHome, NEW_RELIC_AI_MCP_STORAGE_PATH: tmpStoragePath },
-        cwd: tmpStoragePath,
-      });
-    const sessionFile = (conversationId: string): Record<string, unknown> | null => {
-      const dir = resolve(tmpStoragePath, 'sessions');
-      const name = existsSync(dir)
-        ? readdirSync(dir).find((f) => f.includes(conversationId))
-        : undefined;
-      return name ? JSON.parse(readFileSync(resolve(dir, name), 'utf-8')) : null;
-    };
+    async function withPendingEngine(
+      mcpClient: string,
+      run: (
+        client: Client,
+        hook: (payload: Record<string, unknown>) => void,
+        sessionFile: (conversationId: string) => Record<string, unknown> | null,
+      ) => Promise<void>,
+    ): Promise<void> {
+      const { spawnSync } = await import('node:child_process');
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
 
-    const client = new Client({ name: 'cursor', version: '1.0.0' });
-    try {
-      await client.connect(
-        new StdioClientTransport({
-          command: 'node',
-          args: [resolve(distDir, 'index.js'), '--stdio'],
-          env: serverEnv,
-        }),
-      );
-      for (const conversation of ['conv-reported', 'conv-silent']) {
-        hook({
-          hook_event_name: 'beforeShellExecution',
-          conversation_id: conversation,
-          command: 'ls',
+      const distDir = resolve(__dirname, '..', 'dist');
+      const tmpStoragePath = mkdtempSync(join(tmpdir(), 'nr-pending-report-storage-'));
+      const tmpHome = mkdtempSync(join(tmpdir(), 'nr-pending-report-home-'));
+      const env = { ...process.env };
+      for (const name of Object.keys(env)) {
+        if (name.startsWith('CLAUDE') || name.startsWith('CURSOR')) delete env[name];
+      }
+      const hook = (payload: Record<string, unknown>) => {
+        spawnSync('node', [resolve(distDir, 'hooks', 'collector-script.js')], {
+          input: JSON.stringify(payload),
+          env: { ...env, HOME: tmpHome, NEW_RELIC_AI_MCP_STORAGE_PATH: tmpStoragePath },
+          cwd: tmpStoragePath,
         });
-        hook({ hook_event_name: 'afterShellExecution', conversation_id: conversation });
+      };
+      const sessionFile = (conversationId: string): Record<string, unknown> | null => {
+        const dir = resolve(tmpStoragePath, 'sessions');
+        const name = existsSync(dir)
+          ? readdirSync(dir).find((f) => f.includes(conversationId))
+          : undefined;
+        return name ? JSON.parse(readFileSync(resolve(dir, name), 'utf-8')) : null;
+      };
+
+      const client = new Client({ name: mcpClient, version: '1.0.0' });
+      try {
+        await client.connect(
+          new StdioClientTransport({
+            command: 'node',
+            args: [resolve(distDir, 'index.js'), '--stdio'],
+            env: {
+              ...env,
+              HOME: tmpHome,
+              MCP_CLIENT: mcpClient,
+              NR_AI_DASHBOARD_PORT: '0',
+              NR_AI_MODE: 'local',
+              NEW_RELIC_AI_MCP_STORAGE_PATH: tmpStoragePath,
+              NR_AI_SESSION_PERSIST_INTERVAL_MS: '200',
+            } as Record<string, string>,
+          }),
+        );
+        await run(client, hook, sessionFile);
+      } finally {
+        await client.close();
+        rmSync(tmpStoragePath, { recursive: true, force: true });
+        rmSync(tmpHome, { recursive: true, force: true });
       }
-
-      const result = await client.callTool({
-        name: 'nr_observe_report_tokens',
-        arguments: {
-          conversation_id: 'conv-reported',
-          input_tokens: 1000,
-          output_tokens: 200,
-          model: 'claude-sonnet-4-6',
-        },
-      });
-      expect(result.isError).toBeUndefined();
-
-      let reported: Record<string, unknown> | null = null;
-      let silent: Record<string, unknown> | null = null;
-      for (let i = 0; i < 40 && !(reported?.tokensInput === 1000 && silent); i++) {
-        await new Promise((r) => setTimeout(r, 250));
-        reported = sessionFile('conv-reported');
-        silent = sessionFile('conv-silent');
-      }
-      expect(reported?.tokensInput).toBe(1000);
-      expect(reported?.tokensOutput).toBe(200);
-      expect(reported?.estimatedCostUsd).toBeGreaterThan(0);
-      expect(silent?.toolCallCount).toBe(1);
-      expect(silent?.estimatedCostUsd).toBeNull();
-      expect(silent?.tokensInput).toBe(0);
-
-      await client.close();
-    } finally {
-      rmSync(tmpStoragePath, { recursive: true, force: true });
-      rmSync(tmpHome, { recursive: true, force: true });
     }
-  }, 30000);
+
+    it("saves a Cursor agent's self-reported tokens to its own conversation", async () => {
+      await withPendingEngine('cursor', async (client, hook, sessionFile) => {
+        for (const conversation of ['conv-reported', 'conv-silent']) {
+          hook({
+            hook_event_name: 'beforeShellExecution',
+            conversation_id: conversation,
+            command: 'ls',
+          });
+          hook({ hook_event_name: 'afterShellExecution', conversation_id: conversation });
+        }
+
+        const result = await client.callTool({
+          name: 'nr_observe_report_tokens',
+          arguments: {
+            conversation_id: 'conv-reported',
+            input_tokens: 1000,
+            output_tokens: 200,
+            model: 'claude-sonnet-4-6',
+          },
+        });
+        expect(result.isError).toBeUndefined();
+
+        let reported: Record<string, unknown> | null = null;
+        let silent: Record<string, unknown> | null = null;
+        for (let i = 0; i < 40 && !(reported?.tokensInput === 1000 && silent); i++) {
+          await new Promise((r) => setTimeout(r, 250));
+          reported = sessionFile('conv-reported');
+          silent = sessionFile('conv-silent');
+        }
+        expect(reported?.tokensInput).toBe(1000);
+        expect(reported?.tokensOutput).toBe(200);
+        expect(reported?.estimatedCostUsd).toBeGreaterThan(0);
+        expect(silent?.toolCallCount).toBe(1);
+        expect(silent?.estimatedCostUsd).toBeNull();
+        expect(silent?.tokensInput).toBe(0);
+      });
+    }, 30000);
+  });
 
   it('self-corrects when the pending path resolves via the cwd fallback and a differing PPID breadcrumb appears later', async () => {
     // The pending -> async poller flow (not the eager synchronous one) can
