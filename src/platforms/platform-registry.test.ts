@@ -21,7 +21,12 @@ import { KiroAdapter } from './kiro-adapter.js';
 import { OpencodeAdapter } from './opencode-adapter.js';
 import { PiAdapter } from './pi-adapter.js';
 import { PlatformRegistry, createDefaultRegistry } from './platform-registry.js';
-import type { NormalizedToolCall, PlatformAdapter, PlatformSessionMetadata } from './types.js';
+import {
+  UNATTRIBUTED_BREADCRUMB_WRITER,
+  type NormalizedToolCall,
+  type PlatformAdapter,
+  type PlatformSessionMetadata,
+} from './types.js';
 import { WindsurfAdapter } from './windsurf-adapter.js';
 import { ZedAdapter } from './zed-adapter.js';
 
@@ -575,6 +580,35 @@ describe('capabilities', () => {
       expect(adapter.capabilities).toBeDefined();
       expect(Array.isArray(adapter.capabilities.instructionFilePaths)).toBe(true);
     }
+  });
+
+  it('names the breadcrumb writers each engine may adopt a session id from', () => {
+    const writers = Object.fromEntries(
+      createDefaultRegistry()
+        .getRegistered()
+        .map((a) => [a.platformName, a.capabilities.sessionBreadcrumbWriters]),
+    );
+    expect(writers).toEqual({
+      'claude-code': ['claude-code'],
+      cursor: [],
+      windsurf: [],
+      copilot: ['copilot'],
+      'copilot-app': ['copilot-app'],
+      'copilot-sdk': ['copilot-sdk', 'copilot'],
+      zed: [],
+      continue: [],
+      'amazon-q': [],
+      kiro: ['kiro'],
+      droid: ['droid', UNATTRIBUTED_BREADCRUMB_WRITER],
+      'gemini-cli': ['gemini-cli', UNATTRIBUTED_BREADCRUMB_WRITER],
+      cline: [],
+      codex: ['codex', UNATTRIBUTED_BREADCRUMB_WRITER],
+      opencode: ['opencode', UNATTRIBUTED_BREADCRUMB_WRITER],
+      kilocode: ['kilocode', UNATTRIBUTED_BREADCRUMB_WRITER],
+      pi: [],
+      antigravity: [],
+      'generic-mcp': [],
+    });
   });
 
   it('claude-code declares CLAUDE.md and .claude/ as instruction file paths', () => {
