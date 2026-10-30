@@ -85,12 +85,6 @@ export interface PlatformCapabilities {
   readonly hookConversationIdField?: 'conversation_id' | 'trajectory_id' | 'conversationId';
 }
 
-/**
- * Whether a pending engine on this platform can save a self-report to the
- * conversation the agent names. Its hooks must give each conversation its own
- * session file, and must never write a breadcrumb, or the engine would later
- * resolve to one session and drop what it recorded while pending.
- */
 export function savesConversationSelfReports(adapter: PlatformAdapter): boolean {
   return (
     adapter.visibilityLevel === 'full-hooks' &&

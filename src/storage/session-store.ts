@@ -717,7 +717,6 @@ export function mergeSummaries(
   };
 }
 
-/** Whether a session file can be saved under this id: it becomes part of the file name. */
 export function isSavableSessionId(sessionId: string): boolean {
   return /^[A-Za-z0-9_-]{1,128}$/.test(sessionId) && sessionId !== 'unknown';
 }
