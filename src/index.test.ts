@@ -1301,6 +1301,25 @@ describe('stdio integration', () => {
         expect(silent?.tokensInput).toBe(0);
       });
     }, 30000);
+
+    it.each([
+      ['cursor', true],
+      ['windsurf', true],
+      ['antigravity', true],
+      ['amazon-q', false],
+      ['kiro', false],
+      ['zed', false],
+      ['claude-code', false],
+    ])(
+      'lists the tool for a %s engine only where a report is saved: %s',
+      async (mcpClient, listed) => {
+        await withPendingEngine(mcpClient, async (client) => {
+          const names = (await client.listTools()).tools.map((t) => t.name);
+          expect(names.includes('nr_observe_report_tokens')).toBe(listed);
+        });
+      },
+      30000,
+    );
   });
 
   it('self-corrects when the pending path resolves via the cwd fallback and a differing PPID breadcrumb appears later', async () => {
