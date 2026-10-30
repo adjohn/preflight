@@ -4,6 +4,8 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
+  rmdirSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -242,5 +244,56 @@ describe('subagent cost across restart (repro)', () => {
     pump(b);
 
     expect(costB.getMetrics().subagentCostUsd).toBeCloseTo(countedUsd, 10);
+  });
+
+  function bufferedMessageIds(): string[] {
+    try {
+      return readFileSync(join(storagePath, `buffer-${SESSION_ID}.jsonl`), 'utf-8')
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => (JSON.parse(l) as { messageId?: string }).messageId)
+        .filter((id): id is string => id !== undefined);
+    } catch {
+      return [];
+    }
+  }
+
+  function makeBareWatcher(): SubagentWatcher {
+    return new SubagentWatcher({
+      storagePath,
+      projectsDir,
+      parentSessionId: SESSION_ID,
+      pollIntervalMs: 10,
+    });
+  }
+
+  it('a read whose buffer append fails is retried and each turn is emitted once', () => {
+    writeFileSync(oldAgentPath, subagentLine('msg_1') + '\n' + subagentLine('msg_2') + '\n');
+    setMtime(oldAgentPath, 100);
+    const bufferPath = join(storagePath, `buffer-${SESSION_ID}.jsonl`);
+    mkdirSync(bufferPath);
+    const watcher = makeBareWatcher();
+
+    watcher.poll();
+    expect(bufferedMessageIds()).toEqual([]);
+
+    rmdirSync(bufferPath);
+    watcher.poll();
+    watcher.poll();
+
+    expect(bufferedMessageIds().sort()).toEqual(['msg_1', 'msg_2']);
+  });
+
+  it('a restart after a successful append does not emit the turns again', () => {
+    writeFileSync(oldAgentPath, subagentLine('msg_1') + '\n' + subagentLine('msg_2') + '\n');
+    setMtime(oldAgentPath, 100);
+    makeBareWatcher().poll();
+    expect(bufferedMessageIds().sort()).toEqual(['msg_1', 'msg_2']);
+
+    const cursorFiles = readdirSync(storagePath).filter((n) => n.startsWith('.subagent-pos-'));
+    writeFileSync(join(storagePath, cursorFiles[0]!), '');
+    makeBareWatcher().poll();
+
+    expect(bufferedMessageIds().sort()).toEqual(['msg_1', 'msg_2']);
   });
 });

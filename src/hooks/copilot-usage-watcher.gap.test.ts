@@ -92,4 +92,29 @@ describe('CopilotUsageWatcher durability gaps', () => {
 
     expect(emittedMessageIds()).toEqual(['resp_1', 'resp_2']);
   });
+
+  it('retries a read whose buffer append failed and emits each record once', () => {
+    writeFileSync(logPath, llmRequestLine('resp_1') + '\n' + llmRequestLine('resp_2') + '\n');
+    const bufPath = join(storagePath, `buffer-${SESSION_ID}.jsonl`);
+    mkdirSync(bufPath);
+    const watcher = makeWatcher();
+
+    watcher.poll();
+    rmSync(bufPath, { recursive: true });
+    watcher.poll();
+    watcher.poll();
+
+    expect(emittedMessageIds()).toEqual(['resp_1', 'resp_2']);
+  });
+
+  it('does not re-emit after a restart once the append succeeded', () => {
+    writeFileSync(logPath, llmRequestLine('resp_1') + '\n' + llmRequestLine('resp_2') + '\n');
+    makeWatcher().poll();
+    expect(emittedMessageIds()).toEqual(['resp_1', 'resp_2']);
+
+    writeFileSync(cursorPath, '');
+    makeWatcher().poll();
+
+    expect(emittedMessageIds()).toEqual(['resp_1', 'resp_2']);
+  });
 });
