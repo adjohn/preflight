@@ -29,6 +29,7 @@ import {
   type ToolCallResult,
 } from './tool-registry.js';
 import { isSyntheticSessionId } from '../hooks/session-resolver.js';
+import { isSavableSessionId } from '../storage/session-store.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -192,7 +193,7 @@ export type ConversationTokenRecorder = (
 ) => { readonly costUsd: number; readonly conversationTotalCostUsd: number };
 
 const ConversationTokenReportSchema = TokenReportSchema.extend({
-  conversation_id: z.string().max(256).optional(),
+  conversation_id: z.string().optional(),
 });
 
 export function handleReportConversationTokens(
@@ -211,6 +212,12 @@ export function handleReportConversationTokens(
       'conversation_id_required',
       'Pass conversation_id, the id of the conversation these tokens belong to. ' +
         'This server serves several conversations and cannot tell which one reported.',
+    );
+  }
+  if (!isSavableSessionId(conversationId)) {
+    return jsonError(
+      'invalid_conversation_id',
+      'conversation_id must be 1-128 letters, digits, underscores or hyphens, and not "unknown".',
     );
   }
   const parsed = parseTokenReport(report.data);
