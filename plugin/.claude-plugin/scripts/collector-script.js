@@ -135,6 +135,25 @@ function hashInput(input) {
   const str = JSON.stringify(input) ?? "";
   return createHash("sha256").update(str).digest("hex").slice(0, 16);
 }
+function canonicalJson(value) {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value === null || typeof value !== "object") return value;
+  const record = value;
+  return Object.fromEntries(
+    Object.keys(record).sort().map((key) => [key, canonicalJson(record[key])])
+  );
+}
+function mcpArgumentsHash(input) {
+  let value = input;
+  if (typeof input === "string") {
+    try {
+      value = JSON.parse(input);
+    } catch {
+      value = input;
+    }
+  }
+  return hashInput(canonicalJson(value));
+}
 function sizeOf(value) {
   if (value === void 0 || value === null) return 0;
   if (typeof value === "string") return value.length;
@@ -612,7 +631,7 @@ function processHook(raw, cliEvent) {
       tool: mcpTool,
       timestamp,
       inputSize: sizeOf(data.tool_input),
-      inputHash: hashInput(data.tool_input)
+      inputHash: mcpArgumentsHash(data.tool_input)
     };
   } else if (eventName === "aftermcpexecution") {
     const mcpTool = data.tool_name ?? "unknown";
@@ -705,7 +724,7 @@ function processHook(raw, cliEvent) {
       tool: mcpTool,
       timestamp,
       inputSize: sizeOf(toolInfo.mcp_tool_arguments),
-      inputHash: hashInput(toolInfo.mcp_tool_arguments)
+      inputHash: mcpArgumentsHash(toolInfo.mcp_tool_arguments)
     };
   } else if (eventName === "post_mcp_tool_use") {
     const toolInfo = getWindsurfToolInfo(data);
@@ -887,6 +906,7 @@ export {
   getLinuxAncestorPids,
   getRecordContent,
   hashInput,
+  mcpArgumentsHash,
   processHook,
   readStdinSync,
   redact,

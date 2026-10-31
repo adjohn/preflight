@@ -21,6 +21,7 @@ import {
 } from './collector-script.js';
 import { CLAUDE_CODE_ENV_SIGNALS } from '../platforms/claude-code-adapter.js';
 import { createDefaultRegistry } from '../platforms/platform-registry.js';
+import { savesConversationSelfReports } from '../platforms/types.js';
 import { parseToolSpecificFields } from './tool-parsers.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
@@ -246,17 +247,21 @@ function readBufferLines(sessionId?: string): Record<string, unknown>[] {
 }
 
 describe('collector-script', () => {
-  it.each(
-    createDefaultRegistry()
-      .getRegistered()
-      .flatMap((a) => {
-        const field = a.capabilities.hookConversationIdField;
-        return field ? [[a.platformName, field]] : [];
-      }),
-  )('files %s hook events under the conversation field it declares, %s', (_platform, field) => {
-    processHook(makePreToolUse({ session_id: undefined, [field]: 'conv-declared' }));
-    expect(readBufferEvents()[0]?.sessionId).toBe('conv-declared');
+  const selfReporting = createDefaultRegistry()
+    .getRegistered()
+    .filter(savesConversationSelfReports);
+
+  it('saves pending self-reports only for engines whose hooks key events by conversation', () => {
+    expect(selfReporting.map((a) => a.platformName)).toEqual(['cursor', 'windsurf', 'antigravity']);
   });
+
+  it.each(selfReporting.map((a) => [a.platformName, a.capabilities.hookConversationIdField!]))(
+    'files %s hook events under the conversation field it declares, %s',
+    (_platform, field) => {
+      processHook(makePreToolUse({ session_id: undefined, [field]: 'conv-declared' }));
+      expect(readBufferEvents()[0]?.sessionId).toBe('conv-declared');
+    },
+  );
 
   it.each([
     [

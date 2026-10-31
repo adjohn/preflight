@@ -23,7 +23,6 @@ import { PiAdapter } from './pi-adapter.js';
 import { PlatformRegistry, createDefaultRegistry } from './platform-registry.js';
 import {
   UNATTRIBUTED_BREADCRUMB_WRITER,
-  savesConversationSelfReports,
   type NormalizedToolCall,
   type PlatformAdapter,
   type PlatformSessionMetadata,
@@ -610,14 +609,6 @@ describe('capabilities', () => {
       antigravity: [],
       'generic-mcp': [UNATTRIBUTED_BREADCRUMB_WRITER],
     });
-  });
-
-  it('saves pending self-reports only for engines whose hooks key events by conversation', () => {
-    const engines = createDefaultRegistry()
-      .getRegistered()
-      .filter(savesConversationSelfReports)
-      .map((a) => a.platformName);
-    expect(engines).toEqual(['cursor', 'windsurf', 'antigravity']);
   });
 
   it('claude-code declares CLAUDE.md and .claude/ as instruction file paths', () => {
