@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { localDateKey } from '../lib/date.js';
+import { mergeSummaries, type FullSessionSummary } from '../storage/session-store.js';
 import {
   collectCommitsAcrossRepos,
   LocalSessionAggregator,
@@ -735,6 +736,41 @@ describe('LocalSessionAggregator baseline fold after its own checkpoint', () => 
     const [summary] = summariesOf(agg);
     expect(summary?.estimatedCostUsd).toBe(9);
     expect(summary?.costByDayUsd).toEqual({ '2026-09-10': 9 });
+  });
+});
+
+describe('LocalSessionAggregator baseline fold from a file with a byte-estimate ledger', () => {
+  const DAY = new Date(2026, 8, 10, 12).getTime();
+  const DAY_KEY = '2026-09-10';
+
+  function savedFileWithLedger(): FullSessionSummary {
+    const writer = new LocalSessionAggregator();
+    writer.recordToolCall({ sessionId: REAL_ID, toolName: 'Read', timestamp: DAY, success: true });
+    writer.recordTokenUsage(REAL_ID, { costUsd: 1, timestamp: DAY });
+    const [exact] = summariesOf(writer) as unknown as FullSessionSummary[];
+    return {
+      ...exact!,
+      estimatedCostUsd: 1.5,
+      costByDayUsd: { [DAY_KEY]: 1.5 },
+      byteEstimates: {
+        costUsd: 0.5,
+        inputTokens: 0,
+        outputTokens: 0,
+        costByModel: {},
+        costByDayUsd: { [DAY_KEY]: 0.5 },
+      },
+    };
+  }
+
+  it('saves the exact total, the subagent usage and the ledger once', () => {
+    const file = savedFileWithLedger();
+    const agg = new LocalSessionAggregator({ persistedCostBaseline: () => file });
+    agg.recordTokenUsage(REAL_ID, { costUsd: 0.25, timestamp: DAY, agentId: 'agent-1' });
+    const [incoming] = summariesOf(agg) as unknown as FullSessionSummary[];
+    expect(mergeSummaries(file, incoming!)).toMatchObject({
+      estimatedCostUsd: 1.75,
+      costByDayUsd: { [DAY_KEY]: 1.75 },
+    });
   });
 });
 
