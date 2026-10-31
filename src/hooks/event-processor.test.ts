@@ -1394,6 +1394,32 @@ describe('HookEventProcessor', () => {
       expect(tokenEvents[0].platform).toBe(expected);
     });
 
+    it("passes a self-report's thinking tokens to onTokenEvent", () => {
+      const tokenEvents: Array<{ thinkingTokens?: number }> = [];
+      const processor = new HookEventProcessor({
+        store,
+        onRecord,
+        onTokenEvent: (event) => {
+          tokenEvents.push(event);
+        },
+      });
+
+      processor.processEvents([
+        {
+          mode: 'token',
+          tool: 'self-report',
+          timestamp: 5000,
+          inputTokens: 10,
+          outputTokens: 20,
+          thinkingTokens: 30,
+          sessionId: 'conv-1',
+          messageId: 'r-12345678',
+        },
+      ]);
+
+      expect(tokenEvents[0].thinkingTokens).toBe(30);
+    });
+
     it('does not error when onTokenEvent is not provided', () => {
       const processor = new HookEventProcessor({
         store,

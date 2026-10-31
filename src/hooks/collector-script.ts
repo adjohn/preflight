@@ -30,6 +30,7 @@ import { REDACTION_PATTERNS } from '../redaction-patterns.js';
 import { resolveRecordContent } from '../record-content-gate.js';
 import { CLAUDE_CODE_ENV_SIGNALS } from '../platforms/claude-code-adapter.js';
 import { hookEventFromArg } from '../hook-subcommands.js';
+import { hookSelfReportLine } from './self-report.js';
 
 // ---------------------------------------------------------------------------
 // Lightweight config (env vars only — no file reads)
@@ -826,6 +827,7 @@ function processHook(raw: string, cliEvent?: string): void {
   const agyToolUseId = typeof data.stepIdx === 'number' ? { toolUseId: String(data.stepIdx) } : {};
 
   let event: Record<string, unknown>;
+  let selfReportCall: { args: unknown; result: unknown } | undefined;
 
   if (eventName === 'pretooluse') {
     event = {
@@ -1050,6 +1052,7 @@ function processHook(raw: string, cliEvent?: string): void {
       timestamp,
       success: true,
     };
+    selfReportCall = { args: data.tool_input, result: data.result_json };
   } else if (eventName === 'beforereadfile') {
     // Cursor has no "afterReadFile" event — beforeReadFile is the only file-read
     // hook that exists (confirmed: https://blog.gitbutler.com/cursor-hooks-deep-dive
@@ -1168,6 +1171,7 @@ function processHook(raw: string, cliEvent?: string): void {
       timestamp,
       success: true,
     };
+    selfReportCall = { args: toolInfo.mcp_tool_arguments, result: toolInfo.mcp_result };
   } else if (isAntigravityPre) {
     // Antigravity PreToolUse — see isAntigravityPre above for how it is told
     // apart from PostToolUse.
@@ -1340,6 +1344,16 @@ function processHook(raw: string, cliEvent?: string): void {
   // measurable overhead on this hot, pre+post-per-tool-call path.
   const stampedPlatform = detectStampPlatform();
   if (stampedPlatform) event.platform = stampedPlatform;
+  const selfReport =
+    selfReportCall &&
+    hookSelfReportLine(
+      event.tool,
+      selfReportCall.args,
+      selfReportCall.result,
+      sessionId,
+      timestamp,
+      stampedPlatform,
+    );
   if (data.tool_use_id) event.toolUseId = data.tool_use_id;
   if (data.agent_id) event.agentId = data.agent_id;
   if (data.agent_type) event.agentType = data.agent_type;
@@ -1352,7 +1366,8 @@ function processHook(raw: string, cliEvent?: string): void {
       mkdirSync(bufferDir, { recursive: true, mode: 0o700 });
     }
 
-    const line = JSON.stringify(event) + '\n';
+    const line =
+      JSON.stringify(event) + '\n' + (selfReport ? JSON.stringify(selfReport) + '\n' : '');
 
     const fd = openSync(
       bufferPath,

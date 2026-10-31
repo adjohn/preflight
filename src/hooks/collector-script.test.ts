@@ -1901,6 +1901,110 @@ describe('collector-script', () => {
     });
   });
 
+  describe('self-reported token usage from post-MCP hooks', () => {
+    const report = {
+      report_id: 'r-7c1d9e42',
+      input_tokens: 1200,
+      output_tokens: 300,
+      thinking_tokens: 50,
+      cache_read_tokens: 4000,
+      model: 'claude-sonnet-4-6',
+    };
+    const hookReply = JSON.stringify({
+      accepted: true,
+      recorded_by: 'hook',
+      report_id: report.report_id,
+    });
+
+    beforeEach(() => {
+      delete process.env.NEW_RELIC_AI_MCP_BUFFER_PATH;
+      process.env.NEW_RELIC_AI_MCP_STORAGE_PATH = tmpDir;
+      process.env.MCP_CLIENT = 'cursor';
+    });
+
+    const expectedLine = (conversationId: string, platform: string) => ({
+      mode: 'token',
+      tool: 'self-report',
+      sessionId: conversationId,
+      messageId: report.report_id,
+      model: report.model,
+      inputTokens: report.input_tokens,
+      outputTokens: report.output_tokens,
+      thinkingTokens: report.thinking_tokens,
+      cacheReadTokens: report.cache_read_tokens,
+      cacheCreationTokens: 0,
+      platform,
+    });
+
+    it.each(['nr_observe_report_tokens', 'preflight-nr_observe_report_tokens'])(
+      'Cursor afterMCPExecution for %s adds a usage line to that conversation only',
+      (toolName) => {
+        processHook(
+          JSON.stringify({
+            hook_event_name: 'afterMCPExecution',
+            conversation_id: 'conv-reporting',
+            tool_name: toolName,
+            tool_input: JSON.stringify(report),
+            result_json: JSON.stringify({ content: [{ type: 'text', text: hookReply }] }),
+          }),
+        );
+
+        const events = readBufferLines('conv-reporting');
+        expect(events.map((e) => e.mode)).toEqual(['post', 'token']);
+        expect(events[1]).toMatchObject(expectedLine('conv-reporting', 'cursor'));
+        expect(readBufferLines('conv-other')).toEqual([]);
+      },
+    );
+
+    it('Windsurf post_mcp_tool_use adds a usage line to its trajectory', () => {
+      process.env.MCP_CLIENT = 'windsurf';
+      processHook(
+        JSON.stringify({
+          agent_action_name: 'post_mcp_tool_use',
+          trajectory_id: 'traj-reporting',
+          tool_info: {
+            mcp_server_name: 'preflight',
+            mcp_tool_name: 'nr_observe_report_tokens',
+            mcp_tool_arguments: report,
+            mcp_result: hookReply,
+          },
+        }),
+      );
+
+      const events = readBufferLines('traj-reporting');
+      expect(events.map((e) => e.mode)).toEqual(['post', 'token']);
+      expect(events[1]).toMatchObject(expectedLine('traj-reporting', 'windsurf'));
+    });
+
+    it.each([
+      ['a reply that recorded the report itself', 'nr_observe_report_tokens', '{"recorded":true}'],
+      [
+        'a rejected call',
+        'nr_observe_report_tokens',
+        '{"error":"invalid_token_report","message":"bad"}',
+      ],
+      [
+        'a reply for another report_id',
+        'nr_observe_report_tokens',
+        hookReply.replace('7c1d', '0000'),
+      ],
+      ['a lookalike tool name', 'xnr_observe_report_tokens', hookReply],
+      ['no result at all', 'nr_observe_report_tokens', undefined],
+    ])('adds no usage line for %s', (_label, toolName, result) => {
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'afterMCPExecution',
+          conversation_id: 'conv-reporting',
+          tool_name: toolName,
+          tool_input: JSON.stringify(report),
+          ...(result !== undefined && { result_json: result }),
+        }),
+      );
+
+      expect(readBufferLines('conv-reporting').map((e) => e.mode)).toEqual(['post']);
+    });
+  });
+
   describe('helper functions', () => {
     it('redact() replaces API keys', () => {
       expect(redact('API_KEY = my-secret-key')).toContain('[REDACTED]');

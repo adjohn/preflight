@@ -828,6 +828,8 @@ export class HookEventProcessor {
         typeof event.outputTokens === 'number' && !isNaN(event.outputTokens)
           ? event.outputTokens
           : 0,
+      ...(typeof event.thinkingTokens === 'number' &&
+        !isNaN(event.thinkingTokens) && { thinkingTokens: event.thinkingTokens }),
       cacheReadTokens:
         typeof event.cacheReadTokens === 'number' && !isNaN(event.cacheReadTokens)
           ? event.cacheReadTokens

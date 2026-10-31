@@ -85,6 +85,7 @@ export interface TokenHookEvent extends HookEventBase {
   readonly mode: 'token';
   readonly inputTokens?: number;
   readonly outputTokens?: number;
+  readonly thinkingTokens?: number;
   readonly cacheReadTokens?: number;
   readonly cacheCreationTokens?: number;
   readonly model?: string;
@@ -270,6 +271,7 @@ export interface TokenEvent {
   readonly timestamp: number;
   readonly inputTokens: number;
   readonly outputTokens: number;
+  readonly thinkingTokens?: number;
   readonly cacheReadTokens: number;
   readonly cacheCreationTokens: number;
   readonly model: string;

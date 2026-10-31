@@ -2376,13 +2376,14 @@ async function main(): Promise<void> {
         });
         const closedTurn = turnCostAttributor.recordTokenEvent(tokenEvent);
         if (isOwnEvent) capturedNrIngest?.ingestTurnCost(closedTurn);
+        const thinkingTokens = tokenEvent.thinkingTokens ?? 0;
         const usage = {
           inputTokens: tokenEvent.inputTokens,
           outputTokens: tokenEvent.outputTokens,
-          thinkingTokens: 0,
+          thinkingTokens,
           cacheReadTokens: tokenEvent.cacheReadTokens,
           cacheCreationTokens: tokenEvent.cacheCreationTokens,
-          totalTokens: tokenEvent.inputTokens + tokenEvent.outputTokens,
+          totalTokens: tokenEvent.inputTokens + tokenEvent.outputTokens + thinkingTokens,
         };
         let breakdown: CostBreakdown;
         if (!isOwnEvent) {
@@ -2401,6 +2402,7 @@ async function main(): Promise<void> {
           model: tokenEvent.model,
           inputTokens: tokenEvent.inputTokens,
           outputTokens: tokenEvent.outputTokens,
+          thinkingTokens,
           cacheReadTokens: tokenEvent.cacheReadTokens,
           cacheCreationTokens: tokenEvent.cacheCreationTokens,
         });

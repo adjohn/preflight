@@ -73,16 +73,107 @@ function hookEventFromArg(arg) {
   );
 }
 
+// src/hooks/self-report.ts
+var REPORT_TOKENS_TOOL_NAME = "nr_observe_report_tokens";
+var MAX_TOKENS = 1e7;
+var REPORT_ID_RE = /^[A-Za-z0-9_-]{8,128}$/;
+var MODEL_RE = /^[a-zA-Z0-9._:-]{1,256}$/;
+var SESSION_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+var PREFIXED_TOOL_RE = new RegExp(`(?:^|[_:./-])${REPORT_TOKENS_TOOL_NAME}$`);
+var HOOK_RECORDED_RE = /\\*"recorded_by\\*"\s*:\s*\\*"hook\\*"/;
+function clampToken(v) {
+  if (!Number.isFinite(v)) return 0;
+  return Math.min(Math.max(0, Math.floor(v)), MAX_TOKENS);
+}
+function isReportTokensTool(name) {
+  return typeof name === "string" && PREFIXED_TOOL_RE.test(name);
+}
+function isConversationId(id) {
+  return typeof id === "string" && SESSION_ID_RE.test(id) && id !== "unknown";
+}
+function decodeArguments(args) {
+  let value = args;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return void 0;
+    }
+  }
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+}
+function parseSelfReport(args) {
+  const fail = (reason) => ({ ok: false, reason });
+  const a = decodeArguments(args);
+  if (!a) return fail("arguments are not a JSON object");
+  if (typeof a.report_id !== "string" || !REPORT_ID_RE.test(a.report_id)) {
+    return fail("report_id must be 8 to 128 characters of [A-Za-z0-9_-], new for every call");
+  }
+  if (typeof a.model !== "string" || !MODEL_RE.test(a.model)) {
+    return fail("model must be 1 to 256 characters of [a-zA-Z0-9._:-]");
+  }
+  const bad = [
+    "input_tokens",
+    "output_tokens",
+    "thinking_tokens",
+    "cache_read_tokens",
+    "cache_creation_tokens"
+  ].find((field) => {
+    const n = a[field] ?? (field === "input_tokens" || field === "output_tokens" ? void 0 : 0);
+    return typeof n !== "number" || !Number.isFinite(n) || n < 0;
+  });
+  if (bad) return fail(`${bad} must be a non-negative number`);
+  const count = (field) => clampToken(a[field] ?? 0);
+  return {
+    ok: true,
+    report: {
+      reportId: a.report_id,
+      model: a.model,
+      inputTokens: count("input_tokens"),
+      outputTokens: count("output_tokens"),
+      thinkingTokens: count("thinking_tokens"),
+      cacheReadTokens: count("cache_read_tokens"),
+      cacheCreationTokens: count("cache_creation_tokens")
+    }
+  };
+}
+function selfReportTokenLine(report, conversationId, timestamp, platform) {
+  return {
+    mode: "token",
+    tool: "self-report",
+    timestamp,
+    sessionId: conversationId,
+    messageId: report.reportId,
+    model: report.model,
+    inputTokens: report.inputTokens,
+    outputTokens: report.outputTokens,
+    thinkingTokens: report.thinkingTokens,
+    cacheReadTokens: report.cacheReadTokens,
+    cacheCreationTokens: report.cacheCreationTokens,
+    ...platform !== void 0 && { platform }
+  };
+}
+function repliedRecordedByHook(result, reportId) {
+  const text = typeof result === "string" ? result : JSON.stringify(result ?? null);
+  return HOOK_RECORDED_RE.test(text) && text.includes(reportId);
+}
+function hookSelfReportLine(toolName, args, result, conversationId, timestamp, platform) {
+  if (!isReportTokensTool(toolName) || !isConversationId(conversationId)) return void 0;
+  const parsed = parseSelfReport(args);
+  if (!parsed.ok || !repliedRecordedByHook(result, parsed.report.reportId)) return void 0;
+  return selfReportTokenLine(parsed.report, conversationId, timestamp, platform);
+}
+
 // src/hooks/collector-script.ts
 import { realpathSync } from "node:fs";
-var SESSION_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+var SESSION_ID_RE2 = /^[a-zA-Z0-9_-]{1,128}$/;
 var DEFAULT_STORAGE_DIR = resolve(homedir(), ".newrelic-preflight");
 function getBufferPath(sessionId) {
   if (process.env.NEW_RELIC_AI_MCP_BUFFER_PATH !== void 0) {
     return process.env.NEW_RELIC_AI_MCP_BUFFER_PATH;
   }
   const storageDir = process.env.NEW_RELIC_AI_MCP_STORAGE_PATH ?? DEFAULT_STORAGE_DIR;
-  const safeId = typeof sessionId === "string" && SESSION_ID_RE.test(sessionId) ? sessionId : "unknown";
+  const safeId = typeof sessionId === "string" && SESSION_ID_RE2.test(sessionId) ? sessionId : "unknown";
   return resolve(storageDir, `buffer-${safeId}.jsonl`);
 }
 var HIGH_SECURITY_FROM_FILE = (() => {
@@ -179,7 +270,7 @@ function getLinuxAncestorPids(startPpid, maxDepth = 5) {
 }
 var _breadcrumbWriteFailed = false;
 function writePpidBreadcrumb(sessionId) {
-  if (!SESSION_ID_RE.test(sessionId)) return;
+  if (!SESSION_ID_RE2.test(sessionId)) return;
   const ppid = process.ppid;
   if (typeof ppid !== "number" || ppid <= 0) return;
   try {
@@ -220,7 +311,7 @@ function writePpidBreadcrumb(sessionId) {
 }
 var _cwdBreadcrumbWriteFailed = false;
 function writeCwdBreadcrumb(sessionId, cwd) {
-  if (!SESSION_ID_RE.test(sessionId)) return;
+  if (!SESSION_ID_RE2.test(sessionId)) return;
   if (typeof cwd !== "string" || cwd.length === 0) return;
   try {
     const storageDir = process.env.NEW_RELIC_AI_MCP_STORAGE_PATH ?? DEFAULT_STORAGE_DIR;
@@ -496,6 +587,7 @@ function processHook(raw, cliEvent) {
   const isAntigravityPre = isAntigravityShape && !isAntigravityPost;
   const agyToolUseId = typeof data.stepIdx === "number" ? { toolUseId: String(data.stepIdx) } : {};
   let event;
+  let selfReportCall;
   if (eventName === "pretooluse") {
     event = {
       mode: "pre",
@@ -622,6 +714,7 @@ function processHook(raw, cliEvent) {
       timestamp,
       success: true
     };
+    selfReportCall = { args: data.tool_input, result: data.result_json };
   } else if (eventName === "beforereadfile") {
     event = {
       mode: "post",
@@ -716,6 +809,7 @@ function processHook(raw, cliEvent) {
       timestamp,
       success: true
     };
+    selfReportCall = { args: toolInfo.mcp_tool_arguments, result: toolInfo.mcp_result };
   } else if (isAntigravityPre) {
     const agyToolName = data.toolCall?.name ?? "unknown";
     event = {
@@ -810,6 +904,14 @@ function processHook(raw, cliEvent) {
   if (sessionId) event.sessionId = sessionId;
   const stampedPlatform = detectStampPlatform();
   if (stampedPlatform) event.platform = stampedPlatform;
+  const selfReport = selfReportCall && hookSelfReportLine(
+    event.tool,
+    selfReportCall.args,
+    selfReportCall.result,
+    sessionId,
+    timestamp,
+    stampedPlatform
+  );
   if (data.tool_use_id) event.toolUseId = data.tool_use_id;
   if (data.agent_id) event.agentId = data.agent_id;
   if (data.agent_type) event.agentType = data.agent_type;
@@ -819,7 +921,7 @@ function processHook(raw, cliEvent) {
     if (!existsSync(bufferDir)) {
       mkdirSync(bufferDir, { recursive: true, mode: 448 });
     }
-    const line = JSON.stringify(event) + "\n";
+    const line = JSON.stringify(event) + "\n" + (selfReport ? JSON.stringify(selfReport) + "\n" : "");
     const fd = openSync(
       bufferPath,
       fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_APPEND,
