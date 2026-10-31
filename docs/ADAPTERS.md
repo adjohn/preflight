@@ -67,7 +67,7 @@ Detection order matters: `createDefaultRegistry()` (`src/platforms/platform-regi
 
 **Known gaps:** Cursor has no `afterReadFile` event (`beforeReadFile` is emitted as a completed read directly) and no `beforeFileEdit` event (`afterFileEdit` is post-only). `afterShellExecution`/`afterMCPExecution` have no documented failure-outcome field, so success is reported unconditionally `true`.
 
-**Token self-report:** one Preflight engine serves every chat in a Cursor window and never resolves a session of its own, so its `nr_observe_report_tokens` requires `conversation_id`, the chat's `conversation_id` hook field, and adds the report to that conversation's saved session. See [`nr_observe_report_tokens`](./COMMANDS_TABLE.md#nr_observe_report_tokens).
+**Token self-report:** one Preflight engine serves every chat in a Cursor window and never resolves a session of its own, so its `nr_observe_report_tokens` matches each call to the call's own `beforeMCPExecution` hook event and adds the report to that chat's saved session. The agent passes no id, and the hooks must be installed. See [`nr_observe_report_tokens`](./COMMANDS_TABLE.md#nr_observe_report_tokens).
 
 **Setup:**
 
@@ -101,7 +101,7 @@ Detection order matters: `createDefaultRegistry()` (`src/platforms/platform-regi
 
 **Known gaps:** `post_read_code`/`post_run_command` report success `true` unconditionally, the same gap as Cursor's `afterShellExecution`. `pre_write_code` maps to `'Edit'` (it's typically a partial edit, not a full-file write).
 
-**Token self-report:** as for Cursor, `nr_observe_report_tokens` requires `conversation_id`, here the chat's `trajectory_id`.
+**Token self-report:** as for Cursor, `nr_observe_report_tokens` finds the chat from the call's own `pre_mcp_tool_use` hook event, so the hooks must be installed.
 
 **Setup:**
 
@@ -573,7 +573,7 @@ Antigravity's hook payloads have **no field naming the event type at all**, and 
 - **`PostToolUse` carries no output content/exit-code field at all** (only `toolCall`/`stepIdx`/`error`) — `toolOutput` metadata (e.g. Bash exit codes) can never be populated for Antigravity, a platform limitation, not an implementation gap.
 - **The Antigravity SDK (Python, for building custom agents on Antigravity's own runtime) is out of scope** — it documents MCP support but no interactive hooks surface of its own.
 - **No confirmed ambient env var** — detection is explicit-opt-in only (`MCP_CLIENT=antigravity`).
-- **Token self-report needs the conversation.** As for Cursor, `nr_observe_report_tokens` requires `conversation_id`, here the chat's `conversationId`.
+- **Token self-report reads the conversation from `_meta`.** `nr_observe_report_tokens` takes the chat from the call's `_meta["antigravity.google/conversation_id"]`. Antigravity's docs do not state this field; it is reported by a third-party integration ([joaquinbejar/ai-crew-sync#233](https://github.com/joaquinbejar/ai-crew-sync/pull/233)).
 
 **Setup:**
 
