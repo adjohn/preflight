@@ -654,12 +654,10 @@ export class HookEventProcessor {
     return this.pending.size;
   }
 
-  /** Pre events awaiting a matching post. */
   pendingPreEvents(): PreHookEvent[] {
     return [...this.pending.values()].map((entry) => entry.event);
   }
 
-  /** One drain-and-sweep cycle, run on the poll interval or on demand. */
   poll(): void {
     try {
       const events = this.drainOnce();
@@ -673,10 +671,6 @@ export class HookEventProcessor {
       });
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Private
-  // ---------------------------------------------------------------------------
 
   private drainOnce(): HookEvent[] {
     return this.drainAllSessions ? this.store.drainAllBuffers() : this.store.drainBuffer();

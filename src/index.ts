@@ -3237,7 +3237,6 @@ async function main(): Promise<void> {
         const conversationIdField = savesConversationSelfReports(pendingAdapter)
           ? pendingAdapter.capabilities.hookConversationIdField
           : undefined;
-        const hookEvents = eventProcessor;
         registerPendingTools(mcpServer!.server, {
           sessionStartMs: Date.now(),
           developer: config.developer,
@@ -3264,10 +3263,10 @@ async function main(): Promise<void> {
             headlessInstaller: buildHeadlessInstaller(),
           }),
           ...(conversationIdField &&
-            hookEvents && {
+            eventProcessor && {
               conversationReports: {
                 tool: conversationReportTokensTool(conversationIdField),
-                matchReportCall: reportCallMatcher(hookEvents),
+                matchReportCall: reportCallMatcher(eventProcessor),
                 hasSeen: (conversationId) => localSessionAggregator.hasSession(conversationId),
                 record: (conversationId, usage, model) => {
                   const { totalUsd } = costTracker.priceUsage(usage, model);

@@ -197,13 +197,10 @@ export type ConversationTokenRecorder = (
 export interface ConversationReports {
   readonly tool: ToolDefinition;
   readonly record: ConversationTokenRecorder;
-  /** Distinct conversations whose hook pre-event matches this report call. */
   readonly matchReportCall: (args: Record<string, unknown>) => Promise<readonly string[]>;
-  /** Whether this engine has observed hook activity for the conversation. */
   readonly hasSeen: (conversationId: string) => boolean;
 }
 
-/** Antigravity stamps every `tools/call` with the chat it came from. */
 const ANTIGRAVITY_CONVERSATION_META = 'antigravity.google/conversation_id';
 
 const CONVERSATION_REJECTIONS = {
@@ -279,7 +276,6 @@ export async function handleReportConversationTokens(
 
 const REPORT_CALL_WAIT = { waitMs: 2000, pollMs: 50 };
 
-/** The report tool's name, alone or after an MCP server prefix such as `preflight-`. */
 function isReportToolName(tool: string): boolean {
   const name = REPORT_TOKENS_TOOL.name;
   if (!tool.endsWith(name)) return false;
@@ -288,12 +284,8 @@ function isReportToolName(tool: string): boolean {
 }
 
 /**
- * Matches a report call to the `beforeMCPExecution` (Cursor) or
- * `pre_mcp_tool_use` (Windsurf) hook event the client fired for it. Both
- * clients run that hook before executing the call, since the hook can block
- * it, so the event is buffered by the time the call arrives and stays pending
- * until the call's post event or the processor's orphan timeout. A matched
- * event is claimed so it answers one call only.
+ * Cursor's `beforeMCPExecution` and Windsurf's `pre_mcp_tool_use` can block
+ * the call, so both clients finish the hook before sending the `tools/call`.
  */
 export function reportCallMatcher(
   hooks: Pick<HookEventProcessor, 'poll' | 'pendingPreEvents'>,
