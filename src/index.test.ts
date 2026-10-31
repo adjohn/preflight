@@ -1264,7 +1264,7 @@ describe('stdio integration', () => {
       }
     }
 
-    it("saves a Cursor agent's self-reported tokens to its own conversation", async () => {
+    it("saves a Cursor agent's self-report to the conversation whose hook fired for the call", async () => {
       await withPendingEngine('cursor', async (client, hook, sessionFile) => {
         for (const conversation of ['conv-reported', 'conv-silent']) {
           hook({
@@ -1274,18 +1274,23 @@ describe('stdio integration', () => {
           });
           hook({ hook_event_name: 'afterShellExecution', conversation_id: conversation });
         }
-
-        const result = await client.callTool({
-          name: 'nr_observe_report_tokens',
-          arguments: {
-            conversation_id: 'conv-reported',
-            input_tokens: 1000,
-            output_tokens: 200,
-            thinking_tokens: 100,
-            model: 'claude-sonnet-4-6',
-          },
+        const args = {
+          input_tokens: 1000,
+          output_tokens: 200,
+          thinking_tokens: 100,
+          model: 'claude-sonnet-4-6',
+        };
+        hook({
+          hook_event_name: 'beforeMCPExecution',
+          conversation_id: 'conv-reported',
+          tool_name: 'nr_observe_report_tokens',
+          tool_input: JSON.stringify(args),
         });
+
+        const result = await client.callTool({ name: 'nr_observe_report_tokens', arguments: args });
         expect(result.isError).toBeUndefined();
+        const body = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+        expect(body.conversation_id).toBe('conv-reported');
 
         let reported: Record<string, unknown> | null = null;
         let silent: Record<string, unknown> | null = null;
@@ -1301,6 +1306,25 @@ describe('stdio integration', () => {
         expect(silent?.toolCallCount).toBe(1);
         expect(silent?.estimatedCostUsd).toBeNull();
         expect(silent?.tokensInput).toBe(0);
+      });
+    }, 30000);
+
+    it('rejects a guessed conversation_id that no hook event backs and saves nothing', async () => {
+      await withPendingEngine('cursor', async (client, _hook, sessionFile) => {
+        const result = await client.callTool({
+          name: 'nr_observe_report_tokens',
+          arguments: {
+            conversation_id: 'conv-guessed',
+            input_tokens: 1000,
+            output_tokens: 200,
+            model: 'claude-sonnet-4-6',
+          },
+        });
+        expect(result.isError).toBe(true);
+        const body = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+        expect(body.error).toBe('conversation_unknown');
+        await new Promise((r) => setTimeout(r, 600));
+        expect(sessionFile('conv-guessed')).toBeNull();
       });
     }, 30000);
 

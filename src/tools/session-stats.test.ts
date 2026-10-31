@@ -14,6 +14,9 @@ import { ContextWindowTracker } from '../metrics/context-window-tracker.js';
 import { TaskDetector } from '../metrics/task-detector.js';
 import { TurnCostAttributor } from '../metrics/turn-cost-attributor.js';
 import { SessionStore } from '../storage/session-store.js';
+import { LocalStore } from '../storage/local-store.js';
+import { HookEventProcessor } from '../hooks/event-processor.js';
+import { processHook } from '../hooks/collector-script.js';
 import { GenericMcpAdapter } from '../platforms/generic-mcp-adapter.js';
 import { FeedbackCollector } from './workflow-tools.js';
 import {
@@ -927,56 +930,73 @@ describe('registerPendingTools()', () => {
     let client: Client;
     let server: ReturnType<typeof createServer>;
     let recorded: Array<{ conversationId: string; model: string; inputTokens: number }>;
+    let matchCalls: number;
 
     afterEach(async () => {
       await client?.close();
       await server?.close();
     });
 
-    async function connect(withRecorder: boolean) {
+    async function connect(
+      evidence: { matches?: readonly string[]; seen?: readonly string[] } | null = {},
+    ): Promise<void> {
       const { registerPendingTools } = await import('./session-stats.js');
+      const { conversationReportTokensTool } = await import('./cost-tools.js');
       recorded = [];
+      matchCalls = 0;
       server = createServer({ name: 'pending-report', version: '0.0.1' });
       const [ct, st] = InMemoryTransport.createLinkedPair();
       client = new Client({ name: 'test', version: '1.0.0' });
       registerPendingTools(server.server, {
         sessionStartMs: Date.now(),
         developer: 'tester',
-        ...(withRecorder && {
-          recordConversationTokens: (conversationId, usage, model) => {
-            recorded.push({ conversationId, model, inputTokens: usage.inputTokens });
-            return { costUsd: 0.25, conversationTotalCostUsd: 0.75 };
+        ...(evidence && {
+          conversationReports: {
+            tool: conversationReportTokensTool('trajectory_id'),
+            matchReportCall: async () => {
+              matchCalls += 1;
+              return evidence.matches ?? [];
+            },
+            hasSeen: (id) => (evidence.seen ?? []).includes(id),
+            record: (conversationId, usage, model) => {
+              recorded.push({ conversationId, model, inputTokens: usage.inputTokens });
+              return { costUsd: 0.25, conversationTotalCostUsd: 0.75 };
+            },
           },
         }),
       });
       await Promise.all([server.server.connect(st), client.connect(ct)]);
     }
 
-    async function report(args: Record<string, unknown>) {
-      const result = await client.callTool({ name: 'nr_observe_report_tokens', arguments: args });
+    const tokens = { input_tokens: 1000, output_tokens: 200, model: 'claude-sonnet-4-6' };
+    const AGY_META = { 'antigravity.google/conversation_id': 'agy-1' };
+
+    async function report(args: Record<string, unknown>, meta?: Record<string, unknown>) {
+      const result = await client.callTool({
+        name: 'nr_observe_report_tokens',
+        arguments: args,
+        ...(meta && { _meta: meta }),
+      });
       return {
         isError: result.isError,
         body: JSON.parse((result.content as Array<{ text: string }>)[0].text),
       };
     }
 
-    it('is listed with a required conversation_id when the engine can record per conversation', async () => {
-      await connect(true);
+    it("is listed with conversation_id optional, described by the platform's own field", async () => {
+      await connect();
       const tool = (await client.listTools()).tools.find(
         (t) => t.name === 'nr_observe_report_tokens',
       );
-      expect(tool?.inputSchema.required).toContain('conversation_id');
-      expect(tool?.description).toContain('conversation_id');
+      expect(tool?.inputSchema.required).not.toContain('conversation_id');
+      expect(tool?.inputSchema.properties).toHaveProperty('conversation_id');
+      expect(tool?.description).toContain('do not need to pass conversation_id');
+      expect(tool?.description).toContain('trajectory_id');
     });
 
-    it('records the report against the named conversation', async () => {
-      await connect(true);
-      const { isError, body } = await report({
-        conversation_id: 'conv-A',
-        input_tokens: 1000,
-        output_tokens: 200,
-        model: 'claude-sonnet-4-6',
-      });
+    it('records a report without conversation_id to the conversation whose hook event matches it', async () => {
+      await connect({ matches: ['conv-A'] });
+      const { isError, body } = await report(tokens);
       expect(isError).toBeUndefined();
       expect(recorded).toEqual([
         { conversationId: 'conv-A', model: 'claude-sonnet-4-6', inputTokens: 1000 },
@@ -990,73 +1010,210 @@ describe('registerPendingTools()', () => {
       });
     });
 
-    it('rejects a report that names no conversation, naming the parameter', async () => {
-      await connect(true);
-      const { isError, body } = await report({
-        input_tokens: 1000,
-        output_tokens: 200,
-        model: 'claude-sonnet-4-6',
-      });
-      expect(isError).toBe(true);
-      expect(body.error).toBe('conversation_id_required');
-      expect(body.message).toContain('conversation_id');
-      expect(recorded).toEqual([]);
+    it('accepts a conversation_id the engine has seen hook events for when the call has none', async () => {
+      await connect({ matches: [], seen: ['conv-real'] });
+      const { body } = await report({ conversation_id: 'conv-real', ...tokens });
+      expect(body.conversation_id).toBe('conv-real');
+      expect(recorded.map((r) => r.conversationId)).toEqual(['conv-real']);
     });
 
-    it("rejects the engine's own provisional id as a conversation", async () => {
-      await connect(true);
-      const { isError, body } = await report({
-        conversation_id: 'pending-1700000000000',
-        input_tokens: 1000,
-        output_tokens: 200,
-        model: 'claude-sonnet-4-6',
-      });
-      expect(isError).toBe(true);
-      expect(body.error).toBe('conversation_id_required');
-      expect(recorded).toEqual([]);
+    it("records to the conversation Antigravity stamps in the call's _meta without waiting on hooks", async () => {
+      await connect({ matches: [] });
+      const { body } = await report(tokens, AGY_META);
+      expect(body.conversation_id).toBe('agy-1');
+      expect(recorded.map((r) => r.conversationId)).toEqual(['agy-1']);
+      expect(matchCalls).toBe(0);
     });
 
-    it.each(['../sessions/x', 'a'.repeat(129), 'unknown'])(
-      'rejects conversation_id %s, which no session file can be saved under',
-      async (conversationId) => {
-        await connect(true);
-        const { isError, body } = await report({
-          conversation_id: conversationId,
-          input_tokens: 1000,
-          output_tokens: 200,
-          model: 'claude-sonnet-4-6',
-        });
-        expect(isError).toBe(true);
-        expect(body.error).toBe('invalid_conversation_id');
-        expect(recorded).toEqual([]);
-      },
-    );
+    it.each([
+      [
+        'a guessed, well-formed conversation_id that no hook event backs',
+        { matches: [], seen: ['conv-real'] },
+        { conversation_id: 'conv-guess', ...tokens },
+        undefined,
+        'conversation_unknown',
+      ],
+      ['a report it cannot place', { matches: [] }, tokens, undefined, 'conversation_unknown'],
+      [
+        'an id differing from the hook event conversation',
+        { matches: ['conv-A'], seen: ['conv-B'] },
+        { conversation_id: 'conv-B', ...tokens },
+        undefined,
+        'conversation_id_mismatch',
+      ],
+      [
+        'an id differing from the _meta conversation',
+        { seen: ['conv-B'] },
+        { conversation_id: 'conv-B', ...tokens },
+        AGY_META,
+        'conversation_id_mismatch',
+      ],
+      [
+        'a call matching hook events from two conversations',
+        { matches: ['conv-A', 'conv-B'] },
+        tokens,
+        undefined,
+        'conversation_ambiguous',
+      ],
+      [
+        'an unplaced report before its malformed tokens',
+        { matches: [] },
+        { input_tokens: -1, model: '' },
+        undefined,
+        'conversation_unknown',
+      ],
+      [
+        'a malformed id before malformed tokens',
+        {},
+        { conversation_id: '../x', input_tokens: -1 },
+        undefined,
+        'invalid_conversation_id',
+      ],
+      ...['../sessions/x', 'a'.repeat(129), 'unknown', 'pending-1700000000000', 42].map(
+        (id) =>
+          [
+            `conversation_id ${String(id).slice(0, 20)}, which names no savable conversation`,
+            { seen: [String(id)] },
+            { conversation_id: id, ...tokens },
+            undefined,
+            'invalid_conversation_id',
+          ] as const,
+      ),
+    ])('rejects %s and records nothing', async (_case, evidence, args, meta, error) => {
+      await connect(evidence);
+      const { isError, body } = await report(args, meta);
+      expect(isError).toBe(true);
+      expect(body.error).toBe(error);
+      expect(recorded).toEqual([]);
+    });
 
     it('rejects an invalid model name before recording', async () => {
-      await connect(true);
-      const { isError, body } = await report({
-        conversation_id: 'conv-A',
-        input_tokens: 1,
-        output_tokens: 1,
-        model: 'bad model!',
-      });
+      await connect({ matches: ['conv-A'] });
+      const { isError, body } = await report({ ...tokens, model: 'bad model!' });
       expect(isError).toBe(true);
       expect(body.error).toBe('invalid_model_name');
       expect(recorded).toEqual([]);
     });
 
-    it('stays unlisted and unresolved without a conversation recorder', async () => {
-      await connect(false);
+    it('stays unlisted and unresolved without conversation reports', async () => {
+      await connect(null);
       const names = (await client.listTools()).tools.map((t) => t.name);
       expect(names).not.toContain('nr_observe_report_tokens');
-      const { isError, body } = await report({
-        conversation_id: 'conv-A',
-        input_tokens: 1,
-        output_tokens: 1,
-        model: 'claude-sonnet-4-6',
-      });
+      const { isError, body } = await report({ conversation_id: 'conv-A', ...tokens });
       expect(isError).toBe(true);
       expect(body.error).toBe('session_id not yet resolved');
+    });
+  });
+
+  describe('matching a report call to its hook pre-event', () => {
+    const args = { input_tokens: 1000, output_tokens: 200, model: 'claude-sonnet-4-6' };
+    let storage: string;
+    let processor: HookEventProcessor;
+    let match: (a: Record<string, unknown>) => Promise<readonly string[]>;
+    const savedEnv = { ...process.env };
+
+    beforeEach(async () => {
+      const { reportCallMatcher } = await import('./cost-tools.js');
+      storage = mkdtempSync(resolve(tmpdir(), 'nr-report-match-'));
+      delete process.env.NEW_RELIC_AI_MCP_BUFFER_PATH;
+      process.env.NEW_RELIC_AI_MCP_STORAGE_PATH = storage;
+      processor = new HookEventProcessor({
+        store: new LocalStore(storage),
+        drainAllSessions: true,
+        onRecord: () => undefined,
+      });
+      match = reportCallMatcher(processor, { waitMs: 300, pollMs: 10, windowMs: 60_000 });
+    });
+
+    afterEach(() => {
+      processor.stop();
+      process.env = { ...savedEnv };
+      rmSync(storage, { recursive: true, force: true });
+    });
+
+    const cursorPre = (
+      conversationId: string,
+      toolInput: string,
+      tool = 'nr_observe_report_tokens',
+    ) =>
+      processHook(
+        JSON.stringify({
+          hook_event_name: 'beforeMCPExecution',
+          conversation_id: conversationId,
+          tool_name: tool,
+          tool_input: toolInput,
+        }),
+      );
+
+    it("matches Cursor's JSON-string tool_input regardless of key order and spacing", async () => {
+      cursorPre(
+        'conv-1',
+        '{ "model": "claude-sonnet-4-6", "output_tokens": 200, "input_tokens": 1000 }',
+      );
+      expect(await match(args)).toEqual(['conv-1']);
+    });
+
+    it("matches Windsurf's argument object", async () => {
+      processHook(
+        JSON.stringify({
+          agent_action_name: 'pre_mcp_tool_use',
+          trajectory_id: 'traj-1',
+          tool_info: {
+            mcp_server_name: 'preflight',
+            mcp_tool_name: 'nr_observe_report_tokens',
+            mcp_tool_arguments: args,
+          },
+        }),
+      );
+      expect(await match(args)).toEqual(['traj-1']);
+    });
+
+    it('waits for a hook event that reaches the buffer after the call', async () => {
+      setTimeout(() => cursorPre('conv-late', JSON.stringify(args)), 100);
+      expect(await match(args)).toEqual(['conv-late']);
+    });
+
+    it.each([
+      ['preflight-nr_observe_report_tokens', ['conv-1']],
+      ['mcp_preflight_nr_observe_report_tokens', ['conv-1']],
+      ['xnr_observe_report_tokens', []],
+      ['nr_observe_get_cost_breakdown', []],
+    ])('treats hook tool name %s as the report tool: %j', async (tool, expected) => {
+      cursorPre('conv-1', JSON.stringify(args), tool);
+      expect(await match(args)).toEqual(expected);
+    });
+
+    it('ignores a hook event for different arguments', async () => {
+      cursorPre('conv-1', JSON.stringify({ ...args, input_tokens: 999 }));
+      expect(await match(args)).toEqual([]);
+    });
+
+    it('lets one hook event answer one call only', async () => {
+      cursorPre('conv-1', JSON.stringify(args));
+      expect(await match(args)).toEqual(['conv-1']);
+      expect(await match(args)).toEqual([]);
+    });
+
+    it('returns both conversations when two made the identical call', async () => {
+      cursorPre('conv-1', JSON.stringify(args));
+      cursorPre('conv-2', JSON.stringify(args));
+      expect([...(await match(args))].sort()).toEqual(['conv-1', 'conv-2']);
+    });
+
+    it('ignores a hook event older than the window', async () => {
+      const { reportCallMatcher } = await import('./cost-tools.js');
+      const { mcpArgumentsHash } = await import('../hooks/collector-script.js');
+      processor.processEvents([
+        {
+          mode: 'pre',
+          tool: 'nr_observe_report_tokens',
+          timestamp: Date.now() - 5_000,
+          sessionId: 'conv-old',
+          inputHash: mcpArgumentsHash(args),
+        },
+      ]);
+      const narrow = reportCallMatcher(processor, { waitMs: 0, pollMs: 10, windowMs: 1_000 });
+      expect(await narrow(args)).toEqual([]);
     });
   });
 

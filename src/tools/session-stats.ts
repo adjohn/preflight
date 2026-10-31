@@ -35,10 +35,9 @@ import type { ClaudeMdTracker } from '../metrics/claudemd-tracker.js';
 import type { CostPerOutcomeAnalyzer } from '../metrics/cost-per-outcome.js';
 import type { RecommendationEngine } from '../metrics/recommendation-engine.js';
 import {
-  CONVERSATION_REPORT_TOKENS_TOOL,
   handleReportConversationTokens,
   registerCostTools,
-  type ConversationTokenRecorder,
+  type ConversationReports,
 } from './cost-tools.js';
 import { registerWorkflowTools } from './workflow-tools.js';
 import type { FeedbackCollector } from './workflow-tools.js';
@@ -624,12 +623,12 @@ export function registerPendingTools(
     configSummary?: ConfigSummary;
     hooksInstalledFn?: () => boolean;
     headlessInstaller?: () => import('../install/headless-install.js').HeadlessInstallResult;
-    recordConversationTokens?: ConversationTokenRecorder;
+    conversationReports?: ConversationReports;
   },
 ): void {
   const tools: ToolDefinition[] = [HEALTH_TOOL, INSTALL_HOOKS_TOOL];
   if (options.configSummary) tools.push(CONFIG_TOOL);
-  if (options.recordConversationTokens) tools.push(CONVERSATION_REPORT_TOKENS_TOOL);
+  if (options.conversationReports) tools.push(options.conversationReports.tool);
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -648,10 +647,11 @@ export function registerPendingTools(
     if (name === 'nr_observe_install_hooks') {
       return handleInstallHooks(options.headlessInstaller);
     }
-    if (name === CONVERSATION_REPORT_TOKENS_TOOL.name && options.recordConversationTokens) {
+    if (options.conversationReports && name === options.conversationReports.tool.name) {
       return handleReportConversationTokens(
-        options.recordConversationTokens,
+        options.conversationReports,
         request.params.arguments,
+        request.params._meta,
       );
     }
     return {

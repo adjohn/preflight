@@ -140,6 +140,34 @@ function hashInput(input: unknown): string {
   return createHash('sha256').update(str).digest('hex').slice(0, 16);
 }
 
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value === null || typeof value !== 'object') return value;
+  const record = value as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.keys(record)
+      .sort()
+      .map((key) => [key, canonicalJson(record[key])]),
+  );
+}
+
+/**
+ * Hash of an MCP call's arguments that the engine can recompute from the
+ * `tools/call` it receives. Cursor sends them as a JSON string and Windsurf
+ * as an object, so a string is parsed first and keys are sorted.
+ */
+function mcpArgumentsHash(input: unknown): string {
+  let value = input;
+  if (typeof input === 'string') {
+    try {
+      value = JSON.parse(input);
+    } catch {
+      value = input;
+    }
+  }
+  return hashInput(canonicalJson(value));
+}
+
 function sizeOf(value: unknown): number {
   if (value === undefined || value === null) return 0;
   if (typeof value === 'string') return value.length;
@@ -1037,7 +1065,7 @@ function processHook(raw: string, cliEvent?: string): void {
       tool: mcpTool,
       timestamp,
       inputSize: sizeOf(data.tool_input),
-      inputHash: hashInput(data.tool_input),
+      inputHash: mcpArgumentsHash(data.tool_input),
     };
   } else if (eventName === 'aftermcpexecution') {
     // Same identity tool-name treatment and success-by-default convention as
@@ -1157,7 +1185,7 @@ function processHook(raw: string, cliEvent?: string): void {
       tool: mcpTool,
       timestamp,
       inputSize: sizeOf(toolInfo.mcp_tool_arguments),
-      inputHash: hashInput(toolInfo.mcp_tool_arguments),
+      inputHash: mcpArgumentsHash(toolInfo.mcp_tool_arguments),
     };
   } else if (eventName === 'post_mcp_tool_use') {
     const toolInfo = getWindsurfToolInfo(data);
@@ -1405,6 +1433,7 @@ export {
   processHook,
   redact,
   hashInput,
+  mcpArgumentsHash,
   sizeOf,
   truncate,
   getRecordContent,

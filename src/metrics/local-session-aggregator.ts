@@ -589,6 +589,10 @@ export class LocalSessionAggregator {
     }
   }
 
+  hasSession(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
+
   costUsd(sessionId: string): number {
     return this.sessions.get(sessionId)?.costUsd ?? 0;
   }

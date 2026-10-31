@@ -4,7 +4,6 @@ export type {
   PlatformSessionMetadata,
   PlatformAdapter,
 } from './types.js';
-export { savesConversationSelfReports } from './types.js';
 export { ClaudeCodeAdapter, CLAUDE_CODE_ENV_SIGNALS } from './claude-code-adapter.js';
 export { CursorAdapter } from './cursor-adapter.js';
 export { WindsurfAdapter } from './windsurf-adapter.js';

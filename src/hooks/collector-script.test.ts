@@ -10,6 +10,7 @@ import {
   getLinuxAncestorPids,
   getRecordContent,
   hashInput,
+  mcpArgumentsHash,
   processHook,
   readStdinSync,
   redact,
@@ -255,6 +256,30 @@ describe('collector-script', () => {
   )('files %s hook events under the conversation field it declares, %s', (_platform, field) => {
     processHook(makePreToolUse({ session_id: undefined, [field]: 'conv-declared' }));
     expect(readBufferEvents()[0]?.sessionId).toBe('conv-declared');
+  });
+
+  it.each([
+    [
+      'Cursor beforeMCPExecution',
+      {
+        hook_event_name: 'beforeMCPExecution',
+        conversation_id: 'c1',
+        tool_input: '{ "b": [2, {"d": 4, "c": 3}], "a": 1 }',
+      },
+    ],
+    [
+      'Windsurf pre_mcp_tool_use',
+      {
+        agent_action_name: 'pre_mcp_tool_use',
+        trajectory_id: 't1',
+        tool_info: { mcp_tool_arguments: { b: [2, { d: 4, c: 3 }], a: 1 } },
+      },
+    ],
+  ])('hashes %s arguments as the MCP call carries them', (_hook, payload) => {
+    processHook(JSON.stringify(payload));
+    expect(readBufferEvents()[0]?.inputHash).toBe(
+      mcpArgumentsHash({ a: 1, b: [2, { c: 3, d: 4 }] }),
+    );
   });
 
   describe('processHook() — PreToolUse', () => {

@@ -108,12 +108,8 @@ import { TrendAnalyzer } from './metrics/trend-analyzer.js';
 import { TurnCostAttributor } from './metrics/turn-cost-attributor.js';
 import { TurnTracker } from './metrics/turn-tracker.js';
 import { WorkflowRunTracker } from './metrics/workflow-run-tracker.js';
-import {
-  ClaudeCodeAdapter,
-  createDefaultRegistry,
-  GenericMcpAdapter,
-  savesConversationSelfReports,
-} from './platforms/index.js';
+import { ClaudeCodeAdapter, createDefaultRegistry, GenericMcpAdapter } from './platforms/index.js';
+import { savesConversationSelfReports } from './platforms/types.js';
 import type { ProxyRequestRecord, ProxyToolCallRecord } from './proxy/index.js';
 import { ProxyManager } from './proxy/index.js';
 import { AuditTrailManager } from './security/audit-trail.js';
@@ -130,6 +126,7 @@ import {
 } from './storage/session-store.js';
 import type { ToolCallRecord } from './storage/types.js';
 import { WeeklySummaryGenerator } from './storage/weekly-summary.js';
+import { conversationReportTokensTool, reportCallMatcher } from './tools/cost-tools.js';
 import type { ConfigSummary } from './tools/session-stats.js';
 import { registerPendingTools, registerTools } from './tools/session-stats.js';
 import { FeedbackCollector } from './tools/workflow-tools.js';
@@ -3237,6 +3234,10 @@ async function main(): Promise<void> {
         const pendingConfigFilePath =
           options.config ?? resolve(DEFAULT_STORAGE_PATH, 'config.json');
         const pendingAdapter = createDefaultRegistry().getActive();
+        const conversationIdField = savesConversationSelfReports(pendingAdapter)
+          ? pendingAdapter.capabilities.hookConversationIdField
+          : undefined;
+        const hookEvents = eventProcessor;
         registerPendingTools(mcpServer!.server, {
           sessionStartMs: Date.now(),
           developer: config.developer,
@@ -3262,20 +3263,26 @@ async function main(): Promise<void> {
             hooksInstalledFn: () => areHooksInstalledAtAnyScope(),
             headlessInstaller: buildHeadlessInstaller(),
           }),
-          ...(savesConversationSelfReports(pendingAdapter) && {
-            recordConversationTokens: (conversationId, usage, model) => {
-              const { totalUsd } = costTracker.priceUsage(usage, model);
-              localSessionAggregator.recordTokenUsage(conversationId, {
-                ...usage,
-                costUsd: totalUsd,
-                model,
-              });
-              return {
-                costUsd: totalUsd,
-                conversationTotalCostUsd: localSessionAggregator.costUsd(conversationId),
-              };
-            },
-          }),
+          ...(conversationIdField &&
+            hookEvents && {
+              conversationReports: {
+                tool: conversationReportTokensTool(conversationIdField),
+                matchReportCall: reportCallMatcher(hookEvents),
+                hasSeen: (conversationId) => localSessionAggregator.hasSession(conversationId),
+                record: (conversationId, usage, model) => {
+                  const { totalUsd } = costTracker.priceUsage(usage, model);
+                  localSessionAggregator.recordTokenUsage(conversationId, {
+                    ...usage,
+                    costUsd: totalUsd,
+                    model,
+                  });
+                  return {
+                    costUsd: totalUsd,
+                    conversationTotalCostUsd: localSessionAggregator.costUsd(conversationId),
+                  };
+                },
+              },
+            }),
         });
         logger.info('Dashboard started early; awaiting session_id resolution (breadcrumb poll)');
 
