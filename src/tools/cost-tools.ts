@@ -277,15 +277,7 @@ export async function handleReportConversationTokens(
   });
 }
 
-export interface ReportCallTiming {
-  /** How long to wait for the call's hook event to reach the buffer. */
-  readonly waitMs: number;
-  readonly pollMs: number;
-  /** Oldest hook event that can belong to a call arriving now. */
-  readonly windowMs: number;
-}
-
-const REPORT_CALL_TIMING: ReportCallTiming = { waitMs: 2000, pollMs: 50, windowMs: 60_000 };
+const REPORT_CALL_WAIT = { waitMs: 2000, pollMs: 50 };
 
 /** The report tool's name, alone or after an MCP server prefix such as `preflight-`. */
 function isReportToolName(tool: string): boolean {
@@ -300,12 +292,12 @@ function isReportToolName(tool: string): boolean {
  * `pre_mcp_tool_use` (Windsurf) hook event the client fired for it. Both
  * clients run that hook before executing the call, since the hook can block
  * it, so the event is buffered by the time the call arrives and stays pending
- * until the call's post event. A matched event is claimed so it answers one
- * call only.
+ * until the call's post event or the processor's orphan timeout. A matched
+ * event is claimed so it answers one call only.
  */
 export function reportCallMatcher(
   hooks: Pick<HookEventProcessor, 'poll' | 'pendingPreEvents'>,
-  timing: ReportCallTiming = REPORT_CALL_TIMING,
+  timing = REPORT_CALL_WAIT,
 ): ConversationReports['matchReportCall'] {
   const claimed = new WeakSet<PreHookEvent>();
   return async (args) => {
@@ -313,7 +305,6 @@ export function reportCallMatcher(
     const deadline = Date.now() + timing.waitMs;
     for (;;) {
       hooks.poll();
-      const now = Date.now();
       const matches = hooks
         .pendingPreEvents()
         .filter(
@@ -321,10 +312,9 @@ export function reportCallMatcher(
             !claimed.has(event) &&
             event.inputHash === inputHash &&
             isReportToolName(event.tool) &&
-            isConversationId(event.sessionId) &&
-            now - event.timestamp <= timing.windowMs,
+            isConversationId(event.sessionId),
         );
-      if (matches.length > 0 || now >= deadline) {
+      if (matches.length > 0 || Date.now() >= deadline) {
         const conversations = [...new Set(matches.map((event) => event.sessionId as string))];
         if (conversations.length === 1) claimed.add(matches[0]!);
         return conversations;

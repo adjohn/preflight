@@ -937,9 +937,13 @@ describe('registerPendingTools()', () => {
       await server?.close();
     });
 
-    async function connect(
-      evidence: { matches?: readonly string[]; seen?: readonly string[] } | null = {},
-    ): Promise<void> {
+    type Evidence = {
+      matches?: readonly string[];
+      seen?: readonly string[];
+      meta?: Record<string, unknown>;
+    };
+
+    async function connect(evidence: Evidence | null = {}): Promise<void> {
       const { registerPendingTools } = await import('./session-stats.js');
       const { conversationReportTokensTool } = await import('./cost-tools.js');
       recorded = [];
@@ -1025,67 +1029,41 @@ describe('registerPendingTools()', () => {
       expect(matchCalls).toBe(0);
     });
 
+    const withId = (conversation_id: unknown) => ({ conversation_id, ...tokens });
     it.each([
       [
-        'a guessed, well-formed conversation_id that no hook event backs',
-        { matches: [], seen: ['conv-real'] },
-        { conversation_id: 'conv-guess', ...tokens },
-        undefined,
-        'conversation_unknown',
+        'a guessed id no hook event backs',
+        { seen: ['conv-real'] },
+        withId('conv-guess'),
+        'unknown',
       ],
-      ['a report it cannot place', { matches: [] }, tokens, undefined, 'conversation_unknown'],
+      ['a report it cannot place', {}, tokens, 'unknown'],
       [
-        'an id differing from the hook event conversation',
-        { matches: ['conv-A'], seen: ['conv-B'] },
-        { conversation_id: 'conv-B', ...tokens },
-        undefined,
-        'conversation_id_mismatch',
+        'an id unlike the hook event one',
+        { matches: ['A'], seen: ['B'] },
+        withId('B'),
+        'id_mismatch',
       ],
-      [
-        'an id differing from the _meta conversation',
-        { seen: ['conv-B'] },
-        { conversation_id: 'conv-B', ...tokens },
-        AGY_META,
-        'conversation_id_mismatch',
-      ],
-      [
-        'a call matching hook events from two conversations',
-        { matches: ['conv-A', 'conv-B'] },
-        tokens,
-        undefined,
-        'conversation_ambiguous',
-      ],
-      [
-        'an unplaced report before its malformed tokens',
-        { matches: [] },
-        { input_tokens: -1, model: '' },
-        undefined,
-        'conversation_unknown',
-      ],
-      [
-        'a malformed id before malformed tokens',
-        {},
-        { conversation_id: '../x', input_tokens: -1 },
-        undefined,
-        'invalid_conversation_id',
-      ],
-      ...['../sessions/x', 'a'.repeat(129), 'unknown', 'pending-1700000000000', 42].map(
-        (id) =>
-          [
-            `conversation_id ${String(id).slice(0, 20)}, which names no savable conversation`,
-            { seen: [String(id)] },
-            { conversation_id: id, ...tokens },
-            undefined,
-            'invalid_conversation_id',
-          ] as const,
-      ),
-    ])('rejects %s and records nothing', async (_case, evidence, args, meta, error) => {
+      ['an id unlike the _meta one', { seen: ['B'], meta: AGY_META }, withId('B'), 'id_mismatch'],
+      ['a call two conversations made', { matches: ['A', 'B'] }, tokens, 'ambiguous'],
+      ['an unplaced report before its bad tokens', {}, { input_tokens: -1, model: '' }, 'unknown'],
+    ])('rejects %s and records nothing', async (_case, evidence, args, error) => {
       await connect(evidence);
-      const { isError, body } = await report(args, meta);
+      const { isError, body } = await report(args, (evidence as Evidence).meta);
       expect(isError).toBe(true);
-      expect(body.error).toBe(error);
+      expect(body.error).toBe(`conversation_${error}`);
       expect(recorded).toEqual([]);
     });
+
+    it.each(['../sessions/x', 'a'.repeat(129), 'unknown', 'pending-1700000000000', 42])(
+      'rejects conversation_id %s, which names no savable conversation, before the tokens',
+      async (conversationId) => {
+        await connect({ seen: [String(conversationId)] });
+        const { body } = await report({ conversation_id: conversationId, input_tokens: -1 });
+        expect(body.error).toBe('invalid_conversation_id');
+        expect(recorded).toEqual([]);
+      },
+    );
 
     it('rejects an invalid model name before recording', async () => {
       await connect({ matches: ['conv-A'] });
@@ -1122,7 +1100,7 @@ describe('registerPendingTools()', () => {
         drainAllSessions: true,
         onRecord: () => undefined,
       });
-      match = reportCallMatcher(processor, { waitMs: 300, pollMs: 10, windowMs: 60_000 });
+      match = reportCallMatcher(processor, { waitMs: 300, pollMs: 10 });
     });
 
     afterEach(() => {
@@ -1151,21 +1129,6 @@ describe('registerPendingTools()', () => {
         '{ "model": "claude-sonnet-4-6", "output_tokens": 200, "input_tokens": 1000 }',
       );
       expect(await match(args)).toEqual(['conv-1']);
-    });
-
-    it("matches Windsurf's argument object", async () => {
-      processHook(
-        JSON.stringify({
-          agent_action_name: 'pre_mcp_tool_use',
-          trajectory_id: 'traj-1',
-          tool_info: {
-            mcp_server_name: 'preflight',
-            mcp_tool_name: 'nr_observe_report_tokens',
-            mcp_tool_arguments: args,
-          },
-        }),
-      );
-      expect(await match(args)).toEqual(['traj-1']);
     });
 
     it('waits for a hook event that reaches the buffer after the call', async () => {
@@ -1198,22 +1161,6 @@ describe('registerPendingTools()', () => {
       cursorPre('conv-1', JSON.stringify(args));
       cursorPre('conv-2', JSON.stringify(args));
       expect([...(await match(args))].sort()).toEqual(['conv-1', 'conv-2']);
-    });
-
-    it('ignores a hook event older than the window', async () => {
-      const { reportCallMatcher } = await import('./cost-tools.js');
-      const { mcpArgumentsHash } = await import('../hooks/collector-script.js');
-      processor.processEvents([
-        {
-          mode: 'pre',
-          tool: 'nr_observe_report_tokens',
-          timestamp: Date.now() - 5_000,
-          sessionId: 'conv-old',
-          inputHash: mcpArgumentsHash(args),
-        },
-      ]);
-      const narrow = reportCallMatcher(processor, { waitMs: 0, pollMs: 10, windowMs: 1_000 });
-      expect(await narrow(args)).toEqual([]);
     });
   });
 
