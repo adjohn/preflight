@@ -131,7 +131,6 @@ export interface LocalSessionRollup {
   lastEmittedCost: EmittedCost | null;
   tokensInput: number;
   tokensOutput: number;
-  tokensThinking: number;
   tokensCacheRead: number;
   tokensCacheCreation: number;
   models: Set<string>;
@@ -370,7 +369,6 @@ export class LocalSessionAggregator {
         lastEmittedCost: null,
         tokensInput: 0,
         tokensOutput: 0,
-        tokensThinking: 0,
         tokensCacheRead: 0,
         tokensCacheCreation: 0,
         models: new Set(),
@@ -513,7 +511,6 @@ export class LocalSessionAggregator {
     }
     rollup.tokensInput += usage.inputTokens ?? 0;
     rollup.tokensOutput += usage.outputTokens ?? 0;
-    rollup.tokensThinking += usage.thinkingTokens ?? 0;
     rollup.tokensCacheRead += usage.cacheReadTokens ?? 0;
     rollup.tokensCacheCreation += usage.cacheCreationTokens ?? 0;
     if (usage.model) {
@@ -688,7 +685,7 @@ export class LocalSessionAggregator {
           : {}),
         tokensInput: rollup.tokensInput,
         tokensOutput: rollup.tokensOutput,
-        tokensThinking: rollup.tokensThinking,
+        tokensThinking: 0,
         tokensCacheRead: rollup.tokensCacheRead,
         tokensCacheCreation: rollup.tokensCacheCreation,
         cacheSavingsUsd: 0,
