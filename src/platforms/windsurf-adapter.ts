@@ -47,6 +47,9 @@ export class WindsurfAdapter implements PlatformAdapter {
     instructionFilePaths: ['.windsurfrules'] as const,
     // Windsurf's hooks send trajectory_id, never session_id, so they write no breadcrumb.
     sessionBreadcrumbWriters: [] as const,
+    // post_mcp_tool_use carries trajectory_id and tool_info.mcp_tool_arguments/
+    // mcp_result (https://docs.windsurf.com/de/windsurf/cascade/hooks).
+    tokenReportRecorder: 'hook' as const,
   };
 
   async initialize(_config: PlatformConfig): Promise<void> {
