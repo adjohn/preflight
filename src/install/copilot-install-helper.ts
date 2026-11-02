@@ -15,8 +15,8 @@
  * settings files directly, mirroring `readAndCheckHooks`'s documented
  * exception in `install-helper.ts`.
  *
- * The hooks file's commands embed the resolved platform tag directly
- * (`NEW_RELIC_AI_PLATFORM=copilot ...`) rather than relying on inherited
+ * The hooks file's entries carry the resolved platform tag directly in their
+ * `env` field (`NEW_RELIC_AI_PLATFORM=copilot`) rather than relying on inherited
  * environment: Copilot's hooks-runner executes these commands with a plain
  * environment that does NOT include any `--env` vars set on a `copilot mcp
  * add` MCP-server registration — verified live against a real New Relic
@@ -50,6 +50,8 @@ const HOOK_FILE_LOCATIONS_SETTING = 'chat.hookFilesLocations';
 export interface CopilotHookCommand {
   type: 'command';
   command: string;
+  powershell: string;
+  env: Readonly<Record<string, string>>;
 }
 
 export interface CopilotHooksFile {
@@ -74,8 +76,19 @@ export function generateCopilotHooksFile(binPath?: string | null): CopilotHooksF
   const bin = binPath
     ? `"${join(dirname(binPath), COLLECTOR_COMMAND).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
     : COLLECTOR_COMMAND;
-  const pre = `NEW_RELIC_AI_PLATFORM=copilot ${bin} pre-tool`;
-  const post = `NEW_RELIC_AI_PLATFORM=copilot ${bin} post-tool`;
+  // Per GitHub's Copilot hooks reference (docs.github.com/en/copilot/reference/
+  // hooks-configuration, "Hook command fields"): `command` is the
+  // cross-platform fallback, an explicit `powershell` entry takes precedence
+  // on Windows, and `env` sets environment variables for the hook process. The
+  // platform tag therefore lives in `env` instead of a `VAR=value` prefix,
+  // which PowerShell parses as a command name. PowerShell also rejects a
+  // quoted path followed by arguments unless it is invoked with `&`.
+  const hookCommand = (subcommand: string): CopilotHookCommand => ({
+    type: 'command',
+    command: `${bin} ${subcommand}`,
+    powershell: `& ${bin} ${subcommand}`,
+    env: { NEW_RELIC_AI_PLATFORM: 'copilot' },
+  });
   // Flat shape per GitHub's own Copilot hooks reference — each PreToolUse/
   // PostToolUse array entry is a command hook directly ({type, command}),
   // unlike Claude Code's settings.json which nests it one level deeper under
@@ -88,8 +101,8 @@ export function generateCopilotHooksFile(binPath?: string | null): CopilotHooksF
   return {
     version: 1,
     hooks: {
-      PreToolUse: [{ type: 'command', command: pre }],
-      PostToolUse: [{ type: 'command', command: post }],
+      PreToolUse: [hookCommand('pre-tool')],
+      PostToolUse: [hookCommand('post-tool')],
     },
   };
 }
@@ -100,7 +113,7 @@ export function generateCopilotHooksFile(binPath?: string | null): CopilotHooksF
 // *server* process's own platform self-detection (session-level dashboard
 // summaries, CopilotSdkAdapter's tool-name normalization for CLI sessions),
 // not the hooks file's per-event NR tagging, which is controlled entirely by
-// generateCopilotHooksFile's embedded NEW_RELIC_AI_PLATFORM=copilot above.
+// generateCopilotHooksFile's `env` NEW_RELIC_AI_PLATFORM=copilot above.
 export function generateVsCodeMcpEntry(
   binPath?: string | null,
   creds?: { licenseKey?: string; accountId?: string },

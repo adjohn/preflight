@@ -227,9 +227,10 @@ describe('CopilotSdkAdapter', () => {
     // Regression guard: the hooks-runner does not inherit env vars set on the
     // `copilot mcp add` registration below, so every hook command must embed
     // the platform tag directly or events silently default to 'claude-code'.
-    it('embeds NEW_RELIC_AI_PLATFORM=copilot directly in the hook commands', () => {
+    it('sets NEW_RELIC_AI_PLATFORM through the hook env field, not a command prefix', () => {
       const instructions = adapter.getHookInstallInstructions();
-      expect(instructions).toContain('NEW_RELIC_AI_PLATFORM=copilot');
+      expect(instructions).toContain('"env": { "NEW_RELIC_AI_PLATFORM": "copilot" }');
+      expect(instructions).not.toContain('NEW_RELIC_AI_PLATFORM=copilot preflight-collector');
     });
 
     it('mentions the automated installer', () => {
