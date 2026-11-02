@@ -42,22 +42,41 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('generateCopilotHooksFile', () => {
-  it('embeds a bare NEW_RELIC_AI_PLATFORM=copilot command when no binPath is given', () => {
+  it('uses a bare command name, with the platform tag in env rather than shell syntax', () => {
     const file = generateCopilotHooksFile();
     expect(file.version).toBe(1);
+    expect(file.hooks.PreToolUse[0]).toEqual({
+      type: 'command',
+      command: 'preflight-collector pre-tool',
+      powershell: '& preflight-collector pre-tool',
+      env: { NEW_RELIC_AI_PLATFORM: 'copilot' },
+    });
+    expect(file.hooks.PostToolUse[0]).toEqual({
+      type: 'command',
+      command: 'preflight-collector post-tool',
+      powershell: '& preflight-collector post-tool',
+      env: { NEW_RELIC_AI_PLATFORM: 'copilot' },
+    });
+  });
+
+  it('quotes the absolute path for POSIX and invokes it with & for PowerShell', () => {
+    const file = generateCopilotHooksFile('/opt/homebrew/bin/preflight');
     expect(file.hooks.PreToolUse[0]!.command).toBe(
-      'NEW_RELIC_AI_PLATFORM=copilot preflight-collector pre-tool',
+      '"/opt/homebrew/bin/preflight-collector" pre-tool',
     );
-    expect(file.hooks.PostToolUse[0]!.command).toBe(
-      'NEW_RELIC_AI_PLATFORM=copilot preflight-collector post-tool',
+    expect(file.hooks.PreToolUse[0]!.powershell).toBe(
+      '& "/opt/homebrew/bin/preflight-collector" pre-tool',
     );
   });
 
-  it('embeds a quoted absolute path plus the platform tag when binPath is given', () => {
+  it('never writes VAR=value shell syntax into any command string', () => {
     const file = generateCopilotHooksFile('/opt/homebrew/bin/preflight');
-    expect(file.hooks.PreToolUse[0]!.command).toBe(
-      'NEW_RELIC_AI_PLATFORM=copilot "/opt/homebrew/bin/preflight-collector" pre-tool',
-    );
+    for (const entry of [...file.hooks.PreToolUse, ...file.hooks.PostToolUse]) {
+      expect(entry.command).not.toMatch(/^\s*[A-Z_]+=/);
+      expect(entry.powershell).not.toMatch(/^\s*[A-Z_]+=/);
+      expect(entry.powershell.startsWith('& ')).toBe(true);
+      expect(entry.env).toEqual({ NEW_RELIC_AI_PLATFORM: 'copilot' });
+    }
   });
 
   // Regression guard: GitHub's Copilot hooks schema is FLAT — each
@@ -65,18 +84,11 @@ describe('generateCopilotHooksFile', () => {
   // {matcher, hooks: [...]} wrapper like Claude Code's settings.json. Wrapping
   // it the Claude way made Copilot's hooks-runner silently never execute
   // these commands (confirmed live).
-  it('emits the flat {type, command} shape, not a nested matcher/hooks wrapper', () => {
+  it('emits the flat command-hook shape, not a nested matcher/hooks wrapper', () => {
     const file = generateCopilotHooksFile();
-    expect(file.hooks.PreToolUse[0]).toEqual({
-      type: 'command',
-      command: 'NEW_RELIC_AI_PLATFORM=copilot preflight-collector pre-tool',
-    });
-    expect(file.hooks.PostToolUse[0]).toEqual({
-      type: 'command',
-      command: 'NEW_RELIC_AI_PLATFORM=copilot preflight-collector post-tool',
-    });
     expect(file.hooks.PreToolUse[0]).not.toHaveProperty('matcher');
     expect(file.hooks.PreToolUse[0]).not.toHaveProperty('hooks');
+    expect(file.hooks.PreToolUse[0]!.type).toBe('command');
   });
 });
 
@@ -224,6 +236,51 @@ describe('mergeCopilotHooksFile', () => {
     const merged = mergeCopilotHooksFile(existing, null);
     const hooks = merged.hooks as { PreToolUse: { command: string }[] };
     expect(hooks.PreToolUse[0]!.command).toContain('/abs/preflight-collector');
+  });
+
+  it('replaces an old VAR=value-prefixed entry in place on reinstall', () => {
+    const existing = {
+      version: 1,
+      hooks: {
+        PreToolUse: [
+          {
+            type: 'command',
+            command: 'NEW_RELIC_AI_PLATFORM=copilot "/old/preflight-collector" pre-tool',
+          },
+        ],
+        PostToolUse: [
+          {
+            type: 'command',
+            command: 'NEW_RELIC_AI_PLATFORM=copilot "/old/preflight-collector" post-tool',
+          },
+        ],
+      },
+    };
+    const merged = mergeCopilotHooksFile(existing, '/new/preflight');
+    const hooks = merged.hooks as {
+      PreToolUse: { command: string; powershell: string }[];
+      PostToolUse: { command: string }[];
+    };
+    expect(hooks.PreToolUse).toHaveLength(1);
+    expect(hooks.PostToolUse).toHaveLength(1);
+    expect(hooks.PreToolUse[0]!.command).toBe('"/new/preflight-collector" pre-tool');
+    expect(hooks.PreToolUse[0]!.powershell).toBe('& "/new/preflight-collector" pre-tool');
+  });
+
+  it('removes both the old and the new entry shapes on uninstall', () => {
+    const merged = mergeCopilotHooksFile({}, '/new/preflight');
+    expect(removeCopilotHooksFile(merged).hooks).toBeUndefined();
+    const old = {
+      hooks: {
+        PreToolUse: [
+          {
+            type: 'command',
+            command: 'NEW_RELIC_AI_PLATFORM=copilot "/o/preflight-collector" pre-tool',
+          },
+        ],
+      },
+    };
+    expect(removeCopilotHooksFile(old).hooks).toBeUndefined();
   });
 
   it('preserves unrelated top-level keys', () => {
