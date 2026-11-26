@@ -529,3 +529,75 @@ describe('retire racing a save', () => {
     expect(readJson(indexPath()).toolCallCount).toBe(3);
   });
 });
+
+describe('a writer holding calls the pre-upgrade index holds', () => {
+  const call = (timestamp: number, toolUseId?: string, success = true) => ({
+    ...(toolUseId && { toolUseId }),
+    toolName: 'Read',
+    timestamp,
+    durationMs: 1,
+    success,
+  });
+  function share(
+    timeline: readonly ReturnType<typeof call>[],
+    opts: { usd: number; start?: number },
+  ): FullSessionSummary {
+    const start = opts.start ?? START;
+    return deserializeFullSessionSummary({
+      sessionId: SID,
+      startTime: start,
+      endTime: Math.max(start, ...timeline.map((e) => e.timestamp)),
+      toolCallCount: timeline.length,
+      toolBreakdown: { Read: timeline.length },
+      toolSuccessRate: timeline.filter((e) => e.success).length / timeline.length,
+      timeline,
+      estimatedCostUsd: opts.usd,
+      costByDayUsd: { [DAY]: opts.usd },
+    } as unknown as Parameters<typeof deserializeFullSessionSummary>[0]);
+  }
+  const loaded = () => totals(new SessionStore({ storagePath }).loadSession(SID));
+
+  it.each([
+    ['after the index started', START + 2000],
+    ['before the index started', START - 60_000],
+  ])(
+    'counts the pre-upgrade cost once after a writer that started %s resent every call in it',
+    (_, writerStart) => {
+      const l1 = call(START + 100, 'l1');
+      writeIndex(share([l1], { usd: 1 }));
+      store.writer('homelab').save(own(share([l1], { start: writerStart, usd: 0.5 })));
+      const projection = readJson(indexPath());
+      writeIndex(
+        share([l1, call(START + 3000, 'o1')], {
+          start: projection.startTime as number,
+          usd: (projection.estimatedCostUsd as number) + 1,
+        }),
+      );
+
+      expect(loaded()).toMatchObject({ calls: 2, usd: 2.5 });
+      store.writer('engine').save(own(share([call(START + 4000, 'n1')], { usd: 0.25 })));
+      expect(loaded()).toMatchObject({ calls: 3, usd: 2.75 });
+    },
+  );
+
+  it('counts a call once that the index saved without its toolUseId and a writer saved with it', () => {
+    writeIndex(share([call(START + 100), call(START + 200, undefined, false)], { usd: 1 }));
+    store
+      .writer('engine')
+      .save(own(share([call(START + 100, 'l1')], { start: START + 2000, usd: 0.5 })));
+
+    expect(new SessionStore({ storagePath }).loadSession(SID)).toMatchObject({
+      toolCallCount: 2,
+      toolSuccessRate: 0.5,
+      estimatedCostUsd: 1.5,
+    });
+    const projection = readJson(indexPath());
+    writeIndex(
+      share(
+        [call(START + 100, 'l1'), call(START + 200, undefined, false), call(START + 3000, 'o1')],
+        { usd: (projection.estimatedCostUsd as number) + 1 },
+      ),
+    );
+    expect(loaded()).toMatchObject({ calls: 3, usd: 2.5 });
+  });
+});

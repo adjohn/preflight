@@ -179,6 +179,29 @@ describe('loading a session with writer files', () => {
     expect(totals(store.loadSession(SID))?.calls).toBe(18);
   });
 
+  it('adds a capture whose every call a writer holds beside a capped capture it shares none with', () => {
+    writeWriter('legacy.0000000000000001.json', activity(ids('p', 10_000)));
+    writeRaw(
+      SID,
+      'legacy.0000000000000002.json',
+      JSON.stringify({
+        version: 1,
+        retracted: false,
+        summary: { ...activity([], START + 5000), estimatedCostUsd: 0.5 },
+        leftToWriters: [
+          null,
+          { toolName: 'Read' },
+          { toolUseId: 'p0', toolName: 'Read' },
+          { toolUseId: 'o0', timestamp: START + 4000, toolName: 'Read' },
+        ],
+      }),
+    );
+    writeWriter('engine.1.a.b.json', startingAt(START + 4000, activity(['o0'])));
+    writeIndex(activity(ids('x', 1)), { marked: true });
+
+    expect(totals(store.loadSession(SID))).toMatchObject({ calls: 10_001, usd: 2500.75 });
+  });
+
   it('takes a name from the newest capture', () => {
     writeWriter('legacy.0000000000000001.json', {
       ...activity(['p0', 'p1'], START + 5000),

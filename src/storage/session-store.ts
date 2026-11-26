@@ -492,7 +492,21 @@ function mergeAttribution(
 // side could have produced on its own.
 const MAX_TIMELINE_ENTRIES = 10_000;
 
-const legacyTimelineKey = (e: ReplayTimelineEntry): string => `${e.timestamp}:${e.toolName}`;
+export type CallIdentity = Pick<ReplayTimelineEntry, 'toolUseId' | 'timestamp' | 'toolName'>;
+
+export function isSavedCall(
+  e: unknown,
+): e is Record<string, unknown> & Pick<ReplayTimelineEntry, 'timestamp' | 'toolName'> {
+  const entry = e as Record<string, unknown> | null;
+  return (
+    typeof entry === 'object' &&
+    entry !== null &&
+    typeof entry.timestamp === 'number' &&
+    typeof entry.toolName === 'string'
+  );
+}
+
+const legacyTimelineKey = (e: CallIdentity): string => `${e.timestamp}:${e.toolName}`;
 
 /**
  * Union two timelines instead of picking whichever is longer. A Claude Code
@@ -940,20 +954,32 @@ export function mergeSummaries(
   };
 }
 
-/** Whether two files' timelines hold one call, by the identity `mergeTimeline` dedupes on. */
-function sharesTimelineEntry(x: FullSessionSummary, y: FullSessionSummary): boolean {
-  return (y.timeline ?? []).some(heldIn(x.timeline ?? []));
+type CallsOf = (file: FullSessionSummary) => readonly CallIdentity[];
+
+export function callIndex(): {
+  readonly has: (e: CallIdentity) => boolean;
+  readonly add: (e: CallIdentity) => void;
+} {
+  const ids = new Set<string>();
+  const keys = new Set<string>();
+  const keysWithoutId = new Set<string>();
+  return {
+    has: (e) =>
+      e.toolUseId
+        ? ids.has(e.toolUseId) || keysWithoutId.has(legacyTimelineKey(e))
+        : keys.has(legacyTimelineKey(e)),
+    add: (e) => {
+      if (e.toolUseId) ids.add(e.toolUseId);
+      else keysWithoutId.add(legacyTimelineKey(e));
+      keys.add(legacyTimelineKey(e));
+    },
+  };
 }
 
-/** Whether `entries` hold an entry's call, by the keys `mergeTimeline` dedupes on. */
-function heldIn(entries: readonly ReplayTimelineEntry[]): (e: ReplayTimelineEntry) => boolean {
-  const ids = new Set(entries.flatMap((e) => (e.toolUseId ? [e.toolUseId] : [])));
-  const keys = new Set(entries.map(legacyTimelineKey));
-  const keysWithoutId = new Set(entries.filter((e) => !e.toolUseId).map(legacyTimelineKey));
-  return (e) =>
-    e.toolUseId
-      ? ids.has(e.toolUseId) || keysWithoutId.has(legacyTimelineKey(e))
-      : keys.has(legacyTimelineKey(e));
+export function heldIn(entries: readonly CallIdentity[]): (e: CallIdentity) => boolean {
+  const index = callIndex();
+  for (const e of entries) index.add(e);
+  return index.has;
 }
 
 /**
@@ -965,7 +991,11 @@ function heldIn(entries: readonly ReplayTimelineEntry[]): (e: ReplayTimelineEntr
 function mayHoldDroppedEntries(capped: FullSessionSummary, other: FullSessionSummary): boolean {
   const kept = capped.timeline ?? [];
   const seen = other.timeline ?? [];
-  if (kept.length < MAX_TIMELINE_ENTRIES || seen.length > capped.toolCallCount - kept.length) {
+  if (
+    kept.length < MAX_TIMELINE_ENTRIES ||
+    seen.length === 0 ||
+    seen.length > capped.toolCallCount - kept.length
+  ) {
     return false;
   }
   return (
@@ -974,20 +1004,20 @@ function mayHoldDroppedEntries(capped: FullSessionSummary, other: FullSessionSum
   );
 }
 
-/**
- * Files connected by shared activity, directly or through another file. Split files hold separate
- * activity and share no timeline entry; copies of one stretch share entries.
- */
-function groupBySharedActivity(files: readonly FullSessionSummary[]): FullSessionSummary[][] {
+function groupBySharedActivity(
+  files: readonly FullSessionSummary[],
+  callsOf: CallsOf,
+): FullSessionSummary[][] {
   const ungrouped = new Set(files);
   const groups: FullSessionSummary[][] = [];
   for (const seed of files) {
     if (!ungrouped.delete(seed)) continue;
     const group = [seed];
     for (const member of group) {
+      const sharesACall = heldIn(callsOf(member));
       for (const other of ungrouped) {
         if (
-          sharesTimelineEntry(member, other) ||
+          callsOf(other).some(sharesACall) ||
           mayHoldDroppedEntries(member, other) ||
           mayHoldDroppedEntries(other, member)
         ) {
@@ -1028,11 +1058,17 @@ function byProgress(x: FullSessionSummary, y: FullSessionSummary): number {
  * under the sum. No current writer drops a timeline it saves onto, so the sum is the latest state
  * and its ledger is kept.
  */
-export function combineSessionFiles(files: readonly FullSessionSummary[]): FullSessionSummary {
-  const separate = groupBySharedActivity(files.filter((f) => f.timeline?.length))
+export function combineSessionFiles(
+  files: readonly FullSessionSummary[],
+  callsOf: CallsOf = (f) => f.timeline ?? [],
+): FullSessionSummary {
+  const separate = groupBySharedActivity(
+    files.filter((f) => callsOf(f).length > 0),
+    callsOf,
+  )
     .map((group) => maxMerge(group.sort(byProgress)))
     .sort(byWriteOrder);
-  const withoutTimeline = files.filter((f) => !f.timeline?.length).sort(byWriteOrder);
+  const withoutTimeline = files.filter((f) => callsOf(f).length === 0).sort(byWriteOrder);
   const added = separate.length > 0 ? [separate.reduce((a, b) => addSummaries(a, b))] : [];
   return maxMerge([...withoutTimeline, ...added]);
 }
@@ -2899,44 +2935,36 @@ export function deserializeFullSessionSummary(
     instructionPromptHash:
       typeof obj.instructionPromptHash === 'string' ? obj.instructionPromptHash : null,
     timeline: Array.isArray(obj.timeline)
-      ? obj.timeline
-          .filter(
-            (e): e is Record<string, unknown> =>
-              typeof e === 'object' &&
-              e !== null &&
-              typeof e.timestamp === 'number' &&
-              typeof e.toolName === 'string',
-          )
-          .map((e) => ({
-            timestamp: e.timestamp as number,
-            toolName: e.toolName as string,
-            toolUseId: typeof e.toolUseId === 'string' ? e.toolUseId : undefined,
-            durationMs: typeof e.durationMs === 'number' ? e.durationMs : null,
-            success: typeof e.success === 'boolean' ? e.success : true,
-            filePath: typeof e.filePath === 'string' ? e.filePath : undefined,
-            command: typeof e.command === 'string' ? e.command : undefined,
-            cwd: typeof e.cwd === 'string' ? e.cwd : undefined,
-            isTestCommand: typeof e.isTestCommand === 'boolean' ? e.isTestCommand : undefined,
-            isBuildCommand: typeof e.isBuildCommand === 'boolean' ? e.isBuildCommand : undefined,
-            isLintCommand: typeof e.isLintCommand === 'boolean' ? e.isLintCommand : undefined,
-            errorType: typeof e.errorType === 'string' ? e.errorType : undefined,
-            skillName: typeof e.skillName === 'string' ? e.skillName : undefined,
-            agentType: typeof e.agentType === 'string' ? e.agentType : undefined,
-            createdPrNumber:
-              typeof e.createdPrNumber === 'string' && /^\d{1,9}$/.test(e.createdPrNumber)
-                ? e.createdPrNumber
-                : undefined,
-            createdPrRepo: parsePrRepo(e.createdPrRepo),
-            mcpPrNumber:
-              typeof e.mcpPrNumber === 'string' && /^\d{1,9}$/.test(e.mcpPrNumber)
-                ? e.mcpPrNumber
-                : undefined,
-            mcpPrRepo:
-              typeof e.mcpPrRepo === 'string' && /^[\w.-]{1,100}\/[\w.-]{1,100}$/.test(e.mcpPrRepo)
-                ? e.mcpPrRepo
-                : undefined,
-            runInBackground: e.runInBackground === true || undefined,
-          }))
+      ? obj.timeline.filter(isSavedCall).map((e) => ({
+          timestamp: e.timestamp,
+          toolName: e.toolName,
+          toolUseId: typeof e.toolUseId === 'string' ? e.toolUseId : undefined,
+          durationMs: typeof e.durationMs === 'number' ? e.durationMs : null,
+          success: typeof e.success === 'boolean' ? e.success : true,
+          filePath: typeof e.filePath === 'string' ? e.filePath : undefined,
+          command: typeof e.command === 'string' ? e.command : undefined,
+          cwd: typeof e.cwd === 'string' ? e.cwd : undefined,
+          isTestCommand: typeof e.isTestCommand === 'boolean' ? e.isTestCommand : undefined,
+          isBuildCommand: typeof e.isBuildCommand === 'boolean' ? e.isBuildCommand : undefined,
+          isLintCommand: typeof e.isLintCommand === 'boolean' ? e.isLintCommand : undefined,
+          errorType: typeof e.errorType === 'string' ? e.errorType : undefined,
+          skillName: typeof e.skillName === 'string' ? e.skillName : undefined,
+          agentType: typeof e.agentType === 'string' ? e.agentType : undefined,
+          createdPrNumber:
+            typeof e.createdPrNumber === 'string' && /^\d{1,9}$/.test(e.createdPrNumber)
+              ? e.createdPrNumber
+              : undefined,
+          createdPrRepo: parsePrRepo(e.createdPrRepo),
+          mcpPrNumber:
+            typeof e.mcpPrNumber === 'string' && /^\d{1,9}$/.test(e.mcpPrNumber)
+              ? e.mcpPrNumber
+              : undefined,
+          mcpPrRepo:
+            typeof e.mcpPrRepo === 'string' && /^[\w.-]{1,100}\/[\w.-]{1,100}$/.test(e.mcpPrRepo)
+              ? e.mcpPrRepo
+              : undefined,
+          runInBackground: e.runInBackground === true || undefined,
+        }))
       : undefined,
     toolSelectionMetrics,
     modelBreakdown,

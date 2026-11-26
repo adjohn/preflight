@@ -8,14 +8,18 @@ import {
   byWriteOrder,
   combineSessionFiles,
   deserializeFullSessionSummary,
+  callIndex,
   exactTotalsOf,
-  savedToolNameByUseId,
+  heldIn,
+  isSavedCall,
   subtractCallUsageParts,
   subtractSummaries,
   warnOnce,
+  type CallIdentity,
   type FullSessionSummary,
   type SerializedFullSessionSummary,
 } from './session-store.js';
+import type { ReplayTimelineEntry } from './types.js';
 
 /**
  * Each writer's files for session `<sid>` live in `sessions/.writers/<sid>/`,
@@ -54,8 +58,8 @@ export function newWriterId(producer: Producer): string {
   return `${producer}.${process.pid}.${Date.now().toString(36)}.${randomBytes(4).toString('hex')}`;
 }
 
-export function writerFileBody({ summary, retracted }: WriterContribution): string {
-  return JSON.stringify({ version: 1, retracted, summary }, null, 2) + '\n';
+export function writerFileBody(file: WriterContribution | LegacyCapture): string {
+  return JSON.stringify({ version: 1, ...file }, null, 2) + '\n';
 }
 
 function tmpPathFor(path: string): string {
@@ -103,6 +107,10 @@ export interface WriterContribution {
   readonly retracted: boolean;
 }
 
+export interface LegacyCapture extends WriterContribution {
+  readonly leftToWriters: readonly CallIdentity[];
+}
+
 const NO_ESTIMATES: ByteEstimateLedger = {
   costUsd: 0,
   inputTokens: 0,
@@ -130,15 +138,15 @@ export function foldWriterContributions(
     ...standingOutcome(summaries),
     toolSuccessRate: foldedToolSuccessRate(summaries),
   };
-  const repeats = repeatedCallNames(summaries);
+  const repeats = repeatedCalls(summaries).flat();
   if (repeats.length === 0) return sum;
   const toolBreakdown = { ...sum.toolBreakdown };
-  for (const name of repeats) toolBreakdown[name] -= 1;
+  for (const { toolName } of repeats) toolBreakdown[toolName] -= 1;
   return {
     ...sum,
     toolCallCount: sum.toolCallCount - repeats.length,
     toolBreakdown,
-    bashCommandCount: sum.bashCommandCount - repeats.filter((name) => name === 'Bash').length,
+    bashCommandCount: sum.bashCommandCount - repeats.filter((e) => e.toolName === 'Bash').length,
   };
 }
 
@@ -171,16 +179,22 @@ function standingOutcome(
 export function captureLegacyIndex(
   index: readonly IndexFile[],
   writers: readonly WriterContribution[],
-): WriterContribution[] {
+): LegacyCapture[] {
   return index
     .filter((f) => !f.isProjection)
     .map(({ summary }) => {
+      const retracted = savedRetraction(summary);
       const held = writers.filter((w) => mayHold(summary, w.summary));
-      const left =
-        held.length === 0
-          ? summary
-          : subtractSummaries(summary, foldWriterContributions(held as [WriterContribution]));
-      return { summary: withTimelineCalls(left), retracted: savedRetraction(summary) };
+      if (held.length === 0)
+        return { summary: withTimelineCalls(summary), retracted, leftToWriters: [] };
+      const heldFold = foldWriterContributions(held as [WriterContribution]);
+      return {
+        summary: withTimelineCalls(subtractSummaries(summary, heldFold)),
+        retracted,
+        leftToWriters: (summary.timeline ?? [])
+          .filter(heldIn(heldFold.timeline ?? []))
+          .map(({ toolUseId, timestamp, toolName }) => ({ toolUseId, timestamp, toolName })),
+      };
     });
 }
 
@@ -219,36 +233,27 @@ function savedRetraction({ byteEstimates: ledger }: FullSessionSummary): boolean
 }
 
 function foldedToolSuccessRate(inWriteOrder: readonly FullSessionSummary[]): number | null {
+  const rated = inWriteOrder.flatMap((s) =>
+    s.toolSuccessRate === null ? [] : [{ s, rate: s.toolSuccessRate }],
+  );
+  const repeats = repeatedCalls(rated.map(({ s }) => s));
   let calls = 0;
   let successes = 0;
-  const counted = new Set<string>();
-  for (const s of inWriteOrder) {
-    if (s.toolSuccessRate === null) continue;
-    calls += s.toolCallCount;
-    successes += Math.round(s.toolSuccessRate * s.toolCallCount);
-    const successById = new Map<string, boolean>();
-    for (const e of s.timeline ?? []) if (e.toolUseId) successById.set(e.toolUseId, e.success);
-    for (const [toolUseId, success] of successById) {
-      if (!counted.has(toolUseId)) counted.add(toolUseId);
-      else {
-        calls -= 1;
-        if (success) successes -= 1;
-      }
-    }
-  }
+  rated.forEach(({ s, rate }, i) => {
+    calls += s.toolCallCount - repeats[i].length;
+    successes += Math.round(rate * s.toolCallCount) - repeats[i].filter((e) => e.success).length;
+  });
   return calls > 0 ? successes / calls : null;
 }
 
-function repeatedCallNames(summaries: readonly FullSessionSummary[]): string[] {
-  const seen = new Set<string>();
-  const repeats: string[] = [];
-  for (const summary of summaries) {
-    for (const [toolUseId, toolName] of savedToolNameByUseId(summary)) {
-      if (seen.has(toolUseId)) repeats.push(toolName);
-      else seen.add(toolUseId);
-    }
-  }
-  return repeats;
+function repeatedCalls(summaries: readonly FullSessionSummary[]): ReplayTimelineEntry[][] {
+  const seen = callIndex();
+  return summaries.map((s) => {
+    const calls = s.timeline ?? [];
+    const repeats = calls.filter(seen.has);
+    for (const e of calls) seen.add(e);
+    return repeats;
+  });
 }
 
 function withoutEstimates(s: FullSessionSummary): FullSessionSummary {
@@ -273,7 +278,7 @@ export interface IndexFile {
 
 export interface WriterFiles {
   readonly writers: readonly WriterContribution[];
-  readonly legacyCaptures: readonly WriterContribution[];
+  readonly legacyCaptures: readonly LegacyCapture[];
 }
 
 export function readWriterFiles(sessionsDir: string, sessionId: string): WriterFiles | null {
@@ -282,7 +287,7 @@ export function readWriterFiles(sessionsDir: string, sessionId: string): WriterF
     (name) => name.endsWith('.json') && !name.startsWith('.'),
   );
   const writers: WriterContribution[] = [];
-  const legacyCaptures: WriterContribution[] = [];
+  const legacyCaptures: LegacyCapture[] = [];
   for (const name of names.sort()) {
     let raw: string;
     try {
@@ -299,7 +304,7 @@ export function readWriterFiles(sessionsDir: string, sessionId: string): WriterF
     } else if (name.startsWith(LEGACY_PREFIX)) {
       legacyCaptures.push(parsed);
     } else {
-      writers.push(parsed);
+      writers.push({ summary: parsed.summary, retracted: parsed.retracted });
     }
   }
   return writers.length + legacyCaptures.length === 0 ? null : { writers, legacyCaptures };
@@ -318,15 +323,18 @@ export function foldSessionFiles(
   };
 }
 
-/**
- * Captures combine as index files do. Captures that share a call are views of
- * one history, each taken later, so they max-merge. An older build's own file
- * beside the pre-upgrade index shares none and adds. A later capture can leave
- * a call to a writer that an earlier one keeps, so the counts cover the timeline.
- */
-function combineCaptures(captures: readonly WriterContribution[]): WriterContribution {
+function combineCaptures(captures: readonly LegacyCapture[]): WriterContribution {
+  const calls = new Map(
+    captures.map((c) => [c.summary, [...(c.summary.timeline ?? []), ...c.leftToWriters]]),
+  );
+  const callsOf = (s: FullSessionSummary) => calls.get(s) ?? [];
   return {
-    summary: withTimelineCalls(combineSessionFiles(captures.map((c) => c.summary))),
+    summary: withTimelineCalls(
+      combineSessionFiles(
+        captures.map((c) => c.summary),
+        callsOf,
+      ),
+    ),
     retracted: captures.some((c) => c.retracted),
   };
 }
@@ -339,7 +347,7 @@ export function listDirOrEmpty(dir: string): string[] {
   }
 }
 
-function parseWriterFile(raw: string, sessionId: string): WriterContribution | null {
+function parseWriterFile(raw: string, sessionId: string): LegacyCapture | null {
   let doc: unknown;
   try {
     doc = JSON.parse(raw);
@@ -347,9 +355,19 @@ function parseWriterFile(raw: string, sessionId: string): WriterContribution | n
     return null;
   }
   if (typeof doc !== 'object' || doc === null) return null;
-  const { version, retracted, summary } = doc as Record<string, unknown>;
+  const { version, retracted, summary, leftToWriters } = doc as Record<string, unknown>;
   if (version !== 1 || typeof retracted !== 'boolean') return null;
   if (typeof summary !== 'object' || summary === null) return null;
   const parsed = deserializeFullSessionSummary(summary as SerializedFullSessionSummary);
-  return parsed.sessionId === sessionId ? { summary: parsed, retracted } : null;
+  if (parsed.sessionId !== sessionId) return null;
+  return { summary: parsed, retracted, leftToWriters: parseCalls(leftToWriters) };
+}
+
+function parseCalls(raw: unknown): CallIdentity[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isSavedCall).map(({ toolUseId, timestamp, toolName }) => ({
+    toolUseId: typeof toolUseId === 'string' ? toolUseId : undefined,
+    timestamp,
+    toolName,
+  }));
 }
