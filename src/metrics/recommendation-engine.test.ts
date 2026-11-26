@@ -15,6 +15,7 @@ import { RecommendationEngine } from './recommendation-engine.js';
 import { TaskDetector } from './task-detector.js';
 import { ModelUsageTracker } from './model-usage-tracker.js';
 import { ZERO_QUALITY_PROXY_COUNTS } from './quality-proxy-tracker.js';
+import { saveAsWriter } from '../__test-utils__/save-as-writer.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let tmpDir: string;
@@ -119,7 +120,8 @@ describe('RecommendationEngine', () => {
     // High correction rate → prompt_engineering rec
     // Re-reading anti-patterns → prompt_engineering rec (file_paths)
     for (let i = 0; i < 4; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `s-${i}`,
           userMessages: 20,
@@ -128,7 +130,8 @@ describe('RecommendationEngine', () => {
         }),
       );
     }
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's-clean',
         userMessages: 20,
@@ -154,7 +157,8 @@ describe('RecommendationEngine', () => {
 
     // Same conditions that generate same recommendations
     for (let i = 0; i < 3; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `s-${i}`,
           userMessages: 20,
@@ -179,7 +183,8 @@ describe('RecommendationEngine', () => {
 
     // Trigger both high (correction rate) and medium (re-reading) recs
     for (let i = 0; i < 4; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `s-${i}`,
           userMessages: 20,
@@ -188,7 +193,8 @@ describe('RecommendationEngine', () => {
         }),
       );
     }
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's-clean',
         userMessages: 20,
@@ -218,7 +224,8 @@ describe('RecommendationEngine', () => {
 
     // Generate multiple recs
     for (let i = 0; i < 4; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `s-${i}`,
           userMessages: 20,
@@ -227,7 +234,8 @@ describe('RecommendationEngine', () => {
         }),
       );
     }
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's-extra',
         userMessages: 20,
@@ -301,7 +309,8 @@ describe('RecommendationEngine', () => {
     const { engine } = createEngine();
 
     for (const developer of ['alice', 'bob']) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `team-${developer}`,
           developer,
@@ -397,14 +406,16 @@ describe('RecommendationEngine', () => {
 
     // Create sessions with strong recommendation signal
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `sonnet-${i}`,
           model: 'sonnet',
           efficiencyScore: 0.9,
         }),
       );
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `opus-${i}`,
           model: 'opus',
@@ -421,7 +432,8 @@ describe('RecommendationEngine', () => {
   it('returns no recommendation when insufficient historical data', () => {
     const { engine } = createEngine();
 
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's1',
         model: 'sonnet',
@@ -461,14 +473,16 @@ describe('RecommendationEngine', () => {
 
     // Create sessions with sonnet being better
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `sonnet-${i}`,
           model: 'sonnet',
           efficiencyScore: 0.9,
         }),
       );
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `opus-${i}`,
           model: 'opus',
@@ -512,14 +526,16 @@ describe('RecommendationEngine', () => {
 
     // Create sessions that will result in medium confidence (10 sessions per model, gap = 0.06)
     for (let i = 0; i < 10; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `sonnet-${i}`,
           model: 'sonnet',
           efficiencyScore: 0.9,
         }),
       );
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `opus-${i}`,
           model: 'opus',
@@ -543,7 +559,8 @@ describe('RecommendationEngine', () => {
   it('emitMetrics emits ai.recommendation events with correct attributes', () => {
     const { engine } = createEngine();
 
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's1',
         userMessages: 20,

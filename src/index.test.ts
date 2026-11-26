@@ -54,6 +54,7 @@ import type { NrIngestManager } from './transport/nr-ingest.js';
 import { UNFORWARDED_SESSIONS_HINT } from './transport/unforwarded-session-monitor.js';
 import { breadcrumbRoot } from './hooks/session-breadcrumbs.js';
 import { DRAINS_DIR, formatClaimName } from './storage/drain-claims.js';
+import { saveAsWriter } from './__test-utils__/save-as-writer.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 
@@ -1129,7 +1130,7 @@ describe('stdio integration', () => {
           }
           return store.loadSession(id) !== null;
         },
-        saveSession: (summary: FullSessionSummary) => store.saveSession(summary),
+        saveSession: (summary: FullSessionSummary) => saveAsWriter(store, summary),
         loadSession: (id: string) => store.loadSession(id),
         budgetAlerts: async (): Promise<Array<{ period: string }>> => {
           const result = await client.callTool({

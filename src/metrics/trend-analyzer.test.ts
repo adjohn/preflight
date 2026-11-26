@@ -13,6 +13,7 @@ import {
   significantChange,
 } from './trend-analyzer.js';
 import { ZERO_QUALITY_PROXY_COUNTS } from './quality-proxy-tracker.js';
+import { saveAsWriter } from '../__test-utils__/save-as-writer.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let tmpDir: string;
@@ -99,7 +100,8 @@ describe('TrendAnalyzer', () => {
     for (let i = 0; i < weeks.length; i++) {
       const { start } = getWeekDateRange(weeks[i]!);
       // Offset by 12h to avoid UTC/local timezone edge cases
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `s-w${i}`,
           startTime: start.getTime() + 43_200_000,
@@ -121,21 +123,24 @@ describe('TrendAnalyzer', () => {
     const { start } = getWeekDateRange('2026-W16');
 
     // 3 sessions in the same week with different costs
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's1',
         startTime: start.getTime() + 43_200_000,
         estimatedCostUsd: 0.1,
       }),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's2',
         startTime: start.getTime() + 43_201_000,
         estimatedCostUsd: 0.25,
       }),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's3',
         startTime: start.getTime() + 43_202_000,
@@ -161,7 +166,8 @@ describe('TrendAnalyzer', () => {
     const { start: startB } = getWeekDateRange('2026-W16');
 
     // Week A: efficiency 0.6, cost $0.50, 4 tests run / 3 passed, 20 tool calls / 2 tasks
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'a1',
         startTime: startA.getTime() + 43_200_000,
@@ -175,7 +181,8 @@ describe('TrendAnalyzer', () => {
     );
 
     // Week B: efficiency 0.8, cost $0.40, 5 tests run / 5 passed, 15 tool calls / 3 tasks
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'b1',
         startTime: startB.getTime() + 43_200_000,
@@ -211,7 +218,8 @@ describe('TrendAnalyzer', () => {
     const { start: startB } = getWeekDateRange('2026-W16');
 
     // Week A: no efficiency score (efficiencyScore: null)
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'a-null-eff',
         startTime: startA.getTime() + 43_200_000,
@@ -220,7 +228,8 @@ describe('TrendAnalyzer', () => {
       }),
     );
     // Week B: has real efficiency data
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'b-real-eff',
         startTime: startB.getTime() + 43_200_000,
@@ -245,7 +254,8 @@ describe('TrendAnalyzer', () => {
     const { start } = getWeekDateRange('2026-W16');
 
     // Alice: high efficiency
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'alice-1',
         developer: 'alice',
@@ -256,7 +266,8 @@ describe('TrendAnalyzer', () => {
     );
 
     // Bob: lower efficiency
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'bob-1',
         developer: 'bob',
@@ -286,7 +297,8 @@ describe('TrendAnalyzer', () => {
 
     // Opus sessions: expensive, high efficiency
     for (let i = 0; i < 3; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `opus-${i}`,
           model: 'claude-opus-4-20250514',
@@ -298,7 +310,8 @@ describe('TrendAnalyzer', () => {
 
     // Sonnet sessions: cheaper, lower efficiency
     for (let i = 0; i < 2; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `sonnet-${i}`,
           model: 'claude-sonnet-4-20250514',
@@ -327,7 +340,8 @@ describe('TrendAnalyzer', () => {
 
     // Previous week (W15)
     const { start: startPrev } = getWeekDateRange('2026-W15');
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'prev-1',
         startTime: startPrev.getTime() + 43_200_000,
@@ -340,7 +354,8 @@ describe('TrendAnalyzer', () => {
 
     // Current week (W16)
     const { start: startCur } = getWeekDateRange('2026-W16');
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'cur-1',
         startTime: startCur.getTime() + 43_200_000,
@@ -372,7 +387,8 @@ describe('TrendAnalyzer', () => {
     const analyzer = new TrendAnalyzer({ sessionStore: store });
 
     const { start } = getWeekDateRange('2026-W16');
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'emit-alice',
         developer: 'alice',
@@ -383,7 +399,8 @@ describe('TrendAnalyzer', () => {
         testPassCount: 4,
       }),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'emit-bob',
         developer: 'bob',
@@ -437,7 +454,7 @@ function makeSessionStore(sessions: FullSessionSummary[]): SessionStore {
   mkdirSync(resolve(tmpPath, 'sessions'), { recursive: true });
   const s = new SessionStore({ storagePath: tmpPath });
   for (const session of sessions) {
-    s.saveSession(session);
+    saveAsWriter(s, session);
   }
   return s;
 }
@@ -526,7 +543,7 @@ describe('rankModelsByOutcome', () => {
   it('returns insufficient_data when only 1-2 sessions exist', () => {
     const analyzer = new TrendAnalyzer({ sessionStore: store });
 
-    store.saveSession(makeSummary({ sessionId: 's1', model: 'sonnet' }));
+    saveAsWriter(store, makeSummary({ sessionId: 's1', model: 'sonnet' }));
 
     const report = analyzer.rankModelsByOutcome();
 
@@ -539,7 +556,8 @@ describe('rankModelsByOutcome', () => {
 
     // Model A: 20 sessions with high efficiency (0.9)
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `a-${i}`,
           model: 'sonnet',
@@ -551,7 +569,8 @@ describe('rankModelsByOutcome', () => {
 
     // Model B: 20 sessions with lower efficiency (0.6)
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `b-${i}`,
           model: 'opus',
@@ -576,7 +595,8 @@ describe('rankModelsByOutcome', () => {
 
     // Sessions with null model
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `null-${i}`,
           model: null,
@@ -587,7 +607,8 @@ describe('rankModelsByOutcome', () => {
 
     // Real model
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `sonnet-${i}`,
           model: 'sonnet',
@@ -607,7 +628,8 @@ describe('rankModelsByOutcome', () => {
 
     // Bug fix session (tests + files modified)
     for (let i = 0; i < 10; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `bug-${i}`,
           model: 'sonnet',
@@ -621,7 +643,8 @@ describe('rankModelsByOutcome', () => {
 
     // Investigation session (mostly read/grep)
     for (let i = 0; i < 10; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `inv-${i}`,
           model: 'opus',
@@ -650,7 +673,8 @@ describe('rankModelsByOutcome', () => {
 
     // Model A: high efficiency, high cost
     for (let i = 0; i < 8; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `a-${i}`,
           model: 'sonnet',
@@ -662,7 +686,8 @@ describe('rankModelsByOutcome', () => {
 
     // Model B: same efficiency, lower cost
     for (let i = 0; i < 8; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `b-${i}`,
           model: 'haiku',
@@ -683,7 +708,8 @@ describe('rankModelsByOutcome', () => {
 
     // Alice with sonnet: high efficiency
     for (let i = 0; i < 10; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `alice-${i}`,
           developer: 'alice',
@@ -695,7 +721,8 @@ describe('rankModelsByOutcome', () => {
 
     // Bob with opus: low efficiency
     for (let i = 0; i < 10; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `bob-${i}`,
           developer: 'bob',
@@ -719,7 +746,8 @@ describe('rankModelsByOutcome', () => {
 
     // Model A: 20 sessions with efficiency 0.80
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `a-${i}`,
           model: 'sonnet',
@@ -731,7 +759,8 @@ describe('rankModelsByOutcome', () => {
 
     // Model B: 20 sessions with efficiency 0.78 (gap = 0.02, below 0.05 threshold)
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `b-${i}`,
           model: 'opus',
@@ -756,7 +785,8 @@ describe('rankModelsByOutcome', () => {
 
     // 25 sessions with only one model
     for (let i = 0; i < 25; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `s-${i}`,
           model: 'sonnet',
@@ -790,7 +820,8 @@ describe('rankModelsByOutcome', () => {
 
     // 20 single-model sonnet sessions with high efficiency.
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `sonnet-${i}`,
           model: 'sonnet',
@@ -805,7 +836,8 @@ describe('rankModelsByOutcome', () => {
     // these can't be attributed to sonnet alone, and must not be counted in
     // its ranking bucket.
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `mixed-${i}`,
           model: 'sonnet',
@@ -834,7 +866,8 @@ describe('rankModelsByOutcome', () => {
 
     // Model A: 3 sessions with efficiency 0.9 (meets MIN_SESSIONS_LOW_CONFIDENCE)
     for (let i = 0; i < 3; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `a-${i}`,
           model: 'sonnet',
@@ -846,7 +879,8 @@ describe('rankModelsByOutcome', () => {
 
     // Model B: 3 sessions with efficiency 0.5 (gap = 0.4, well above 0.05 threshold)
     for (let i = 0; i < 3; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `b-${i}`,
           model: 'opus',

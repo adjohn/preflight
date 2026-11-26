@@ -9,6 +9,7 @@ import { computeHistoricalCosts } from './historical-costs.js';
 import { todayCostOfSummary } from '../metrics/cost-tracker-seed.js';
 import { SessionStore } from './session-store.js';
 import type { FullSessionSummary } from './session-store.js';
+import { saveAsWriter } from '../__test-utils__/save-as-writer.js';
 
 // Local-time constructors keep the fixtures correct in any host timezone,
 // because the today/yesterday boundary is the host's local midnight.
@@ -27,7 +28,7 @@ let store: SessionStore;
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 
 function save(sessionId: string, startTime: number, endTime: number, costUsd: number | null): void {
-  store.saveSession({
+  saveAsWriter(store, {
     sessionId,
     startTime,
     endTime,
@@ -217,7 +218,8 @@ describe('computeHistoricalCosts', () => {
     place(REF_TS - 3 * DAY, 200);
     place(REF_TS - HOUR, 5);
     expect(baselines()).toEqual(expected);
-    store.saveSession(store.loadSession('split') as FullSessionSummary);
+    const idle = { sessionId: 'split', startTime: REF_TS - HOUR, endTime: REF_TS - HOUR };
+    saveAsWriter(store, idle as unknown as FullSessionSummary);
     expect(store.loadAllSessions({ since: new Date(REF_TS - 7 * DAY) })).toEqual([]);
     expect(baselines()).toEqual(expected);
   });

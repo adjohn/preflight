@@ -19,6 +19,7 @@ import {
 } from './local-session-aggregator.js';
 import { backfillAgentId } from './agent-partition.js';
 import { ToolSelectionScorer } from './tool-selection-scorer.js';
+import { saveAsWriter } from '../__test-utils__/save-as-writer.js';
 
 // git sets GIT_DIR/GIT_WORK_TREE for hook subprocesses, which override `-C
 // <dir>` and would silently redirect these calls to the real repo instead of
@@ -99,8 +100,8 @@ describe('LocalSessionAggregator', () => {
       expect(summary?.timeline).toHaveLength(2);
 
       const store = new SessionStore({ storagePath: dir });
-      store.saveSession(summary!);
-      store.saveSession(summary!);
+      saveAsWriter(store, summary!);
+      saveAsWriter(new SessionStore({ storagePath: dir }), summary!);
       expect(store.loadSession(REAL_ID)?.timeline).toHaveLength(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });

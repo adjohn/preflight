@@ -8,6 +8,7 @@ import type { FullSessionSummary } from '../storage/session-store.js';
 import { getWeekDateRange } from '../storage/weekly-summary.js';
 import { CollaborationProfiler } from './collaboration-profile.js';
 import { ZERO_QUALITY_PROXY_COUNTS } from './quality-proxy-tracker.js';
+import { saveAsWriter } from '../__test-utils__/save-as-writer.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let tmpDir: string;
@@ -89,7 +90,8 @@ describe('CollaborationProfiler', () => {
 
     // specificity: 20 tool calls / 3 user messages = ratio 6.67, normalized: 6.67/10 ≈ 0.667
     // autonomy: 20 tool calls / 4 assistant messages = 5.0, normalized: 5/5 = 1.0
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's1',
         toolCallCount: 20,
@@ -114,7 +116,8 @@ describe('CollaborationProfiler', () => {
 
     // 5 tool calls / 4 user messages = ratio 1.25, normalized: 1.25/10 = 0.125
     // 3 corrections / 4 messages → correctionRate = 1 - 3/4 = 0.25
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's1',
         toolCallCount: 5,
@@ -137,7 +140,8 @@ describe('CollaborationProfiler', () => {
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
     // Low complexity: 2 files, 10 tool calls, 0 agents, 1 task
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'low',
         filesRead: ['/a.ts'],
@@ -158,7 +162,8 @@ describe('CollaborationProfiler', () => {
 
     // High complexity: 15 files, 40 tool calls, 2 agents, 1 task
     const manyFiles = Array.from({ length: 10 }, (_, i) => `/f${i}.ts`);
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'high',
         filesRead: manyFiles,
@@ -188,7 +193,8 @@ describe('CollaborationProfiler', () => {
     // Power User: high specificity (≥0.6) + high autonomy (≥0.6)
     // specificity: 60/10/10 = 0.6
     // autonomy: 60 toolCalls / 10 assistantMessages / 5 = 1.0 (clamped)
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'power',
         developer: 'power-user',
@@ -204,7 +210,8 @@ describe('CollaborationProfiler', () => {
     // (avg agentSpawns/task >= 1) — specificity/autonomy ratios alone no
     // longer drive this classification.
     // autonomy: 15 toolCalls / 5 assistantMessages / 5 = 0.6
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'delegator',
         developer: 'delegator-user',
@@ -222,7 +229,8 @@ describe('CollaborationProfiler', () => {
     // specificity: 5/10/10 = 0.05
     // correctionRate: 1 - 8/10 = 0.2
     // autonomy: 5/10/5 = 0.1 (<0.6)
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'learning',
         developer: 'learning-user',
@@ -238,7 +246,8 @@ describe('CollaborationProfiler', () => {
     // specificity: 5/10/10 = 0.05 (<0.6)
     // autonomy: 5 toolCalls / 10 assistantMessages / 5 = 0.1 (<0.6)
     // correctionRate: 1 - 1/10 = 0.9 (≥0.6) — few corrections but low autonomy
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'collab',
         developer: 'collab-user',
@@ -257,7 +266,8 @@ describe('CollaborationProfiler', () => {
     // specificity: 5/10/10 = 0.05 (<0.6)
     // autonomy: 5 toolCalls / 5 assistantMessages / 5 = 0.2 (<0.6) — low enough for Learning
     // correctionRate: 1 - 4/10 = 0.6 — at threshold, NOT < 0.6, so should be Collaborative
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'boundary',
         developer: 'boundary-user',
@@ -271,7 +281,8 @@ describe('CollaborationProfiler', () => {
 
     // Verify Learning still fires when all three conditions are met:
     // specificity: 5/10/10 = 0.05, autonomy: 5/5/5 = 0.2, correctionRate: 1 - 7/10 = 0.3
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'learning2',
         developer: 'learning2-user',
@@ -290,7 +301,8 @@ describe('CollaborationProfiler', () => {
     // Low specificity (<0.6) + high autonomy (>=0.6), but zero agent spawns —
     // this combination is algebraically just a chatty, high-user-message
     // session, not real delegation, so it should NOT be 'Delegator'.
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'not-delegator',
         developer: 'not-delegator-user',
@@ -312,7 +324,8 @@ describe('CollaborationProfiler', () => {
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
     // Alice: specificity = 60/10/10 = 0.6, autonomy = 60/10/5 = 1.0 (clamped)
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'a1',
         developer: 'alice',
@@ -324,7 +337,8 @@ describe('CollaborationProfiler', () => {
     );
 
     // Bob: specificity = 30/10/10 = 0.3, autonomy = 30/10/5 = 0.6
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'b1',
         developer: 'bob',
@@ -336,7 +350,8 @@ describe('CollaborationProfiler', () => {
     );
 
     // Charlie: specificity = 90/10/10 = 0.9, autonomy = 90/10/5 = 1.0 (clamped)
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'c1',
         developer: 'charlie',
@@ -365,8 +380,14 @@ describe('CollaborationProfiler', () => {
   it('computeTeamBaseline reports developerCount 1 for a single-developer fixture', () => {
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
-    store.saveSession(makeSummary({ sessionId: 'solo-1', developer: 'alice', toolCallCount: 60 }));
-    store.saveSession(makeSummary({ sessionId: 'solo-2', developer: 'alice', toolCallCount: 40 }));
+    saveAsWriter(
+      store,
+      makeSummary({ sessionId: 'solo-1', developer: 'alice', toolCallCount: 60 }),
+    );
+    saveAsWriter(
+      store,
+      makeSummary({ sessionId: 'solo-2', developer: 'alice', toolCallCount: 40 }),
+    );
 
     const baseline = profiler.computeTeamBaseline();
 
@@ -382,7 +403,8 @@ describe('CollaborationProfiler', () => {
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
     // Alice: specificity = 60/10/10 = 0.6, autonomy = 60/5/5 = 1.0 (clamped)
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'a1',
         developer: 'alice',
@@ -394,7 +416,8 @@ describe('CollaborationProfiler', () => {
     );
 
     // Bob: specificity = 30/10/10 = 0.3, autonomy = 30/10/5 = 0.6
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'b1',
         developer: 'bob',
@@ -431,7 +454,8 @@ describe('CollaborationProfiler', () => {
 
     for (let i = 0; i < weeks.length; i++) {
       const { start } = getWeekDateRange(weeks[i]!);
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `s-w${i}`,
           startTime: start.getTime() + 43_200_000,
@@ -463,7 +487,8 @@ describe('CollaborationProfiler', () => {
     // specificity: 1000/1/10 = 100 → clamped to 1
     // autonomy: 1000 toolCalls / 1 assistantMessage / 5 = 200 → clamped to 1
     // correctionRate: 1 - 100/1 = -99 → clamped to 0
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's-extreme',
         toolCallCount: 1000,
@@ -498,7 +523,8 @@ describe('CollaborationProfiler', () => {
   it('emitMetrics emits all dimension scores with developer attribute', () => {
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'emit-alice',
         developer: 'alice',
@@ -507,7 +533,8 @@ describe('CollaborationProfiler', () => {
         userCorrections: 1,
       }),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'emit-bob',
         developer: 'bob',
@@ -555,7 +582,8 @@ describe('CollaborationProfiler', () => {
   it('returns 0.5 autonomy for sessions with zero assistant messages', () => {
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's1',
         toolCallCount: 50,

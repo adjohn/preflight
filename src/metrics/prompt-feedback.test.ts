@@ -10,6 +10,7 @@ import { CollaborationProfiler } from './collaboration-profile.js';
 import { ClaudeMdTracker } from './claudemd-tracker.js';
 import { PromptFeedbackEngine } from './prompt-feedback.js';
 import { ZERO_QUALITY_PROXY_COUNTS } from './quality-proxy-tracker.js';
+import { saveAsWriter } from '../__test-utils__/save-as-writer.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let tmpDir: string;
@@ -119,7 +120,8 @@ describe('PromptFeedbackEngine', () => {
     // Sessions where dev "provides file paths" (low Read ratio, has modifications)
     // Read ratio < 0.3: e.g. Read=2 out of 20 toolCalls = 0.1
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `with-fp-${i}`,
           toolCallCount: 20,
@@ -134,7 +136,8 @@ describe('PromptFeedbackEngine', () => {
     // Sessions without file paths (high Read ratio = lots of exploration)
     // Read ratio > 0.3: e.g. Read=15 out of 20 toolCalls = 0.75
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `without-fp-${i}`,
           toolCallCount: 20,
@@ -166,7 +169,8 @@ describe('PromptFeedbackEngine', () => {
 
     // Before: efficiency clustered around 0.5
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `before-${i}`,
           startTime: changeTimestamp - 86_400_000 * (i + 1),
@@ -177,7 +181,8 @@ describe('PromptFeedbackEngine', () => {
 
     // After: efficiency clustered around 0.9
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `after-${i}`,
           startTime: changeTimestamp + 86_400_000 * (i + 1),
@@ -205,7 +210,8 @@ describe('PromptFeedbackEngine', () => {
     // Before: efficiency with large spread, mean ~0.7
     const beforeScores = [0.5, 0.6, 0.7, 0.8, 0.9];
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `before-${i}`,
           startTime: changeTimestamp - 86_400_000 * (i + 1),
@@ -217,7 +223,8 @@ describe('PromptFeedbackEngine', () => {
     // After: efficiency with large spread, mean ~0.72 (tiny difference vs before)
     const afterScores = [0.52, 0.62, 0.72, 0.82, 0.92];
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `after-${i}`,
           startTime: changeTimestamp + 86_400_000 * (i + 1),
@@ -244,7 +251,8 @@ describe('PromptFeedbackEngine', () => {
 
     // All sessions have identical efficiency scores — pooled SD = 0
     for (let i = 0; i < 3; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `before-${i}`,
           startTime: changeTimestamp - 86_400_000 * (i + 1),
@@ -253,7 +261,8 @@ describe('PromptFeedbackEngine', () => {
       );
     }
     for (let i = 0; i < 3; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `after-${i}`,
           startTime: changeTimestamp + 86_400_000 * (i + 1),
@@ -300,7 +309,8 @@ describe('PromptFeedbackEngine', () => {
     // Only 2 sessions before the change — below the minimum-sample gate —
     // even though the effect looks huge on paper.
     for (let i = 0; i < 2; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `before-${i}`,
           startTime: changeTimestamp - 86_400_000 * (i + 1),
@@ -309,7 +319,8 @@ describe('PromptFeedbackEngine', () => {
       );
     }
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `after-${i}`,
           startTime: changeTimestamp + 86_400_000 * (i + 1),
@@ -334,7 +345,8 @@ describe('PromptFeedbackEngine', () => {
     // Developer with correctionRate dimension = 0.65 → 1 - 0.65 = 0.35 > 0.3
     // correctionRate = 1 - corrections/messages → 0.65 means corrections = 0.35 * messages
     // Need: userCorrections / userMessages = 0.35 → 35% corrections
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's1',
         userMessages: 20,
@@ -366,7 +378,8 @@ describe('PromptFeedbackEngine', () => {
     //
     // Low autonomy: toolCalls / assistantMessages / 5 < 0.5 → need assistantMessages > toolCalls/2.5
     // e.g. 40 toolCalls / 25 assistantMessages / 5 = 0.32 < 0.5 ✓
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's1',
         filesRead: Array.from({ length: 10 }, (_, i) => `/f${i}.ts`),
@@ -396,7 +409,8 @@ describe('PromptFeedbackEngine', () => {
 
     // > 50% of sessions have re_reading anti-pattern
     for (let i = 0; i < 4; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `rr-${i}`,
           antiPatterns: [{ type: 're_reading' }],
@@ -404,7 +418,8 @@ describe('PromptFeedbackEngine', () => {
       );
     }
     // 1 session without
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'clean-1',
         antiPatterns: [],
@@ -440,7 +455,8 @@ describe('PromptFeedbackEngine', () => {
 
     // Sessions before: good metrics
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `before-${i}`,
           startTime: changeTimestamp - 86_400_000 * (i + 1),
@@ -457,7 +473,8 @@ describe('PromptFeedbackEngine', () => {
 
     // Sessions after: degraded metrics
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `after-${i}`,
           startTime: changeTimestamp + 86_400_000 * (i + 1),
@@ -489,7 +506,8 @@ describe('PromptFeedbackEngine', () => {
 
     // Trigger both high-priority (correction rate) and medium-priority (re-reading) rules
     for (let i = 0; i < 4; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `s-${i}`,
           userMessages: 20,
@@ -498,7 +516,8 @@ describe('PromptFeedbackEngine', () => {
         }),
       );
     }
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's-clean',
         userMessages: 20,
@@ -528,7 +547,8 @@ describe('PromptFeedbackEngine', () => {
     const { engine } = createEngine();
 
     // High correction rate → generates recommendation with numbers
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's1',
         userMessages: 20,
@@ -553,7 +573,8 @@ describe('PromptFeedbackEngine', () => {
     const { engine } = createEngine();
 
     // Generate a recommendation
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's1',
         userMessages: 20,

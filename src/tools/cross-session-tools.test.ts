@@ -12,6 +12,7 @@ import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { SessionStore } from '../storage/session-store.js';
 import type { FullSessionSummary } from '../storage/session-store.js';
+import { saveAsWriter } from '../__test-utils__/save-as-writer.js';
 import { WeeklySummaryGenerator } from '../storage/weekly-summary.js';
 import { TrendAnalyzer } from '../metrics/trend-analyzer.js';
 import { CollaborationProfiler } from '../metrics/collaboration-profile.js';
@@ -153,7 +154,8 @@ describe('Cross-session tool handlers', () => {
 
   it('handleGetSessionHistory returns paginated session summaries', () => {
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `sess-${i}`,
           startTime: Date.now() - (5 - i) * 86_400_000,
@@ -180,13 +182,14 @@ describe('Cross-session tool handlers', () => {
   });
 
   it('handleGetSessionHistory exposes skills as the sorted keys of skillBreakdown', () => {
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'sess-with-skills',
         skillBreakdown: { simplify: 2, 'pstack:how': 1 },
       }),
     );
-    store.saveSession(makeSummary({ sessionId: 'sess-no-skills', skillBreakdown: {} }));
+    saveAsWriter(store, makeSummary({ sessionId: 'sess-no-skills', skillBreakdown: {} }));
 
     const result = handleGetSessionHistory(store, {});
     const parsed = JSON.parse(result.content[0]!.text);
@@ -206,7 +209,8 @@ describe('Cross-session tool handlers', () => {
   // -------------------------------------------------------------------------
 
   it('handleGetWeeklySummary with "latest" returns current week data', () => {
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'this-week',
         startTime: Date.now() - 86_400_000,
@@ -271,14 +275,16 @@ describe('Cross-session tool handlers', () => {
   it('handleGetTrends returns weekly efficiency data points', () => {
     // Create sessions across 2 weeks
     const now = Date.now();
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'week-1',
         startTime: now - 10 * 86_400_000,
         efficiencyScore: 0.6,
       }),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'week-2',
         startTime: now - 3 * 86_400_000,
@@ -303,7 +309,7 @@ describe('Cross-session tool handlers', () => {
   // -------------------------------------------------------------------------
 
   it('handleGetCollaborationProfile falls back to the configured developer, not "unknown"', () => {
-    store.saveSession(makeSummary({ sessionId: 's-dev', userMessages: 10, toolCallCount: 20 }));
+    saveAsWriter(store, makeSummary({ sessionId: 's-dev', userMessages: 10, toolCallCount: 20 }));
     const profiler = new CollaborationProfiler({ sessionStore: store });
 
     const result = handleGetCollaborationProfile(profiler, {}, 'alice');
@@ -324,7 +330,8 @@ describe('Cross-session tool handlers', () => {
   });
 
   it('handleGetCollaborationProfile returns dimension scores and classification', () => {
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's1',
         userMessages: 10,
@@ -366,7 +373,8 @@ describe('Cross-session tool handlers', () => {
       } as Partial<ToolCallRecord>),
     );
 
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'before-1',
         startTime: changeTimestamp - 86_400_000,
@@ -374,7 +382,8 @@ describe('Cross-session tool handlers', () => {
         estimatedCostUsd: 4,
       }),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'after-1',
         startTime: changeTimestamp + 86_400_000,
@@ -429,7 +438,8 @@ describe('Cross-session tool handlers', () => {
   });
 
   it('handleGetCostPerOutcome reads persisted sessions when a session store is given', () => {
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'cpo-1',
         toolCallCount: 4,
@@ -440,7 +450,8 @@ describe('Cross-session tool handlers', () => {
         estimatedCostUsd: 2,
       }),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'cpo-2',
         toolCallCount: 2,
@@ -556,7 +567,8 @@ describe('Cross-session tool handlers', () => {
 
   it('handleGetRecommendations returns prioritized list with evidence', () => {
     // High correction rate → generates recommendations
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 's1',
         userMessages: 20,
@@ -606,14 +618,16 @@ describe('Cross-session tool handlers', () => {
 
     // Create sessions with strong recommendation
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `sonnet-${i}`,
           model: 'sonnet',
           efficiencyScore: 0.9,
         }),
       );
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `opus-${i}`,
           model: 'opus',
@@ -651,7 +665,8 @@ describe('Cross-session tool handlers', () => {
 
     // Alice with sonnet (better) and opus (worse) for comparison
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `alice-sonnet-${i}`,
           developer: 'alice',
@@ -661,7 +676,8 @@ describe('Cross-session tool handlers', () => {
       );
     }
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `alice-opus-${i}`,
           developer: 'alice',
@@ -673,7 +689,8 @@ describe('Cross-session tool handlers', () => {
 
     // Bob with only haiku (should not affect Alice's recommendation)
     for (let i = 0; i < 20; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `bob-haiku-${i}`,
           developer: 'bob',
@@ -699,14 +716,16 @@ describe('Cross-session tool handlers', () => {
   // -------------------------------------------------------------------------
 
   it('handleGetPlatformComparison returns per-platform efficiency data', () => {
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'cc-1',
         efficiencyScore: 0.8,
         platform: 'claude-code',
       } as Partial<FullSessionSummary>),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'cur-1',
         efficiencyScore: 0.6,
@@ -730,14 +749,16 @@ describe('Cross-session tool handlers', () => {
   // -------------------------------------------------------------------------
 
   it('handleGetPlatformComparison returns per-platform cost data', () => {
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'cc-cost',
         estimatedCostUsd: 1.5,
         platform: 'claude-code',
       } as Partial<FullSessionSummary>),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'ws-cost',
         estimatedCostUsd: 0.75,
@@ -758,7 +779,8 @@ describe('Cross-session tool handlers', () => {
   // -------------------------------------------------------------------------
 
   it('handleGetPlatformComparison defaults sessions without platform to claude-code', () => {
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'no-platform',
         efficiencyScore: 0.7,
@@ -778,7 +800,8 @@ describe('Cross-session tool handlers', () => {
 
   it('handleGetPlatformComparison error_rate uses weighted formula across sessions', () => {
     // Session A: 1 call, 100% tool failure rate → contributes 1 failed call
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'er-a',
         toolCallCount: 1,
@@ -787,7 +810,8 @@ describe('Cross-session tool handlers', () => {
       } as Partial<FullSessionSummary>),
     );
     // Session B: 100 calls, 10% tool failure rate → contributes 10 failed calls
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'er-b',
         toolCallCount: 100,
@@ -807,7 +831,8 @@ describe('Cross-session tool handlers', () => {
   });
 
   it('handleGetPlatformComparison error_rate returns 0 when platform has no tool calls', () => {
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'er-zero',
         toolCallCount: 0,
@@ -828,7 +853,8 @@ describe('Cross-session tool handlers', () => {
 
   it('handleGetPlatformComparison error_rate reflects tool failures, not test pass rate', () => {
     // Platform with 0 test runs but 50% tool failure — old code showed 0% error rate
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'no-tests',
         toolCallCount: 10,
@@ -850,7 +876,7 @@ describe('Cross-session tool handlers', () => {
   // -------------------------------------------------------------------------
 
   it('handleGetPlatformComparison tags each platform bucket with its visibility level', () => {
-    store.saveSession(makeSummary({ sessionId: 'vis-cc', platform: 'claude-code' }));
+    saveAsWriter(store, makeSummary({ sessionId: 'vis-cc', platform: 'claude-code' }));
 
     const result = handleGetPlatformComparison(store, {});
     const parsed = JSON.parse(result.content[0]!.text);
@@ -859,10 +885,12 @@ describe('Cross-session tool handlers', () => {
   });
 
   it('handleGetPlatformComparison omits the caveat when only one visibility level is present', () => {
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({ sessionId: 'same-1', platform: 'claude-code' } as Partial<FullSessionSummary>),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({ sessionId: 'same-2', platform: 'cursor' } as Partial<FullSessionSummary>),
     );
 
@@ -873,10 +901,12 @@ describe('Cross-session tool handlers', () => {
   });
 
   it('handleGetPlatformComparison adds a caveat when compared platforms span different visibility levels', () => {
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({ sessionId: 'mix-1', platform: 'claude-code' } as Partial<FullSessionSummary>),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({ sessionId: 'mix-2', platform: 'zed' } as Partial<FullSessionSummary>),
     );
 
@@ -890,7 +920,7 @@ describe('Cross-session tool handlers', () => {
   // unbounded developer / notes inputs
   it('handleGetSessionHistory truncates developer over 256 chars', () => {
     const longDev = 'a'.repeat(300);
-    store.saveSession(makeSummary({ sessionId: 'dev-long', developer: 'a'.repeat(256) }));
+    saveAsWriter(store, makeSummary({ sessionId: 'dev-long', developer: 'a'.repeat(256) }));
     // Should not throw; developer filter is truncated, returning 0 or 1 sessions
     const result = handleGetSessionHistory(store, { developer: longDev });
     expect(result.content[0]).toBeDefined();
@@ -1114,7 +1144,7 @@ describe('Cross-session tool handlers', () => {
     });
 
     it('handleGetSessionHistory with limit: 0 does not crash', () => {
-      store.saveSession(makeSummary({ sessionId: 'lim-zero' }));
+      saveAsWriter(store, makeSummary({ sessionId: 'lim-zero' }));
       const result = handleGetSessionHistory(store, { limit: 0 });
       const parsed = JSON.parse(result.content[0]!.text);
       expect(parsed.sessions).toBeInstanceOf(Array);
@@ -1365,7 +1395,7 @@ describe('Cross-session tool handlers', () => {
       const configFilePath = resolve(tmpDir, 'config.json');
       const webhookUrl = 'https://hooks.slack.com/services/T000/B000/XXXX';
       writeFileSync(configFilePath, JSON.stringify({ digestWebhookUrl: webhookUrl }), 'utf-8');
-      store.saveSession(makeSummary({ sessionId: 'digest-week', estimatedCostUsd: 1.5 }));
+      saveAsWriter(store, makeSummary({ sessionId: 'digest-week', estimatedCostUsd: 1.5 }));
       const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
 
       const fetchSpy = jest
@@ -1434,7 +1464,7 @@ describe('Cross-session tool handlers', () => {
 
   describe('handleGetPersonalInsights()', () => {
     it('delegates to PersonalCoach.generate() and returns its result verbatim', () => {
-      store.saveSession(makeSummary({ sessionId: 'insights-1', developer: 'alice' }));
+      saveAsWriter(store, makeSummary({ sessionId: 'insights-1', developer: 'alice' }));
       const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
 
       const result = handleGetPersonalInsights(generator, 'alice');

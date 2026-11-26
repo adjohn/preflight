@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ZERO_QUALITY_PROXY_COUNTS } from './quality-proxy-tracker.js';
 import { makeUsage } from '../__test-utils__/token-usage.js';
+import { saveAsWriter } from '../__test-utils__/save-as-writer.js';
 
 function makeSummary(overrides?: Partial<FullSessionSummary>): FullSessionSummary {
   const now = Date.now();
@@ -230,7 +231,8 @@ describe('byte-estimate sessions across a real restart', () => {
     const dir = mkdtempSync(join(tmpdir(), 'preflight-restart-'));
     dirs.push(dir);
     const store = new SessionStore({ storagePath: dir });
-    store.saveSession(
+    saveAsWriter(
+      store,
       buildSessionSummary({
         sessionTracker: makeSessionTracker(),
         costTracker: before,
@@ -579,7 +581,7 @@ describe('first spend today across a real restart', () => {
         before.recordTokenUsage(SPEND, 'claude-sonnet-4', { timestampMs: at(h) });
       }
       const store = new SessionStore({ storagePath: dir });
-      store.saveSession(summaryOf(before));
+      saveAsWriter(store, summaryOf(before));
 
       jest.setSystemTime(at(14));
       const persisted = store.loadSession(SESSION_ID);

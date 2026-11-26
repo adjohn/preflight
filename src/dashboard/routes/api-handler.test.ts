@@ -38,6 +38,7 @@ import type { SessionTracker } from '../../metrics/session-tracker.js';
 import type { FullSessionSummary } from '../../storage/session-store.js';
 import type { GitWorkspaceReport } from '../../metrics/git-workspace-report.js';
 import type { GitWorkspaceReportWithWindow } from '../../metrics/git-workspace-reporter.js';
+import { saveAsWriter } from '../../__test-utils__/save-as-writer.js';
 
 jest.mock('../../install/diagnostics.js', () => ({
   runDiagnostics: jest.fn(async () => [
@@ -3795,7 +3796,7 @@ describe('api-handler GET /api/sessions/today/aggregate', () => {
         }),
       } as unknown as SessionTracker;
       const save = (costTracker: CostTracker): void => {
-        store.saveSession(buildSessionSummary({ sessionTracker, costTracker, developer: 'd' }));
+        saveAsWriter(store, buildSessionSummary({ sessionTracker, costTracker, developer: 'd' }));
       };
       const todayUnpriced = async (): Promise<unknown> => {
         const handler = createApiHandler({
@@ -6251,7 +6252,7 @@ describe('api-handler GET /api/concurrency (96-bucket grid)', () => {
         success: true,
       }));
       for (const sessionId of ['real-a', 'real-b', 'local-1', 'proxy-2', 'pending-3']) {
-        store.saveSession(makeSummary({ sessionId, startTime: t0, timeline }));
+        saveAsWriter(store, makeSummary({ sessionId, startTime: t0, timeline }));
       }
       const handler = createApiHandler({
         liveSessionRegistry: makeLiveRegistry(),

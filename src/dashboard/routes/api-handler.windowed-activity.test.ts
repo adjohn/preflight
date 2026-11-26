@@ -11,6 +11,7 @@ import {
   type FullSessionSummary,
 } from '../../storage/session-store.js';
 import type { ReplayTimelineEntry } from '../../storage/types.js';
+import { saveAsWriter } from '../../__test-utils__/save-as-writer.js';
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
@@ -73,7 +74,8 @@ describe('windowed dashboard views and resumed sessions', () => {
     const resumed = noonDaysAgo(2);
     // Started 20 days ago and resumed 2 days ago: $3 and 3 calls before the
     // 7-day window, $1 and 2 calls inside it.
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'resumed',
         startTime: started,
@@ -94,7 +96,8 @@ describe('windowed dashboard views and resumed sessions', () => {
       }),
     );
     // Wholly before the window, though its file was written just now.
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'old',
         startTime: started,
@@ -108,7 +111,8 @@ describe('windowed dashboard views and resumed sessions', () => {
     );
     // Resumed once, half a day before the window opened.
     const justBefore = Date.now() - 7.5 * DAY_MS;
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'just-before',
         startTime: started,
@@ -121,7 +125,8 @@ describe('windowed dashboard views and resumed sessions', () => {
       }),
     );
     const fresh = noonDaysAgo(1);
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'fresh',
         startTime: fresh,
@@ -186,7 +191,8 @@ describe('windowed dashboard views and resumed sessions', () => {
     const bucket = { costUsd: 1, tokens: 1, count: 1, durationMs: 1, breakdown };
     // Each session has $0.30 of its $1 in the window, so its buckets scale by 0.3.
     for (let i = 0; i < 10; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `resumed-${i}`,
           startTime: started,

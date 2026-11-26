@@ -14,6 +14,7 @@ import { SessionStore } from './session-store.js';
 import type { FullSessionSummary } from './session-store.js';
 import { WeeklySummaryGenerator, getIsoWeekId, getWeekDateRange } from './weekly-summary.js';
 import { ZERO_QUALITY_PROXY_COUNTS } from '../metrics/quality-proxy-tracker.js';
+import { saveAsWriter } from '../__test-utils__/save-as-writer.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let tmpDir: string;
@@ -91,7 +92,8 @@ describe('aggregateSessions prototype-pollution resistance', () => {
     const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
 
     const { start } = getWeekDateRange('2026-W16');
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'proto-sess',
         startTime: start.getTime() + 1000,
@@ -144,7 +146,8 @@ describe('WeeklySummaryGenerator', () => {
     const baseTime = start.getTime();
 
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `s${i}`,
           startTime: baseTime + i * 3_600_000, // spread across the week
@@ -184,7 +187,8 @@ describe('WeeklySummaryGenerator', () => {
     const baseTime = start.getTime();
 
     // Alice: 2 sessions
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'alice-1',
         developer: 'alice',
@@ -194,7 +198,8 @@ describe('WeeklySummaryGenerator', () => {
         taskCount: 1,
       }),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'alice-2',
         developer: 'alice',
@@ -206,7 +211,8 @@ describe('WeeklySummaryGenerator', () => {
     );
 
     // Bob: 1 session
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'bob-1',
         developer: 'bob',
@@ -242,7 +248,8 @@ describe('WeeklySummaryGenerator', () => {
     const { start } = getWeekDateRange('2026-W16');
     const baseTime = start.getTime();
 
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'cc-1',
         startTime: baseTime + 1000,
@@ -251,7 +258,8 @@ describe('WeeklySummaryGenerator', () => {
         toolCallCount: 8,
       } as Partial<FullSessionSummary>),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'cc-2',
         startTime: baseTime + 2000,
@@ -260,7 +268,8 @@ describe('WeeklySummaryGenerator', () => {
         toolCallCount: 12,
       } as Partial<FullSessionSummary>),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'zed-1',
         startTime: baseTime + 3000,
@@ -289,7 +298,10 @@ describe('WeeklySummaryGenerator', () => {
     const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
 
     const { start } = getWeekDateRange('2026-W16');
-    store.saveSession(makeSummary({ sessionId: 'no-platform', startTime: start.getTime() + 1000 }));
+    saveAsWriter(
+      store,
+      makeSummary({ sessionId: 'no-platform', startTime: start.getTime() + 1000 }),
+    );
 
     const summary = generator.generate('2026-W16');
 
@@ -302,7 +314,8 @@ describe('WeeklySummaryGenerator', () => {
     const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
 
     const { start } = getWeekDateRange('2026-W16');
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'unknown-platform',
         startTime: start.getTime() + 1000,
@@ -332,7 +345,7 @@ describe('WeeklySummaryGenerator', () => {
     const store = new SessionStore({ storagePath: tmpDir });
     const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
     const { start } = getWeekDateRange('2026-W16');
-    store.saveSession(makeSummary({ sessionId: 'n03-sess', startTime: start.getTime() + 1000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'n03-sess', startTime: start.getTime() + 1000 }));
     expect(() => generator.generate('2026-W16')).not.toThrow();
   });
 
@@ -340,7 +353,7 @@ describe('WeeklySummaryGenerator', () => {
     const store = new SessionStore({ storagePath: tmpDir });
     const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
     const { start } = getWeekDateRange('2026-W16');
-    store.saveSession(makeSummary({ sessionId: 'n04-sess', startTime: start.getTime() + 1000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'n04-sess', startTime: start.getTime() + 1000 }));
 
     generator.generate('2026-W16');
 
@@ -353,7 +366,7 @@ describe('WeeklySummaryGenerator', () => {
     const store = new SessionStore({ storagePath: tmpDir });
     const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
     const { start } = getWeekDateRange('2026-W16');
-    store.saveSession(makeSummary({ sessionId: 'p01-sess', startTime: start.getTime() + 1000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'p01-sess', startTime: start.getTime() + 1000 }));
     const summariesDir = join(tmpDir, 'weekly_summaries');
     rmSync(summariesDir, { recursive: true, force: true });
 
@@ -368,11 +381,11 @@ describe('WeeklySummaryGenerator', () => {
     const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
     const { start } = getWeekDateRange('2026-W16');
 
-    store.saveSession(makeSummary({ sessionId: 'n05-a', startTime: start.getTime() + 1000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'n05-a', startTime: start.getTime() + 1000 }));
     const first = generator.generate('2026-W16');
     expect(first.sessionCount).toBe(1);
 
-    store.saveSession(makeSummary({ sessionId: 'n05-b', startTime: start.getTime() + 2000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'n05-b', startTime: start.getTime() + 2000 }));
     const second = generator.generate('2026-W16');
     expect(second.sessionCount).toBe(2);
 
@@ -391,7 +404,8 @@ describe('WeeklySummaryGenerator', () => {
     const lastWeekId = getIsoWeekId(lastWeekDate);
     const { start } = getWeekDateRange(lastWeekId);
 
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'last-week-sess',
         startTime: start.getTime() + 3_600_000,
@@ -428,7 +442,8 @@ describe('WeeklySummaryGenerator', () => {
     // Create summaries for W15 and W16
     for (const weekId of ['2026-W15', '2026-W16']) {
       const { start } = getWeekDateRange(weekId);
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `sess-${weekId}`,
           startTime: start.getTime() + 1000,
@@ -447,7 +462,7 @@ describe('WeeklySummaryGenerator', () => {
     const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
 
     const { start } = getWeekDateRange('2026-W15');
-    store.saveSession(makeSummary({ sessionId: 'valid-w15', startTime: start.getTime() + 1000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'valid-w15', startTime: start.getTime() + 1000 }));
     generator.generate('2026-W15');
 
     // W16 is lexicographically later but corrupt — simulates a crash-truncated write.
@@ -474,7 +489,8 @@ describe('WeeklySummaryGenerator', () => {
     const store = new SessionStore({ storagePath: tmpDir });
     const generator = new WeeklySummaryGenerator({ storagePath: tmpDir, sessionStore: store });
     const { start } = getWeekDateRange('2026-W16');
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({ sessionId: 'write-fail-sess', startTime: start.getTime() + 1000 }),
     );
 

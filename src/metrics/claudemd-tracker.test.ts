@@ -8,6 +8,7 @@ import type { FullSessionSummary } from '../storage/session-store.js';
 import type { ToolCallRecord } from '../storage/types.js';
 import { ClaudeMdTracker, matchesInstructionFile } from './claudemd-tracker.js';
 import { ZERO_QUALITY_PROXY_COUNTS } from './quality-proxy-tracker.js';
+import { saveAsWriter } from '../__test-utils__/save-as-writer.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let tmpDir: string;
@@ -181,7 +182,8 @@ describe('ClaudeMdTracker', () => {
 
     // 5 sessions before: efficiency 0.6, cost $4
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `before-${i}`,
           startTime: changeTimestamp - 86_400_000 * (i + 1),
@@ -198,7 +200,8 @@ describe('ClaudeMdTracker', () => {
 
     // 5 sessions after: efficiency 0.75, cost $3
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `after-${i}`,
           startTime: changeTimestamp + 86_400_000 * (i + 1),
@@ -249,7 +252,8 @@ describe('ClaudeMdTracker', () => {
 
     // 5 sessions before: good metrics
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `before-${i}`,
           startTime: changeTimestamp - 86_400_000 * (i + 1),
@@ -266,7 +270,8 @@ describe('ClaudeMdTracker', () => {
 
     // 5 sessions after: degraded metrics
     for (let i = 0; i < 5; i++) {
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId: `after-${i}`,
           startTime: changeTimestamp + 86_400_000 * (i + 1),
@@ -307,7 +312,8 @@ describe('ClaudeMdTracker', () => {
     );
 
     // Before: eff 0.6, cost $4
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'before-1',
         startTime: changeTimestamp - 86_400_000,
@@ -322,7 +328,8 @@ describe('ClaudeMdTracker', () => {
     );
 
     // After: eff 0.75, cost $3 (both improved)
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'after-1',
         startTime: changeTimestamp + 86_400_000,
@@ -363,7 +370,8 @@ describe('ClaudeMdTracker', () => {
     );
 
     // Before: eff 0.8, cost $2
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'before-2',
         startTime: changeTimestamp - 86_400_000,
@@ -373,7 +381,8 @@ describe('ClaudeMdTracker', () => {
     );
 
     // After: eff 0.5, cost $5 (both degraded)
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'after-2',
         startTime: changeTimestamp + 86_400_000,
@@ -449,7 +458,8 @@ describe('ClaudeMdTracker', () => {
     );
 
     // Need at least one session so computeImpact doesn't short-circuit
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'before-1',
         startTime: changeTimestamp - 86_400_000,
@@ -481,7 +491,8 @@ describe('ClaudeMdTracker', () => {
         timestamp: changeTimestamp,
       } as Partial<ToolCallRecord>),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({ sessionId: 'before-1', startTime: changeTimestamp - 86_400_000 }),
     );
 
@@ -523,7 +534,8 @@ describe('ClaudeMdTracker', () => {
     );
 
     // Add sessions before and after
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'before-1',
         startTime: changeTimestamp - 86_400_000,
@@ -531,7 +543,8 @@ describe('ClaudeMdTracker', () => {
         estimatedCostUsd: 4,
       }),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'after-1',
         startTime: changeTimestamp + 86_400_000,
@@ -680,7 +693,8 @@ describe('ClaudeMdTracker', () => {
       } as Partial<ToolCallRecord>),
     );
 
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'before-1',
         startTime: changeTimestamp - 86_400_000,
