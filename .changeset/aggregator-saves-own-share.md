@@ -1,0 +1,5 @@
+---
+'@newrelic/preflight': patch
+---
+
+**The dashboard and a waiting engine now save the sum of what they drained.** A `--local` dashboard, and an engine still waiting to learn its session, saved each session it drained by reading the session's file, adding the file's cost once, and keeping the larger of each total. Once the file held more tokens than the dashboard had drained, its subagent turns' tokens were dropped: a session with 1.7M input tokens saved 1.5M. Each now saves only what it drained, to a file of its own, and the session adds those files up. A restarted dashboard writes a new file. A session that one process completed stays completed while another saves again with nothing new, and goes back in progress once a process saves new activity for it or an engine resumes it. An engine that guessed its session from the working directory and passed the confirmation wait showed that session's earlier cost before the guess was confirmed, and twice after it: a $2.10 session showed $3.10. It now shows that cost once, after the confirmation.

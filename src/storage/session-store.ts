@@ -552,7 +552,7 @@ export interface ExactTotals {
   readonly costByDayUsd: Readonly<Record<string, number>>;
 }
 
-export type ExactTotalsSource = Pick<
+type ExactTotalsSource = Pick<
   FullSessionSummary,
   'exactTotals' | 'byteEstimates' | 'estimatedCostUsd' | 'costByDayUsd'
 > &

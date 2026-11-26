@@ -144,7 +144,6 @@ import {
   buildSessionSummary,
   type BuildSessionSummarySources,
   type FullSessionSummary,
-  savedToolNameByUseId,
   SessionStore,
   sessionSummaryToDriftRecord,
   deserializeFullSessionSummary,
@@ -243,12 +242,6 @@ function loadConfigOrDie(
  * jest.fn()s without constructing a real NrIngestManager.
  */
 type ProxyTelemetrySink = Pick<NrIngestManager, 'ingestToolCall' | 'ingestProxyRequest'>;
-
-/** A session file's call count and the ids of the calls its timeline holds. */
-interface SavedCalls {
-  readonly count: number;
-  readonly toolUseIds: ReadonlySet<string>;
-}
 
 /**
  * Builds the ProxyManager onToolCall/onRequest callbacks for standalone proxy
@@ -1488,10 +1481,6 @@ async function main(): Promise<void> {
     };
 
     sessionStore = new SessionStore({ storagePath: config.storagePath });
-    // Non-null capture so the aggregator's callback (invoked lazily, long
-    // after this point) doesn't have to re-narrow `sessionStore: SessionStore
-    // | undefined` — same pattern as sessionStoreForCostBaseline below.
-    const sessionStoreForAggregator = sessionStore;
     const currentSessionId = sessionTracker.getMetrics().sessionId;
     let currentRepoName: string | null = null;
 
@@ -1500,14 +1489,7 @@ async function main(): Promise<void> {
     // persistSession() skips a synthetic id, so without this rollup the
     // sessions it observes are never written to disk at all. See
     // local-session-aggregator.ts for why that hits Copilot but not Claude Code.
-    const localSessionAggregator = new LocalSessionAggregator({
-      // Restart survival: the first subagent turn this process sees for a
-      // session folds in whatever that session's file already says (a
-      // --stdio engine's final write, or this daemon's own last checkpoint)
-      // before adding the tail — see applyPersistedBaseline's doc comment.
-      persistedCostBaseline: (id) => sessionStoreForAggregator.loadSession(id),
-      persistedTaskCount: (id) => sessionStoreForAggregator.loadSession(id)?.taskCount ?? 0,
-    });
+    const localSessionAggregator = new LocalSessionAggregator();
     const markOwnTaskBoundary = (timestamp: number): void =>
       localSessionAggregator.markTaskBoundary(
         sessionTracker?.getMetrics().sessionId ?? null,
@@ -1533,58 +1515,35 @@ async function main(): Promise<void> {
     const rehydratedTrackerSessionIds = new Set<string>();
     const ownUnbookedCosts = new Map<string, UnbookedSeedCost>();
     const firstSaveBaselines = new FirstSaveBaselines();
-    // A session's calls in its file before this process first wrote it, none of them this process's.
-    const callsBeforeFirstWrite = new Map<string, SavedCalls>();
+    const savedSessionIds = new Set<string>();
+    const ownSavedSessionIds = new Set<string>();
     const rolledUpAtAdoption = new Map<
       string,
       { readonly qualityProxy: QualityProxyRawCounts; readonly taskCount: number }
     >();
-    const savedCallsOf = (file: FullSessionSummary | null | undefined): SavedCalls => ({
-      count: file?.toolCallCount ?? 0,
-      toolUseIds: new Set(savedToolNameByUseId(file).keys()),
-    });
     const rememberFirstSave = (
       sessionId: string,
       previous: FullSessionSummary | null,
       from: 'ownTrackers' | 'rollup',
     ): void => {
-      if (!callsBeforeFirstWrite.has(sessionId)) {
-        callsBeforeFirstWrite.set(sessionId, savedCallsOf(previous));
-      }
+      savedSessionIds.add(sessionId);
       // Only a --stdio engine ever adopts a real session id and seeds it.
       if (options.stdio && !rehydratedTrackerSessionIds.has(sessionId)) {
         firstSaveBaselines.recordSave({ sessionId, previous, ownSession: from === 'ownTrackers' });
       }
     };
-    const saveSessionRememberingBaseline = (summary: FullSessionSummary): boolean => {
-      const saved = sessionStore!.saveSession(summary);
-      if (saved) rememberFirstSave(summary.sessionId, saved.previous, 'rollup');
-      return saved !== null;
-    };
     const engineWriter = sessionStore.writer('engine');
+    const aggregatorWriter = sessionStore.writer('aggregator');
     const saveOwnContribution = (contribution: WriterContribution): SaveResult => {
       const { sessionId } = contribution.summary;
-      const firstSave = !callsBeforeFirstWrite.has(sessionId);
+      const firstSave = !savedSessionIds.has(sessionId);
       const previous = firstSave ? sessionStore!.loadSession(sessionId) : null;
       const result = engineWriter.save(contribution);
-      if (firstSave && result.kind === 'saved') {
-        rememberFirstSave(sessionId, previous, 'ownTrackers');
+      if (result.kind === 'saved') {
+        ownSavedSessionIds.add(sessionId);
+        if (firstSave) rememberFirstSave(sessionId, previous, 'ownTrackers');
       }
       return result;
-    };
-    const liftObserverCompleted = (sessionId: string): void => {
-      if (!sessionStore) return;
-      try {
-        const saved = sessionStore.loadSession(sessionId);
-        if (saved?.observerCompletedAt === undefined) return;
-        saveSessionRememberingBaseline({
-          ...saved,
-          outcome: 'in progress',
-          observerCompletedAt: undefined,
-        });
-      } catch (err) {
-        logger.warn('Failed to lift an observer-completed session', { error: String(err) });
-      }
     };
     const rehydrateTrackersIfResumed = (sessionId: string): void => {
       if (isSyntheticSessionId(sessionId)) return;
@@ -1619,10 +1578,7 @@ async function main(): Promise<void> {
         });
       }
     };
-    if (!isProvisional && !resolvedViaCwdOnly) {
-      rehydrateTrackersIfResumed(currentSessionId);
-      liftObserverCompleted(currentSessionId);
-    }
+    if (!isProvisional && !resolvedViaCwdOnly) rehydrateTrackersIfResumed(currentSessionId);
 
     // Each command is isolated so a slow/missing git or remote doesn't block
     // the others. Uses spawnSync (no shell) to avoid injection; stderr is
@@ -2993,53 +2949,31 @@ async function main(): Promise<void> {
     ): number => {
       if (!sessionStore || !config) return 0;
       const storagePath = config.storagePath;
-      // An observer's completion stands until the session shows activity after it or an engine for
-      // it is live. Rewriting a rollup it already held is neither, so a running save keeps it.
-      const outcomeOf = (
-        sessionId: string,
-        onFile: FullSessionSummary | null,
-        lastActivity: number,
-      ): Partial<FullSessionSummary> => {
-        const completedAt = when === 'exit' ? Date.now() : onFile?.observerCompletedAt;
-        return completedAt !== undefined &&
-          lastActivity <= completedAt &&
-          !hasLiveOwningEngine(storagePath, sessionId)
-          ? { outcome: 'completed', observerCompletedAt: completedAt }
+      const outcomeOf = (sessionId: string): Partial<FullSessionSummary> =>
+        when === 'exit' && !hasLiveOwningEngine(storagePath, sessionId)
+          ? { outcome: 'completed', observerCompletedAt: Date.now() }
           : { outcome: 'in progress' };
-      };
-      let saved = 0;
+      const saved: string[] = [];
       for (const rollup of rollups) {
         const sessionId = String(rollup.sessionId);
+        if (ownSavedSessionIds.has(sessionId)) continue;
         try {
-          const onFile = sessionStore.loadSession(sessionId);
-          const prior = callsBeforeFirstWrite.get(sessionId) ?? savedCallsOf(onFile);
-          // A file with calls adds this rollup to them, since a max-merge would drop it. It leaves
-          // out a call the file held before this process first wrote it, or that another process
-          // marked counted or may count, and marks no ids, so that process still can.
-          const kept =
-            prior.count === 0
-              ? rollup
-              : localSessionAggregator.withoutCallsOtherProcessesMayCount(
-                  rollup,
-                  new Set([
-                    ...prior.toolUseIds,
-                    ...(localStoreForShutdown?.countedToolUseIds(sessionId) ?? []),
-                  ]),
-                );
-          const summary = {
-            ...kept,
-            ...outcomeOf(sessionId, onFile, Number(rollup.endTime)),
-            toolCallCount: prior.count + Number(kept.toolCallCount),
-          };
-          if (!saveSessionRememberingBaseline(summary as unknown as FullSessionSummary)) continue;
+          const firstSave = !savedSessionIds.has(sessionId);
+          const previous = firstSave ? sessionStore.loadSession(sessionId) : null;
+          const result = aggregatorWriter.save({
+            summary: { ...rollup, ...outcomeOf(sessionId) } as unknown as FullSessionSummary,
+            retracted: false,
+          });
+          if (result.kind !== 'saved') continue;
+          if (firstSave) rememberFirstSave(sessionId, previous, 'rollup');
           localSessionAggregator.markSaved(sessionId);
-          saved += 1;
-          if (prior.count === 0) eventProcessor?.persistCountedIdsOfSavedSessions([sessionId]);
+          saved.push(sessionId);
         } catch (err) {
           logger.warn('Failed to save observed session', { sessionId, error: String(err) });
         }
       }
-      return saved;
+      eventProcessor?.persistCountedIdsOfSavedSessions(saved);
+      return saved.length;
     };
 
     const saveObservedSessions = (
@@ -3167,7 +3101,7 @@ async function main(): Promise<void> {
           summary: {
             ...own.summary,
             taskCount:
-              (localSessionAggregator.ownTaskCountOf(summary.sessionId) ?? own.summary.taskCount) -
+              (localSessionAggregator.taskCountOf(summary.sessionId) ?? own.summary.taskCount) -
               (rolledUp?.taskCount ?? 0),
             qualityProxy: rolledUp
               ? subtractQualityProxyRawCounts(own.summary.qualityProxy, rolledUp.qualityProxy)
@@ -3196,6 +3130,16 @@ async function main(): Promise<void> {
       }
     };
 
+    const liftObserverCompleted = (sessionId: string): void => {
+      try {
+        if (sessionStore?.loadSession(sessionId)?.observerCompletedAt === undefined) return;
+      } catch (err) {
+        logger.warn('Failed to lift an observer-completed session', { error: String(err) });
+        return;
+      }
+      persistSession?.({ periodic: true });
+    };
+    if (!isProvisional && !resolvedViaCwdOnly) liftObserverCompleted(currentSessionId);
     eventProcessor.start();
 
     // Checkpoint the in-progress session to local JSON every 30s so a non-clean
@@ -3447,6 +3391,8 @@ async function main(): Promise<void> {
       const staleId = sessionTraceId;
       const viaCwdOnly = opts?.source === 'cwd';
       if (opts?.isCorrection) {
+        eventProcessor!.halt();
+        if (ownSavedSessionIds.has(staleId)) persistSession?.();
         // A real correction means the previously-adopted id was wrong, and
         // anything these trackers accumulated or were seeded with under that
         // wrong id (ParentTranscriptWatcher backfill from an unrelated old
@@ -3500,7 +3446,7 @@ async function main(): Promise<void> {
       applyAuthoritativeSessionName(realId);
       rolledUpAtAdoption.set(realId, {
         qualityProxy: localSessionAggregator.qualityOf(realId),
-        taskCount: localSessionAggregator.ownTaskCountOf(realId) ?? 0,
+        taskCount: localSessionAggregator.taskCountOf(realId) ?? 0,
       });
       if (viaCwdOnly) cwdGuessRolledUpWhilePending = rolledUpWhilePending(realId);
       else saveRollups(rolledUpWhilePending(realId), 'running');

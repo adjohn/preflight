@@ -1874,6 +1874,22 @@ describe('stdio integration', () => {
       await client.close();
     }, 30000);
 
+    it('puts a session an observer completed back in progress as soon as it starts on that session', async () => {
+      const storage = makeStorage();
+      const observer = await startEngine(storage);
+      await drainCalls(storage, 'own-real-session', 1);
+      await observer.close();
+      await waitFor(() => savedField(storage, 'own-real-session', 'outcome') === 'completed');
+
+      const jobDir = mkdtempSync(join(tmpdir(), 'nr-owner-job-'));
+      storages.push(jobDir);
+      const transcript = '/fake/transcript/own-real-session.jsonl';
+      writeFileSync(resolve(jobDir, 'state.json'), JSON.stringify({ linkScanPath: transcript }));
+      const client = await startEngine(storage, undefined, { CLAUDE_JOB_DIR: jobDir });
+      await waitFor(() => savedField(storage, 'own-real-session', 'outcome') === 'in progress');
+      await client.close();
+    }, 30000);
+
     const guessFromCwd = (storage: string, cwd: string): void => {
       const crumbs = resolve(breadcrumbRoot(storage, 'claude-code'), 'session-by-cwd');
       mkdirSync(crumbs, { recursive: true });
@@ -2313,21 +2329,35 @@ describe('stdio integration', () => {
       const storage = makeStorage();
       await saveCalls(storage, 'other-real-session', 3);
 
-      expect(await splitCallAcrossSwap(storage)).toBe(3);
+      expect(await splitCallAcrossSwap(storage)).toBe(4);
       expect(savedCalls(storage, 'other-real-session')).toBe(4);
     }, 30000);
 
-    it('adds no call that another process marked counted after this one drained its post', async () => {
+    it('counts once a call that another process saved and marked counted after this one drained its post', async () => {
       const storage = makeStorage();
       await saveCalls(storage, 'other-real-session', 1);
       const client = await startEngine(storage);
       writeHook(storage, 'other-real-session', 'post', 'toolu_x');
       await waitFor(drained(storage, 'other-real-session'));
+      const now = Date.now();
+      const call = { timestamp: now, toolUseId: 'toolu_x', toolName: 'Read', success: true };
+      const otherProcess = {
+        sessionId: 'other-real-session',
+        startTime: now,
+        endTime: now,
+        toolCallCount: 1,
+        toolBreakdown: { Read: 1 },
+        timeline: [{ ...call, durationMs: null }],
+      };
+      new SessionStore({ storagePath: storage }).writer('engine').save({
+        summary: otherProcess as unknown as FullSessionSummary,
+        retracted: false,
+      });
       mkdirSync(resolve(storage, 'counted'), { recursive: true });
       writeFileSync(resolve(storage, 'counted', 'other-real-session.1.json'), '["toolu_x"]');
       await adoptAndStop(storage, client, 'own-real-session');
 
-      expect(savedCalls(storage, 'other-real-session')).toBe(1);
+      expect(savedCalls(storage, 'other-real-session')).toBe(2);
     }, 30000);
 
     it('counts a call once when another engine drained its post and saved before this one adopted', async () => {
@@ -3604,6 +3634,129 @@ describe('stdio integration', () => {
           expect(savedSession(storage, 'conv-guess')?.tokensInput).toBe(2000);
         });
       }, 40000);
+
+      it("a pending engine the ppid confirms after the cap adds the subagent turn it drained before the guess to another writer's tokens, counted once", async () => {
+        await withCappedEngine('200', async (env, _adopt, close) => {
+          const storage = env.NEW_RELIC_AI_MCP_STORAGE_PATH;
+          const store = new SessionStore({ storagePath: storage });
+          const start = Date.now() - 60_000;
+          const prior = {
+            sessionId: 'conv-guess',
+            startTime: start,
+            endTime: start + 1000,
+            tokensInput: 1_000_000,
+            estimatedCostUsd: 1,
+          };
+          store.writer('engine').save({
+            summary: prior as unknown as FullSessionSummary,
+            retracted: false,
+          });
+          const loaded = () => store.loadSession('conv-guess');
+          await subagentTurn(storage, 'conv-guess', 'msg_sub_1');
+          expect(
+            await until(
+              () => loaded()?.estimatedCostUsd ?? 0,
+              (usd) => usd > 1.5,
+            ),
+          ).toBeCloseTo(1.6);
+          await guessFromCwd(storage, 'conv-guess');
+          await new Promise((r) => setTimeout(r, 1000));
+          runHook(env, reportHook('conv-guess', 'r-guess-0001'));
+          expect(await drained(storage, 'conv-guess')).toBe('');
+          const ppidCrumbs = resolve(breadcrumbRoot(storage, 'claude-code'), 'session-by-ppid');
+          mkdirSync(ppidCrumbs, { recursive: true });
+          writeFileSync(resolve(ppidCrumbs, `${process.pid}.txt`), 'conv-guess');
+          await new Promise((r) => setTimeout(r, 3000));
+          await close();
+
+          const saved = loaded();
+          expect(saved).toMatchObject({ tokensInput: 1_101_000, tokensOutput: 20_200 });
+          expect(saved?.estimatedCostUsd).toBeCloseTo(1.6075, 9);
+        });
+      }, 40000);
+
+      it('a correction after the cap keeps each turn the wrong guess drained once, saved or not', async () => {
+        await withCappedEngine('8000', async (env, _adopt, close) => {
+          const storage = env.NEW_RELIC_AI_MCP_STORAGE_PATH;
+          const writers = resolve(storage, 'sessions', '.writers', 'conv-guess');
+          const ownFileTokens = (): number | undefined => {
+            const own = existsSync(writers)
+              ? readdirSync(writers).find((name) => name.startsWith('engine.'))
+              : undefined;
+            if (!own) return undefined;
+            const { summary } = JSON.parse(readFileSync(resolve(writers, own), 'utf-8')) as {
+              summary: { tokensInput: number };
+            };
+            return summary.tokensInput;
+          };
+          await subagentTurn(storage, 'conv-guess', 'msg_sub_1');
+          await guessFromCwd(storage, 'conv-guess');
+          expect(await until(ownFileTokens, (tokens) => tokens === 0)).toBe(0);
+          await subagentTurn(storage, 'conv-guess', 'msg_sub_2');
+          expect(await until(ownFileTokens, (tokens) => tokens === 100_000)).toBe(100_000);
+          await subagentTurn(storage, 'conv-guess', 'msg_sub_3');
+          const ppidCrumbs = resolve(breadcrumbRoot(storage, 'claude-code'), 'session-by-ppid');
+          mkdirSync(ppidCrumbs, { recursive: true });
+          writeFileSync(resolve(ppidCrumbs, `${process.pid}.txt`), 'conv-corrected');
+          const ownStore = () => existsSync(resolve(storage, 'active-conv-corrected.pid'));
+          expect(await until(ownStore, (adopted) => adopted)).toBe(true);
+          await close();
+
+          expect(savedSession(storage, 'conv-guess')).toMatchObject({
+            tokensInput: 300_000,
+            tokensOutput: 60_000,
+            outcome: 'completed',
+          });
+        });
+      }, 60000);
+
+      it('a correction after the cap keeps every call its wrong guess streamed while it corrects', async () => {
+        await withCappedEngine('300', async (env, _adopt, close) => {
+          const storage = env.NEW_RELIC_AI_MCP_STORAGE_PATH;
+          const buffer = resolve(storage, 'buffer-conv-guess.jsonl');
+          const written: string[] = [];
+          const call = () => {
+            const base = {
+              tool: 'Read',
+              sessionId: 'conv-guess',
+              toolUseId: `toolu_${written.length}`,
+            };
+            written.push(base.toolUseId);
+            for (const mode of ['pre', 'post'])
+              appendToHookBuffer(
+                buffer,
+                JSON.stringify({ ...base, mode, timestamp: Date.now() }) + '\n',
+              );
+          };
+          const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+          const writers = resolve(storage, 'sessions', '.writers', 'conv-guess');
+          const ownFileSaved = () =>
+            existsSync(writers) && readdirSync(writers).some((name) => name.startsWith('engine.'));
+          await guessFromCwd(storage, 'conv-guess');
+          await sleep(1000);
+          call();
+          expect(await until(ownFileSaved, (saved) => saved)).toBe(true);
+          const ppidCrumbs = resolve(breadcrumbRoot(storage, 'claude-code'), 'session-by-ppid');
+          mkdirSync(ppidCrumbs, { recursive: true });
+          const corrected = () => existsSync(resolve(storage, 'active-conv-corrected.pid'));
+          let correctedAt = 0;
+          for (let i = 0; i < 1000 && (!correctedAt || Date.now() - correctedAt < 500); i++) {
+            call();
+            if (i === 50)
+              writeFileSync(resolve(ppidCrumbs, `${process.pid}.txt`), 'conv-corrected');
+            if (!correctedAt && corrected()) correctedAt = Date.now();
+            await sleep(15);
+          }
+          await close();
+
+          const timeline = (savedSession(storage, 'conv-guess')?.timeline ?? []) as Array<{
+            toolUseId?: string;
+          }>;
+          const saved = new Set(timeline.map((entry) => entry.toolUseId));
+          const left = existsSync(buffer) ? readFileSync(buffer, 'utf-8') : '';
+          expect(written.filter((id) => !saved.has(id) && !left.includes(`"${id}"`))).toEqual([]);
+        });
+      }, 40000);
     });
 
     it('a claude-code engine stops estimating its own session once a drained report for it arrives', async () => {
@@ -3672,24 +3825,20 @@ describe('stdio integration', () => {
         [
           "import { appendFileSync } from 'node:fs';",
           `const { SessionStore } = await import(${JSON.stringify(storeUrl)});`,
-          'const save = SessionStore.prototype.saveSession;',
           'const writer = SessionStore.prototype.writer;',
           'let ownerSaved = false;',
           'let failedAfterOwner = false;',
           'SessionStore.prototype.writer = function (producer) {',
           '  const own = writer.call(this, producer);',
           '  return { ...own, save: (contribution) => {',
-          `    appendFileSync(${JSON.stringify(saveLog)}, contribution.summary.sessionId + '\\n');`,
-          "    if (contribution.summary.sessionId === 'real-owner-session') ownerSaved = true;",
+          '    const id = contribution.summary.sessionId;',
+          `    appendFileSync(${JSON.stringify(saveLog)}, id + '\\n');`,
+          "    if (id === 'real-owner-session') ownerSaved = true;",
+          "    if (id === 'conv-throws') throw new Error('injected save failure');",
+          "    if (id === 'conv-fails' && !failedAfterOwner)",
+          "      return (failedAfterOwner = ownerSaved), { kind: 'failed', error: 'injected' };",
           '    return own.save(contribution);',
           '  } };',
-          '};',
-          'SessionStore.prototype.saveSession = function (summary) {',
-          `  appendFileSync(${JSON.stringify(saveLog)}, summary.sessionId + '\\n');`,
-          "  if (summary.sessionId === 'conv-throws') throw new Error('injected save failure');",
-          "  if (summary.sessionId === 'conv-fails' && !failedAfterOwner)",
-          '    return (failedAfterOwner = ownerSaved), null;',
-          '  return save.call(this, summary);',
           '};',
         ].join('\n'),
       );

@@ -290,6 +290,62 @@ describe('foldWriterContributions', () => {
   });
 });
 
+describe('the outcome of writers folded together', () => {
+  const writer = (outcome: string, end: number, completedAt?: number) =>
+    contribution({
+      ...summaryOf({ ...randomShare(mulberry32(end), 0), calls: [], endTime: START + end }),
+      outcome,
+      ...(completedAt !== undefined && { observerCompletedAt: START + completedAt }),
+    });
+  const outcomes = (writers: WriterContribution[]) =>
+    permutations(writers).map((order) => {
+      const { outcome, observerCompletedAt } = fold(order);
+      return { outcome, observerCompletedAt };
+    });
+  const inEveryOrder = (orders: number, outcome: string, completedAt?: number) =>
+    Array(orders).fill({
+      outcome,
+      observerCompletedAt: completedAt === undefined ? undefined : START + completedAt,
+    });
+
+  it("keeps an observer's completion over a writer in progress with no activity after it", () => {
+    expect(outcomes([writer('completed', 1000, 3000), writer('in progress', 2000)])).toEqual(
+      inEveryOrder(2, 'completed', 3000),
+    );
+  });
+
+  it('goes back in progress once a writer shows activity after every completion', () => {
+    const writers = [
+      writer('completed', 1000, 3000),
+      writer('completed', 2500),
+      writer('in progress', 3500),
+    ];
+    expect(outcomes(writers)).toEqual(inEveryOrder(6, 'in progress'));
+  });
+
+  it("keeps an engine's completion until a writer shows activity after its end", () => {
+    for (const end of [2000, 3000]) {
+      expect(outcomes([writer('completed', 3000), writer('in progress', end)])).toEqual(
+        inEveryOrder(2, 'completed'),
+      );
+    }
+    expect(outcomes([writer('completed', 3000), writer('in progress', 3001)])).toEqual(
+      inEveryOrder(2, 'in progress'),
+    );
+  });
+
+  it('carries the time of the latest completion that stands', () => {
+    const observer = writer('completed', 1000, 4000);
+    const quiet = writer('in progress', 2000);
+    expect(outcomes([writer('completed', 3000), observer, quiet])).toEqual(
+      inEveryOrder(6, 'completed', 4000),
+    );
+    expect(outcomes([writer('completed', 5000), observer, quiet])).toEqual(
+      inEveryOrder(6, 'completed'),
+    );
+  });
+});
+
 /** Dollar amounts are quarters, which binary floats add and subtract exactly. */
 function richSummary(
   next: () => number,

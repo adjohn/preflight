@@ -619,7 +619,7 @@ export class HookEventProcessor {
     this.flushPending();
   }
 
-  private halt(): void {
+  halt(): void {
     if (this.running) {
       this.running = false;
 

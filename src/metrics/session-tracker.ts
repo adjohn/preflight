@@ -92,7 +92,7 @@ function countedKey(sessionId: string, toolUseId: string): string {
 const AMENDABLE_ERROR_TYPES = new Set(['timeout', 'rejected']);
 
 /** A record for a pre that has seen no post yet, which a late post could still amend or count. */
-export function isAwaitingLatePost(record: Pick<ToolCallRecord, 'errorType'>): boolean {
+function isAwaitingLatePost(record: Pick<ToolCallRecord, 'errorType'>): boolean {
   return record.errorType !== undefined && AMENDABLE_ERROR_TYPES.has(record.errorType);
 }
 

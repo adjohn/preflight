@@ -124,7 +124,7 @@ export function foldWriterContributions(
   const summaries = contributions
     .map((c) => (retracted ? withoutEstimates(c.summary) : c.summary))
     .sort(byWriteOrder);
-  const sum = summaries.reduce((a, b) => addSummaries(a, b));
+  const sum = { ...summaries.reduce((a, b) => addSummaries(a, b)), ...standingOutcome(summaries) };
   const repeats = repeatedCallNames(summaries);
   if (repeats.length === 0) return sum;
   const toolBreakdown = { ...sum.toolBreakdown };
@@ -135,6 +135,21 @@ export function foldWriterContributions(
     toolBreakdown,
     bashCommandCount: sum.bashCommandCount - repeats.filter((name) => name === 'Bash').length,
   };
+}
+
+function standingOutcome(
+  inWriteOrder: readonly FullSessionSummary[],
+): Pick<FullSessionSummary, 'outcome' | 'observerCompletedAt'> {
+  const completedAt = (s: FullSessionSummary): number => s.observerCompletedAt ?? s.endTime;
+  const lastActivity = Math.max(0, ...inWriteOrder.map((s) => s.endTime));
+  const latest =
+    inWriteOrder
+      .filter((s) => s.outcome === 'completed' && completedAt(s) >= lastActivity)
+      .reduce<FullSessionSummary | null>(
+        (a, b) => (a && completedAt(a) > completedAt(b) ? a : b),
+        null,
+      ) ?? inWriteOrder[inWriteOrder.length - 1];
+  return { outcome: latest.outcome, observerCompletedAt: latest.observerCompletedAt };
 }
 
 /**
