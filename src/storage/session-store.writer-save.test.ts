@@ -105,7 +105,7 @@ const readJson = (path: string) =>
 
 describe('SessionStore.writer', () => {
   it('keeps both shares when two writers save on top of a session they both read', () => {
-    store.saveSession(activity(ids('p', 10), { usd: 1 }));
+    writeIndex(activity(ids('p', 10), { usd: 1 }));
     const a = store.writer('engine');
     const b = new SessionStore({ storagePath }).writer('aggregator');
     store.loadSession(SID);

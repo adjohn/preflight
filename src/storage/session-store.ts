@@ -342,9 +342,6 @@ export interface RecordedUsage extends AttributableActivity {
  * PARENT timeline and zero parent tool calls (subagent tool calls never appear
  * there) yet real dollars. Keying only on `toolCallCount` discards exactly the
  * sessions a `--local` watcher exists to rescue.
- *
- * A genuinely empty summary — no tool calls, no subagent dollars, no timeline
- * — is still false, which is what keeps the empty-clobber guard intact.
  */
 export function hasAttributableActivity(s: AttributableActivity): boolean {
   return (
@@ -358,10 +355,7 @@ export function hasAttributableActivity(s: AttributableActivity): boolean {
  * Did this session record anything worth a file on disk? Wider than
  * `hasAttributableActivity`: a chat-only session has no tool calls but real
  * cost and tokens, and must still be kept. A session with none of these is an
- * idle MCP process (a window that was opened and never used). It gates the
- * aggregator's summaries, every write `SessionStore.saveSession()` accepts,
- * the existing file an empty write must not clobber, and the History list in
- * `/api/sessions`.
+ * idle MCP process (a window that was opened and never used).
  */
 export function hasRecordedUsage(s: RecordedUsage): boolean {
   return (
@@ -1557,96 +1551,6 @@ export class SessionStore {
   }
 
   /**
-   * Returns null when nothing was written, else the file the write merged
-   * against (`previous`, null for a new file).
-   */
-  saveSession(
-    summary: FullSessionSummary,
-  ): { readonly previous: FullSessionSummary | null } | null {
-    if (!isValidSessionId(summary.sessionId)) {
-      logger.warn('Rejecting invalid sessionId for file path', { sessionId: summary.sessionId });
-      return null;
-    }
-
-    if (!existsSync(this.sessionsDir)) {
-      mkdirSync(this.sessionsDir, { recursive: true, mode: 0o700 });
-    }
-
-    // Look up any existing file for this sessionId BEFORE deciding the
-    // filename — by sessionId alone, not by today's date-prefixed path. A
-    // session can already have a file under an EARLIER date than this
-    // write's own startTime computes (e.g. a `--local`/synthetic-owner
-    // process rolling up a session it only started observing after a date
-    // boundary — see LocalSessionAggregator). Deciding the filename from
-    // `summary.startTime` alone before merging, then merging in whatever
-    // file happens to share the sessionId regardless of date, wrote the
-    // merged (inflated, since counters take the max) result to a NEW file
-    // while leaving the OLD file on disk untouched — the session then
-    // appeared twice in history with overlapping, double-counted totals.
-    const { existing, filesRead } = this.loadSessionFiles(summary.sessionId);
-
-    // Every MCP server process checkpoints every 30s, including windows that
-    // never saw a tool call or a token. Writing those first-time files filled
-    // history with model-less zero-activity rows that dragged down every
-    // per-session average. An existing file is handled by the guard below.
-    if (!existing && !hasRecordedUsage(summary)) {
-      logger.debug('Skipping first write of a session with no recorded usage', {
-        sessionId: summary.sessionId,
-      });
-      return null;
-    }
-
-    // A second process saving under the same sessionId (e.g. two MCP
-    // servers both resumed/forked against one real session ID) would
-    // otherwise silently overwrite the first save with no error.
-    //
-    // Guard the destructive case: a short-lived process that adopts an
-    // existing session ID (resolved from the session-by-cwd breadcrumb) but
-    // never observed any hook activity would replace a fully recorded session
-    // with an all-zero summary, erasing tool calls, tokens and cost from the
-    // dashboard on the next refresh. Never let an empty summary clobber a
-    // non-empty one. A summary with cost or tokens but no tool calls, such as
-    // a restarted dashboard's parent-only rollup, is not empty: it merges.
-    let toWrite: FullSessionSummary = summary;
-    if (existing) {
-      if (hasRecordedUsage(existing) && !hasRecordedUsage(summary)) {
-        logger.warn('Refusing to overwrite recorded session with an empty summary', {
-          sessionId: summary.sessionId,
-        });
-        return null;
-      }
-      // Two processes legitimately share one session id: the CLI/editor
-      // spawns an MCP engine that owns the session natively, while a
-      // `--local` dashboard adopts the same id from the session-by-cwd
-      // breadcrumb. Each sees only part of the picture — the engine has the
-      // token/model events, the dashboard has the aggregated hook activity —
-      // so plain last-write-wins let whichever wrote last erase the other's
-      // data, which is how a fully recorded session could come back with
-      // modelBreakdown {} and a lower toolCallCount. Merge non-destructively
-      // instead: counters take the max (they only ever grow, so max never
-      // regresses and never double-counts overlapping views).
-      //
-      // `existing` combines every split file for this id, and every writer
-      // counts from that record: a resumed engine is seeded from it, and a
-      // rollup adds its own calls to its count. A writer that never read it,
-      // such as an older build, max-merges as it would into one file. It is
-      // not classified like a sibling file: a resumed timeline restarts empty
-      // and would look disjoint.
-      toWrite = mergeSummaries(existing, summary);
-    }
-
-    // The filename is derived from the merged (earliest) startTime, not the
-    // incoming write's own — mergeSummaries() takes Math.min() of the two,
-    // so this is normally the existing file's own date; recomputing here
-    // keeps the filename consistent with what's actually written.
-    const filepath = this.indexPath(toWrite);
-    const content = JSON.stringify(toWrite, null, 2) + '\n';
-    return this.replaceIndex(toWrite.sessionId, filepath, content, filesRead)
-      ? { previous: existing }
-      : null;
-  }
-
-  /**
    * Writes `content` to `filepath` and sets aside every other file in
    * `filesRead`. Returns false, writing nothing, when an unparsed file at
    * `filepath` changed since it was read or cannot be copied aside, or when
@@ -1812,23 +1716,7 @@ export class SessionStore {
   }
 
   loadSession(sessionId: string): FullSessionSummary | null {
-    return this.loadSessionFiles(sessionId).existing;
-  }
-
-  /**
-   * Like loadSession(), but also returns every file it read, so saveSession()
-   * can set aside the ones the combined record supersedes.
-   *
-   * An unreadable file is skipped rather than ending the search: returning null
-   * there made saveSession() treat the session as new and start a fresh file
-   * on every later save.
-   */
-  private loadSessionFiles(sessionId: string): {
-    readonly existing: FullSessionSummary | null;
-    readonly filesRead: readonly SessionFileRead[];
-  } {
-    const filesRead = this.readIndexFiles(sessionId);
-    return { existing: this.combineWithWriterFiles(sessionId, filesRead), filesRead };
+    return this.combineWithWriterFiles(sessionId, this.readIndexFiles(sessionId));
   }
 
   private readIndexFiles(sessionId: string): SessionFileRead[] {

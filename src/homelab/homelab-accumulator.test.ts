@@ -1,9 +1,9 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { HomelabAccumulator } from './homelab-accumulator.js';
-import { SessionStore } from '../storage/session-store.js';
+import { SessionStore, deserializeFullSessionSummary } from '../storage/session-store.js';
 import type { FullSessionSummary } from '../storage/session-store.js';
 import type { ToolCallRecord } from '../storage/types.js';
 
@@ -49,6 +49,35 @@ function runServer(...batches: ToolCallRecord[][]): void {
 
 function saved(): FullSessionSummary | null {
   return new SessionStore({ storagePath: tmpDir }).loadSession('session-abc');
+}
+
+function writeOlderBuildFile(fields: Record<string, unknown>): void {
+  const dir = new SessionStore({ storagePath: tmpDir }).getSessionsDir();
+  mkdirSync(dir, { recursive: true });
+  const day = new Date(makeRecord(0).timestamp).toISOString().slice(0, 10);
+  const startTime = makeRecord(0).timestamp;
+  const file = { sessionId: 'session-abc', developer: 'alice', startTime, ...fields };
+  writeFileSync(resolve(dir, `${day}_session-abc.json`), JSON.stringify(file));
+}
+
+function shareOf(calls: readonly ToolCallRecord[]): FullSessionSummary {
+  const toolBreakdown: Record<string, number> = {};
+  for (const c of calls) toolBreakdown[c.toolName] = (toolBreakdown[c.toolName] ?? 0) + 1;
+  return deserializeFullSessionSummary({
+    sessionId: 'session-abc',
+    startTime: calls[0].timestamp,
+    endTime: calls[calls.length - 1].timestamp,
+    toolCallCount: calls.length,
+    toolBreakdown,
+    bashCommandCount: toolBreakdown.Bash ?? 0,
+    timeline: calls.map(({ timestamp, toolName, toolUseId, durationMs, success }) => ({
+      timestamp,
+      toolName,
+      toolUseId,
+      durationMs,
+      success,
+    })),
+  } as Parameters<typeof deserializeFullSessionSummary>[0]);
 }
 
 describe('HomelabAccumulator', () => {
@@ -98,16 +127,58 @@ describe('HomelabAccumulator', () => {
   });
 
   it('adds a batch to a session saved without a timeline by an older build', () => {
-    runServer(records(0, 12));
-    const dir = new SessionStore({ storagePath: tmpDir }).getSessionsDir();
-    const [file] = readdirSync(dir).map((name) => resolve(dir, name));
-    const { timeline: _dropped, ...legacy } = JSON.parse(readFileSync(file, 'utf8')) as Record<
-      string,
-      unknown
-    >;
-    writeFileSync(file, JSON.stringify(legacy));
+    writeOlderBuildFile({
+      endTime: makeRecord(11).timestamp,
+      toolCallCount: 12,
+      toolBreakdown: { Read: 12 },
+    });
     runServer(records(12, 3));
     expect(saved()?.toolCallCount).toBe(15);
+  });
+
+  it('adds a batch, resent calls included, to the session an older build saved with its timeline', () => {
+    const older = shareOf(records(0, 12));
+    writeOlderBuildFile({ ...older, startTime: older.startTime });
+    runServer(records(10, 5));
+    expect(saved()?.toolCallCount).toBe(15);
+    expect(saved()?.toolBreakdown).toEqual({ Read: 15 });
+  });
+
+  it('adds the calls of a session it saved and dropped when a later batch brings it back', () => {
+    const acc = new HomelabAccumulator({ storagePath: tmpDir });
+    acc.handleIngest({ developer: 'alice', sessionId: 'session-abc', records: records(0, 3) });
+    acc.stop();
+    acc.handleIngest({ developer: 'alice', sessionId: 'session-abc', records: records(3, 2) });
+    acc.stop();
+    expect(saved()?.toolCallCount).toBe(5);
+  });
+
+  it('counts once each call it holds with an engine, beside a dashboard share', () => {
+    const engineCalls = [...records(0, 3), ...records(3, 2, 'Bash')];
+    const store = new SessionStore({ storagePath: tmpDir });
+    const estimate = {
+      costUsd: 0.5,
+      inputTokens: 100,
+      outputTokens: 0,
+      costByModel: {},
+      costByDayUsd: {},
+    };
+    const engineShare = {
+      ...shareOf(engineCalls),
+      endTime: makeRecord(40).timestamp,
+      outcome: 'completed',
+      estimatedCostUsd: 0.5,
+      byteEstimates: estimate,
+    };
+    store.writer('engine').save({ summary: engineShare, retracted: false });
+    store.writer('aggregator').save({ summary: shareOf(records(20, 3, 'Edit')), retracted: false });
+    runServer(engineCalls, records(30, 2));
+
+    expect(saved()?.toolCallCount).toBe(10);
+    expect(saved()?.toolBreakdown).toEqual({ Read: 5, Bash: 2, Edit: 3 });
+    expect(saved()?.bashCommandCount).toBe(2);
+    expect(saved()?.estimatedCostUsd).toBe(0.5);
+    expect(saved()?.outcome).toBe('completed');
   });
 
   it('saves a session once it goes three minutes without a batch', () => {

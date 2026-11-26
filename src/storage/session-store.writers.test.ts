@@ -171,6 +171,14 @@ describe('loading a session with writer files', () => {
     expect(totals(store.loadSession(SID))).toEqual({ calls: 7, usd: 1.75, input: 700 });
   });
 
+  it('counts a call once when an earlier capture holds it and a later one left it to a writer', () => {
+    writeWriter('legacy.0000000000000001.json', activity(ids('p', 12)));
+    writeWriter('homelab.1.a.b.json', activity(['p10', 'p11', ...ids('n', 3)], START + 2000));
+    writeIndex(activity([...ids('p', 12), ...ids('q', 3)], START + 3000));
+
+    expect(totals(store.loadSession(SID))?.calls).toBe(18);
+  });
+
   it('takes a name from the newest capture', () => {
     writeWriter('legacy.0000000000000001.json', {
       ...activity(['p0', 'p1'], START + 5000),
@@ -226,7 +234,7 @@ describe('loading a session with writer files', () => {
     expect(store.loadAllSessions().map(totals)).toEqual([{ calls: 7, usd: 1.75, input: 700 }]);
   });
 
-  it('folds in every loader, and in the record a save merges into', () => {
+  it('folds in every loader', () => {
     writeIndex(activity(ids('p', 4)), { marked: true });
     writeWriter('engine.1.a.b.json', activity(ids('a', 2)));
     writeWriter('engine.2.a.b.json', activity(ids('b', 3), START + 2000));
@@ -236,8 +244,6 @@ describe('loading a session with writer files', () => {
     expect(store.loadAllSessions({ since: new Date('2026-02-28T00:00:00Z') }).map(totals)).toEqual([
       folded,
     ]);
-    const saved = store.saveSession(activity(['n0'], START + 4000));
-    expect(totals(saved?.previous)).toEqual(folded);
   });
 
   it('loads a marked index as saved when no writer file is usable', () => {
@@ -336,15 +342,18 @@ describe('loading an older build file beside the writer files', () => {
     expect(totals(store.loadSession(SID))).toEqual({ calls: 6, usd: 1.5, input: 600 });
   });
 
-  it('folds the writer files when no index file parses, so a save merges into them', () => {
+  it('folds the writer files when no index file parses, so a save adds to them', () => {
     writeFileSync(join(storagePath, 'sessions', `${DAY}_${SID}.json`), '{not json');
     expect(store.loadSession(SID)).toBeNull();
     writeWriter('engine.1.a.b.json', activity(ids('w', 5)));
 
     expect(totals(store.loadSession(SID))).toEqual({ calls: 5, usd: 1.25, input: 500 });
     expect(store.loadAllSessions().map(totals)).toEqual([{ calls: 5, usd: 1.25, input: 500 }]);
-    const saved = store.saveSession(activity(ids('n', 2), START + 4000));
-    expect(totals(saved?.previous)).toEqual({ calls: 5, usd: 1.25, input: 500 });
+    const saved = store.writer('engine').save({
+      summary: activity(ids('n', 2), START + 4000),
+      retracted: false,
+    });
+    expect(saved.kind).toBe('saved');
     expect(totals(store.loadSession(SID))?.calls).toBe(7);
   });
 

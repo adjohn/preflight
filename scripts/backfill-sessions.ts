@@ -127,6 +127,7 @@ async function main(): Promise<void> {
 
   const storagePath = join(homedir(), '.newrelic-preflight');
   const sessionStore = new SessionStore({ storagePath });
+  const writer = sessionStore.writer('backfill');
   const weeklySummaryGenerator = new WeeklySummaryGenerator({ storagePath, sessionStore });
 
   const since = `${days} days ago`;
@@ -391,7 +392,7 @@ async function main(): Promise<void> {
           `eff=${efficiencyScores.get(sessionId)?.toFixed(1) ?? 'n/a'}\n`,
       );
     } else {
-      sessionStore.saveSession(summary);
+      writer.save({ summary, retracted: false });
     }
     saved++;
   }

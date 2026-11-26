@@ -168,6 +168,55 @@ describe('foldWriterContributions', () => {
     expect(folded.timeline).toHaveLength(1);
   });
 
+  it('rates the calls of every writer once, a call two writers drained included', () => {
+    const rated = (endTime: number, calls: [string, boolean][], rate = true) => ({
+      summary: file({
+        endTime,
+        toolCallCount: calls.length,
+        toolSuccessRate: rate ? calls.filter(([, ok]) => ok).length / calls.length : null,
+        timeline: calls.map(([toolUseId, success], i) => ({
+          toolUseId,
+          success,
+          toolName: 'Read',
+          timestamp: START + i,
+          durationMs: 1,
+        })),
+      }),
+      retracted: false,
+    });
+    const engine = rated(START + 1000, [
+      ['c1', true],
+      ['c2', true],
+      ['c3', false],
+    ]);
+    const pending = rated(START + 3000, [
+      ['c1', true],
+      ['c3', false],
+      ['c4', true],
+      ['c5', true],
+    ]);
+    const homelab = rated(
+      START + 2000,
+      [
+        ['c1', true],
+        ['c2', true],
+        ['c3', true],
+        ['c4', true],
+      ],
+      false,
+    );
+
+    expect(fold([engine, pending]).toolSuccessRate).toBe(4 / 5);
+    expect(fold([engine, homelab, pending]).toolSuccessRate).toBe(4 / 5);
+    expect(fold([homelab]).toolSuccessRate).toBeNull();
+    const calls = Array.from({ length: 22 }, (_, i): [string, boolean] => [`d${i}`, i < 15]);
+    const failed = rated(START + 4000, [
+      ['f1', false],
+      ['f2', false],
+    ]);
+    expect(fold([rated(START + 1000, calls), failed]).toolSuccessRate).toBe(15 / 24);
+  });
+
   it('counts each call by its toolUseId when writers share some of them', () => {
     for (let seed = 1; seed <= RUNS; seed++) {
       const shares = randomShares(seed);

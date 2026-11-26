@@ -1,0 +1,5 @@
+---
+'@newrelic/preflight': patch
+---
+
+**A homelab server now saves each session it receives to a file of its own, and the session adds those files up.** The homelab server saved a session by reading the session's file, adding the forwarded calls the file did not hold yet, and keeping the larger of each total. It and the `backfill:sessions` script were the last code to save that way. Each run of the server, and each time a session comes back after it went quiet and was saved, now writes only the calls it received to a file of its own. A call that the server and an engine on the same storage both saved counts once. Homelab sessions now count their Bash commands, which were saved as 0. A session's tool success rate now covers the calls of every process that saved it, each call counted once, where it took the rate of the last process that saved one. The script now saves each session it rebuilds to a file of its own too.

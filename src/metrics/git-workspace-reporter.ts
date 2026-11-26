@@ -496,7 +496,7 @@ export function replaySessionToActivityRecords(
  * Memoizes `replaySessionToActivityRecords` per `sessionId`, for `'completed'`
  * sessions only. A completed session's file is write-once (only the terminal
  * shutdown save marks a session `'completed'` — a periodic mid-session
- * checkpoint always persists `'in progress'`, per `SessionStore.saveSession`),
+ * checkpoint always persists `'in progress'`, per `BuildSessionSummarySources.outcome`),
  * so its replay result never changes and is safe to cache forever. This is
  * what makes the cache worth having: a cache hit skips
  * `identityResolver.resolve()` entirely, and that call spawns up to three

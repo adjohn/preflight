@@ -14,6 +14,8 @@ import * as nodeFs from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { SessionStore, deserializeFullSessionSummary } from './session-store.js';
+import { WRITERS_DIR } from './session-writers.js';
+import { saveAsWriter } from '../__test-utils__/save-as-writer.js';
 
 const realFs = jest.requireActual<typeof import('node:fs')>('node:fs');
 const readFileSync = nodeFs.readFileSync as unknown as jest.Mock<(...args: unknown[]) => unknown>;
@@ -41,7 +43,10 @@ function savedToolCalls(): number {
 }
 
 function sessionFiles(): string[] {
-  return realFs.readdirSync(join(tmpDir, 'sessions')).sort();
+  return realFs
+    .readdirSync(join(tmpDir, 'sessions'))
+    .filter((f) => f !== WRITERS_DIR)
+    .sort();
 }
 
 function warnings(text: string): unknown[] {
@@ -76,14 +81,14 @@ function onPlatform(platform: NodeJS.Platform): () => void {
 describe('SessionStore saves under filesystem faults', () => {
   it('leaves the saved file intact when a save crashes mid-write', () => {
     const store = new SessionStore({ storagePath: tmpDir });
-    store.saveSession(summary(3));
+    saveAsWriter(store, summary(3));
     writeFileSync.mockImplementationOnce((path, data, options) => {
       const text = String(data);
       realFs.writeFileSync(path, text.slice(0, text.length / 2), options);
       throw new Error('crashed mid-write');
     });
 
-    store.saveSession(summary(8));
+    saveAsWriter(store, summary(8));
 
     expect(savedToolCalls()).toBe(3);
     expect(sessionFiles()).toEqual([basename(target)]);
@@ -92,16 +97,16 @@ describe('SessionStore saves under filesystem faults', () => {
   it('retries a rename refused while another process holds the file', () => {
     const restore = onPlatform('win32');
     const store = new SessionStore({ storagePath: tmpDir });
-    store.saveSession(summary(3));
+    saveAsWriter(store, summary(3));
     renameSync.mockClear();
     renameSync
       .mockImplementationOnce(heldByAnotherProcess)
       .mockImplementationOnce(heldByAnotherProcess);
 
-    store.saveSession(summary(8));
+    saveAsWriter(store, summary(8));
     restore();
 
-    expect(renameSync).toHaveBeenCalledTimes(3);
+    expect(renameSync).toHaveBeenCalledTimes(4);
     expect(savedToolCalls()).toBe(8);
     expect(sessionFiles()).toEqual([basename(target)]);
     expect(warnings('directly')).toHaveLength(0);
@@ -111,12 +116,12 @@ describe('SessionStore saves under filesystem faults', () => {
     const store = new SessionStore({ storagePath: tmpDir });
     renameSync.mockImplementation(heldByAnotherProcess);
 
-    store.saveSession(summary(3));
-    store.saveSession(summary(8));
+    saveAsWriter(store, summary(3));
+    saveAsWriter(store, summary(8));
 
     expect(savedToolCalls()).toBe(8);
     expect(sessionFiles()).toEqual([basename(target)]);
-    expect(warnings('wrote it directly')).toHaveLength(1);
+    expect(warnings('wrote it directly')).toHaveLength(2);
   });
 
   it('does not replace or set aside a file another process rewrote after the save read it', () => {
@@ -133,11 +138,11 @@ describe('SessionStore saves under filesystem faults', () => {
       return contents;
     });
 
-    expect(store.saveSession(summary(5))).toBeNull();
+    expect(saveAsWriter(store, summary(5)).kind).toBe('failed');
     expect(savedToolCalls()).toBe(9);
     expect(sessionFiles()).toEqual([basename(target)]);
 
-    store.saveSession(summary(5));
+    saveAsWriter(store, summary(5));
 
     expect(savedToolCalls()).toBe(9);
   });
@@ -149,8 +154,8 @@ describe('SessionStore saves under filesystem faults', () => {
       try {
         renameSync.mockClear();
         renameSync.mockImplementation(heldByAnotherProcess);
-        new SessionStore({ storagePath: tmpDir }).saveSession(summary(3));
-        attempts[platform] = renameSync.mock.calls.length;
+        saveAsWriter(new SessionStore({ storagePath: tmpDir }), summary(3));
+        attempts[platform] = renameSync.mock.calls.filter(([, to]) => to === target).length;
       } finally {
         restore();
       }
@@ -166,9 +171,11 @@ describe('SessionStore saves under filesystem faults', () => {
       realFs.writeFileSync(path, data, options);
     });
 
-    new SessionStore({ storagePath: tmpDir }).saveSession(summary(3));
+    saveAsWriter(new SessionStore({ storagePath: tmpDir }), summary(3));
 
-    expect(warnings('wrote it directly')).toHaveLength(0);
+    expect(
+      warnings('wrote it directly').filter((w) => String((w as unknown[])[0]).includes(id)),
+    ).toEqual([]);
     const failed = warnings('direct write failed');
     expect(failed).toHaveLength(1);
     expect(String((failed[0] as unknown[])[0])).toContain('EPERM: locked');
@@ -183,9 +190,9 @@ describe('SessionStore saves under filesystem faults', () => {
     });
     const store = new SessionStore({ storagePath: tmpDir });
 
-    store.saveSession(summary(3));
-    store.saveSession(summary(4));
-    store.saveSession(summary(5));
+    saveAsWriter(store, summary(3));
+    saveAsWriter(store, summary(4));
+    saveAsWriter(store, summary(5));
 
     expect(sessionFiles().filter((f) => f.endsWith('.corrupt'))).toHaveLength(1);
   });
@@ -209,7 +216,8 @@ describe('SessionStore saves under filesystem faults', () => {
       if (args[0] === sibling) throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
       return (realFs.readFileSync as (...a: unknown[]) => unknown)(...args);
     });
-    store.saveSession({ ...summary(41), startTime: dayTwo, developer: 'alice' });
+    const later = dayTwo + 3_600_000;
+    saveAsWriter(store, { ...summary(1), startTime: later, endTime: later, developer: 'alice' });
     readFileSync.mockImplementation(realFs.readFileSync as (...args: unknown[]) => unknown);
 
     expect(store.loadAllSessions().map((s) => s.toolCallCount)).toEqual([41]);
@@ -247,11 +255,11 @@ describe('SessionStore saves under filesystem faults', () => {
       }
       return contents;
     });
-    store.saveSession(summary(3));
+    saveAsWriter(store, summary(1));
     readFileSync.mockImplementation(realFs.readFileSync as (...args: unknown[]) => unknown);
 
     expect(sessionFiles()).toEqual([basename(target), basename(sibling)]);
-    expect(store.loadAllSessions().map((s) => s.toolCallCount)).toEqual([3]);
+    expect(store.loadAllSessions().map((s) => s.toolCallCount)).toEqual([5]);
     expect(store.loadSession(id)?.timeline).toHaveLength(4);
   });
 
@@ -283,12 +291,11 @@ describe('SessionStore saves under filesystem faults', () => {
     };
     const store = () => new SessionStore({ storagePath: tmpDir });
 
-    it("a save keeps the other process's combined record and reports it as previous", () => {
+    it("a save keeps the other process's combined record", () => {
       seedSplitFiles();
       otherProcessSavesAfterFirstRead();
-      const saved = store().saveSession(summary(2));
-      expect(saved?.previous?.toolCallCount).toBe(30);
-      expect(savedToolCalls()).toBe(30);
+      saveAsWriter(store(), summary(2));
+      expect(savedToolCalls()).toBe(32);
     });
 
     it('loadSession returns the combined record, not the piece it read first', () => {
@@ -312,7 +319,8 @@ describe('SessionStore saves under filesystem faults', () => {
       const another = join(tmpDir, 'sessions', '2026-03-03_another-session.json');
       realFs.writeFileSync(another, split(dayTwo, 7, [dayTwo + 5]).replaceAll(id, 'another'));
       otherProcessSavesAfterFirstRead();
-      expect(store().saveSession(summary(2))?.previous?.toolCallCount).toBe(30);
+      saveAsWriter(store(), summary(2));
+      expect(savedToolCalls()).toBe(32);
       expect(realFs.existsSync(another)).toBe(true);
     });
 
@@ -363,8 +371,8 @@ describe('SessionStore saves under filesystem faults', () => {
         if (String(to).endsWith('.merged')) heldByAnotherProcess();
         realFs.renameSync(from, to);
       });
-      const saved = store().saveSession(summary(31));
-      expect(saved?.previous?.toolCallCount).toBe(30);
+      saveAsWriter(store(), summary(1));
+      expect(savedToolCalls()).toBe(31);
       expect(warnings('Failed to set aside')).not.toHaveLength(0);
       expect(sessionFiles()).toEqual([basename(target), basename(siblingPath())]);
     });
@@ -372,8 +380,7 @@ describe('SessionStore saves under filesystem faults', () => {
     it('skips a listed file that can never be read, and the save still lands', () => {
       realFs.writeFileSync(target, split(startTime, 10, [startTime + 1]));
       realFs.symlinkSync(join(tmpDir, 'missing'), siblingPath());
-      const saved = store().saveSession(summary(12));
-      expect(saved?.previous?.toolCallCount).toBe(10);
+      saveAsWriter(store(), summary(2));
       expect(savedToolCalls()).toBe(12);
       expect(warnings('cannot be found')).not.toHaveLength(0);
     });

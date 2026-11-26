@@ -26,7 +26,7 @@ export const WRITERS_DIR = '.writers';
 export const LEGACY_PREFIX = 'legacy.';
 
 /** The code path that saves a contribution. Two producers in one process are two writers. */
-export type Producer = 'engine' | 'aggregator' | 'homelab';
+export type Producer = 'engine' | 'aggregator' | 'homelab' | 'backfill';
 
 export type SaveResult =
   | {
@@ -92,8 +92,9 @@ export function createOnce(path: string, body: string): void {
 /**
  * One writer's own share of a session: only what this process drained, never a
  * total seeded from the saved file. Hook events and transcript turns are each
- * drained once, so shares add, except a call whose pre and post two engines
- * drained. Its counts must include every call its timeline holds by toolUseId,
+ * drained once, so shares add, except a call two writers hold: one whose pre
+ * and post two engines drained, or one an engine forwarded to the homelab
+ * server. Its counts must include every call its timeline holds by toolUseId,
  * under that entry's tool name, so the fold can take the repeat back out.
  */
 export interface WriterContribution {
@@ -113,7 +114,7 @@ const NO_ESTIMATES: ByteEstimateLedger = {
 /**
  * The session every writer's share adds up to. Inputs fold oldest writer first,
  * so the result does not depend on the order they are listed in. One call two
- * engines both drained counts once where the timelines carry its toolUseId.
+ * writers both hold counts once where the timelines carry its toolUseId.
  * Retraction is a fact about the session, so one retracted writer drops every
  * writer's estimates.
  */
@@ -124,7 +125,11 @@ export function foldWriterContributions(
   const summaries = contributions
     .map((c) => (retracted ? withoutEstimates(c.summary) : c.summary))
     .sort(byWriteOrder);
-  const sum = { ...summaries.reduce((a, b) => addSummaries(a, b)), ...standingOutcome(summaries) };
+  const sum = {
+    ...summaries.reduce((a, b) => addSummaries(a, b)),
+    ...standingOutcome(summaries),
+    toolSuccessRate: foldedToolSuccessRate(summaries),
+  };
   const repeats = repeatedCallNames(summaries);
   if (repeats.length === 0) return sum;
   const toolBreakdown = { ...sum.toolBreakdown };
@@ -213,6 +218,27 @@ function savedRetraction({ byteEstimates: ledger }: FullSessionSummary): boolean
   );
 }
 
+function foldedToolSuccessRate(inWriteOrder: readonly FullSessionSummary[]): number | null {
+  let calls = 0;
+  let successes = 0;
+  const counted = new Set<string>();
+  for (const s of inWriteOrder) {
+    if (s.toolSuccessRate === null) continue;
+    calls += s.toolCallCount;
+    successes += Math.round(s.toolSuccessRate * s.toolCallCount);
+    const successById = new Map<string, boolean>();
+    for (const e of s.timeline ?? []) if (e.toolUseId) successById.set(e.toolUseId, e.success);
+    for (const [toolUseId, success] of successById) {
+      if (!counted.has(toolUseId)) counted.add(toolUseId);
+      else {
+        calls -= 1;
+        if (success) successes -= 1;
+      }
+    }
+  }
+  return calls > 0 ? successes / calls : null;
+}
+
 function repeatedCallNames(summaries: readonly FullSessionSummary[]): string[] {
   const seen = new Set<string>();
   const repeats: string[] = [];
@@ -295,11 +321,12 @@ export function foldSessionFiles(
 /**
  * Captures combine as index files do. Captures that share a call are views of
  * one history, each taken later, so they max-merge. An older build's own file
- * beside the pre-upgrade index shares none and adds.
+ * beside the pre-upgrade index shares none and adds. A later capture can leave
+ * a call to a writer that an earlier one keeps, so the counts cover the timeline.
  */
 function combineCaptures(captures: readonly WriterContribution[]): WriterContribution {
   return {
-    summary: combineSessionFiles(captures.map((c) => c.summary)),
+    summary: withTimelineCalls(combineSessionFiles(captures.map((c) => c.summary))),
     retracted: captures.some((c) => c.retracted),
   };
 }

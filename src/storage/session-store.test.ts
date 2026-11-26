@@ -26,7 +26,6 @@ import type { SessionTracker } from '../metrics/session-tracker.js';
 import { CostTracker } from '../metrics/cost-tracker.js';
 import { buildCostTrackerSeed } from '../metrics/cost-tracker-seed.js';
 import { makeUsage } from '../__test-utils__/token-usage.js';
-import { FirstSaveBaselines } from '../metrics/first-save-baselines.js';
 import { localDateKey } from '../lib/date.js';
 import { computeHistoricalCosts } from './historical-costs.js';
 import type { CostMetrics } from '../metrics/cost-tracker.js';
@@ -40,6 +39,7 @@ import type { ModelUsageTracker } from '../metrics/model-usage-tracker.js';
 import type { QualityProxyTracker } from '../metrics/quality-proxy-tracker.js';
 import { ZERO_QUALITY_PROXY_COUNTS } from '../metrics/quality-proxy-tracker.js';
 import type { TurnCostAttributor } from '../metrics/turn-cost-attributor.js';
+import { saveAsWriter } from '../__test-utils__/save-as-writer.js';
 
 let stderrSpy: ReturnType<typeof jest.spyOn>;
 let tmpDir: string;
@@ -606,153 +606,6 @@ function makeSessionTracker(): SessionTracker {
 // ---------------------------------------------------------------------------
 
 describe('SessionStore', () => {
-  it('saveSession writes JSON file with YYYY-MM-DD_sessionId.json naming', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const summary = makeSummary({
-      sessionId: 'abc-123',
-      startTime: new Date('2026-04-15T10:00:00Z').getTime(),
-    });
-
-    store.saveSession(summary);
-
-    const files = readdirSync(resolve(tmpDir, 'sessions'));
-    expect(files).toHaveLength(1);
-    expect(files[0]).toBe('2026-04-15_abc-123.json');
-  });
-
-  it('saveSession returns the file it merged against, or null when it writes nothing', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const startTime = new Date('2026-04-15T10:00:00Z').getTime();
-    const empty = makeSummary({ sessionId: 'reports-write', startTime, toolCallCount: 0 });
-    const noUsage = {
-      ...empty,
-      toolBreakdown: {},
-      tokensInput: 0,
-      tokensOutput: 0,
-      tokensThinking: 0,
-      estimatedCostUsd: 0,
-      subagentCostUsd: 0,
-      timeline: [],
-    };
-
-    expect(store.saveSession(noUsage)).toBeNull();
-    expect(store.saveSession(makeSummary({ sessionId: 'reports-write', startTime }))).toEqual({
-      previous: null,
-    });
-    const firstFile = store.loadSession('reports-write');
-    expect(
-      store.saveSession(makeSummary({ sessionId: 'reports-write', startTime, toolCallCount: 12 })),
-    ).toEqual({ previous: firstFile });
-    expect(store.saveSession(noUsage)).toBeNull();
-  });
-
-  it('does not let an empty summary clobber a recorded session', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const startTime = new Date('2026-04-15T10:00:00Z').getTime();
-    store.saveSession(makeSummary({ sessionId: 'clobber-me', startTime, toolCallCount: 12 }));
-
-    // A short-lived process that adopted the same session id via the
-    // session-by-cwd breadcrumb but saw no hook activity.
-    store.saveSession(
-      makeSummary({ sessionId: 'clobber-me', startTime, toolCallCount: 0, toolBreakdown: {} }),
-    );
-
-    expect(store.loadSession('clobber-me')!.toolCallCount).toBe(12);
-  });
-
-  it('does not let an empty summary clobber a chat-only session', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const startTime = new Date('2026-04-15T10:00:00Z').getTime();
-    const noActivity = {
-      sessionId: 'chat-only',
-      startTime,
-      toolCallCount: 0,
-      toolBreakdown: {},
-      subagentCostUsd: 0,
-      tokensThinking: 0,
-    };
-    store.saveSession(
-      makeSummary({
-        ...noActivity,
-        estimatedCostUsd: 0.5,
-        tokensInput: 4000,
-        tokensOutput: 800,
-        modelBreakdown: {
-          'claude-sonnet-4-20250514': {
-            requestCount: 1,
-            totalInputTokens: 4000,
-            totalOutputTokens: 800,
-            totalCostUsd: 0.5,
-            totalCacheReadTokens: 0,
-            totalCacheCreationTokens: 0,
-            totalThinkingTokens: 0,
-          },
-        },
-      }),
-    );
-
-    store.saveSession(
-      makeSummary({
-        ...noActivity,
-        estimatedCostUsd: 0,
-        tokensInput: 0,
-        tokensOutput: 0,
-        modelBreakdown: {},
-      }),
-    );
-
-    const saved = store.loadSession('chat-only')!;
-    expect(saved.estimatedCostUsd).toBeCloseTo(0.5, 4);
-    expect(saved.tokensInput).toBe(4000);
-    expect(saved.modelBreakdown).not.toEqual({});
-  });
-
-  it('merges a summary with cost but no tool calls into a recorded session', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const startTime = new Date('2026-04-15T10:00:00Z').getTime();
-    store.saveSession(
-      makeSummary({
-        sessionId: 'chat-after',
-        startTime,
-        toolCallCount: 12,
-        estimatedCostUsd: 0.0192,
-      }),
-    );
-
-    store.saveSession(
-      makeSummary({
-        sessionId: 'chat-after',
-        startTime,
-        toolCallCount: 0,
-        toolBreakdown: {},
-        estimatedCostUsd: 0.0288,
-      }),
-    );
-
-    const saved = store.loadSession('chat-after')!;
-    expect(saved.estimatedCostUsd).toBeCloseTo(0.0288, 4);
-    expect(saved.toolCallCount).toBe(12);
-  });
-
-  it('merges a self-reported summary with no tool calls into a recorded session', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const startTime = new Date('2026-04-15T10:00:00Z').getTime();
-    store.saveSession(makeSummary({ sessionId: 'reported', startTime, toolCallCount: 12 }));
-
-    store.saveSession(
-      makeSummary({
-        sessionId: 'reported',
-        startTime,
-        toolCallCount: 0,
-        toolBreakdown: {},
-        tokensInput: 99_000,
-        selfReportCount: 1,
-      }),
-    );
-
-    expect(store.loadSession('reported')).toMatchObject({ toolCallCount: 12, tokensInput: 99_000 });
-  });
-
   it('writes the first file of a session that holds only a self-report', () => {
     const store = new SessionStore({ storagePath: tmpDir });
     const idle = {
@@ -764,26 +617,18 @@ describe('SessionStore', () => {
       tokensThinking: 0,
     };
 
-    const saved = store.saveSession(
+    const saved = saveAsWriter(
+      store,
       makeSummary({ ...idle, sessionId: 'reported-only', selfReportCount: 1 }),
     );
 
     expect(saved).not.toBeNull();
   });
 
-  it('keeps the larger selfReportCount', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const startTime = new Date('2026-04-15T10:00:00Z').getTime();
-    store.saveSession(makeSummary({ sessionId: 'counted', startTime, selfReportCount: 2 }));
-
-    store.saveSession(makeSummary({ sessionId: 'counted', startTime, selfReportCount: 1 }));
-
-    expect(store.loadSession('counted')?.selfReportCount).toBe(2);
-  });
-
   it('does not create a file for a session that recorded no usage', () => {
     const store = new SessionStore({ storagePath: tmpDir });
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'idle-window',
         toolCallCount: 0,
@@ -801,7 +646,8 @@ describe('SessionStore', () => {
 
   it('still creates a file for a chat-only session with cost but no tool calls', () => {
     const store = new SessionStore({ storagePath: tmpDir });
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'chat-only',
         toolCallCount: 0,
@@ -813,68 +659,11 @@ describe('SessionStore', () => {
     expect(store.loadSession('chat-only')).not.toBeNull();
   });
 
-  it('still overwrites when the new summary has activity', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const startTime = new Date('2026-04-15T10:00:00Z').getTime();
-    store.saveSession(makeSummary({ sessionId: 'grow', startTime, toolCallCount: 3 }));
-    store.saveSession(makeSummary({ sessionId: 'grow', startTime, toolCallCount: 9 }));
-
-    expect(store.loadSession('grow')!.toolCallCount).toBe(9);
-  });
-
-  it('accepts a subagent-only incoming summary (zero tool calls, real subagent cost) over a recorded existing session', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const startTime = new Date('2026-04-15T10:00:00Z').getTime();
-    store.saveSession(makeSummary({ sessionId: 'orphan', startTime, toolCallCount: 12 }));
-
-    // A dead-parent session whose only new activity is its subagent tail —
-    // zero tool calls, but real dollars — is exactly the write hasAttributableActivity
-    // is meant to admit.
-    store.saveSession(
-      makeSummary({
-        sessionId: 'orphan',
-        startTime,
-        toolCallCount: 0,
-        toolBreakdown: {},
-        subagentCostUsd: 3.5,
-      }),
-    );
-
-    const loaded = store.loadSession('orphan');
-    expect(loaded?.toolCallCount).toBe(12);
-    expect(loaded?.subagentCostUsd).toBe(3.5);
-  });
-
-  it('still refuses a genuinely empty incoming summary against a subagent-only existing session', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const startTime = new Date('2026-04-15T10:00:00Z').getTime();
-    store.saveSession(
-      makeSummary({
-        sessionId: 'subagent-only',
-        startTime,
-        toolCallCount: 0,
-        toolBreakdown: {},
-        subagentCostUsd: 3.5,
-      }),
-    );
-    store.saveSession(
-      makeSummary({
-        sessionId: 'subagent-only',
-        startTime,
-        toolCallCount: 0,
-        toolBreakdown: {},
-        subagentCostUsd: 0,
-      }),
-    );
-
-    expect(store.loadSession('subagent-only')?.subagentCostUsd).toBe(3.5);
-  });
-
   it('loadSession reads and parses a saved session', () => {
     const store = new SessionStore({ storagePath: tmpDir });
     const summary = makeSummary({ sessionId: 'load-test' });
 
-    store.saveSession(summary);
+    saveAsWriter(store, summary);
     const loaded = store.loadSession('load-test');
 
     expect(loaded).not.toBeNull();
@@ -892,7 +681,7 @@ describe('SessionStore', () => {
 
   it('loadSession does not return a session whose ID is a prefix of the requested ID', () => {
     const store = new SessionStore({ storagePath: tmpDir });
-    store.saveSession(makeSummary({ sessionId: 'abc' }));
+    saveAsWriter(store, makeSummary({ sessionId: 'abc' }));
 
     // 'abcdef' shares 'abc' as a prefix — substring match would incorrectly return the 'abc' session
     const loaded = store.loadSession('abcdef');
@@ -901,7 +690,7 @@ describe('SessionStore', () => {
 
   it('loadSession does not return a session whose ID contains the requested ID as a substring', () => {
     const store = new SessionStore({ storagePath: tmpDir });
-    store.saveSession(makeSummary({ sessionId: 'xabcx' }));
+    saveAsWriter(store, makeSummary({ sessionId: 'xabcx' }));
 
     const loaded = store.loadSession('abc');
     expect(loaded).toBeNull();
@@ -910,13 +699,15 @@ describe('SessionStore', () => {
   it('listSessions filters by date range', () => {
     const store = new SessionStore({ storagePath: tmpDir });
 
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'old',
         startTime: new Date('2026-04-01T10:00:00Z').getTime(),
       }),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'recent',
         startTime: new Date('2026-04-15T10:00:00Z').getTime(),
@@ -931,8 +722,8 @@ describe('SessionStore', () => {
   it('listSessions filters by developer name', () => {
     const store = new SessionStore({ storagePath: tmpDir });
 
-    store.saveSession(makeSummary({ sessionId: 'alice-sess', developer: 'alice' }));
-    store.saveSession(makeSummary({ sessionId: 'bob-sess', developer: 'bob' }));
+    saveAsWriter(store, makeSummary({ sessionId: 'alice-sess', developer: 'alice' }));
+    saveAsWriter(store, makeSummary({ sessionId: 'bob-sess', developer: 'bob' }));
 
     const results = store.listSessions({ developer: 'alice' });
     expect(results).toHaveLength(1);
@@ -944,9 +735,9 @@ describe('SessionStore', () => {
 
     // All three sessions share the same calendar date
     const sameDay = new Date('2026-04-15T10:00:00Z').getTime();
-    store.saveSession(makeSummary({ sessionId: 'zzz-last', startTime: sameDay + 2000 }));
-    store.saveSession(makeSummary({ sessionId: 'aaa-first', startTime: sameDay + 1000 }));
-    store.saveSession(makeSummary({ sessionId: 'mmm-mid', startTime: sameDay }));
+    saveAsWriter(store, makeSummary({ sessionId: 'zzz-last', startTime: sameDay + 2000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'aaa-first', startTime: sameDay + 1000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'mmm-mid', startTime: sameDay }));
 
     const results = store.listSessions();
     const ids = results.map((r) => r.sessionId);
@@ -960,9 +751,9 @@ describe('SessionStore', () => {
   it('loadAllSessions returns all matching sessions', () => {
     const store = new SessionStore({ storagePath: tmpDir });
 
-    store.saveSession(makeSummary({ sessionId: 's1', startTime: Date.now() - 3000 }));
-    store.saveSession(makeSummary({ sessionId: 's2', startTime: Date.now() - 1000 }));
-    store.saveSession(makeSummary({ sessionId: 's3', startTime: Date.now() - 2000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 's1', startTime: Date.now() - 3000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 's2', startTime: Date.now() - 1000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 's3', startTime: Date.now() - 2000 }));
 
     const all = store.loadAllSessions();
     expect(all).toHaveLength(3);
@@ -972,13 +763,20 @@ describe('SessionStore', () => {
   it('loadAllSessions excludes synthetic session IDs (local-/proxy-/pending- prefixes)', () => {
     const store = new SessionStore({ storagePath: tmpDir });
 
-    store.saveSession(makeSummary({ sessionId: 'real-session-1', startTime: Date.now() - 3000 }));
-    store.saveSession(makeSummary({ sessionId: 'local-1234567890', startTime: Date.now() - 2000 }));
-    store.saveSession(makeSummary({ sessionId: 'proxy-9876543210', startTime: Date.now() - 1500 }));
-    store.saveSession(
+    saveAsWriter(store, makeSummary({ sessionId: 'real-session-1', startTime: Date.now() - 3000 }));
+    saveAsWriter(
+      store,
+      makeSummary({ sessionId: 'local-1234567890', startTime: Date.now() - 2000 }),
+    );
+    saveAsWriter(
+      store,
+      makeSummary({ sessionId: 'proxy-9876543210', startTime: Date.now() - 1500 }),
+    );
+    saveAsWriter(
+      store,
       makeSummary({ sessionId: 'pending-1111111111', startTime: Date.now() - 1000 }),
     );
-    store.saveSession(makeSummary({ sessionId: 'real-session-2', startTime: Date.now() - 500 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'real-session-2', startTime: Date.now() - 500 }));
 
     const all = store.loadAllSessions();
     expect(all.map((s) => s.sessionId).sort()).toEqual(['real-session-1', 'real-session-2']);
@@ -988,8 +786,8 @@ describe('SessionStore', () => {
     const store = new SessionStore({ storagePath: tmpDir });
     const now = Date.now();
 
-    store.saveSession(makeSummary({ sessionId: 'real-today', startTime: now - 1000 }));
-    store.saveSession(makeSummary({ sessionId: 'local-today', startTime: now - 500 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'real-today', startTime: now - 1000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'local-today', startTime: now - 500 }));
 
     const sessions = store.loadTodaySessions();
     expect(sessions.map((s) => s.sessionId)).toEqual(['real-today']);
@@ -1002,7 +800,8 @@ describe('SessionStore', () => {
     const startOfToday = today.getTime();
 
     // Started yesterday, ends after today's midnight — real overlapping session.
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'real-overlap',
         startTime: startOfToday - 3_600_000,
@@ -1010,7 +809,8 @@ describe('SessionStore', () => {
       }),
     );
     // Same overlap window, but a synthetic ID — must still be excluded.
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'proxy-overlap',
         startTime: startOfToday - 3_600_000,
@@ -1022,43 +822,44 @@ describe('SessionStore', () => {
     expect(sessions.map((s) => s.sessionId)).toEqual(['real-overlap']);
   });
 
-  it('saveSession rejects sessionId containing path traversal and writes no file', () => {
+  it('a save rejects a sessionId containing path traversal and writes no file', () => {
     const store = new SessionStore({ storagePath: tmpDir });
 
-    store.saveSession(makeSummary({ sessionId: '../../etc/passwd' }));
+    saveAsWriter(store, makeSummary({ sessionId: '../../etc/passwd' }));
 
     expect(readdirSync(resolve(tmpDir, 'sessions'))).toHaveLength(0);
   });
 
-  it('saveSession rejects sessionId containing a forward slash', () => {
+  it('a save rejects a sessionId containing a forward slash', () => {
     const store = new SessionStore({ storagePath: tmpDir });
 
-    store.saveSession(makeSummary({ sessionId: 'a/b' }));
+    saveAsWriter(store, makeSummary({ sessionId: 'a/b' }));
 
     expect(readdirSync(resolve(tmpDir, 'sessions'))).toHaveLength(0);
   });
 
-  it('saveSession accepts a valid UUID-style sessionId', () => {
+  it('a save accepts a valid UUID-style sessionId', () => {
     const store = new SessionStore({ storagePath: tmpDir });
 
-    store.saveSession(makeSummary({ sessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' }));
+    saveAsWriter(store, makeSummary({ sessionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' }));
 
-    const files = readdirSync(resolve(tmpDir, 'sessions'));
+    const files = readdirSync(resolve(tmpDir, 'sessions')).filter((f) => f.endsWith('.json'));
     expect(files).toHaveLength(1);
   });
 
   it('session file naming follows YYYY-MM-DD_sessionId.json pattern', () => {
     const store = new SessionStore({ storagePath: tmpDir });
 
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'pattern-test',
         startTime: new Date('2026-01-15T12:00:00Z').getTime(),
       }),
     );
 
-    const files = readdirSync(resolve(tmpDir, 'sessions'));
-    expect(files[0]).toMatch(/^\d{4}-\d{2}-\d{2}_pattern-test\.json$/);
+    const files = readdirSync(resolve(tmpDir, 'sessions')).filter((f) => f.endsWith('.json'));
+    expect(files).toEqual(['2026-01-15_pattern-test.json']);
   });
 
   it('loadTodaySessions returns only sessions from today (local midnight)', () => {
@@ -1069,19 +870,22 @@ describe('SessionStore', () => {
     today.setHours(0, 0, 0, 0);
     const todayMs = today.getTime();
 
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'today-1',
         startTime: todayMs + 1000,
       }),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'today-2',
         startTime: todayMs + 5000,
       }),
     );
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'yesterday',
         startTime: todayMs - 86_400_000,
@@ -1099,8 +903,8 @@ describe('SessionStore', () => {
     today.setHours(0, 0, 0, 0);
     const todayMs = today.getTime();
 
-    store.saveSession(makeSummary({ sessionId: 'before', startTime: todayMs - 30 * 60_000 }));
-    store.saveSession(makeSummary({ sessionId: 'after', startTime: todayMs + 30 * 60_000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'before', startTime: todayMs - 30 * 60_000 }));
+    saveAsWriter(store, makeSummary({ sessionId: 'after', startTime: todayMs + 30 * 60_000 }));
 
     expect(store.loadTodaySessions().map((s) => s.sessionId)).toEqual(['after']);
   });
@@ -1115,7 +919,8 @@ describe('SessionStore', () => {
     const startOfYesterday = startOfToday - 86_400_000;
 
     // Started and ended entirely yesterday — should be excluded.
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'yesterday-only',
         startTime: startOfYesterday + 1000,
@@ -1125,7 +930,8 @@ describe('SessionStore', () => {
 
     // Started yesterday evening, ended after today's local midnight — should
     // be included via the endTime-overlap filter.
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'cross-midnight',
         startTime: startOfYesterday + 80_000_000,
@@ -1133,11 +939,6 @@ describe('SessionStore', () => {
       }),
     );
 
-    // Legacy/crashed session written without an endTime field at all —
-    // deserializes to endTime: 0 and should be included via the explicit
-    // endTime === 0 carve-out. Written directly to disk to simulate a file
-    // an older build produced (FullSessionSummary.endTime is required, so
-    // saveSession() itself cannot omit it).
     const noEndTimeDate = today.toISOString().slice(0, 10);
     const { endTime: _unused, ...withoutEndTime } = makeSummary({
       sessionId: 'no-end-time',
@@ -1161,7 +962,8 @@ describe('SessionStore', () => {
 
     // Original start-date filename, but the timeline has activity today and
     // the file was just rewritten (mtime = now).
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'resumed',
         startTime: oldStart,
@@ -1173,7 +975,8 @@ describe('SessionStore', () => {
       }),
     );
     // Old session also rewritten today but with no activity today.
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'old-no-activity',
         startTime: oldStart,
@@ -1195,7 +998,8 @@ describe('SessionStore', () => {
     const startOfToday = today.getTime();
     const oldStart = startOfToday - 10 * 86_400_000;
 
-    store.saveSession(
+    saveAsWriter(
+      store,
       makeSummary({
         sessionId: 'stale-file',
         startTime: oldStart,
@@ -2022,46 +1826,6 @@ describe('buildSessionSummary', () => {
       expect(merged.unpricedByDay).toEqual({});
     });
 
-    it('saves, reloads, restarts and merges the calls of a replaced byte estimate once', () => {
-      const store = new SessionStore({ storagePath: tmpDir });
-      const startTime = new Date('2026-11-06T10:00:00Z').getTime();
-      const unpriced = 'claude-foo-9-9';
-      const summarize = (tracker: CostTracker): FullSessionSummary => ({
-        ...buildSessionSummary({
-          sessionTracker: makeSessionTracker(),
-          costTracker: tracker,
-          developer: 'alice',
-        }),
-        sessionId: 'sess-e2e',
-        startTime,
-      });
-
-      const first = new CostTracker();
-      first.recordEstimatedTokens(4_000, 2_000, unpriced);
-      first.recordEstimatedTokens(4_000, 2_000, unpriced);
-      store.saveSession(summarize(first));
-      const saved = store.loadSession('sess-e2e')!;
-      expect(saved.unpricedByModel?.[unpriced]?.calls).toBe(2);
-
-      const restarted = new CostTracker();
-      restarted.seedFromPersisted(buildCostTrackerSeed(saved));
-      expect(restarted.getMetrics().unpricedByModel[unpriced]?.calls).toBe(2);
-      restarted.recordTokenUsage(
-        makeUsage({ inputTokens: 1_000, outputTokens: 500, totalTokens: 1_500 }),
-        'claude-sonnet-4',
-        { replacesEstimates: true },
-      );
-      expect(restarted.getMetrics().unpricedByModel).toEqual({});
-      store.saveSession(summarize(restarted));
-
-      const reloaded = store.loadSession('sess-e2e')!;
-      expect(reloaded.unpricedByModel).toBeUndefined();
-      expect(reloaded.unpricedByDay).toEqual({});
-      const afterSecondRestart = new CostTracker();
-      afterSecondRestart.seedFromPersisted(buildCostTrackerSeed(reloaded));
-      expect(afterSecondRestart.getMetrics().unpricedByModel).toEqual({});
-    });
-
     it('mergeSummaries keeps the calls of byte estimates the latest write still holds', () => {
       const existing = makeSummary({
         unpricedByModel: { a: { calls: 1, tokens: 10 } },
@@ -2318,7 +2082,8 @@ describe('buildSessionSummary', () => {
 
     function checkpoint(store: SessionStore, tracker: CostTracker, sessionId: string): void {
       const m = tracker.getMetrics();
-      store.saveSession(
+      saveAsWriter(
+        store,
         makeSummary({
           sessionId,
           startTime: 1_700_000_000_000,
@@ -2352,30 +2117,6 @@ describe('buildSessionSummary', () => {
       const restarted = new CostTracker();
       restarted.seedFromPersisted(buildCostTrackerSeed(onDisk as FullSessionSummary));
       expect(restarted.getMetrics().sessionTotalCostUsd).toBeCloseTo(exact.totalUsd, 9);
-    });
-
-    it("keeps another writer's larger exact total when the ledger shrinks", () => {
-      const store = new SessionStore({ storagePath: tmpDir });
-      const tracker = new CostTracker();
-      for (let i = 0; i < 5; i++) tracker.recordEstimatedTokens(40_000, 20_000, MODEL);
-      checkpoint(store, tracker, 'sess-other');
-      store.saveSession(
-        makeSummary({
-          sessionId: 'sess-other',
-          startTime: 1_700_000_000_000,
-          estimatedCostUsd: 0.2,
-          tokensInput: 9_000,
-          tokensOutput: 4_000,
-        }),
-      );
-
-      tracker.recordTokenUsage(usage, MODEL, { replacesEstimates: true });
-      checkpoint(store, tracker, 'sess-other');
-
-      const onDisk = store.loadSession('sess-other');
-      expect(onDisk?.estimatedCostUsd).toBeCloseTo(0.2, 9);
-      expect(onDisk?.tokensInput).toBe(9_000);
-      expect(onDisk?.tokensOutput).toBe(4_000);
     });
 
     it('keeps growing past the shrunk total as later exact reports arrive', () => {
@@ -2481,12 +2222,13 @@ describe('buildSessionSummary', () => {
       durationMs: 5,
       success: true,
     });
-    new SessionStore({ storagePath: tmpDir }).saveSession(
+    saveAsWriter(
+      new SessionStore({ storagePath: tmpDir }),
       makeSummary({ sessionId: 'reload-ids', startTime, timeline: [call('a'), call('b')] }),
     );
 
     const resumed = new SessionStore({ storagePath: tmpDir });
-    resumed.saveSession(makeSummary({ sessionId: 'reload-ids', startTime, timeline: [] }));
+    saveAsWriter(resumed, makeSummary({ sessionId: 'reload-ids', startTime, timeline: [] }));
 
     expect(resumed.loadSession('reload-ids')!.timeline?.map((e) => e.toolUseId)).toEqual([
       'a',
@@ -3412,7 +3154,7 @@ describe('SessionStore corruption-recovery', () => {
     expect(result).toBeNull();
   });
 
-  it('saveSession logs warning and does not throw on write permission error', () => {
+  it('a save logs a warning and does not throw on a write permission error', () => {
     if (process.getuid?.() === 0) return; // root bypasses permission checks
 
     const store = new SessionStore({ storagePath: tmpDir });
@@ -3422,7 +3164,7 @@ describe('SessionStore corruption-recovery', () => {
     chmodSync(sessionsDir, 0o555);
 
     try {
-      expect(() => store.saveSession(makeSummary({ sessionId: 'perm-fail' }))).not.toThrow();
+      expect(() => saveAsWriter(store, makeSummary({ sessionId: 'perm-fail' }))).not.toThrow();
 
       const logged = stderrSpy.mock.calls.map((call: unknown[]) => String(call[0]));
       expect(logged.some((l: string) => l.includes('"warn"') && l.includes('Failed to save'))).toBe(
@@ -3432,24 +3174,6 @@ describe('SessionStore corruption-recovery', () => {
       // Restore permissions so afterEach cleanup can delete the directory
       chmodSync(sessionsDir, 0o700);
     }
-  });
-
-  it('merges two saveSession calls with the same sessionId into one file, keeping the latest scalar fields', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const startTime = new Date('2026-03-01T00:00:00Z').getTime();
-
-    store.saveSession(makeSummary({ sessionId: 'dup-id', developer: 'alice', startTime }));
-    store.saveSession(makeSummary({ sessionId: 'dup-id', developer: 'bob', startTime }));
-
-    const files = readdirSync(join(tmpDir, 'sessions'));
-    expect(files).toHaveLength(1);
-
-    const loaded = store.loadSession('dup-id');
-    expect(loaded).not.toBeNull();
-    // Scalar identity fields still follow the later write; only recorded
-    // activity is protected from regression (see the cross-process merge
-    // tests below).
-    expect(loaded!.developer).toBe('bob');
   });
 });
 
@@ -3760,7 +3484,7 @@ describe('buildSessionSummary timeline', () => {
 
     // And through a save and reload.
     const store = new SessionStore({ storagePath: tmpDir });
-    store.saveSession(summary);
+    saveAsWriter(store, summary);
     const reloaded = store.loadSession(summary.sessionId);
     expect(reloaded!.timeline![3]).toMatchObject({ mcpPrNumber: '42', mcpPrRepo: 'acme/app' });
     expect(reloaded!.timeline![2]).toMatchObject({
@@ -4210,324 +3934,6 @@ describe('qualityProxy field', () => {
   });
 });
 
-describe('saveSession cross-process merge', () => {
-  it('does not let a thinner writer erase a richer view of the same session', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const rich = makeSummary({
-      sessionId: 'd0f6fceb-ecc5-4610-9c62-3b2c10415137',
-      toolCallCount: 7,
-      toolBreakdown: { Bash: 7 },
-      model: 'claude-sonnet-4-6',
-      tokensInput: 292,
-      tokensOutput: 533,
-      estimatedCostUsd: 0.008871,
-      modelBreakdown: {
-        'claude-sonnet-4-6': {
-          requestCount: 1,
-          totalInputTokens: 292,
-          totalOutputTokens: 533,
-          totalCostUsd: 0.008871,
-          totalCacheReadTokens: 0,
-          totalCacheCreationTokens: 0,
-          totalThinkingTokens: 0,
-        },
-      },
-    });
-    store.saveSession(rich);
-
-    // The MCP engine spawned by the same CLI session writes its own partial
-    // view under the identical session id.
-    const thin = makeSummary({
-      sessionId: 'd0f6fceb-ecc5-4610-9c62-3b2c10415137',
-      toolCallCount: 1,
-      toolBreakdown: { Bash: 1 },
-      model: null,
-      tokensInput: 0,
-      tokensOutput: 0,
-      estimatedCostUsd: null,
-      modelBreakdown: {},
-    });
-    store.saveSession(thin);
-
-    const loaded = store.loadSession('d0f6fceb-ecc5-4610-9c62-3b2c10415137');
-    expect(loaded?.toolCallCount).toBe(7);
-    expect(loaded?.model).toBe('claude-sonnet-4-6');
-    expect(loaded?.tokensInput).toBe(292);
-    expect(loaded?.modelBreakdown).toEqual({
-      'claude-sonnet-4-6': {
-        requestCount: 1,
-        totalInputTokens: 292,
-        totalOutputTokens: 533,
-        totalCostUsd: 0.008871,
-        totalCacheReadTokens: 0,
-        totalCacheCreationTokens: 0,
-        totalThinkingTokens: 0,
-      },
-    });
-  });
-
-  it('still lets a later write add new activity', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const id = 'aaaa1111-2222-4333-8444-555566667777';
-    store.saveSession(makeSummary({ sessionId: id, toolCallCount: 2, toolBreakdown: { Bash: 2 } }));
-    store.saveSession(makeSummary({ sessionId: id, toolCallCount: 9, toolBreakdown: { Bash: 9 } }));
-    const loaded = store.loadSession(id);
-    expect(loaded?.toolCallCount).toBe(9);
-    expect(loaded?.toolBreakdown).toEqual({ Bash: 9 });
-  });
-
-  it("lets a resumed session's newer checkpoint replace a stale completed outcome", () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const id = 'cccc1111-2222-4333-8444-555566667777';
-    store.saveSession(
-      makeSummary({
-        sessionId: id,
-        outcome: 'completed',
-        endTime: 1000,
-        toolCallCount: 5,
-        toolBreakdown: { Bash: 5 },
-      }),
-    );
-    store.saveSession(
-      makeSummary({
-        sessionId: id,
-        outcome: 'in progress',
-        endTime: 2000,
-        toolCallCount: 9,
-        toolBreakdown: { Bash: 9 },
-      }),
-    );
-    expect(store.loadSession(id)?.outcome).toBe('in progress');
-  });
-
-  it("lets a chat-only resume's newer checkpoint replace a stale completed outcome", () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const id = 'eeee1111-2222-4333-8444-555566667777';
-    store.saveSession(
-      makeSummary({
-        sessionId: id,
-        outcome: 'completed',
-        endTime: 1000,
-        toolCallCount: 5,
-        toolBreakdown: { Bash: 5 },
-      }),
-    );
-    store.saveSession(
-      makeSummary({
-        sessionId: id,
-        outcome: 'in progress',
-        endTime: 2000,
-        toolCallCount: 5,
-        toolBreakdown: { Bash: 5 },
-      }),
-    );
-    expect(store.loadSession(id)?.outcome).toBe('in progress');
-  });
-
-  it.each([
-    ['equal endTime', 2000, 9, 'in progress'],
-    ['older endTime', 1500, 9, 'in progress'],
-    ['an unknown outcome', 3000, 9, 'unknown'],
-  ])(
-    'keeps a completed outcome against a non-completed write with %s',
-    (_label, endTime, calls, outcome) => {
-      const store = new SessionStore({ storagePath: tmpDir });
-      const id = 'dddd1111-2222-4333-8444-555566667777';
-      store.saveSession(
-        makeSummary({
-          sessionId: id,
-          outcome: 'completed',
-          endTime: 2000,
-          toolCallCount: 5,
-          toolBreakdown: { Bash: 5 },
-        }),
-      );
-      store.saveSession(
-        makeSummary({
-          sessionId: id,
-          outcome,
-          endTime,
-          toolCallCount: calls,
-          toolBreakdown: { Bash: calls },
-        }),
-      );
-      expect(store.loadSession(id)?.outcome).toBe('completed');
-    },
-  );
-
-  it('unions per-model breakdowns contributed by different processes', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const id = 'bbbb1111-2222-4333-8444-555566667777';
-    store.saveSession(
-      makeSummary({
-        sessionId: id,
-        toolCallCount: 1,
-        modelBreakdown: {
-          'model-a': {
-            requestCount: 1,
-            totalInputTokens: 10,
-            totalOutputTokens: 5,
-            totalCostUsd: 0.1,
-            totalCacheReadTokens: 0,
-            totalCacheCreationTokens: 0,
-            totalThinkingTokens: 0,
-          },
-        },
-      }),
-    );
-    store.saveSession(
-      makeSummary({
-        sessionId: id,
-        toolCallCount: 1,
-        modelBreakdown: {
-          'model-b': {
-            requestCount: 2,
-            totalInputTokens: 20,
-            totalOutputTokens: 6,
-            totalCostUsd: 0.2,
-            totalCacheReadTokens: 0,
-            totalCacheCreationTokens: 0,
-            totalThinkingTokens: 0,
-          },
-        },
-      }),
-    );
-    expect(Object.keys(store.loadSession(id)?.modelBreakdown ?? {}).sort()).toEqual([
-      'model-a',
-      'model-b',
-    ]);
-  });
-
-  it('merges into one file instead of duplicating when a later write computes an earlier date than an existing file', () => {
-    // A `--local`/synthetic-owner process rolling up a session it only
-    // started observing after a date boundary computes its own startTime
-    // from the first event *it* saw — which can be a different calendar
-    // day than a prior save for the same real session id.
-    const store = new SessionStore({ storagePath: tmpDir });
-    const id = 'cccc1111-2222-4333-8444-555566667777';
-
-    store.saveSession(
-      makeSummary({
-        sessionId: id,
-        startTime: new Date('2026-03-01T10:00:00Z').getTime(),
-        toolCallCount: 5,
-        toolBreakdown: { Bash: 5 },
-      }),
-    );
-    store.saveSession(
-      makeSummary({
-        sessionId: id,
-        startTime: new Date('2026-03-02T09:00:00Z').getTime(),
-        toolCallCount: 3,
-        toolBreakdown: { Bash: 3 },
-      }),
-    );
-
-    const files = readdirSync(join(tmpDir, 'sessions')).filter((f) => f.includes(id));
-    expect(files).toEqual(['2026-03-01_cccc1111-2222-4333-8444-555566667777.json']);
-
-    const loaded = store.loadSession(id);
-    expect(loaded?.toolCallCount).toBe(5);
-    expect(loaded?.toolBreakdown).toEqual({ Bash: 5 });
-  });
-
-  it('does not erase a real efficiencyScore/sampleCount/components/costByWorkflowRunId when a later write never seeded them', () => {
-    // Simulates a process that resolved its session id via the cwd-only
-    // fallback (rehydrateTrackersIfResumed() is skipped for that path in
-    // src/index.ts) writing an unseeded shutdown save over a checkpoint that
-    // already had a real efficiency score recorded.
-    const store = new SessionStore({ storagePath: tmpDir });
-    const id = 'dddd1111-2222-4333-8444-555566667777';
-
-    store.saveSession(
-      makeSummary({
-        sessionId: id,
-        efficiencyScore: 0.82,
-        efficiencyScoreSampleCount: 5,
-        efficiencyScoreComponents: {
-          speed: 0.8,
-          correctness: 0.9,
-          autonomy: 0.7,
-          firstAttemptQuality: 0.85,
-        },
-        costByWorkflowRunId: { 'run-1': { '2026-03-01': 1.5 } },
-      }),
-    );
-    store.saveSession(
-      makeSummary({
-        sessionId: id,
-        toolCallCount: 20,
-        efficiencyScore: null,
-        efficiencyScoreSampleCount: 0,
-        efficiencyScoreComponents: null,
-        costByWorkflowRunId: {},
-      }),
-    );
-
-    const loaded = store.loadSession(id);
-    expect(loaded?.toolCallCount).toBe(20);
-    expect(loaded?.efficiencyScore).toBe(0.82);
-    expect(loaded?.efficiencyScoreSampleCount).toBe(5);
-    expect(loaded?.efficiencyScoreComponents).toEqual({
-      speed: 0.8,
-      correctness: 0.9,
-      autonomy: 0.7,
-      firstAttemptQuality: 0.85,
-    });
-    expect(loaded?.costByWorkflowRunId).toEqual({ 'run-1': { '2026-03-01': 1.5 } });
-  });
-
-  it('merges the efficiencyScore/sampleCount/components triple atomically when BOTH sides have a real score', () => {
-    // sampleCount is a weight multiplier for EfficiencyScorer.seedFromPersisted()
-    // (score * sampleCount), not just a display field — taking the score from
-    // one side and the (larger) sampleCount from the other would attach a
-    // thin sample's score to a much larger weight, corrupting every future
-    // re-seed. The larger-sampleCount side's full triple must win together.
-    const store = new SessionStore({ storagePath: tmpDir });
-    const id = 'eeee1111-2222-4333-8444-555566667777';
-
-    store.saveSession(
-      makeSummary({
-        sessionId: id,
-        efficiencyScore: 0.8,
-        efficiencyScoreSampleCount: 50,
-        efficiencyScoreComponents: {
-          speed: 0.8,
-          correctness: 0.8,
-          autonomy: 0.8,
-          firstAttemptQuality: 0.8,
-        },
-      }),
-    );
-    store.saveSession(
-      makeSummary({
-        sessionId: id,
-        toolCallCount: 20,
-        efficiencyScore: 0.4,
-        efficiencyScoreSampleCount: 3,
-        efficiencyScoreComponents: {
-          speed: 0.4,
-          correctness: 0.4,
-          autonomy: 0.4,
-          firstAttemptQuality: 0.4,
-        },
-      }),
-    );
-
-    const loaded = store.loadSession(id);
-    // The 50-sample side wins outright — score AND sampleCount AND
-    // components together — not a mix of the two sides' fields.
-    expect(loaded?.efficiencyScore).toBe(0.8);
-    expect(loaded?.efficiencyScoreSampleCount).toBe(50);
-    expect(loaded?.efficiencyScoreComponents).toEqual({
-      speed: 0.8,
-      correctness: 0.8,
-      autonomy: 0.8,
-      firstAttemptQuality: 0.8,
-    });
-  });
-});
-
 describe('attribution field', () => {
   function makeTurnCostAttributor(metrics: {
     costByToolType?: Record<
@@ -4784,8 +4190,6 @@ describe('attribution field', () => {
   });
 
   it("merge keeps the one side's breakdownUsd when the other side has none", () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const id = `merge-breakdown-usd-${Date.now()}`;
     const bucket = (extra: object) => ({
       costUsd: 0.05,
       tokens: 40,
@@ -4793,24 +4197,23 @@ describe('attribution field', () => {
       durationMs: 300,
       ...extra,
     });
-    const save = (extra: object) =>
-      store.saveSession(
-        makeSummary({
-          sessionId: id,
-          attribution: {
-            buckets: { skill: { unslop: bucket(extra) } },
-            highContextCostUsd: 0,
-            apiDurationMs: null,
-          },
-        }),
-      );
+    const summary = (extra: object) =>
+      makeSummary({
+        attribution: {
+          buckets: { skill: { unslop: bucket(extra) } },
+          highContextCostUsd: 0,
+          apiDurationMs: null,
+        },
+      });
 
-    save({
-      breakdownUsd: { inputUsd: 0.01, outputUsd: 0.02, cacheReadUsd: 0, cacheCreationUsd: 0 },
-    });
-    save({});
+    const merged = mergeSummaries(
+      summary({
+        breakdownUsd: { inputUsd: 0.01, outputUsd: 0.02, cacheReadUsd: 0, cacheCreationUsd: 0 },
+      }),
+      summary({}),
+    );
 
-    expect(store.loadSession(id)?.attribution?.buckets.skill?.unslop.breakdownUsd).toEqual({
+    expect(merged.attribution?.buckets.skill?.unslop.breakdownUsd).toEqual({
       inputUsd: 0.01,
       outputUsd: 0.02,
       cacheReadUsd: 0,
@@ -4819,30 +4222,25 @@ describe('attribution field', () => {
   });
 
   it('merge drops breakdownUsd when the side with the larger costUsd has none', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const id = `merge-breakdown-usd-older-${Date.now()}`;
-    const save = (bucket: object) =>
-      store.saveSession(
-        makeSummary({
-          sessionId: id,
-          attribution: {
-            buckets: { skill: { unslop: bucket as never } },
-            highContextCostUsd: 0,
-            apiDurationMs: null,
-          },
-        }),
-      );
+    const summary = (bucket: object) =>
+      makeSummary({
+        attribution: {
+          buckets: { skill: { unslop: bucket as never } },
+          highContextCostUsd: 0,
+          apiDurationMs: null,
+        },
+      });
 
-    save({ costUsd: 5, tokens: 500, count: 5, durationMs: 1 });
-    save({
-      costUsd: 2,
-      tokens: 200,
-      count: 2,
-      durationMs: 1,
-      breakdownUsd: { inputUsd: 1, outputUsd: 1, cacheReadUsd: 0, cacheCreationUsd: 0 },
-    });
-
-    const merged = store.loadSession(id)?.attribution?.buckets.skill?.unslop;
+    const merged = mergeSummaries(
+      summary({ costUsd: 5, tokens: 500, count: 5, durationMs: 1 }),
+      summary({
+        costUsd: 2,
+        tokens: 200,
+        count: 2,
+        durationMs: 1,
+        breakdownUsd: { inputUsd: 1, outputUsd: 1, cacheReadUsd: 0, cacheCreationUsd: 0 },
+      }),
+    ).attribution?.buckets.skill?.unslop;
     expect(merged?.costUsd).toBe(5);
     expect(merged?.breakdownUsd).toBeUndefined();
   });
@@ -4897,12 +4295,8 @@ describe('attribution field', () => {
   });
 
   it('merge takes a field-wise max across matching bucket keys', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const id = `merge-attr-${Date.now()}`;
-
-    store.saveSession(
+    const merged = mergeSummaries(
       makeSummary({
-        sessionId: id,
         attribution: {
           buckets: {
             tool: { Read: { costUsd: 0.02, tokens: 100, count: 4, durationMs: 500 } },
@@ -4911,10 +4305,7 @@ describe('attribution field', () => {
           apiDurationMs: 1000,
         },
       }),
-    );
-    store.saveSession(
       makeSummary({
-        sessionId: id,
         toolCallCount: 20,
         attribution: {
           buckets: {
@@ -4927,8 +4318,7 @@ describe('attribution field', () => {
       }),
     );
 
-    const loaded = store.loadSession(id);
-    expect(loaded?.attribution).toEqual({
+    expect(merged.attribution).toEqual({
       buckets: {
         tool: { Read: { costUsd: 0.05, tokens: 100, count: 6, durationMs: 500 } },
         skill: { unslop: { costUsd: 0.01, tokens: 20, count: 1, durationMs: 200 } },
@@ -4939,12 +4329,8 @@ describe('attribution field', () => {
   });
 
   it('merge takes a field-wise max on breakdown when both sides have one', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const id = `merge-breakdown-both-${Date.now()}`;
-
-    store.saveSession(
+    const merged = mergeSummaries(
       makeSummary({
-        sessionId: id,
         attribution: {
           buckets: {
             skill: {
@@ -4966,10 +4352,7 @@ describe('attribution field', () => {
           apiDurationMs: null,
         },
       }),
-    );
-    store.saveSession(
       makeSummary({
-        sessionId: id,
         attribution: {
           buckets: {
             skill: {
@@ -4993,8 +4376,7 @@ describe('attribution field', () => {
       }),
     );
 
-    const loaded = store.loadSession(id);
-    expect(loaded?.attribution?.buckets.skill?.unslop.breakdown).toEqual({
+    expect(merged.attribution?.buckets.skill?.unslop.breakdown).toEqual({
       inputTokens: 80,
       outputTokens: 60,
       cacheReadTokens: 5,
@@ -5003,12 +4385,8 @@ describe('attribution field', () => {
   });
 
   it("merge keeps the one side's breakdown when the other side has none", () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    const id = `merge-breakdown-one-side-${Date.now()}`;
-
-    store.saveSession(
+    const merged = mergeSummaries(
       makeSummary({
-        sessionId: id,
         attribution: {
           buckets: {
             skill: { unslop: { costUsd: 0.02, tokens: 100, count: 4, durationMs: 500 } },
@@ -5017,10 +4395,7 @@ describe('attribution field', () => {
           apiDurationMs: null,
         },
       }),
-    );
-    store.saveSession(
       makeSummary({
-        sessionId: id,
         attribution: {
           buckets: {
             skill: {
@@ -5044,8 +4419,7 @@ describe('attribution field', () => {
       }),
     );
 
-    const loaded = store.loadSession(id);
-    expect(loaded?.attribution?.buckets.skill?.unslop.breakdown).toEqual({
+    expect(merged.attribution?.buckets.skill?.unslop.breakdown).toEqual({
       inputTokens: 100,
       outputTokens: 50,
       cacheReadTokens: 10,
@@ -5151,7 +4525,7 @@ describe('SessionStore split and corrupt session files', () => {
       expect(store.loadAllSessions().map((s) => s.toolCallCount)).toEqual([11]);
       expect(store.loadSession(id)?.toolCallCount).toBe(11);
 
-      store.saveSession(withActivity(day1, 12, []));
+      saveAsWriter(store, withActivity(day1, 1, []));
 
       expect(filesEndingIn('.json')).toEqual([`2026-03-01_${id}.json`]);
       expect(totalToolCalls(store)).toBe(12);
@@ -5183,9 +4557,8 @@ describe('SessionStore split and corrupt session files', () => {
     expect(store.loadAllSessions().map((s) => s.toolCallCount)).toEqual([11]);
     expect(store.loadSession(id)?.toolCallCount).toBe(11);
 
-    const saved = store.saveSession(withActivity(day1, 12, []));
+    saveAsWriter(store, withActivity(day1, 1, []));
 
-    expect(saved?.previous?.toolCallCount).toBe(11);
     expect(filesEndingIn('.json')).toEqual([`2026-03-01_${id}.json`]);
     expect(filesEndingIn('.corrupt')).toHaveLength(1);
     expect(filesEndingIn('.merged')).toHaveLength(1);
@@ -5199,7 +4572,7 @@ describe('SessionStore split and corrupt session files', () => {
     const sibling = join(sessionsDir(), `2026-03-02_${id}.json`);
     writeFileSync(sibling, whole.slice(0, 40));
 
-    store.saveSession(withActivity(day1, 41));
+    saveAsWriter(store, withActivity(day1 + 41, 1));
     writeFileSync(sibling, whole);
 
     expect(store.loadAllSessions().map((s) => s.toolCallCount)).toEqual([41]);
@@ -5235,7 +4608,7 @@ describe('SessionStore split and corrupt session files', () => {
     expect(paths.map((path) => readFileSync(path, 'utf-8'))).toEqual(before);
   });
 
-  it('merges a save past an unreadable sibling into the readable file and leaves the sibling as it was', () => {
+  it('adds a save past an unreadable sibling to the readable file and leaves the sibling as it was', () => {
     const store = new SessionStore({ storagePath: tmpDir });
     const unreadable = join(sessionsDir(), `2026-03-01_${id}.json`);
     writeFileSync(unreadable, '{ "sessionId": ');
@@ -5244,18 +4617,18 @@ describe('SessionStore split and corrupt session files', () => {
       makeSummary({ sessionId: id, startTime: day2, toolCallCount: 9 }),
     );
 
-    store.saveSession(makeSummary({ sessionId: id, startTime: day2, toolCallCount: 5 }));
+    saveAsWriter(store, makeSummary({ sessionId: id, startTime: day2, toolCallCount: 5 }));
 
     expect(filesEndingIn('.json')).toEqual([`2026-03-01_${id}.json`, `2026-03-02_${id}.json`]);
     expect(readFileSync(unreadable, 'utf-8')).toBe('{ "sessionId": ');
-    expect(store.loadSession(id)?.toolCallCount).toBe(9);
+    expect(store.loadSession(id)?.toolCallCount).toBe(14);
   });
 
   it('keeps the bytes of an unrecoverable file a save lands on as .corrupt', () => {
     const store = new SessionStore({ storagePath: tmpDir });
     writeFileSync(join(sessionsDir(), `2026-03-01_${id}.json`), '{ "sessionId": ');
 
-    store.saveSession(makeSummary({ sessionId: id, startTime: day1, toolCallCount: 5 }));
+    saveAsWriter(store, makeSummary({ sessionId: id, startTime: day1, toolCallCount: 5 }));
 
     const corrupt = filesEndingIn('.corrupt');
     expect(corrupt).toHaveLength(1);
@@ -5277,7 +4650,7 @@ describe('SessionStore split and corrupt session files', () => {
       );
       const original = readFileSync(recovered, 'utf-8');
 
-      store.saveSession(makeSummary({ sessionId: id, startTime, toolCallCount: 8 }));
+      saveAsWriter(store, makeSummary({ sessionId: id, startTime, toolCallCount: 1 }));
 
       expect(filesEndingIn('.json')).toEqual([savedAs]);
       expect(
@@ -5329,11 +4702,8 @@ describe('SessionStore split and corrupt session files', () => {
       `2026-03-01_${id}.json`,
     ]);
 
-    const saved = store.saveSession(
-      makeSummary({ sessionId: id, startTime: day1, toolCallCount: 9 }),
-    );
+    saveAsWriter(store, makeSummary({ sessionId: id, startTime: day1, toolCallCount: 2 }));
 
-    expect(saved?.previous?.toolCallCount).toBe(7);
     expect(store.loadSession(id)?.toolCallCount).toBe(9);
     expect(readFileSync(join(sessionsDir(), `2026-03-02_${id}.json`), 'utf-8')).toBe('{"trunc');
   });
@@ -5365,7 +4735,7 @@ describe('SessionStore split and corrupt session files', () => {
     writeFileSync(`${path}.${now}.corrupt`, 'someone else');
 
     try {
-      store.saveSession(makeSummary({ sessionId: id, startTime: day1, toolCallCount: 5 }));
+      saveAsWriter(store, makeSummary({ sessionId: id, startTime: day1, toolCallCount: 5 }));
     } finally {
       jest.mocked(Date.now).mockRestore();
     }
@@ -5400,6 +4770,14 @@ describe('combining a session split across files', () => {
   function jsonFiles(): string[] {
     return readdirSync(sessionsDir()).filter((f) => f.endsWith('.json'));
   }
+
+  const share = (fields: Partial<FullSessionSummary> = {}): FullSessionSummary =>
+    deserializeFullSessionSummary({
+      sessionId: id,
+      startTime: day2,
+      endTime: day2,
+      ...fields,
+    } as Parameters<typeof deserializeFullSessionSummary>[0]);
 
   const first = (): FullSessionSummary =>
     makeSummary({
@@ -5468,7 +4846,7 @@ describe('combining a session split across files', () => {
     expect(loaded?.estimatedCostUsd).toBeCloseTo(3);
 
     for (let run = 0; run < 2; run++) {
-      store.saveSession(store.loadSession(id)!);
+      saveAsWriter(store, share());
       expect(jsonFiles()).toEqual([`2026-03-01_${id}.json`]);
       const healed = store.loadSession(id);
       expect(healed?.toolCallCount).toBe(3);
@@ -5498,8 +4876,7 @@ describe('combining a session split across files', () => {
 
     it('keeps the sum beside a source a crashed save left in place', () => {
       [costed(0, 1, 4), costed(1, 1, 4)].forEach(writeSessionFile);
-      const store = new SessionStore({ storagePath: tmpDir });
-      store.saveSession(store.loadSession(id) as FullSessionSummary);
+      saveAsWriter(new SessionStore({ storagePath: tmpDir }), share());
       writeSessionFile({ ...costed(1, 1, 4), endTime: day(9) });
       expect(cost()).toBeCloseTo(10);
     });
@@ -5635,13 +5012,15 @@ describe('combining a session split across files', () => {
     writeSessionFile(second());
     const secondBytes = readFileSync(join(sessionsDir(), `2026-03-02_${id}.json`), 'utf-8');
 
-    const resumed = store.loadSession(id)!;
-    store.saveSession({
-      ...resumed,
-      endTime: day2 + 2 * HOUR,
-      timeline: [entry(day2 + HOUR + 1)],
-      toolCallCount: resumed.toolCallCount + 1,
-    });
+    saveAsWriter(
+      store,
+      share({
+        endTime: day2 + 2 * HOUR,
+        timeline: [entry(day2 + HOUR + 1)],
+        toolCallCount: 1,
+        toolBreakdown: { Read: 1 },
+      }),
+    );
 
     expect(jsonFiles()).toEqual([unreadable, `2026-03-01_${id}.json`]);
     const merged = readdirSync(sessionsDir()).filter((f) => f.endsWith('.merged'));
@@ -5655,52 +5034,16 @@ describe('combining a session split across files', () => {
     expect(saved?.timeline).toHaveLength(4);
   });
 
-  it('reports the combined record as previous, so a seeded resume does not double count', () => {
-    const store = new SessionStore({ storagePath: tmpDir });
-    writeSessionFile(first());
-    writeSessionFile(second());
-    const baselines = new FirstSaveBaselines();
-    const own = (toolCallCount: number, estimatedCostUsd: number): FullSessionSummary =>
-      makeSummary({
-        sessionId: id,
-        startTime: day2 + HOUR,
-        endTime: day2 + 2 * HOUR,
-        timeline: [entry(day2 + HOUR + 1), entry(day2 + HOUR + 2)],
-        toolCallCount,
-        estimatedCostUsd,
-      });
-
-    const saved = store.saveSession(own(2, 0.5));
-
-    expect(saved?.previous?.toolCallCount).toBe(3);
-    expect(saved?.previous?.estimatedCostUsd).toBeCloseTo(3);
-    baselines.recordSave({ sessionId: id, previous: saved!.previous, ownSession: true });
-
-    const { toolCalls, cost } = baselines.take(id, () => store.loadSession(id));
-    expect(toolCalls?.sessionTracker.toolCallCount).toBe(3);
-    expect(cost?.estimatedCostUsd).toBeCloseTo(3);
-    const seeded = { ...own(3 + 2, 3 + 0.5), byteEstimates: saved!.previous?.byteEstimates };
-    store.saveSession(seeded);
-
-    expect(jsonFiles()).toEqual([`2026-03-01_${id}.json`]);
-    const all = store.loadAllSessions();
-    expect(all).toHaveLength(1);
-    expect(all[0].toolCallCount).toBe(5);
-    expect(all[0].estimatedCostUsd).toBeCloseTo(3.5);
-    expect(store.loadSession(id)).toEqual(all[0]);
-    expect(store.saveSession(seeded)?.previous?.toolCallCount).toBe(5);
-  });
-
-  it('saves a split session as it saves the same calls in one file, from every kind of writer', () => {
+  it('counts a split session as the same calls in one file once writers save into it', () => {
     const calls = (from: number, n: number) =>
       Array.from({ length: n }, (_, i) => entry(from + i + 1));
-    const stretch = (start: number, timeline: ReplayTimelineEntry[], toolCallCount?: number) =>
+    const stretch = (start: number, timeline: ReplayTimelineEntry[]) =>
       makeSummary({
         sessionId: id,
         startTime: start,
         endTime: timeline[timeline.length - 1].timestamp,
         timeline,
-        toolCallCount: toolCallCount ?? timeline.length,
+        toolCallCount: timeline.length,
       });
     const [day1Calls, day2Calls] = [calls(day1, 5), calls(day2, 7)];
     const totalsAfterSaves = (storagePath: string, files: FullSessionSummary[]): number[] => {
@@ -5709,27 +5052,22 @@ describe('combining a session split across files', () => {
         const date = new Date(file.startTime).toISOString().slice(0, 10);
         writeFileSync(join(storagePath, 'sessions', `${date}_${id}.json`), JSON.stringify(file));
       }
-      const store = new SessionStore({ storagePath });
-      const total = () => store.loadAllSessions().reduce((n, s) => n + s.toolCallCount, 0);
-      const resumed = store.loadSession(id)!;
+      const store = () => new SessionStore({ storagePath });
+      const total = () =>
+        store()
+          .loadAllSessions()
+          .reduce((n, s) => n + s.toolCallCount, 0);
       const totals: number[] = [];
-      // A resumed engine counts on from the loaded record, and its timeline restarts.
-      const engine = stretch(day2, calls(day2 + HOUR, 1), resumed.toolCallCount + 1);
-      store.saveSession({ ...resumed, ...engine, startTime: resumed.startTime });
+      saveAsWriter(store(), stretch(day2, calls(day2 + HOUR, 1)));
       totals.push(total());
-      // A rollup adds its own calls to the count on file.
-      const onFile = store.loadSession(id)!.toolCallCount;
-      store.saveSession(stretch(day2, calls(day2 + 2 * HOUR, 1), onFile + 1));
-      totals.push(total());
-      // A writer that never loaded the record, with its own piece and one more call.
-      store.saveSession(stretch(day2, [...day2Calls, ...calls(day2 + 3 * HOUR, 1)]));
+      saveAsWriter(store(), stretch(day2, calls(day2 + 2 * HOUR, 1)));
       totals.push(total());
       return totals;
     };
 
     const split = [stretch(day1, day1Calls), stretch(day2, day2Calls)];
     const oneFile = [stretch(day1, [...day1Calls, ...day2Calls])];
-    expect(totalsAfterSaves(join(tmpDir, 'split'), split)).toEqual([13, 14, 14]);
-    expect(totalsAfterSaves(join(tmpDir, 'one-file'), oneFile)).toEqual([13, 14, 14]);
+    expect(totalsAfterSaves(join(tmpDir, 'split'), split)).toEqual([13, 14]);
+    expect(totalsAfterSaves(join(tmpDir, 'one-file'), oneFile)).toEqual([13, 14]);
   });
 });
