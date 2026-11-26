@@ -1130,7 +1130,7 @@ describe('stdio integration', () => {
           }
           return store.loadSession(id) !== null;
         },
-        saveSession: (summary: FullSessionSummary) => saveAsWriter(store, summary),
+        saveShare: (summary: FullSessionSummary) => saveAsWriter(store, summary),
         loadSession: (id: string) => store.loadSession(id),
         budgetAlerts: async (): Promise<Array<{ period: string }>> => {
           const result = await client.callTool({
@@ -1330,7 +1330,7 @@ describe('stdio integration', () => {
           NEW_RELIC_AI_SESSION_BUDGET_USD: '0.004',
         });
         try {
-          engine.saveSession({
+          engine.saveShare({
             sessionId: 'claude-session-id',
             startTime: now - 3_600_000,
             endTime: now - 1000,
@@ -1418,7 +1418,7 @@ describe('stdio integration', () => {
           NR_AI_SESSION_PERSIST_INTERVAL_MS: '200',
         });
         try {
-          engine.saveSession({
+          engine.saveShare({
             sessionId: 'kiro-session-id',
             startTime: now - 3_600_000,
             endTime: now - 1000,
